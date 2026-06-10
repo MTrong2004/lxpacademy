@@ -1,0 +1,230 @@
+-- HOD102 FULL SETUP SUPABASE
+-- Chạy 1 lần trong Supabase SQL Editor.
+-- Gồm: user / editor / admin, gửi sửa câu, yêu cầu của tôi, block user, admin logs.
+
+-- Bảng profiles
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text,
+  role text default 'user',
+  blocked boolean default false,
+  last_login timestamptz,
+  created_at timestamptz default now()
+);
+
+alter table public.profiles add column if not exists email text;
+alter table public.profiles add column if not exists role text default 'user';
+alter table public.profiles add column if not exists blocked boolean default false;
+alter table public.profiles add column if not exists last_login timestamptz;
+
+-- Bảng câu hỏi
+create table if not exists public.questions (
+  id bigserial primary key,
+  num integer unique,
+  question text,
+  options jsonb default '{}'::jsonb,
+  answer text,
+  answer_text text,
+  images jsonb default '[]'::jsonb,
+  is_active boolean default true,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+alter table public.questions add column if not exists is_active boolean default true;
+
+-- Bảng yêu cầu sửa
+create table if not exists public.edit_requests (
+  id bigserial primary key,
+  question_id bigint,
+  question_num bigint,
+  user_id uuid,
+  old_data jsonb,
+  new_data jsonb,
+  reason text,
+  status text default 'pending',
+  admin_note text,
+  reviewed_at timestamptz,
+  reviewed_by uuid,
+  created_at timestamptz default now()
+);
+
+alter table public.edit_requests add column if not exists reason text;
+alter table public.edit_requests add column if not exists status text default 'pending';
+alter table public.edit_requests add column if not exists admin_note text;
+alter table public.edit_requests add column if not exists reviewed_at timestamptz;
+alter table public.edit_requests add column if not exists reviewed_by uuid;
+
+-- Bảng lịch sử chỉnh sửa
+create table if not exists public.question_history (
+  id bigserial primary key,
+  question_id bigint,
+  request_id bigint,
+  previous_data jsonb,
+  new_data jsonb,
+  changed_by uuid,
+  approved_by uuid,
+  created_at timestamptz default now()
+);
+
+-- Bảng log admin
+create table if not exists public.admin_logs (
+  id bigserial primary key,
+  admin_id uuid,
+  admin_email text,
+  action text not null,
+  target_type text,
+  target_id text,
+  details jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
+-- Hàm kiểm tra quyền
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid()
+      and role = 'admin'
+      and coalesce(blocked,false) = false
+  );
+$$;
+
+create or replace function public.is_editor_or_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid()
+      and role in ('admin','editor')
+      and coalesce(blocked,false) = false
+  );
+$$;
+
+create or replace function public.is_not_blocked()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid()
+      and coalesce(blocked,false) = false
+  );
+$$;
+
+-- Bật bảo mật
+alter table public.profiles enable row level security;
+alter table public.questions enable row level security;
+alter table public.edit_requests enable row level security;
+alter table public.question_history enable row level security;
+alter table public.admin_logs enable row level security;
+
+-- Policies profiles
+drop policy if exists "profiles read own or admin" on public.profiles;
+create policy "profiles read own or admin"
+on public.profiles
+for select to authenticated
+using (id = auth.uid() or public.is_editor_or_admin());
+
+drop policy if exists "profiles insert own user" on public.profiles;
+create policy "profiles insert own user"
+on public.profiles
+for insert to authenticated
+with check (id = auth.uid() and coalesce(role,'user') = 'user' and coalesce(blocked,false) = false);
+
+drop policy if exists "profiles update own login" on public.profiles;
+create policy "profiles update own login"
+on public.profiles
+for update to authenticated
+using (id = auth.uid())
+with check (id = auth.uid());
+
+drop policy if exists "profiles admin update" on public.profiles;
+create policy "profiles admin update"
+on public.profiles
+for update to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
+-- Policies questions
+drop policy if exists "questions read active" on public.questions;
+create policy "questions read active"
+on public.questions
+for select to authenticated
+using (is_active = true or public.is_editor_or_admin());
+
+drop policy if exists "questions editor write" on public.questions;
+create policy "questions editor write"
+on public.questions
+for all to authenticated
+using (public.is_editor_or_admin())
+with check (public.is_editor_or_admin());
+
+drop policy if exists "questions admin write" on public.questions;
+
+-- Policies edit_requests
+drop policy if exists "edit_requests insert own" on public.edit_requests;
+create policy "edit_requests insert own"
+on public.edit_requests
+for insert to authenticated
+with check (user_id = auth.uid() and status = 'pending' and public.is_not_blocked());
+
+drop policy if exists "edit_requests read own or editor" on public.edit_requests;
+create policy "edit_requests read own or editor"
+on public.edit_requests
+for select to authenticated
+using (user_id = auth.uid() or public.is_editor_or_admin());
+
+drop policy if exists "edit_requests read own or admin" on public.edit_requests;
+
+drop policy if exists "edit_requests editor update" on public.edit_requests;
+create policy "edit_requests editor update"
+on public.edit_requests
+for update to authenticated
+using (public.is_editor_or_admin())
+with check (public.is_editor_or_admin());
+
+drop policy if exists "edit_requests admin update" on public.edit_requests;
+
+-- Policies question_history
+drop policy if exists "question_history read editor" on public.question_history;
+create policy "question_history read editor"
+on public.question_history
+for select to authenticated
+using (public.is_editor_or_admin());
+
+drop policy if exists "question_history insert editor" on public.question_history;
+create policy "question_history insert editor"
+on public.question_history
+for insert to authenticated
+with check (public.is_editor_or_admin());
+
+drop policy if exists "question_history read admin" on public.question_history;
+drop policy if exists "question_history insert admin" on public.question_history;
+
+-- Policies admin_logs
+drop policy if exists "admin_logs read admin" on public.admin_logs;
+create policy "admin_logs read admin"
+on public.admin_logs
+for select to authenticated
+using (public.is_admin());
+
+drop policy if exists "admin_logs insert admin" on public.admin_logs;
+create policy "admin_logs insert admin"
+on public.admin_logs
+for insert to authenticated
+with check (public.is_admin());
+
+notify pgrst, 'reload schema';

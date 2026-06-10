@@ -287,6 +287,17 @@ body{--headH:104px}.tabs{position:fixed!important;top:58px!important;left:280px!
 
 
 /* PATCH V22: headline cân bằng và luôn hiện ở Flashcard / Luyện tập / Tất cả */
+
+/* PATCH V23: kéo nội dung flashcard lên ngang cụm icon bên phải */
+@media(min-width:621px){
+  #fc .front,
+  #fc .front.hasImg{
+    padding-top:24px!important;
+  }
+  #fc .tag{
+    margin-top:0!important;
+  }
+}
 body{--headH:112px!important;}
 .globalTop{
   position:fixed!important;
@@ -452,3 +463,10 @@ body:not(.hod-is-admin) #adminModal:not(.hidden){display:none!important}
 body.hod-locked .tabs,body.hod-locked .content{display:none!important}
 .hodLoginGate{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:22px;background:linear-gradient(145deg,#070605,#1b120d 58%,#080605);color:var(--fog)}
 .hodLoginGate.hidden{display:none!important}.hodLoginGatePanel{width:min(520px,94vw);border:1px solid rgba(200,169,110,.28);border-radius:30px;background:linear-gradient(145deg,rgba(255,255,255,.10),rgba(255,255,255,.025));box-shadow:0 30px 100px rgba(0,0,0,.62);padding:32px}.hodLogoClean{width:70px;height:70px;border-radius:22px;background:linear-gradient(135deg,var(--gold),var(--gold2));color:#15100b;display:grid;place-items:center;font:950 1.4rem var(--serif);margin-bottom:18px}.hodLoginGatePanel h1{font:950 2.8rem var(--serif);color:#fff;margin-bottom:12px}.hodLoginGatePanel p{color:var(--mist);line-height:1.6;margin-bottom:20px}.hodGoogleClean{border:0;border-radius:999px;background:#fff!important;color:#222!important;font-weight:950;padding:13px 18px;display:inline-flex;align-items:center;justify-content:center;gap:10px}.hodGoogleClean span{width:24px;height:24px;border-radius:50%;display:inline-grid;place-items:center;background:linear-gradient(135deg,#4285f4,#34a853,#fbbc05,#ea4335);color:white;font-weight:950}.hodAuthClean{max-width:min(500px,94vw)!important}.hodAuthClean .hodGoogleClean{width:100%;margin-top:12px}.hodBadge{display:inline-flex;border:1px solid rgba(200,169,110,.25);background:rgba(200,169,110,.10);color:var(--gold2);border-radius:999px;padding:5px 10px;font-weight:950;font-size:.74rem;letter-spacing:.08em}.hodTopAvatar{width:48px!important;height:48px!important;border-radius:50%!important;overflow:hidden!important;padding:0!important;display:grid!important;place-items:center!important;background:linear-gradient(135deg,var(--gold),var(--gold2))!important;color:#111!important;border:1px solid rgba(200,169,110,.45)!important;font-weight:950!important}.hodTopAvatar img{width:100%;height:100%;object-fit:cover}.hodAccountMenu{position:fixed;right:18px;top:74px;z-index:2147482999;width:min(330px,92vw);border:1px solid rgba(200,169,110,.28);border-radius:22px;background:linear-gradient(145deg,rgba(24,16,11,.98),rgba(8,6,5,.98));box-shadow:0 24px 80px rgba(0,0,0,.55);padding:16px;color:var(--fog)}.hodAccountMenu.hidden{display:none!important}.hodAccountHead{display:flex;gap:12px;align-items:center;margin-bottom:14px}.hodAvatarBig{width:54px;height:54px;border-radius:18px;display:grid;place-items:center;background:linear-gradient(135deg,var(--gold),var(--gold2));color:#111;font-weight:950;overflow:hidden}.hodAvatarBig img{width:100%;height:100%;object-fit:cover}.hodAccountHead b{display:block;color:#fff;word-break:break-word}.hodAccountHead span{display:block;color:var(--gold2);font-weight:800;margin-top:4px}.hodAccountMenu button{width:100%;margin-top:8px;border:1px solid rgba(200,169,110,.30);border-radius:999px;background:rgba(255,255,255,.055);color:var(--fog);font-weight:900;padding:11px 14px}.hodAccountMenu button#hodLogoutBtn{color:#ffd0ca;border-color:rgba(233,135,123,.35)}.hodAccountMenu button.hidden{display:none!important}body:not(.hod-is-admin-final) #adminOpenBtn,body:not(.hod-is-admin-final) #hodAccountDashboard{display:none!important}body:not(.hod-is-admin-final) #adminModal:not(.hidden){display:none!important}@media(max-width:820px){.hodLoginGatePanel{padding:22px}.hodGoogleClean{width:100%}.hodAccountMenu{right:10px;left:10px;top:70px;width:auto}}
+/* FINAL: kéo nội dung flashcard lên ngang cụm icon bên phải */
+@media(min-width:621px){
+  #fc .front,
+  #fc .front.hasImg{
+    padding-top:24px!important;
+  }
+}
