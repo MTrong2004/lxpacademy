@@ -2469,3 +2469,124 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c){const r
   setTimeout(boot, 500);
   setInterval(() => { modalOpen() ? startLock() : showPlusIfAllowed(); }, 80);
 })();
+
+
+// ===== FINAL_DELETE_REPLACE_OPEN_BUTTON_20260614 =====
+// Đưa nút Xóa vào đúng vị trí chữ "Mở" trong tab Tất cả.
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function canManage(){
+    const p = window.HODSupabase?.getProfile?.() || null;
+    const u = window.HODSupabase?.getUser?.() || null;
+    const role = String(p?.role || '').toLowerCase();
+    return !!u && (role === 'admin' || role === 'editor') && !(p?.blocked || p?.is_blocked || p?.status === 'blocked');
+  }
+  function isStudyTab(){
+    return $('study')?.classList.contains('active') || document.querySelector('.tab.active')?.dataset?.tab === 'study';
+  }
+  function getNum(card){
+    const d = card?.dataset?.num || card?.getAttribute?.('data-num');
+    if(d && /^\d+$/.test(String(d))) return Number(d);
+    const m = String(card?.textContent || '').match(/CÂU\s*(\d+)/i);
+    return m ? Number(m[1]) : null;
+  }
+  function fixDeleteButtonPosition(){
+    const list = $('studyList');
+    if(!list) return;
+    const show = canManage() && isStudyTab();
+    document.body.classList.toggle('delete-replaces-open', show);
+
+    list.querySelectorAll('.sitem, .compactStudyCard').forEach(card => {
+      card.querySelectorAll('.expandHint').forEach(x => x.remove());
+      let holder = card.querySelector('.compactCardRight');
+      if(!holder){
+        holder = document.createElement('div');
+        holder.className = 'compactCardRight studyActionRight';
+        const line = card.querySelector('.compactCardLine');
+        if(line) line.appendChild(holder); else card.appendChild(holder);
+      }
+      if(!show) return;
+      const num = getNum(card);
+      if(!num) return;
+      card.dataset.num = String(num);
+      let btn = card.querySelector('.studyDeleteAction');
+      if(!btn){
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'studyDeleteAction';
+        btn.dataset.deleteNum = String(num);
+        btn.title = 'Xóa câu ' + num;
+      }
+      btn.textContent = 'Xóa';
+      btn.classList.add('replaceOpenDeleteBtn');
+      btn.dataset.deleteNum = String(num);
+      btn.title = 'Xóa câu ' + num;
+      holder.appendChild(btn); // nằm đúng chỗ nút Mở cũ, ngoài cùng bên phải
+    });
+  }
+  function patchRender(){
+    if(window.__deleteReplaceOpenRenderPatched20260614) return;
+    const old = typeof renderStudy === 'function' ? renderStudy : null;
+    if(!old) return;
+    window.__deleteReplaceOpenRenderPatched20260614 = true;
+    renderStudy = function(){
+      const r = old.apply(this, arguments);
+      setTimeout(fixDeleteButtonPosition, 0);
+      setTimeout(fixDeleteButtonPosition, 100);
+      return r;
+    };
+    window.renderStudy = renderStudy;
+  }
+  function boot(){
+    patchRender();
+    fixDeleteButtonPosition();
+    document.querySelectorAll('.tab').forEach(t => {
+      if(t.__replaceOpenDeleteBound) return;
+      t.__replaceOpenDeleteBound = true;
+      t.addEventListener('click', () => setTimeout(fixDeleteButtonPosition, 100));
+    });
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+  setTimeout(boot, 300);
+  setTimeout(boot, 1000);
+  setInterval(fixDeleteButtonPosition, 1500);
+})();
+
+
+// ===== FIX_DELETE_BUTTON_WORKS_20260614 =====
+(function(){
+  const $ = id => document.getElementById(id);
+  function client(){ return window.HODSupabase?.__client || null; }
+  function user(){ return window.HODSupabase?.getUser?.() || null; }
+  function profile(){ return window.HODSupabase?.getProfile?.() || null; }
+  function canManage(){
+    const p = profile();
+    const role = String(p?.role || '').toLowerCase();
+    return !!user() && (role==='admin' || role==='editor');
+  }
+  function getQ(num){ num=Number(num); return (RAW||[]).find(q=>Number(q.num)===num) || null; }
+
+  async function doDelete(num){
+    const q=getQ(num); if(!q) return alert('Không thấy câu');
+    if(!canManage()) return alert('Không có quyền');
+    if(!confirm('Xóa câu '+num+'?')) return;
+    const c=client(); if(!c) return alert('Chưa kết nối');
+    const {error}= await c.from('questions').update({is_active:false, updated_at:new Date().toISOString()}).eq(q.id? 'id':'num', q.id||num);
+    if(error) return alert('Lỗi: '+error.message);
+    RAW = (RAW||[]).filter(x=>Number(x.num)!==num);
+    pool = (pool||[]).filter(x=>Number(x.num)!==num);
+    try{ renderStudy?.(); renderCard?.(); renderQuiz?.(); }catch(e){}
+    alert('Đã xóa');
+  }
+
+  if(!document.__deleteActionBound){
+    document.__deleteActionBound=true;
+    document.addEventListener('click', e=>{
+      const btn = e.target.closest && e.target.closest('.studyDeleteAction');
+      if(!btn) return;
+      e.preventDefault();
+      doDelete(btn.dataset.deleteNum);
+    });
+  }
+})();
