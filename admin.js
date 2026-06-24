@@ -188,10 +188,37 @@ function getQuestionByReq(r) {
   return cache.questions.find(q => q.id === r.question_id || q.num === r.question_num);
 }
 
+function hasAdminImageValue(v) {
+  if (!v) return false;
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === 'string') {
+    const s = v.trim();
+    return !!s && s !== '[]' && s !== '{}' && s.toLowerCase() !== 'không có';
+  }
+  if (typeof v === 'object') return Object.keys(v).length > 0;
+  return false;
+}
+
+function shouldShowAdminDiffField(field, oldData, newData) {
+  if (field === 'answer_text') return false;
+  if (field === 'images') {
+    const changed = safe(oldData?.[field]) !== safe(newData?.[field]);
+    return changed && (hasAdminImageValue(oldData?.[field]) || hasAdminImageValue(newData?.[field]));
+  }
+  return true;
+}
+
+function changedFieldKeys(oldData, newData) {
+  return ['question', 'answer', 'options', 'images'].filter(k => {
+    if (!shouldShowAdminDiffField(k, oldData, newData)) return false;
+    return safe(oldData?.[k]) !== safe(newData?.[k]);
+  });
+}
+
 function changedFields(r) {
   const oldData = r.old_data || getQuestionByReq(r) || {};
   const newData = r.new_data || {};
-  return ['question', 'answer', 'answer_text', 'options', 'images'].filter(k => safe(oldData[k]) !== safe(newData[k]));
+  return changedFieldKeys(oldData, newData);
 }
 
 function render() {
@@ -308,16 +335,21 @@ function formatValue(v) {
 }
 
 function compareHTML(oldData, newData) {
-  const fields = ['question', 'options', 'answer', 'answer_text', 'images'];
-  return `<div class="diffList">${fields.map(f => {
+  const fields = ['question', 'options', 'answer', 'images'].filter(f => shouldShowAdminDiffField(f, oldData || {}, newData || {}));
+  if (!fields.length) {
+    return `<div class="diffList compactDiffList"><p class="muted compactNoDiff">Không có nội dung cần hiển thị.</p></div>`;
+  }
+  return `<div class="diffList compactDiffList">${fields.map(f => {
     const before = formatValue(oldData?.[f]);
     const after = formatValue(newData?.[f]);
     const changed = before !== after;
-    return `<section class="diffBlock ${changed ? 'changed' : ''}">
-      <h3>${esc(labelField(f))}${changed ? '<span>Đã đổi</span>' : '<span>Không đổi</span>'}</h3>
-      <div class=compare>
-        <pre><b>Trước</b>\n${esc(before)}</pre>
-        <pre><b>Sau</b>\n${esc(after)}</pre>
+    return `<section class="diffBlock ${changed ? 'changed' : ''} compactDiffBlock">
+      <h3>${esc(labelField(f))}<span>${changed ? 'Đã đổi' : 'Không đổi'}</span></h3>
+      <div class="compare compactCompare">
+        <pre class="oldValue"><b>Trước</b>
+${esc(before)}</pre>
+        <pre class="newValue ${changed ? 'changedValue' : ''}"><b>Sau</b>
+${esc(after)}</pre>
       </div>
     </section>`;
   }).join('')}</div>`;
@@ -471,8 +503,7 @@ document.addEventListener('DOMContentLoaded', init);
     return row.user_email || row.email || row.admin_email || row.changed_by || row.user_id || 'Không rõ người gửi';
   }
   function changedListFromData(oldData, newData){
-    const fields = ['question','options','answer','answer_text','images'];
-    return fields.filter(k => safe(oldData?.[k]) !== safe(newData?.[k]));
+    return changedFieldKeys(oldData || {}, newData || {});
   }
   function historyFields(h){
     return changedListFromData(h.previous_data || {}, h.new_data || {});
@@ -579,7 +610,7 @@ document.addEventListener('DOMContentLoaded', init);
     return row?.new_data?.question || row?.previous_data?.question || row?.old_data?.question || q?.question || '';
   }
   function changedKeys(oldData, newData){
-    return ['question','options','answer','answer_text','images'].filter(k => safe(oldData?.[k]) !== safe(newData?.[k]));
+    return changedFieldKeys(oldData || {}, newData || {});
   }
   function chips(keys){
     return `<div class="changeChips adminChangeChips">${keys.map(k=>`<span>${esc(labelField(k))}</span>`).join('') || '<span>Chưa rõ thay đổi</span>'}</div>`;
@@ -666,7 +697,7 @@ document.addEventListener('DOMContentLoaded', init);
       chip = document.createElement('div');
       chip.id = 'adminAutoCheckChip';
       chip.className = 'is-idle';
-      chip.innerHTML = '<span class="autoDot"></span><span class="autoText">Tự check 10s</span>';
+      chip.innerHTML = '<span class="autoDot" aria-hidden="true"></span><span class="autoText">Tự check 10s</span>';
       document.body.appendChild(chip);
     }
     return chip;
@@ -734,7 +765,8 @@ document.addEventListener('DOMContentLoaded', init);
     setChecking(false);
     if(timer) return;
     timer = setInterval(autoCheck, AUTO_MS);
-    setTimeout(autoCheck, 2500);
+    // Đợi vòng tròn chạy đủ 10 giây rồi mới tự check
+    // setTimeout(autoCheck, 2500);
   }
 
   const oldLoadAll = typeof loadAll === 'function' ? loadAll : null;
@@ -3609,3 +3641,810 @@ Hãy tạo càng nhiều câu hỏi càng tốt từ tài liệu, bao phủ tấ
     }finally{ setBusy(false); }
   };
 })();
+
+// ===== HOTFIX UX/UI ADMIN: NOTIFICATIONS & TRASH OVERLAPPING REPAIR =====
+(function(){
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+  function date(d) {
+    if (!d) return 'Chưa có';
+    try { return new Date(d).toLocaleString('vi-VN'); } catch (e) { return d; }
+  }
+
+  // 1. Tiêm CSS tinh chỉnh giao diện nhỏ gọn và sửa lỗi đè layout
+  function injectAdminStyles() {
+    if ($('adminFixUiStyle')) return;
+    const style = document.createElement('style');
+    style.id = 'adminFixUiStyle';
+    style.textContent = `
+      /* Ô thông báo kết quả tìm kiếm nhỏ gọn, tinh tế hơn */
+      .questionResultNote.smartSearchNote, 
+      .questionResultNote.compactSearchNote,
+      .questionResultNote {
+        font-size: 0.85rem !important;
+        padding: 8px 14px !important;
+        margin: 10px 0 15px 0 !important;
+        border-radius: 8px !important;
+        background: rgba(232, 212, 168, 0.06) !important;
+        border: 1px solid rgba(232, 212, 168, 0.2) !important;
+        color: #e8d4a8 !important;
+        font-weight: 500 !important;
+        line-height: 1.4 !important;
+        display: block !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+      }
+
+      /* Thông báo Toast góc màn hình gọn gàng */
+      .toast {
+        font-size: 0.85rem !important;
+        padding: 8px 16px !important;
+        border-radius: 8px !important;
+        border: 1px solid rgba(232, 212, 168, 0.2) !important;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.35) !important;
+      }
+
+      /* Tách biệt rõ ràng cấu trúc Thùng rác chống đè chồng */
+      .trashBlockContainer {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 25px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      .trashGroup {
+        background: rgba(255, 255, 255, 0.01) !important;
+        border: 1px solid rgba(255, 255, 255, 0.04) !important;
+        border-radius: 12px !important;
+        padding: 16px !important;
+      }
+      .trashSectionHeading {
+        margin: 0 0 14px 0 !important;
+        color: #e8d4a8 !important;
+        font-size: 0.95rem !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.05em !important;
+        padding-bottom: 8px !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 8px !important;
+      }
+      .trashSectionHeading span {
+        font-size: 0.8rem !important;
+        opacity: 0.6 !important;
+        font-weight: 400 !important;
+        text-transform: none !important;
+      }
+      .trashGridWrapper {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 12px !important;
+      }
+      .item.trashItem {
+        position: relative !important;
+        display: block !important;
+        width: 100% !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        padding: 14px !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // 2. Viết lại hàm dựng Thùng rác với dấu nháy chuẩn và phân nhóm layout cô lập
+  window.loadTrash = async function(){
+    if(!isAdmin()) return;
+    injectAdminStyles();
+    
+    const el = document.getElementById('trashList');
+    const cnt = document.getElementById('trashCount');
+    if(el) el.innerHTML = '<p class="muted">Đang tải dữ liệu...</p>';
+    
+    // Tải song song cả câu hỏi đã xóa và môn học đã xóa
+    const resQuestions = await client.from('deleted_questions').select('*').order('deleted_at',{ascending:false});
+    const resSubjects = await client.from('deleted_subjects').select('*').order('deleted_at',{ascending:false});
+    
+    const questions = resQuestions.data || [];
+    const subjects = resSubjects.data || [];
+    
+    if(cnt) cnt.textContent = (questions.length + subjects.length) + ' mục';
+    if(!el) return;
+    if(!questions.length && !subjects.length){
+      el.innerHTML = '<p class="muted">Thùng rác hiện đang trống.</p>';
+      return;
+    }
+
+    // Dựng danh sách Môn học đã xóa
+    const subjectsHTML = subjects.map(t => {
+      const backup = t.original_data || {};
+      const sub = backup.subject || {};
+      const qCount = (backup.questions || []).length;
+      return `<div class="item trashItem">
+        <div class="head">
+          <div><b>MÔN: ${esc(sub.code||'?')} - ${esc(sub.name||'')}</b>
+          <span class="badge deleted">Đã xóa môn</span></div>
+          <span class="muted">${qCount} câu hỏi · Xóa bởi: ${esc(t.deleted_by_email||'?')} · ${date(t.deleted_at)}</span>
+        </div>
+        <div class="actions">
+          <button class="act ok" onclick="restoreSubject(${t.id})">Khôi phục môn</button>
+          <button class="act bad" onclick="permanentDeleteSubject(${t.id})">Xóa vĩnh viễn</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Dựng danh sách Câu hỏi đã xóa
+    const questionsHTML = questions.map(t => {
+      const q = t.original_data || {};
+      return `<div class="item trashItem">
+        <div class="head">
+          <div><b>${esc(q.subject_code||'')} - Câu ${esc(String(q.num||q.id||'?'))}</b>
+          <span class="badge deleted">Đã xóa câu</span></div>
+          <span class="muted">${date(t.deleted_at)} · ${esc(t.deleted_by_email||'')}</span>
+        </div>
+        <p style="margin: 8px 0;">${esc(String(q.question||'').substring(0,120))}${(q.question||'').length>120?'...':''}</p>
+        <p class="muted" style="font-size:0.85rem;">Đáp án: ${esc(q.answer||'')}</p>
+        <div class="actions">
+          <button class="act ok" onclick="restoreQuestion(${t.id})">Khôi phục</button>
+          <button class="act bad" onclick="permanentDelete(${t.id})">Xóa vĩnh viễn</button>
+          <button class="act" onclick="viewTrashDetail(${t.id})">Xem</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Đưa vào các khối bao bọc độc lập, loại bỏ hoàn toàn đè layout
+    el.innerHTML = `
+      <div class="trashBlockContainer">
+        ${subjects.length ? `
+          <div class="trashGroup">
+            <h4 class="trashSectionHeading">Môn học đã xóa <span>(${subjects.length})</span></h4>
+            <div class="trashGridWrapper">${subjectsHTML}</div>
+          </div>
+        ` : ''}
+        
+        ${questions.length ? `
+          <div class="trashGroup">
+            <h4 class="trashSectionHeading">Câu hỏi đã xóa <span>(${questions.length})</span></h4>
+            <div class="trashGridWrapper">${questionsHTML}</div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  };
+
+  // 3. Khắc phục lỗi dấu nháy thông minh ở chuỗi thông báo kết quả tìm kiếm câu hỏi
+  const originalRenderQuestions = window.renderQuestions;
+  if (typeof originalRenderQuestions === 'function') {
+    window.renderQuestions = function() {
+      originalRenderQuestions.apply(this, arguments);
+      // Sửa lỗi chuỗi HTML chứa nháy thông minh nếu có sinh ra từ render gốc
+      const noteEl = document.querySelector('.questionResultNote');
+      if (noteEl) {
+        injectAdminStyles();
+      }
+    };
+  }
+
+  // Khởi chạy ngay lập tức
+  injectAdminStyles();
+})();
+
+
+// ===== FINAL_ADMIN_SUBJECT_EDIT_20260625 =====
+// Quản lý môn học: sửa mã môn, tên môn và mô tả/nội dung môn.
+(function(){
+  let subjectEditCache = [];
+  const $id = id => document.getElementById(id);
+
+  function cleanPayload(obj){
+    const out = {};
+    Object.entries(obj || {}).forEach(([k,v]) => {
+      if(v !== undefined) out[k] = v;
+    });
+    return out;
+  }
+
+  function currentSearchText(){
+    return String($id('search')?.value || '').trim().toLowerCase();
+  }
+
+  function subjectMatches(s){
+    const q = currentSearchText();
+    if(!q) return true;
+    return `${s.code||''} ${s.name||''} ${s.description||''}`.toLowerCase().includes(q);
+  }
+
+  function ensureSubjectAdminPage(){
+    if(!$id('subjectAdminNav')){
+      const side = document.querySelector('.side');
+      const foot = document.querySelector('.foot');
+      if(side){
+        const btn = document.createElement('button');
+        btn.id = 'subjectAdminNav';
+        btn.className = 'nav';
+        btn.type = 'button';
+        btn.dataset.page = 'subjectsAdmin';
+        btn.textContent = 'Môn học';
+        btn.onclick = () => {
+          setPage('subjectsAdmin', 'Quản lý môn học');
+          loadSubjectsAdmin();
+        };
+        side.insertBefore(btn, foot || null);
+      }
+    }
+
+    if(!$id('subjectsAdmin')){
+      const ws = document.querySelector('.workspace');
+      if(!ws) return;
+      const page = document.createElement('section');
+      page.id = 'subjectsAdmin';
+      page.className = 'page';
+      page.innerHTML = `
+        <div class="panel panelFill subjectAdminPanel">
+          <div class="subjectAdminHead">
+            <div>
+              <h3>Quản lý môn học</h3>
+              <p class="muted">Sửa mã môn, tên môn và mô tả hiển thị ở màn hình chọn môn.</p>
+            </div>
+            <button class="act ok" type="button" onclick="loadSubjectsAdmin()">Tải lại môn</button>
+          </div>
+          <div id="subjectAdminList" class="subjectAdminList pageScroll"></div>
+        </div>`;
+      ws.appendChild(page);
+    }
+  }
+
+  window.loadSubjectsAdmin = async function(){
+    if(!isEditor()) return alert('Admin hoặc Editor mới được sửa môn học.');
+    ensureSubjectAdminPage();
+    const list = $id('subjectAdminList');
+    if(list) list.innerHTML = '<p class="muted">Đang tải môn học...</p>';
+    setBusy(true, 'Đang tải môn...');
+    try{
+      const {data, error} = await client.from('subjects').select('*').order('sort_order',{ascending:true}).order('code',{ascending:true});
+      if(error){
+        if(list) list.innerHTML = '<p class="muted">Không tải được danh sách môn.</p>';
+        return alert('Không tải được danh sách môn: ' + error.message);
+      }
+      subjectEditCache = data || [];
+      renderSubjectAdminList();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  window.renderSubjectAdminList = function(){
+    ensureSubjectAdminPage();
+    const list = $id('subjectAdminList');
+    if(!list) return;
+    const arr = subjectEditCache.filter(subjectMatches);
+    if(!arr.length){
+      list.innerHTML = '<p class="muted">Không có môn học phù hợp.</p>';
+      return;
+    }
+    list.innerHTML = arr.map(s => `
+      <div class="subjectAdminItem">
+        <div class="subjectAdminCode">${esc(s.code || '')}</div>
+        <div class="subjectAdminInfo">
+          <b>${esc(s.name || s.code || 'Chưa có tên môn')}</b>
+          <p>${esc(s.description || 'Môn học chưa có mô tả.')}</p>
+        </div>
+        <div class="subjectAdminActions">
+          <button class="act warn" type="button" onclick="openEditSubjectAdmin('${esc(String(s.code||'')).replace(/'/g,'&#39;')}')">Sửa</button>
+          ${isAdmin() ? `<button class="act bad" type="button" onclick="deleteSubjectAdmin('${esc(String(s.code||'')).replace(/'/g,'&#39;')}')">Xóa</button>` : ''}
+        </div>
+      </div>`).join('');
+  };
+
+  window.openEditSubjectAdmin = async function(code){
+    if(!isEditor()) return alert('Admin hoặc Editor mới được sửa môn học.');
+    let s = subjectEditCache.find(x => String(x.code) === String(code));
+    if(!s){
+      const res = await client.from('subjects').select('*').eq('code', code).maybeSingle();
+      if(res.error || !res.data) return alert('Không tìm thấy môn học.');
+      s = res.data;
+    }
+    openModal('Sửa môn học', `
+      <div class="editSubjectForm">
+        <div class="editSubjectNotice">
+          Nếu đổi <b>mã môn</b>, hệ thống cũng sẽ chuyển toàn bộ câu hỏi của môn cũ sang mã môn mới.
+        </div>
+        <div class="formGrid2">
+          <div class="field">
+            <label>Mã môn</label>
+            <input id="editSubjectOldCode" type="hidden" value="${esc(s.code || '')}">
+            <input id="editSubjectCode" value="${esc(s.code || '')}" maxlength="20" placeholder="VD: MLN111">
+          </div>
+          <div class="field">
+            <label>Tên môn học</label>
+            <input id="editSubjectName" value="${esc(s.name || '')}" maxlength="120" placeholder="VD: Triết học Mác - Lênin">
+          </div>
+        </div>
+        <div class="field">
+          <label>Nội dung / mô tả môn</label>
+          <textarea id="editSubjectDesc" rows="5" maxlength="600" placeholder="Mô tả ngắn hiển thị ở thẻ môn...">${esc(s.description || '')}</textarea>
+        </div>
+        <div class="editSubjectMeta">
+          <span>Trạng thái: ${s.is_active === false ? 'Đang ẩn' : 'Đang hiện'}</span>
+          <span>Thứ tự: ${esc(s.sort_order ?? '')}</span>
+        </div>
+        <div class="actions editSubjectActions">
+          <button class="act ok" type="button" onclick="saveSubjectAdmin()">Lưu thay đổi</button>
+          <button class="act" type="button" onclick="closeModal()">Đóng</button>
+        </div>
+      </div>`);
+    setTimeout(() => {
+      const input = $id('editSubjectCode');
+      if(input){
+        input.oninput = function(){ this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g,''); };
+        input.focus();
+      }
+    }, 0);
+  };
+
+  window.saveSubjectAdmin = async function(){
+    if(!isEditor()) return alert('Admin hoặc Editor mới được sửa môn học.');
+    const oldCode = ($id('editSubjectOldCode')?.value || '').trim().toUpperCase();
+    const newCode = ($id('editSubjectCode')?.value || '').trim().toUpperCase();
+    const name = ($id('editSubjectName')?.value || '').trim();
+    const description = ($id('editSubjectDesc')?.value || '').trim();
+    if(!oldCode) return alert('Thiếu mã môn cũ.');
+    if(!newCode) return alert('Mã môn không được để trống.');
+    if(!/^[A-Z0-9_]{2,20}$/.test(newCode)) return alert('Mã môn chỉ gồm chữ, số, gạch dưới và dài 2-20 ký tự.');
+    if(!name) return alert('Tên môn học không được để trống.');
+
+    const subject = subjectEditCache.find(x => String(x.code) === String(oldCode)) || {};
+    setBusy(true, 'Đang lưu môn...');
+    try{
+      if(newCode === oldCode){
+        const {error} = await client.from('subjects').update({
+          name,
+          description: description || null
+        }).eq('code', oldCode);
+        if(error) return alert('Không lưu được môn: ' + error.message);
+      } else {
+        const check = await client.from('subjects').select('code').eq('code', newCode).maybeSingle();
+        if(check.error) return alert('Không kiểm tra được mã môn mới: ' + check.error.message);
+        if(check.data) return alert('Mã môn '+newCode+' đã tồn tại.');
+
+        const insertPayload = cleanPayload({
+          code: newCode,
+          name,
+          description: description || null,
+          is_active: subject.is_active !== false,
+          sort_order: subject.sort_order
+        });
+        const ins = await client.from('subjects').insert(insertPayload);
+        if(ins.error) return alert('Không tạo được mã môn mới: ' + ins.error.message);
+
+        const qUp = await client.from('questions').update({subject_code:newCode}).eq('subject_code', oldCode);
+        if(qUp.error) return alert('Đã tạo môn mới nhưng chưa chuyển được câu hỏi: ' + qUp.error.message);
+
+        const del = await client.from('subjects').delete().eq('code', oldCode);
+        if(del.error) alert('Đã đổi mã và chuyển câu hỏi, nhưng chưa xóa được mã cũ: ' + del.error.message);
+      }
+
+      await logAction('edit_subject', 'subjects', oldCode, {
+        old_code: oldCode,
+        new_code: newCode,
+        name,
+        description
+      });
+      closeModal();
+      await loadSubjectsAdmin();
+      await loadAll();
+      toast('Đã lưu môn học '+newCode);
+    } catch(e){
+      console.warn('saveSubjectAdmin error:', e);
+      alert('Lỗi khi lưu môn: '+(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  function patchSearchRender(){
+    const input = $id('search');
+    if(input && !input.__subjectAdminSearchPatched){
+      input.__subjectAdminSearchPatched = true;
+      input.addEventListener('input', () => {
+        if($id('subjectsAdmin')?.classList.contains('active')) renderSubjectAdminList();
+      });
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => { ensureSubjectAdminPage(); patchSearchRender(); }, 600);
+    setInterval(() => { ensureSubjectAdminPage(); patchSearchRender(); }, 2000);
+  });
+})();
+
+// SIDEBAR_TREE_LAYOUT_20260625
+// Sidebar dạng cây thư mục gọn: giữ màu cũ, icon đơn giản, thẻ con thụt nhẹ.
+(function(){
+  const STORE_KEY = 'admin_sidebar_tree_collapsed_v4';
+  const GROUPS = [
+    { title:'Duyệt', icon:'✓', keys:['approvals','requests','subjectRequests'] },
+    { title:'Nội dung', icon:'□', keys:['subjectsAdmin','questions','trash'] },
+    { title:'Hệ thống', icon:'⚙', keys:['users','history','logs'] }
+  ];
+  const SHORT = {
+    overview:'TQ', approvals:'PD', requests:'YS', subjectRequests:'YM',
+    subjectsAdmin:'MH', questions:'CH', trash:'TR', users:'ND', history:'LS', logs:'LG'
+  };
+  const LABEL = {
+    overview:'Tổng quan', approvals:'Phê duyệt', requests:'Yêu cầu sửa', subjectRequests:'Yêu cầu thêm môn',
+    subjectsAdmin:'Môn học', questions:'Câu hỏi', trash:'Thùng rác', users:'Người dùng', history:'Lịch sử', logs:'Admin logs'
+  };
+  const ICON = {
+    overview:'⌂', approvals:'✓', requests:'✎', subjectRequests:'＋',
+    subjectsAdmin:'□', questions:'?', trash:'×', users:'○', history:'◷', logs:'▤', default:'•'
+  };
+
+  function collapsedMap(){
+    try{return JSON.parse(localStorage.getItem(STORE_KEY)||'{}')||{};}catch(e){return {};}
+  }
+  function saveCollapsed(map){
+    try{localStorage.setItem(STORE_KEY, JSON.stringify(map||{}));}catch(e){}
+  }
+  function cleanNavText(btn){
+    return String(btn?.textContent||'').replace(/\d+/g,'').replace(/\s+/g,' ').trim().toLowerCase();
+  }
+  function navKey(btn){
+    const page=String(btn?.dataset?.page||'').toLowerCase();
+    const text=cleanNavText(btn);
+    if(page==='overview'||text.includes('tổng quan'))return'overview';
+    if(page==='approvals'||text.includes('phê duyệt'))return'approvals';
+    if(page==='requests'||text.includes('yêu cầu sửa'))return'requests';
+    if(page.includes('subjectrequest')||text.includes('yc thêm môn')||text.includes('yêu cầu thêm môn'))return'subjectRequests';
+    if(page==='subjectsadmin'||text==='môn học'||text.includes('quản lý môn'))return'subjectsAdmin';
+    if(page==='questions'||text.includes('câu hỏi'))return'questions';
+    if(page.includes('trash')||page.includes('deleted')||text.includes('thùng rác'))return'trash';
+    if(page==='users'||text.includes('người dùng'))return'users';
+    if(page==='history'||text.includes('lịch sử'))return'history';
+    if(page==='logs'||text.includes('admin logs'))return'logs';
+    return page||text;
+  }
+  function applyNav(btn,key,standalone=false){
+    if(!btn) return;
+    const badge = btn.querySelector('.navBadge')?.outerHTML || '';
+    const label = LABEL[key] || cleanNavText(btn) || key;
+    btn.dataset.short = SHORT[key] || label.slice(0,2).toUpperCase();
+    btn.dataset.navKey = key;
+    btn.classList.toggle('overviewStandalone', !!standalone);
+    btn.innerHTML = '<span class="navGlyph" aria-hidden="true">'+(ICON[key]||ICON.default)+'</span><span class="navText">'+label+'</span>'+badge;
+  }
+  function titleButton(group){
+    const btn=document.createElement('button');
+    btn.type='button';
+    btn.className='adminSideGroupTitle';
+    btn.innerHTML='<span class="treeTitleLeft"><span class="navGlyph" aria-hidden="true">'+group.icon+'</span><span class="groupName">'+group.title+'</span></span><span class="treeArrow" aria-hidden="true">▾</span>';
+    return btn;
+  }
+  function setGroupCollapsed(group, collapsed){
+    group.classList.toggle('is-collapsed', !!collapsed);
+    const title=group.querySelector(':scope > .adminSideGroupTitle');
+    if(title) title.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  }
+  function restoreNavs(side, foot){
+    Array.from(side.querySelectorAll('.adminSideOverview, .adminSideGroup')).forEach(box=>{
+      Array.from(box.querySelectorAll('.nav')).forEach(nav=>side.insertBefore(nav, foot||null));
+      box.remove();
+    });
+  }
+  function organizeAdminSidebarTree(){
+    const side=document.querySelector('.side');
+    if(!side)return;
+    const foot=side.querySelector('.foot');
+    restoreNavs(side, foot);
+    const navs=Array.from(side.querySelectorAll('.nav'));
+    if(!navs.length)return;
+    const used=new Set();
+    const state=collapsedMap();
+    side.classList.add('adminTreeReady');
+
+    const overview=navs.find(n=>navKey(n)==='overview');
+    if(overview){
+      used.add(overview);
+      applyNav(overview,'overview',true);
+      const box=document.createElement('div');
+      box.className='adminSideOverview';
+      box.appendChild(overview);
+      side.insertBefore(box, foot||null);
+    }
+
+    GROUPS.forEach(group=>{
+      const wrap=document.createElement('div');
+      wrap.className='adminSideGroup';
+      wrap.dataset.group=group.title;
+      const title=titleButton(group);
+      const body=document.createElement('div');
+      body.className='adminSideGroupBody';
+      wrap.appendChild(title);
+      wrap.appendChild(body);
+      group.keys.forEach(key=>{
+        const btn=navs.find(n=>!used.has(n)&&navKey(n)===key);
+        if(btn){
+          used.add(btn);
+          applyNav(btn,key,false);
+          body.appendChild(btn);
+        }
+      });
+      if(body.querySelector('.nav')){
+        side.insertBefore(wrap, foot||null);
+        const hasActive=!!body.querySelector('.nav.active');
+        setGroupCollapsed(wrap, hasActive ? false : !!state[group.title]);
+        title.onclick=()=>{
+          const next=!wrap.classList.contains('is-collapsed');
+          state[group.title]=next;
+          saveCollapsed(state);
+          setGroupCollapsed(wrap,next);
+        };
+      }
+    });
+
+    const extra=navs.filter(n=>!used.has(n));
+    if(extra.length){
+      const group={title:'Khác',icon:'•'};
+      const wrap=document.createElement('div');
+      wrap.className='adminSideGroup';
+      wrap.dataset.group=group.title;
+      const title=titleButton(group);
+      const body=document.createElement('div');
+      body.className='adminSideGroupBody';
+      wrap.appendChild(title);
+      wrap.appendChild(body);
+      extra.forEach(btn=>{
+        const key=navKey(btn);
+        applyNav(btn,key,false);
+        body.appendChild(btn);
+      });
+      side.insertBefore(wrap, foot||null);
+      setGroupCollapsed(wrap, !!state[group.title]);
+      title.onclick=()=>{
+        const next=!wrap.classList.contains('is-collapsed');
+        state[group.title]=next;
+        saveCollapsed(state);
+        setGroupCollapsed(wrap,next);
+      };
+    }
+  }
+  window.organizeAdminSidebar = organizeAdminSidebarTree;
+  window.organizeAdminSidebarTree = organizeAdminSidebarTree;
+  document.addEventListener('DOMContentLoaded',()=>{
+    organizeAdminSidebarTree();
+    setTimeout(organizeAdminSidebarTree,250);
+    setTimeout(organizeAdminSidebarTree,1200);
+  });
+})();
+
+// ===== FINAL_TRASH_COMPACT_ROBUST_DELETE_20260625 =====
+// Thùng rác: layout gọn + xóa/khôi phục hỗ trợ id dạng số hoặc chuỗi.
+(function(){
+  let deletedQuestionsCache = [];
+  let deletedSubjectsCache = [];
+
+  function idText(id){ return String(id ?? ''); }
+  function arg(id){ return JSON.stringify(idText(id)); }
+  function shortText(s, n=110){
+    s = String(s || '').trim();
+    return s.length > n ? s.slice(0, n) + '...' : s;
+  }
+  function trashSearch(){
+    return String(document.getElementById('search')?.value || '').trim().toLowerCase();
+  }
+  function matchTrashText(text){
+    const k = trashSearch();
+    return !k || String(text || '').toLowerCase().includes(k);
+  }
+  async function deleteRowById(table, id){
+    const sid = idText(id);
+    let res = await client.from(table).delete().eq('id', sid).select('id');
+    if(res.error) return res;
+    if((res.data || []).length) return res;
+    if(/^\d+$/.test(sid)){
+      res = await client.from(table).delete().eq('id', Number(sid)).select('id');
+      if(res.error) return res;
+    }
+    return res;
+  }
+
+  function renderTrashHTML(questions, subjects){
+    const subjectCards = subjects.map(t => {
+      const backup = t.original_data || {};
+      const sub = backup.subject || {};
+      const qCount = (backup.questions || []).length;
+      return `<div class="item trashItem compactTrashItem trashSubjectItem" data-trash-kind="subject" data-trash-id="${esc(idText(t.id))}">
+        <div class="trashMain">
+          <div class="trashTitleLine">
+            <b>MÔN: ${esc(sub.code || '?')} - ${esc(sub.name || '')}</b>
+            <span class="badge deleted">Đã xóa môn</span>
+          </div>
+          <div class="trashMeta">${qCount} câu hỏi · ${esc(t.deleted_by_email || '?')} · ${esc(date(t.deleted_at))}</div>
+        </div>
+        <div class="actions trashActions">
+          <button class="act ok" onclick="restoreSubject(${arg(t.id)})">Khôi phục</button>
+          <button class="act bad" onclick="permanentDeleteSubject(${arg(t.id)})">Xóa vĩnh viễn</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    const questionCards = questions.map(t => {
+      const q = t.original_data || {};
+      return `<div class="item trashItem compactTrashItem trashQuestionItem" data-trash-kind="question" data-trash-id="${esc(idText(t.id))}">
+        <div class="trashMain">
+          <div class="trashTitleLine">
+            <b>${esc(q.subject_code || '')} - Câu ${esc(String(q.num || q.id || '?'))}</b>
+            <span class="badge deleted">Đã xóa câu</span>
+          </div>
+          <div class="trashQuestionText">${esc(shortText(q.question, 125))}</div>
+          <div class="trashMeta">Đáp án: ${esc(q.answer || '')} · ${esc(t.deleted_by_email || '')} · ${esc(date(t.deleted_at))}</div>
+        </div>
+        <div class="actions trashActions">
+          <button class="act ok" onclick="restoreQuestion(${arg(t.id)})">Khôi phục</button>
+          <button class="act bad" onclick="permanentDelete(${arg(t.id)})">Xóa vĩnh viễn</button>
+          <button class="act" onclick="viewTrashDetail(${arg(t.id)})">Xem</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    return `<div class="trashCompactWrap">
+      ${subjects.length ? `<section class="trashGroup compactTrashGroup"><h4 class="trashSectionHeading">Môn học đã xóa <span>(${subjects.length})</span></h4>${subjectCards}</section>` : ''}
+      ${questions.length ? `<section class="trashGroup compactTrashGroup"><h4 class="trashSectionHeading">Câu hỏi đã xóa <span>(${questions.length})</span></h4>${questionCards}</section>` : ''}
+    </div>`;
+  }
+
+  window.loadTrash = async function(){
+    if(!isAdmin()) return;
+    const el = document.getElementById('trashList');
+    const cnt = document.getElementById('trashCount');
+    if(el) el.innerHTML = '<p class="muted">Đang tải thùng rác...</p>';
+    try{
+      const [resQuestions, resSubjects] = await Promise.all([
+        client.from('deleted_questions').select('*').order('deleted_at',{ascending:false}),
+        client.from('deleted_subjects').select('*').order('deleted_at',{ascending:false})
+      ]);
+      if(resQuestions.error) throw resQuestions.error;
+      if(resSubjects.error) throw resSubjects.error;
+      deletedQuestionsCache = resQuestions.data || [];
+      deletedSubjectsCache = resSubjects.data || [];
+
+      let questions = deletedQuestionsCache;
+      let subjects = deletedSubjectsCache;
+      const k = trashSearch();
+      if(k){
+        questions = questions.filter(t => matchTrashText(`${safe(t.original_data || {})} ${t.deleted_by_email || ''} ${t.deleted_at || ''}`));
+        subjects = subjects.filter(t => matchTrashText(`${safe(t.original_data || {})} ${t.deleted_by_email || ''} ${t.deleted_at || ''}`));
+      }
+
+      if(cnt) cnt.textContent = (deletedQuestionsCache.length + deletedSubjectsCache.length) + ' mục';
+      if(!el) return;
+      if(!questions.length && !subjects.length){
+        el.innerHTML = '<p class="muted">Thùng rác hiện đang trống.</p>';
+        return;
+      }
+      el.innerHTML = renderTrashHTML(questions, subjects);
+    }catch(e){
+      if(el) el.innerHTML = '<p class="muted">Lỗi tải thùng rác: '+esc(e.message || e)+'</p>';
+    }
+  };
+
+  window.restoreQuestion = async function(id){
+    if(!isAdmin()) return alert('Chỉ admin mới khôi phục được.');
+    const t = deletedQuestionsCache.find(x => idText(x.id) === idText(id));
+    if(!t) return alert('Không tìm thấy mục cần khôi phục. Bấm Tải lại rồi thử lại.');
+    if(!confirm('Khôi phục câu hỏi này?')) return;
+    setBusy(true,'Đang khôi phục...');
+    try{
+      const q = t.original_data;
+      const ins = await client.from('questions').insert(q);
+      if(ins.error) return alert('Không khôi phục được: '+ins.error.message);
+      const del = await deleteRowById('deleted_questions', id);
+      if(del.error) return alert('Đã khôi phục câu hỏi nhưng chưa xóa được bản trong thùng rác: '+del.error.message);
+      await logAction('restore_question','questions',q.id,{subject_code:q.subject_code,num:q.num});
+      await loadAll();
+      await loadTrash();
+      toast('Đã khôi phục');
+    }finally{ setBusy(false); }
+  };
+
+  window.permanentDelete = async function(id){
+    if(!isAdmin()) return alert('Chỉ admin.');
+    const t = deletedQuestionsCache.find(x => idText(x.id) === idText(id));
+    const q = t?.original_data || {};
+    if(!confirm('Xóa VĨNH VIỄN câu '+String(q.num || q.id || '?')+'?\n\nKhông thể khôi phục sau thao tác này!')) return;
+    setBusy(true,'Đang xóa vĩnh viễn...');
+    try{
+      const r = await deleteRowById('deleted_questions', id);
+      if(r.error) return alert('Lỗi xóa vĩnh viễn: '+r.error.message);
+      if(!(r.data || []).length) return alert('Không tìm thấy dòng để xóa. Bấm Tải lại, nếu vẫn còn thì kiểm tra quyền xóa bảng deleted_questions.');
+      await logAction('permanent_delete','deleted_questions',id,{subject_code:q.subject_code,num:q.num});
+      deletedQuestionsCache = deletedQuestionsCache.filter(x => idText(x.id) !== idText(id));
+      await loadTrash();
+      toast('Đã xóa vĩnh viễn');
+    }finally{ setBusy(false); }
+  };
+
+  window.restoreSubject = async function(id){
+    if(!isAdmin()) return alert('Chỉ admin mới khôi phục được.');
+    const t = deletedSubjectsCache.find(x => idText(x.id) === idText(id));
+    if(!t) return alert('Không tìm thấy mục cần khôi phục. Bấm Tải lại rồi thử lại.');
+    if(!confirm('Khôi phục môn học này?')) return;
+    setBusy(true,'Đang khôi phục...');
+    try{
+      const backup = t.original_data || {};
+      if(backup.subject){
+        const sub = backup.subject;
+        await client.from('subjects').insert({
+          code: sub.code,
+          name: sub.name,
+          description: sub.description || '',
+          is_active: sub.is_active !== false,
+          created_at: sub.created_at || new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      }
+      if(Array.isArray(backup.questions)){
+        for(const q of backup.questions){ await client.from('questions').insert(q).catch(()=>{}); }
+      }
+      const del = await deleteRowById('deleted_subjects', id);
+      if(del.error) return alert('Đã khôi phục nhưng chưa xóa được bản trong thùng rác: '+del.error.message);
+      await logAction('restore_subject','subjects',backup.subject?.code,{questions: backup.questions?.length});
+      await loadAll();
+      await loadTrash();
+      toast('Đã khôi phục môn '+(backup.subject?.code || ''));
+    }finally{ setBusy(false); }
+  };
+
+  window.permanentDeleteSubject = async function(id){
+    if(!isAdmin()) return alert('Chỉ admin.');
+    const t = deletedSubjectsCache.find(x => idText(x.id) === idText(id));
+    const backup = t?.original_data || {};
+    const sub = backup.subject || {};
+    if(!confirm('Xóa VĨNH VIỄN môn '+(sub.code || '?')+'?\n\nKhông thể khôi phục sau thao tác này!')) return;
+    setBusy(true,'Đang xóa vĩnh viễn...');
+    try{
+      const r = await deleteRowById('deleted_subjects', id);
+      if(r.error) return alert('Lỗi xóa vĩnh viễn: '+r.error.message);
+      if(!(r.data || []).length) return alert('Không tìm thấy dòng để xóa. Bấm Tải lại, nếu vẫn còn thì kiểm tra quyền xóa bảng deleted_subjects.');
+      await logAction('permanent_delete_subject','deleted_subjects',id,{code: sub.code});
+      deletedSubjectsCache = deletedSubjectsCache.filter(x => idText(x.id) !== idText(id));
+      await loadTrash();
+      toast('Đã xóa vĩnh viễn');
+    }finally{ setBusy(false); }
+  };
+
+  window.viewTrashDetail = function(id){
+    const t = deletedQuestionsCache.find(x => idText(x.id) === idText(id));
+    if(!t) return alert('Không tìm thấy.');
+    const q = t.original_data || {};
+    openModal('Chi tiết câu đã xóa', `
+      <p><b>Môn:</b> ${esc(q.subject_code||'')}</p>
+      <p><b>Câu ${esc(String(q.num||''))}:</b> ${esc(q.question||'')}</p>
+      <p><b>Đáp án:</b> ${esc(q.answer||'')}</p>
+      <p><b>Xóa lúc:</b> ${esc(date(t.deleted_at))}</p>
+      <p><b>Xóa bởi:</b> ${esc(t.deleted_by_email||'')}</p>
+      <div class="actions" style="margin-top:12px">
+        <button class="act ok" onclick="restoreQuestion(${arg(t.id)});closeModal();">Khôi phục</button>
+        <button class="act bad" onclick="permanentDelete(${arg(t.id)});closeModal();">Xóa vĩnh viễn</button>
+      </div>
+    `);
+  };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.nav').forEach(b => {
+      if(b.dataset.page === 'trash') b.addEventListener('click', () => setTimeout(loadTrash, 50));
+    });
+    const input = document.getElementById('search');
+    if(input && !input.__trashSearchPatched){
+      input.__trashSearchPatched = true;
+      input.addEventListener('input', () => {
+        if(document.getElementById('trash')?.classList.contains('active')) loadTrash();
+      });
+    }
+  });
+})();
+

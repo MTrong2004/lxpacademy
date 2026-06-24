@@ -514,8 +514,33 @@ window.HODSupabase = (() => {
   function showLoading(on,msg='Đang tải danh sách môn học...'){ const e=$('subjectLoading'); if(e){ e.textContent=msg; e.classList.toggle('hidden',!on);} }
   function fallbackSubjects(){ return [{code:'HOD102', name:'HOD102 Learning', description:'Môn mặc định để bắt đầu học.', cover:'', is_active:true},{code:'MLN111', name:'MLN111 Learning', description:'Bộ câu hỏi và tài liệu MLN111.', cover:'', is_active:true}]; }
   async function getSubjects(){ const supa=c(); if(!supa||!logged()) return fallbackSubjects(); const {data,error}=await supa.from('subjects').select('*').eq('is_active', true).order('sort_order',{ascending:true}).order('code',{ascending:true}); if(error || !data || !data.length){ console.warn(error||'No subjects'); showErr('Không tải được danh sách môn học. Đang dùng môn mặc định.'); return fallbackSubjects(); } return data; }
-  function card(s){ return `<button class="subjectCard ${pickedCode===s.code?'active':''}" data-code="${esc2(s.code)}" type="button"><span class="subjectCardCode">${esc2(s.code)}</span><h3>${esc2(s.name||s.code)}</h3><p>${esc2(s.description||'Môn học chưa có mô tả.')}</p><div class="subjectMeta"><span>${s.is_active===false?'Tạm ẩn':'Sẵn sàng học'}</span><span class="subjectChoose">${pickedCode===s.code?'Đã chọn':'Chọn môn'}</span></div></button>`; }
-  function applyPicked(){ if($('subjectPickedText')) $('subjectPickedText').textContent=pickedCode?label(pickedCode):'Chưa chọn môn'; if($('subjectEnter')) $('subjectEnter').disabled=!pickedCode; document.querySelectorAll('.subjectCard').forEach(x=>x.classList.toggle('active',x.dataset.code===pickedCode)); }
+  function card(s){
+    const code = esc2(s.code || '');
+    const name = esc2(s.name || s.code || 'Chưa có tên môn');
+    const desc = esc2(s.description || 'Môn học chưa có mô tả.');
+    const status = s.is_active===false ? 'Tạm ẩn' : 'Sẵn sàng học';
+    const chosen = pickedCode===s.code;
+    return `<button class="subjectCard ${chosen?'active':''}" data-code="${code}" type="button" title="${code} - ${name}">
+      <span class="subjectCardCode">${code}</span>
+      <span class="subjectCardTitle">${name}</span>
+      <span class="subjectCardDesc">${desc}</span>
+      <span class="subjectMeta">
+        <span>${status}</span>
+        <span class="subjectChoose">${chosen?'Đã chọn':'Chọn môn'}</span>
+      </span>
+    </button>`;
+  }
+  function applyPicked(){
+    if($('subjectPickedText')) $('subjectPickedText').textContent=pickedCode?label(pickedCode):'Chưa chọn môn';
+    if($('subjectEnter')) $('subjectEnter').disabled=!pickedCode;
+    document.querySelectorAll('.subjectCard').forEach(x=>{
+      const active = x.dataset.code === pickedCode;
+      x.classList.toggle('active', active);
+      x.setAttribute('aria-pressed', active ? 'true' : 'false');
+      const choose = x.querySelector('.subjectChoose');
+      if(choose) choose.textContent = active ? 'Đã chọn' : 'Chọn môn';
+    });
+  }
   function renderSubjects(){ const list=$('subjectList'); if(!list) return; const q=(($('subjectSearch')?.value)||'').trim().toLowerCase(); const arr=subjectsCache.filter(s=>!q||`${s.code||''} ${s.name||''} ${s.description||''}`.toLowerCase().includes(q)); list.innerHTML=arr.map(card).join(''); $('subjectEmpty')?.classList.toggle('hidden',!!arr.length); list.querySelectorAll('.subjectCard').forEach(x=>x.onclick=()=>{ pickedCode=x.dataset.code; applyPicked(); }); applyPicked(); }
   async function refreshSubjects(){ if(!logged()) return; clearErr(); showLoading(true); try{ subjectsCache=await getSubjects(); if(!pickedCode && subjectCode()) pickedCode=subjectCode(); if(!pickedCode && subjectsCache[0]) pickedCode=subjectsCache[0].code; renderSubjects(); syncSubjectTexts(); } finally { showLoading(false); } }
   function openGate(){ if(!logged()) return; if($('subjectUserEmail')) $('subjectUserEmail').textContent=user()?.email||'Chưa đăng nhập'; gateOn(true); closeAccountMenu(); refreshSubjects(); }
@@ -534,14 +559,14 @@ window.HODSupabase = (() => {
 // ===== LEARNING HUB MERGED SUBJECT PATCH END =====
 
 
-// ===== ADD_SUBJECT_FEATURE_20260625 =====
+// ===== ADD_SUBJECT_FEATURE_20260625 (UPGRADED TAB UX/UI) =====
 (function(){
   const HUB_URL='https://bdbkpqnhavyoalgkvqtw.supabase.co';
   const HUB_KEY='sb_publishable_h-AYsKKK57i0uJpBxJeCHA_csNkgjyB';
   const $=id=>document.getElementById(id);
   let supa=null;
   function client(){ if(!window.supabase) return null; if(!supa) supa=window.supabase.createClient(HUB_URL,HUB_KEY); return supa; }
-  function esc2(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+  function esc2(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]))}
 
   function isLoggedIn(){
     return !!window.HODSupabase?.getUser?.();
@@ -551,19 +576,121 @@ window.HODSupabase = (() => {
     const role=String(p?.role||'').toLowerCase();
     return isLoggedIn() && (role==='admin'||role==='editor') && !(p?.blocked||p?.is_blocked||p?.status==='blocked');
   }
-  function isAdmin(){
-    const p=window.HODSupabase?.getProfile?.()||null;
-    return isLoggedIn() && String(p?.role||'').toLowerCase()==='admin' && !(p?.blocked||p?.is_blocked||p?.status==='blocked');
-  }
   function canAdd(){
     const p=window.HODSupabase?.getProfile?.()||null;
     return isLoggedIn() && !(p?.blocked||p?.is_blocked||p?.status==='blocked');
   }
 
+  // Tiêm CSS động cho cấu trúc Tab mới trong bảng Chọn môn học
+  function injectStyles() {
+    if ($('subjectTabsStyle')) return;
+    const style = document.createElement('style');
+    style.id = 'subjectTabsStyle';
+    style.textContent = `
+      .subjectGateTabs {
+        display: flex;
+        gap: 6px;
+        margin: -5px 0 15px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        padding-bottom: 0;
+      }
+      .subjectGateTab {
+        background: none;
+        border: none;
+        color: var(--mist, #a0aec0);
+        padding: 10px 18px;
+        font-size: 0.9rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+      }
+      .subjectGateTab.active {
+        color: var(--gold, #e8d4a8);
+        border-bottom: 2px solid var(--gold, #e8d4a8);
+      }
+      .userAddSubjectWrap {
+        animation: fadeInPane 0.25s ease-out;
+        padding-top: 5px;
+      }
+      @keyframes fadeInPane {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // Hàm chuyển đổi Tab thông minh chuyên biệt
+  window.__switchSubjectGateTab = function(mode) {
+    const isAdd = mode === 'add';
+    
+    // Cập nhật trạng thái Active trên nút bấm Tab
+    document.querySelectorAll('.subjectGateTab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.sgtab === mode);
+    });
+    
+    // Ẩn/Hiện toàn bộ các thành phần thuộc danh sách môn học cũ
+    const listElements = [
+      document.querySelector('.subjectGateSubline'),
+      document.querySelector('.subjectGateTools'),
+      $('subjectList'),
+      $('subjectLoading'),
+      $('subjectError'),
+      $('subjectEmpty'),
+      document.querySelector('.subjectGateFooter')
+    ];
+    
+    listElements.forEach(el => {
+      if (el) el.style.setProperty('display', isAdd ? 'none' : '', isAdd ? 'important' : '');
+    });
+    
+    // Quản lý Pane nội dung Form thêm môn học
+    const form = $('addSubjectForm');
+    if (form) {
+      form.classList.toggle('hidden', !isAdd);
+      if (isAdd) {
+        form.innerHTML = getAddSubjectHTML();
+        parsedQuestions = [];
+        $('addSubjectCode')?.addEventListener('input', function(){ this.value=this.value.toUpperCase().replace(/[^A-Z0-9_]/g,''); });
+        $('userImportFile')?.addEventListener('change', handleFileImport);
+      }
+    }
+  };
+
+  // Khởi tạo thanh Tab điều hướng nằm dưới Header Chọn môn học
+  function ensureSubjectGateTabs() {
+    const panel = document.querySelector('.polishedSubjectPanel');
+    const header = document.querySelector('.subjectGateHeader');
+    if (!panel || !header || $('subjectGateTabsBar')) return;
+    
+    injectStyles();
+    
+    const tabsBar = document.createElement('div');
+    tabsBar.id = 'subjectGateTabsBar';
+    tabsBar.className = 'subjectGateTabs';
+    tabsBar.innerHTML = `
+      <button type="button" class="subjectGateTab active" data-sgtab="list">Danh sách môn học</button>
+      <button type="button" class="subjectGateTab" id="subjectGateTabAdd" data-sgtab="add" style="display:none;">Thêm môn mới</button>
+    `;
+    
+    header.insertAdjacentElement('afterend', tabsBar);
+    
+    tabsBar.querySelectorAll('.subjectGateTab').forEach(btn => {
+      btn.onclick = () => window.__switchSubjectGateTab(btn.dataset.sgtab);
+    });
+  }
+
   function showAddBtn(){
+    ensureSubjectGateTabs();
     const btn=$('addSubjectBtn');
-    if(!btn) return;
-    btn.classList.toggle('hidden', !canAdd());
+    const tabBtn=$('subjectGateTabAdd');
+    const allowed = canAdd();
+    if(btn) btn.classList.toggle('hidden', !allowed);
+    if(tabBtn) tabBtn.style.display = allowed ? 'block' : 'none';
   }
 
   const AI_PROMPT = `Bạn là trợ lý tạo ngân hàng câu hỏi trắc nghiệm. Hãy đọc tài liệu tôi gửi và tạo câu hỏi trắc nghiệm.
@@ -607,119 +734,156 @@ FORMAT (trả về trong file .md hoặc .txt):
     "images": [{"src": "URL_HÌNH_ẢNH_HOẶC_MÔ_TẢ", "alt": "Mô tả hình ảnh"}]
   }
 ]
-\`\`\`
+\`\`\`;`;
 
-LƯU Ý VỀ HÌNH ẢNH:
-- Nếu tài liệu có hình ảnh liên quan đến câu hỏi, hãy thêm vào trường "images"
-- Trường "src" có thể là URL trực tiếp của hình hoặc mô tả để người dùng tự thêm sau
-- Trường "alt" là mô tả ngắn về nội dung hình ảnh
-- Nếu câu không có hình, để "images": []
-
-Hãy tạo càng nhiều câu hỏi càng tốt từ tài liệu, bao phủ tất cả các chủ đề quan trọng.`;
-
+  window.__ADD_SUBJECT_AI_PROMPT = AI_PROMPT;
   let parsedQuestions = [];
 
+  // MÃ MỚI: Giao diện form chia 3 bước (Stepper)
   function getAddSubjectHTML(){
     return `<div class="userAddSubjectWrap">
-      <div class="addSubjectFields">
-        <div class="addSubjectField">
-          <label for="addSubjectCode">Mã môn <span class="req">*</span></label>
-          <input id="addSubjectCode" type="text" placeholder="VD: ABC123" maxlength="20">
-        </div>
-        <div class="addSubjectField">
-          <label for="addSubjectName">Tên môn <span class="req">*</span></label>
-          <input id="addSubjectName" type="text" placeholder="VD: ABC123 Learning" maxlength="100">
-        </div>
-        <div class="addSubjectField full">
-          <label for="addSubjectDesc">Mô tả</label>
-          <textarea id="addSubjectDesc" placeholder="Mô tả ngắn về môn học..." rows="2" maxlength="300"></textarea>
-        </div>
+      <div class="subject-stepper" id="subjectStepper">
+        <div class="step active" data-step="1"><span>1</span> Thông tin</div>
+        <div class="step-line"></div>
+        <div class="step" data-step="2"><span>2</span> Lấy Prompt</div>
+        <div class="step-line"></div>
+        <div class="step" data-step="3"><span>3</span> Import</div>
       </div>
 
-      <div class="aiImportTabs userAiTabs">
-        <button class="aiTab active" onclick="window.__switchUserImportTab('prompt')">1. Lấy Prompt</button>
-        <button class="aiTab" onclick="window.__switchUserImportTab('import')">2. Import câu hỏi</button>
-      </div>
-
-      <div id="userAiTabPrompt" class="aiTabContent active">
-        <div class="aiStepCard">
-          <div class="aiStepNum">1</div>
-          <div class="aiStepBody">
-            <h4>Copy prompt bên dưới</h4>
-            <p>Bấm nút copy để sao chép prompt tạo câu hỏi.</p>
+      <div id="addStep1" class="add-step-content active">
+        <div class="addSubjectFields">
+          <div class="addSubjectField">
+            <label>Mã môn <span class="req">*</span></label>
+            <input id="addSubjectCode" type="text" placeholder="VD: ABC123" maxlength="20">
           </div>
-        </div>
-        <div class="aiPromptBox">
-          <pre id="userAiPromptText">${esc2(AI_PROMPT)}</pre>
-          <button class="primary aiCopyBtn" type="button" onclick="window.__copyUserAIPrompt()">📋 Copy Prompt</button>
-        </div>
-
-        <div class="aiStepCard">
-          <div class="aiStepNum">2</div>
-          <div class="aiStepBody">
-            <h4>Mở AI và gửi tài liệu</h4>
-            <p>Dán prompt vào AI, upload tài liệu môn học. AI sẽ trả về file .md hoặc .txt chứa JSON câu hỏi.</p>
-          </div>
-        </div>
-        <div class="aiToolLinks">
-          <a href="https://gemini.google.com" target="_blank" class="aiToolBtn gemini">
-            <span class="aiToolIcon">✦</span> Google Gemini
-          </a>
-          <a href="https://chatgpt.com" target="_blank" class="aiToolBtn chatgpt">
-            <span class="aiToolIcon">◉</span> ChatGPT
-          </a>
-          <a href="https://claude.ai" target="_blank" class="aiToolBtn claude">
-            <span class="aiToolIcon">◈</span> Claude
-          </a>
-        </div>
-
-        <div class="aiStepCard">
-          <div class="aiStepNum">3</div>
-          <div class="aiStepBody">
-            <h4>Tải file .md / .txt hoặc copy JSON</h4>
-            <p>Tải file AI trả về rồi import, hoặc copy JSON và dán vào tab <b>"Import câu hỏi"</b>.</p>
-          </div>
-        </div>
-        <div class="addSubjectActions">
-          <button class="primary" type="button" onclick="window.__switchUserImportTab('import')">Tiếp → Import câu hỏi</button>
-        </div>
-      </div>
-
-      <div id="userAiTabImport" class="aiTabContent">
-        <div class="userImportForm">
-          <div class="addSubjectField full">
-            <label>Import từ file .md / .txt</label>
-            <input type="file" id="userImportFile" accept=".md,.txt,.json" class="userFileInput">
-            <p class="userFileHint">Chọn file .md hoặc .txt mà AI đã trả về. Hệ thống sẽ tự trích xuất JSON từ file.</p>
+          <div class="addSubjectField">
+            <label>Tên môn <span class="req">*</span></label>
+            <input id="addSubjectName" type="text" placeholder="VD: Tên môn học" maxlength="100">
           </div>
           <div class="addSubjectField full">
-            <label>Hoặc dán JSON trực tiếp</label>
-            <textarea id="userImportData" rows="10" placeholder='Dán mảng JSON câu hỏi vào đây...&#10;&#10;[&#10;  {&#10;    "num": 1,&#10;    "question": "...",&#10;    "options": {"A":"...","B":"...","C":"...","D":"..."},&#10;    "answer": "A",&#10;    "answer_text": "...",&#10;    "images": []&#10;  }&#10;]'></textarea>
+            <label>Mô tả ngắn</label>
+            <textarea id="addSubjectDesc" placeholder="Mô tả môn học..." rows="2" maxlength="300"></textarea>
           </div>
-          <div id="userImportPreview" class="aiImportPreview hidden"></div>
-          <div class="addSubjectActions">
-            <button class="btn" type="button" onclick="window.__previewUserImport()">Xem trước</button>
-            <button class="primary" type="button" id="userImportBtn" onclick="window.__submitSubjectRequest()" disabled>Gửi yêu cầu thêm môn</button>
-            <button class="btn" type="button" onclick="window.__closeAddSubject()">Hủy</button>
-          </div>
+        </div>
+        <div class="step-actions right">
+          <button class="primary" type="button" onclick="window.__switchStep(2)">Tiếp tục ➔</button>
         </div>
       </div>
 
-      ${!isAdminOrEditor() ? '<div class="userApprovalNote">⏳ Yêu cầu của bạn sẽ được gửi đến admin để duyệt trước khi môn học được thêm vào hệ thống.</div>' : ''}
+      <div id="addStep2" class="add-step-content">
+        <div class="aiStepCard" style="margin-bottom:0;">
+          <p>Copy prompt dưới đây và dán vào AI (Gemini/ChatGPT/Claude) kèm theo tài liệu môn học của bạn.</p>
+        </div>
+        
+        <div class="aiPromptActions">
+          <button class="aiCopyBtn" type="button" onclick="window.__copyUserAIPrompt()" id="btnCopyPrompt">📋 Sao chép prompt</button>
+          <button class="aiViewPromptBtn" type="button" onclick="window.__openUserAIPromptModal()" id="btnViewPrompt">👁 Xem prompt</button>
+        </div>
+
+        <div class="aiToolLinks" style="margin-bottom: 25px;">
+          <a href="https://gemini.google.com" target="_blank" class="aiToolBtn gemini">✦ Gemini</a>
+          <a href="https://chatgpt.com" target="_blank" class="aiToolBtn chatgpt">◉ ChatGPT</a>
+          <a href="https://claude.ai" target="_blank" class="aiToolBtn claude">◈ Claude</a>
+        </div>
+
+        <div class="step-actions">
+          <button class="btn" type="button" onclick="window.__switchStep(1)">⬅ Quay lại</button>
+          <button class="primary" type="button" onclick="window.__switchStep(3)">Đã có file, Tiếp tục ➔</button>
+        </div>
+      </div>
+
+      <div id="addStep3" class="add-step-content">
+        <div class="importUnifiedBox">
+          <div class="userFileInputWrap" id="importDropZone" onclick="document.getElementById('userImportFile').click()">
+            <span class="icon">☁️</span>
+            <p><b>Kéo thả file .md hoặc .txt vào đây</b><br><span style="font-size:0.85rem; opacity:0.6;">Hoặc bấm để chọn file từ máy</span></p>
+            <input type="file" id="userImportFile" accept=".md,.txt,.json" style="display:none;">
+          </div>
+
+          <textarea id="userImportData" class="hiddenImportData" aria-hidden="true"></textarea>
+          <div id="userImportFileCard" class="userImportFileCard hidden">
+            <div class="fileIcon">📄</div>
+            <div class="fileInfo">
+              <b id="userImportFileName">Chưa chọn file</b>
+              <span id="userImportFileMeta">File import câu hỏi</span>
+            </div>
+            <button class="removeFileBtn" type="button" onclick="window.__clearUserImportFile()">Xóa file</button>
+          </div>
+
+          <div class="step-actions importStepActions">
+            <button class="btn" type="button" onclick="window.__switchStep(2)">⬅ Quay lại</button>
+            <div>
+              <button class="btn previewImportBtn hidden" type="button" id="previewImportBtn" onclick="window.__previewUserImport()">Xem trước</button>
+              <button class="primary" type="button" id="userImportBtn" onclick="window.__submitSubjectRequest()" disabled>Lưu Môn Học</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      ${!isAdminOrEditor() ? '<div class="userApprovalNote" style="margin-top:15px;">⏳ Yêu cầu sẽ được gửi cho admin duyệt trước.</div>' : ''}
     </div>`;
   }
 
-  function toggleForm(show){
-    const form=$('addSubjectForm');
-    if(!form) return;
-    form.classList.toggle('hidden', !show);
-    if(show){
-      form.innerHTML = getAddSubjectHTML();
-      parsedQuestions = [];
-      $('addSubjectCode')?.addEventListener('input', function(){ this.value=this.value.toUpperCase().replace(/[^A-Z0-9_]/g,''); });
-      $('userImportFile')?.addEventListener('change', handleFileImport);
+  // Logic chuyển bước & Khởi tạo tính năng kéo thả
+  window.__switchStep = function(step) {
+    // Ẩn tất cả các bước
+    document.querySelectorAll('.add-step-content').forEach(el => el.classList.remove('active'));
+    // Hiện bước hiện tại
+    const target = document.getElementById('addStep' + step);
+    if(target) target.classList.add('active');
+    
+    // Đổi màu thanh tiến trình
+    document.querySelectorAll('.subject-stepper .step').forEach(el => {
+      const s = parseInt(el.getAttribute('data-step'));
+      if(s <= step) el.classList.add('active');
+      else el.classList.remove('active');
+    });
+
+    // Kích hoạt tính năng kéo thả file ở Bước 3
+    if(step === 3 && !window._dropZoneInit) {
+      const dropZone = document.getElementById('importDropZone');
+      const fileInput = document.getElementById('userImportFile');
+      if(dropZone && fileInput) {
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+          dropZone.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); }, false);
+        });
+        ['dragenter', 'dragover'].forEach(evt => {
+          dropZone.addEventListener(evt, () => dropZone.classList.add('dragover'), false);
+        });
+        ['dragleave', 'drop'].forEach(evt => {
+          dropZone.addEventListener(evt, () => dropZone.classList.remove('dragover'), false);
+        });
+        dropZone.addEventListener('drop', e => {
+          const dt = e.dataTransfer;
+          if(dt.files && dt.files.length) {
+            const one = new DataTransfer();
+            one.items.add(dt.files[0]);
+            fileInput.files = one.files;
+            fileInput.dispatchEvent(new Event('change')); // Gọi hàm đọc file
+          }
+        }, false);
+        window._dropZoneInit = true; // Đánh dấu đã khởi tạo
+      }
     }
-  }
+  };
+
+  // Nâng cấp nút Copy hiển thị trạng thái "Đã copy"
+  window.__copyUserAIPrompt = function(){
+    navigator.clipboard.writeText(AI_PROMPT).then(() => {
+      const btn = document.getElementById('btnCopyPrompt');
+      if(btn) {
+        const oldText = btn.innerHTML;
+        btn.innerHTML = '✅ Đã Copy';
+        btn.style.color = '#111';
+        btn.style.background = '#e8d4a8';
+        setTimeout(() => {
+          btn.innerHTML = oldText;
+          btn.style = ''; // Trả về css mặc định
+        }, 2000);
+      }
+      notify('Đã copy prompt!');
+    });
+  };
 
   function handleFileImport(e){
     const file = e.target.files?.[0];
@@ -735,39 +899,28 @@ Hãy tạo càng nhiều câu hỏi càng tốt từ tài liệu, bao phủ tấ
         if(jsonMatch) jsonStr = jsonMatch[1];
       }
       if($('userImportData')) $('userImportData').value = jsonStr.trim();
-      notify('Đã đọc file ' + file.name);
-      window.__previewUserImport();
+      const dropZone = $('importDropZone');
+      const card = $('userImportFileCard');
+      const nameEl = $('userImportFileName');
+      const metaEl = $('userImportFileMeta');
+      if(dropZone) dropZone.classList.add('hidden');
+      if(card) card.classList.remove('hidden');
+      if(nameEl) nameEl.textContent = file.name;
+      if(metaEl) metaEl.textContent = Math.max(1, Math.round(file.size/1024)) + ' KB · Sẵn sàng xem trước';
+      const pv = $('previewImportBtn');
+      if(pv){ pv.classList.remove('hidden'); pv.disabled = false; }
+      const saveBtn = $('userImportBtn');
+      if(saveBtn) saveBtn.disabled = true;
+      parsedQuestions = [];
+      notify('Đã đọc file ' + file.name + '. Bấm Xem trước để kiểm tra.');
     };
     reader.readAsText(file);
   }
 
-  window.__switchUserImportTab = function(tab){
-    document.querySelectorAll('.userAiTabs .aiTab').forEach(b => b.classList.toggle('active', b.textContent.includes(tab === 'prompt' ? 'Prompt' : 'Import')));
-    $('userAiTabPrompt')?.classList.toggle('active', tab === 'prompt');
-    $('userAiTabImport')?.classList.toggle('active', tab === 'import');
-  };
-
-  window.__copyUserAIPrompt = function(){
-    navigator.clipboard.writeText(AI_PROMPT).then(() => {
-      notify('Đã copy prompt!');
-    }).catch(() => {
-      const el = $('userAiPromptText');
-      if(el){
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-        notify('Hãy bấm Ctrl+C để copy');
-      }
-    });
-  };
-
   window.__previewUserImport = function(){
     const raw = ($('userImportData')?.value || '').trim();
-    const preview = $('userImportPreview');
     const btn = $('userImportBtn');
-    if(!raw){ alert('Chưa dán dữ liệu JSON.'); return; }
+    if(!raw){ alert('Bạn hãy chọn file .md / .txt / .json trước.'); return; }
 
     let data;
     try {
@@ -797,48 +950,132 @@ Hãy tạo càng nhiều câu hỏi càng tốt từ tài liệu, bao phủ tấ
     }
 
     parsedQuestions = data;
-    if(preview){
-      const imgCount = data.filter(q => q.images && q.images.length > 0).length;
-      preview.classList.remove('hidden');
-      preview.innerHTML = `
-        <div class="aiPreviewHeader">
-          <b>Xem trước: ${data.length} câu hỏi${imgCount ? ' ('+imgCount+' câu có hình ảnh)' : ''}</b>
-        </div>
-        <div class="aiPreviewList">${data.slice(0, 8).map((q, i) => `
-          <div class="aiPreviewItem">
-            <span class="aiPreviewNum">Câu ${q.num || (i+1)}</span>
-            <span class="aiPreviewQ">${esc2((q.question || '').substring(0, 100))}${(q.question||'').length>100?'...':''}</span>
-            <span class="aiPreviewA">${q.images&&q.images.length?'🖼 ':''} Đáp án: ${esc2(q.answer || '?')}</span>
-          </div>
-        `).join('')}${data.length > 8 ? '<div class="aiPreviewMore">...và '+(data.length - 8)+' câu khác</div>' : ''}</div>
-      `;
-    }
+    window.__previewSelections = {};
+    const metaEl = $('userImportFileMeta');
+    if(metaEl) metaEl.textContent = data.length + ' câu hỏi đã kiểm tra · Có thể lưu';
     if(btn) btn.disabled = false;
+    window.__openImportPreviewModal(data);
     notify('OK! ' + data.length + ' câu hỏi sẵn sàng');
   };
 
-  window.__submitSubjectRequest = async function(){
+  window.__openImportPreviewModal = function(data){
+    data = data || parsedQuestions || [];
+    let modal = document.getElementById('importPreviewModal');
+    if(!modal){
+      modal = document.createElement('div');
+      modal.id = 'importPreviewModal';
+      modal.className = 'modal importPreviewModal hidden';
+      modal.innerHTML = `<div class="box importPreviewModalBox">
+        <button class="modalX" type="button" onclick="window.__closeImportPreviewModal()">×</button>
+        <div class="importPreviewHead">
+          <div>
+            <span class="importPreviewLabel">XEM TRƯỚC IMPORT</span>
+            <h2>Kiểm tra câu hỏi</h2>
+            <p>Chọn đáp án thử rồi bấm “Check” để kiểm tra đáp án đúng trước khi lưu môn học.</p>
+          </div>
+          <button class="primary importPreviewSaveTop" type="button" onclick="window.__closeImportPreviewModal(); window.__submitSubjectRequest();">Lưu Môn Học</button>
+        </div>
+        <div id="importPreviewStats" class="importPreviewStats"></div>
+        <div id="importPreviewList" class="importPreviewList"></div>
+      </div>`;
+      modal.addEventListener('mousedown', e => { if(e.target === modal) window.__closeImportPreviewModal(); });
+      document.body.appendChild(modal);
+    }
+    const imgCount = data.filter(q => q.images && q.images.length > 0).length;
+    const stats = document.getElementById('importPreviewStats');
+    if(stats) stats.textContent = `${data.length} câu hỏi${imgCount ? ' · '+imgCount+' câu có hình ảnh' : ''}`;
+    const list = document.getElementById('importPreviewList');
+    if(list){
+      list.innerHTML = data.map((q, i) => {
+        const opts = Object.entries(q.options || {}).map(([k,v]) => `
+          <button class="previewAnswerOption" type="button" data-pi="${i}" data-k="${esc2(k)}" onclick="window.__selectPreviewAnswer(${i}, '${esc2(k)}')">
+            <b>${esc2(k)}</b><span>${esc2(v)}</span>
+          </button>
+        `).join('');
+        const imgs = (q.images || []).map(im => {
+          const src = typeof im === 'string' ? im : (im.src || im.url || '');
+          return src ? `<img src="${esc2(src)}" alt="Ảnh câu ${i+1}" loading="lazy">` : '';
+        }).join('');
+        return `<article class="previewQuestionCard" data-pcard="${i}">
+          <div class="previewQuestionTop">
+            <b>Câu ${esc2(q.num || (i+1))}</b>
+            <span>Đáp án đúng: ${esc2(q.answer || '?')}</span>
+          </div>
+          <div class="previewQuestionText">${esc2(q.question || '')}</div>
+          ${imgs ? `<div class="previewQuestionImages">${imgs}</div>` : ''}
+          <div class="previewAnswerGrid">${opts}</div>
+          <div class="previewCheckRow">
+            <button class="btn" type="button" onclick="window.__checkPreviewAnswer(${i})">Check đáp án</button>
+            <span class="previewCheckResult" id="previewCheckResult_${i}"></span>
+          </div>
+        </article>`;
+      }).join('');
+    }
+    modal.classList.remove('hidden');
+  };
+
+  window.__closeImportPreviewModal = function(){
+    document.getElementById('importPreviewModal')?.classList.add('hidden');
+  };
+
+  window.__selectPreviewAnswer = function(i, k){
+    const q = (parsedQuestions || [])[i];
+    if(!q) return;
+    const multi = String(q.answer || '').length > 1;
+    window.__previewSelections = window.__previewSelections || {};
+    let current = String(window.__previewSelections[i] || '');
+    if(multi){
+      const set = new Set(current.split('').filter(Boolean));
+      set.has(k) ? set.delete(k) : set.add(k);
+      current = Array.from(set).sort().join('');
+    }else current = k;
+    window.__previewSelections[i] = current;
+    document.querySelectorAll(`[data-pi="${i}"]`).forEach(btn => btn.classList.toggle('selected', current.includes(btn.dataset.k)));
+    const res = document.getElementById('previewCheckResult_'+i);
+    if(res){ res.textContent = ''; res.className = 'previewCheckResult'; }
+  };
+
+  window.__checkPreviewAnswer = function(i){
+    const q = (parsedQuestions || [])[i];
+    if(!q) return;
+    const selected = String((window.__previewSelections || {})[i] || '').split('').sort().join('');
+    const answer = String(q.answer || '').toUpperCase().split('').sort().join('');
+    const res = document.getElementById('previewCheckResult_'+i);
+    document.querySelectorAll(`[data-pi="${i}"]`).forEach(btn => {
+      const k = btn.dataset.k;
+      btn.classList.toggle('correct', answer.includes(k));
+      btn.classList.toggle('wrong', selected.includes(k) && !answer.includes(k));
+    });
+    if(res){
+      const ok = selected && selected === answer;
+      res.textContent = ok ? '✅ Đúng' : `❌ Chưa đúng · Đáp án: ${answer}`;
+      res.className = 'previewCheckResult ' + (ok ? 'ok' : 'bad');
+    }
+  };
+
+  
+window.__submitSubjectRequest = async function(){
     const code=($('addSubjectCode')?.value||'').trim().toUpperCase();
     const name=($('addSubjectName')?.value||'').trim();
     const desc=($('addSubjectDesc')?.value||'').trim();
 
-    if(!code){ notify('Vui lòng nhập mã môn'); $('addSubjectCode')?.focus(); return; }
-    if(!/^[A-Z0-9_]{2,20}$/.test(code)){ notify('Mã môn chỉ gồm chữ, số, gạch dưới (2-20 ký tự)'); $('addSubjectCode')?.focus(); return; }
-    if(!name){ notify('Vui lòng nhập tên môn'); $('addSubjectName')?.focus(); return; }
+    if(!code){ alert('Vui lòng nhập mã môn'); $('addSubjectCode')?.focus(); return; }
+    if(!/^[A-Z0-9_]{2,20}$/.test(code)){ alert('Mã môn chỉ gồm chữ, số, gạch dưới (2-20 ký tự)'); $('addSubjectCode')?.focus(); return; }
+    if(!name){ alert('Vui lòng nhập tên môn'); $('addSubjectName')?.focus(); return; }
+    if(!parsedQuestions.length){ alert('Bạn cần chọn file và bấm Xem trước trước khi lưu môn học.'); return; }
 
     const c=client();
-    if(!c){ notify('Chưa kết nối Supabase'); return; }
+    if(!c){ alert('Chưa kết nối Supabase'); return; }
 
     const btn=$('userImportBtn');
-    if(btn){ btn.disabled=true; btn.textContent='Đang gửi...'; }
+    if(btn){ btn.disabled=true; btn.textContent='Đang lưu...'; }
 
     try{
-      const {data:existing}=await c.from('subjects').select('code').eq('code',code).maybeSingle();
-      if(existing){
-        notify('Mã môn '+code+' đã tồn tại');
-        return;
-      }
+      const {data:existing, error:exErr}=await c.from('subjects').select('code').eq('code',code).maybeSingle();
+      if(exErr){ alert('Không kiểm tra được mã môn: '+exErr.message); return; }
+      if(existing){ alert('Mã môn '+code+' đã tồn tại'); return; }
 
+      let successMsg = '';
       if(isAdminOrEditor()){
         const maxOrder=await c.from('subjects').select('sort_order').order('sort_order',{ascending:false}).limit(1);
         const nextOrder=((maxOrder.data?.[0]?.sort_order)||0)+1;
@@ -847,32 +1084,30 @@ Hãy tạo càng nhiều câu hỏi càng tốt từ tài liệu, bao phủ tấ
           code: code, name: name, description: desc || null,
           is_active: true, sort_order: nextOrder
         });
-        if(error){ notify('Lỗi: '+error.message); return; }
+        if(error){ alert('Lỗi tạo môn: '+error.message); return; }
 
-        if(parsedQuestions.length){
-          let success=0, errors=0;
-          for(let i=0; i<parsedQuestions.length; i++){
-            const q=parsedQuestions[i];
-            const payload={
-              subject_code: code,
-              num: q.num || (i+1),
-              question: q.question || '',
-              options: q.options || {},
-              answer: (q.answer || '').toUpperCase(),
-              answer_text: q.answer_text || '',
-              images: q.images || [],
-              is_active: true,
-              updated_at: new Date().toISOString()
-            };
-            const r=await c.from('questions').insert(payload);
-            if(r.error) errors++; else success++;
-          }
-          notify('Đã thêm môn '+code+' với '+success+' câu hỏi'+(errors?' ('+errors+' lỗi)':''));
-        } else {
-          notify('Đã thêm môn '+code);
+        let success=0, errors=0, firstErr='';
+        for(let i=0; i<parsedQuestions.length; i++){
+          const q=parsedQuestions[i];
+          const payload={
+            subject_code: code,
+            num: q.num || (i+1),
+            question: q.question || '',
+            options: q.options || {},
+            answer: (q.answer || '').toUpperCase(),
+            answer_text: q.answer_text || '',
+            images: q.images || [],
+            is_active: true,
+            updated_at: new Date().toISOString()
+          };
+          const r=await c.from('questions').insert(payload);
+          if(r.error){ errors++; if(!firstErr) firstErr=r.error.message; }
+          else success++;
         }
-
-        toggleForm(false);
+        successMsg = 'Đã thêm môn '+code+' với '+success+' câu hỏi'+(errors?' ('+errors+' lỗi: '+firstErr+')':'');
+        alert(successMsg);
+        notify(successMsg);
+        window.__switchSubjectGateTab('list');
         $('subjectRefresh')?.click();
       } else {
         const u=window.HODSupabase?.getUser?.();
@@ -886,27 +1121,31 @@ Hãy tạo càng nhiều câu hỏi càng tốt từ tài liệu, bao phủ tấ
           user_email: u?.email || p?.email || '',
           status: 'pending'
         });
-        if(error){
-          notify('Lỗi: '+error.message);
-          return;
-        }
-        notify('Đã gửi yêu cầu thêm môn '+code+'. Vui lòng chờ admin duyệt.');
-        toggleForm(false);
+        if(error){ alert('Lỗi gửi yêu cầu: '+error.message); return; }
+        successMsg = 'Đã gửi yêu cầu thêm môn '+code+'. Vui lòng chờ admin duyệt.';
+        alert(successMsg);
+        notify(successMsg);
+        window.__switchSubjectGateTab('list');
       }
 
       parsedQuestions = [];
+      document.getElementById('importPreviewModal')?.classList.add('hidden');
     } catch(e){
       console.warn('Add subject error:', e);
-      notify('Lỗi khi gửi yêu cầu');
+      alert('Lỗi khi lưu môn học: ' + (e?.message || e));
+      notify('Lỗi khi lưu môn học');
     } finally {
-      if(btn){ btn.disabled=false; btn.textContent=isAdminOrEditor()?'Thêm môn học':'Gửi yêu cầu thêm môn'; }
+      if(btn){ btn.disabled=false; btn.textContent='Lưu Môn Học'; }
     }
   };
 
-  window.__closeAddSubject = function(){ toggleForm(false); };
+  
+  window.__closeAddSubject = function(){ 
+    window.__switchSubjectGateTab('list'); 
+  };
 
   function bind(){
-    $('addSubjectBtn')?.addEventListener('click', ()=>toggleForm(true));
+    $('addSubjectBtn')?.addEventListener('click', ()=>window.__switchSubjectGateTab('add'));
     showAddBtn();
     setInterval(showAddBtn, 2000);
   }
@@ -3018,4 +3257,797 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c){const r
       doDelete(btn.dataset.deleteNum);
     });
   }
+})();
+
+
+// ===== FINAL_PROMPT_MODAL_RUNTIME_FIX_20260625 =====
+(function(){
+  function escPrompt(s){
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function getPromptText(){
+    return window.__ADD_SUBJECT_AI_PROMPT || window.AI_PROMPT || document.getElementById('userAiPromptText')?.textContent || '';
+  }
+  window.__openUserAIPromptModal = function(){
+    const prompt = getPromptText();
+    let modal = document.getElementById('userPromptModal');
+    if(!modal){
+      modal = document.createElement('div');
+      modal.id = 'userPromptModal';
+      modal.className = 'modal userPromptModal hidden';
+      modal.innerHTML = `<div class="box userPromptModalBox">
+        <button class="modalX" type="button" id="userPromptModalClose">×</button>
+        <div class="userPromptModalHead">
+          <div>
+            <span class="userPromptLabel">PROMPT TẠO CÂU HỎI</span>
+            <h2>Xem prompt</h2>
+            <p>Copy prompt này rồi dán vào Gemini / ChatGPT / Claude kèm tài liệu môn học.</p>
+          </div>
+          <button class="primary userPromptCopyTop" type="button" id="userPromptModalCopy">📋 Sao chép</button>
+        </div>
+        <pre class="userPromptModalPre" id="userPromptModalPre"></pre>
+      </div>`;
+      modal.addEventListener('mousedown', e => { if(e.target === modal) window.__closeUserAIPromptModal(); });
+      document.body.appendChild(modal);
+      document.getElementById('userPromptModalClose')?.addEventListener('click', window.__closeUserAIPromptModal);
+      document.getElementById('userPromptModalCopy')?.addEventListener('click', window.__copyUserAIPrompt);
+    }
+    const pre = document.getElementById('userPromptModalPre');
+    if(pre) pre.textContent = prompt;
+    modal.classList.remove('hidden');
+  };
+  window.__closeUserAIPromptModal = function(){
+    document.getElementById('userPromptModal')?.classList.add('hidden');
+  };
+  window.__copyUserAIPrompt = function(){
+    const prompt = getPromptText();
+    const done = () => {
+      const btn = document.getElementById('btnCopyPrompt');
+      if(btn){
+        const oldText = btn.innerHTML;
+        btn.innerHTML = '✅ Đã copy';
+        setTimeout(() => { btn.innerHTML = oldText; }, 1800);
+      }
+      if(typeof notify === 'function') notify('Đã copy prompt!');
+    };
+    if(navigator.clipboard?.writeText){
+      navigator.clipboard.writeText(prompt).then(done).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = prompt;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        done();
+      });
+    }else{
+      const ta = document.createElement('textarea');
+      ta.value = prompt;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      done();
+    }
+  };
+  document.addEventListener('click', function(e){
+    const viewBtn = e.target.closest && e.target.closest('#btnViewPrompt,.aiViewPromptBtn');
+    if(viewBtn){
+      e.preventDefault();
+      e.stopPropagation();
+      window.__openUserAIPromptModal();
+      return;
+    }
+    const copyBtn = e.target.closest && e.target.closest('#btnCopyPrompt');
+    if(copyBtn){
+      e.preventDefault();
+      e.stopPropagation();
+      window.__copyUserAIPrompt();
+    }
+  }, true);
+})();
+
+// ===== FIX_DELETE_IMPORT_FILE_20260625 =====
+// Sửa nút "Xóa file" trong bước Import môn học.
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function notifySafe(msg){
+    if(typeof notify === 'function') notify(msg);
+    else console.log(msg);
+  }
+  window.__clearUserImportFile = function(){
+    const fileInput = $('userImportFile');
+    const hiddenData = $('userImportData');
+    const dropZone = $('importDropZone');
+    const fileCard = $('userImportFileCard');
+    const fileName = $('userImportFileName');
+    const fileMeta = $('userImportFileMeta');
+    const previewBtn = $('previewImportBtn');
+    const saveBtn = $('userImportBtn');
+
+    if(fileInput) fileInput.value = '';
+    if(hiddenData) hiddenData.value = '';
+    if(dropZone) dropZone.classList.remove('hidden');
+    if(fileCard) fileCard.classList.add('hidden');
+    if(fileName) fileName.textContent = 'Chưa chọn file';
+    if(fileMeta) fileMeta.textContent = 'File import câu hỏi';
+    if(previewBtn){
+      previewBtn.classList.add('hidden');
+      previewBtn.disabled = true;
+    }
+    if(saveBtn) saveBtn.disabled = true;
+
+    window.__previewSelections = {};
+    try{ window.__closeImportPreviewModal?.(); }catch(e){}
+    notifySafe('Đã xóa file import');
+  };
+
+  document.addEventListener('click', function(e){
+    const btn = e.target.closest?.('.removeFileBtn');
+    if(!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    window.__clearUserImportFile();
+  }, true);
+})();
+
+// ===== PROMPT_STEP_UX_UI_POLISH_20260625 =====
+// Nâng cấp giao diện bước "Lấy Prompt" trong form thêm môn.
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function enhancePromptStep(){
+    const step = $('addStep2');
+    if(!step || step.dataset.promptPolished === '1') return;
+    step.dataset.promptPolished = '1';
+    step.classList.add('promptPolished');
+    step.innerHTML = `
+      <div class="promptStepGrid">
+        <section class="promptMainCard">
+          <div class="promptEyebrow">Bước 2 · Tạo file câu hỏi</div>
+          <h3 class="promptMainTitle">Lấy prompt rồi đưa tài liệu cho AI</h3>
+          <p class="promptMainDesc">Bấm sao chép prompt, dán vào AI bạn muốn dùng, sau đó gửi kèm tài liệu môn học. AI sẽ trả về file câu hỏi để import ở bước tiếp theo.</p>
+
+          <div class="promptActionGrid">
+            <button class="aiCopyBtn" type="button" onclick="window.__copyUserAIPrompt()" id="btnCopyPrompt">📋 Sao chép prompt</button>
+            <button class="aiViewPromptBtn" type="button" onclick="window.__openUserAIPromptModal()" id="btnViewPrompt">👁 Xem prompt</button>
+          </div>
+
+          <div class="promptMiniGuide">
+            <div class="guideRow"><div class="guideNum">1</div><div><b>Copy prompt</b><span>Prompt đã có sẵn format JSON đúng cho hệ thống.</span></div></div>
+            <div class="guideRow"><div class="guideNum">2</div><div><b>Dán vào AI + gửi tài liệu</b><span>Gửi PDF, Word, slide hoặc nội dung môn học cho AI.</span></div></div>
+            <div class="guideRow"><div class="guideNum">3</div><div><b>Tải file .md / .txt</b><span>Sau khi AI tạo xong, qua bước Import để lưu môn học.</span></div></div>
+          </div>
+        </section>
+
+        <aside class="promptSideCard">
+          <div class="promptToolTitle">Chọn công cụ AI</div>
+          <div class="promptToolGrid">
+            <a href="https://gemini.google.com" target="_blank" class="aiToolBtn gemini">✦ Gemini</a>
+            <a href="https://chatgpt.com" target="_blank" class="aiToolBtn chatgpt">◉ ChatGPT</a>
+            <a href="https://claude.ai" target="_blank" class="aiToolBtn claude">◈ Claude</a>
+          </div>
+          <div class="promptNoteBox">Mẹo: nếu tài liệu dài, hãy yêu cầu AI tạo từng phần rồi gộp lại thành một file JSON.</div>
+        </aside>
+      </div>
+
+      <div class="step-actions">
+        <button class="btn" type="button" onclick="window.__switchStep(1)">⬅ Quay lại</button>
+        <button class="primary" type="button" onclick="window.__switchStep(3)">Đã có file, tiếp tục ➔</button>
+      </div>
+    `;
+  }
+  const oldSwitch = window.__switchStep;
+  window.__switchStep = function(step){
+    if(typeof oldSwitch === 'function') oldSwitch.apply(this, arguments);
+    setTimeout(()=>{ if(Number(step) === 2) enhancePromptStep(); }, 0);
+  };
+  document.addEventListener('click', function(e){
+    const btn = e.target.closest?.('[onclick*="__switchStep(2)"]');
+    if(btn) setTimeout(enhancePromptStep, 0);
+  }, true);
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(enhancePromptStep, 800));
+})();
+
+// ===== PROMPT_STEP_INSIDE_PANEL_FIX_20260625 =====
+// Xóa nút "Sao chép prompt" bị trôi ra ngoài khung tab lớn.
+(function(){
+  function cleanStrayPromptButtons(){
+    document.querySelectorAll('.subjectGate .polishedSubjectPanel > .aiCopyBtn, .subjectGate .polishedSubjectPanel > #btnCopyPrompt, .subjectGate > .aiCopyBtn, .subjectGate > #btnCopyPrompt').forEach(btn=>{
+      if(!btn.closest('#addStep2')) btn.remove();
+    });
+  }
+  document.addEventListener('DOMContentLoaded',()=>{
+    cleanStrayPromptButtons();
+    setTimeout(cleanStrayPromptButtons,300);
+    setTimeout(cleanStrayPromptButtons,1000);
+  });
+  document.addEventListener('click',()=>setTimeout(cleanStrayPromptButtons,0),true);
+})();
+
+// ===== REMOVE_PROMPT_GUIDE_ROWS_20260625 =====
+// Bỏ 3 dòng hướng dẫn trong bước Lấy Prompt.
+(function(){
+  function removePromptGuideRows(){
+    document.querySelectorAll('#addStep2 .promptMiniGuide').forEach(el => el.remove());
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    removePromptGuideRows();
+    setTimeout(removePromptGuideRows, 300);
+    setTimeout(removePromptGuideRows, 1000);
+  });
+  document.addEventListener('click', () => setTimeout(removePromptGuideRows, 0), true);
+})();
+
+// ===== FIX_PROMPT_MODAL_SCOPE_REMOVE_TIP_20260625 =====
+// Sửa modal "Xem prompt" để không ảnh hưởng khung lớn + bỏ ô mẹo.
+(function(){
+  function cleanPromptTip(){
+    document.querySelectorAll('#addStep2 .promptNoteBox, .promptNoteBox').forEach(el => el.remove());
+  }
+  function patchPromptModal(){
+    const modal = document.getElementById('userPromptModal');
+    if(!modal) return;
+    modal.classList.remove('modal');
+    modal.classList.add('userPromptModal');
+    const box = modal.querySelector('.userPromptModalBox');
+    if(box) box.classList.remove('box');
+  }
+  const oldOpen = window.__openUserAIPromptModal;
+  window.__openUserAIPromptModal = function(){
+    if(typeof oldOpen === 'function') oldOpen.apply(this, arguments);
+    setTimeout(()=>{ patchPromptModal(); cleanPromptTip(); }, 0);
+  };
+  document.addEventListener('DOMContentLoaded',()=>{
+    cleanPromptTip();
+    patchPromptModal();
+    setTimeout(()=>{ cleanPromptTip(); patchPromptModal(); },300);
+    setTimeout(()=>{ cleanPromptTip(); patchPromptModal(); },1000);
+  });
+  document.addEventListener('click',()=>setTimeout(()=>{ cleanPromptTip(); patchPromptModal(); },0),true);
+})();
+
+// ===== IMPORT_PREVIEW_SHOW_ANSWER_EDIT_DARK_20260625 =====
+// Xem trước import: hiện luôn đáp án đúng + cho sửa câu hỏi/lựa chọn/đáp án.
+(function(){
+  function escHtml(s){
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function optionText(q,k){ return q?.options?.[k] || ''; }
+  function answerLabel(q){
+    const ans = String(q?.answer || '').toUpperCase();
+    if(!ans) return '?';
+    const parts = ans.split('').filter(Boolean).map(k => optionText(q,k) ? `${k}. ${optionText(q,k)}` : k);
+    return parts.join(' ; ');
+  }
+  function renderPreview(data){
+    data = data || window.__previewImportData || [];
+    window.__previewImportData = data;
+    let modal = document.getElementById('importPreviewModal');
+    if(!modal){
+      modal = document.createElement('div');
+      modal.id = 'importPreviewModal';
+      modal.className = 'modal importPreviewModal hidden';
+      modal.innerHTML = `<div class="box importPreviewModalBox">
+        <button class="modalX" type="button" onclick="window.__closeImportPreviewModal()">×</button>
+        <div class="importPreviewHead">
+          <div>
+            <span class="importPreviewLabel">XEM TRƯỚC IMPORT</span>
+            <h2>Kiểm tra câu hỏi</h2>
+            <p>Đáp án đúng đã được hiển thị sẵn. Bấm “Sửa” nếu cần chỉnh câu hỏi, câu trả lời hoặc đáp án.</p>
+          </div>
+          <button class="primary importPreviewSaveTop" type="button" onclick="window.__closeImportPreviewModal(); window.__submitSubjectRequest();">Lưu Môn Học</button>
+        </div>
+        <div id="importPreviewStats" class="importPreviewStats"></div>
+        <div id="importPreviewList" class="importPreviewList"></div>
+      </div>`;
+      modal.addEventListener('mousedown', e => { if(e.target === modal) window.__closeImportPreviewModal(); });
+      document.body.appendChild(modal);
+    }
+    const imgCount = data.filter(q => q.images && q.images.length > 0).length;
+    const stats = document.getElementById('importPreviewStats');
+    if(stats) stats.textContent = `${data.length} câu hỏi${imgCount ? ' · '+imgCount+' câu có hình ảnh' : ''}`;
+    const list = document.getElementById('importPreviewList');
+    if(list){
+      list.innerHTML = data.map((q, i) => {
+        const answer = String(q.answer || '').toUpperCase();
+        const opts = Object.entries(q.options || {}).map(([k,v]) => {
+          const key = String(k).toUpperCase();
+          const isCorrect = answer.includes(key);
+          return `<div class="previewAnswerOption ${isCorrect ? 'correct' : ''}" data-pi="${i}" data-k="${escHtml(key)}">
+            <b>${escHtml(key)}</b><span>${escHtml(v)}</span>
+          </div>`;
+        }).join('');
+        const imgs = (q.images || []).map(im => {
+          const src = typeof im === 'string' ? im : (im.src || im.url || '');
+          return src ? `<img src="${escHtml(src)}" alt="Ảnh câu ${i+1}" loading="lazy">` : '';
+        }).join('');
+        return `<article class="previewQuestionCard" data-pcard="${i}">
+          <div class="previewQuestionTop">
+            <b>Câu ${escHtml(q.num || (i+1))}</b>
+            <div class="previewTopActions">
+              <span>Đáp án đúng: ${escHtml(answer || '?')}</span>
+              <button class="previewEditBtn" type="button" onclick="window.__editImportPreviewQuestion(${i})">Sửa</button>
+            </div>
+          </div>
+          <div class="previewQuestionText">${escHtml(q.question || '')}</div>
+          <div class="previewAnswerAlways">${escHtml(answerLabel(q))}</div>
+          ${imgs ? `<div class="previewQuestionImages">${imgs}</div>` : ''}
+          <div class="previewAnswerGrid">${opts}</div>
+        </article>`;
+      }).join('');
+    }
+    modal.classList.remove('hidden');
+  }
+  window.__openImportPreviewModal = renderPreview;
+
+  window.__editImportPreviewQuestion = function(i){
+    const data = window.__previewImportData || [];
+    const q = data[i];
+    if(!q) return;
+    let modal = document.getElementById('previewEditModal');
+    if(!modal){
+      modal = document.createElement('div');
+      modal.id = 'previewEditModal';
+      modal.className = 'previewEditModal hidden';
+      modal.innerHTML = `<div class="previewEditBox">
+        <button class="modalX" type="button" onclick="window.__closePreviewEditModal()">×</button>
+        <h2 id="previewEditTitle">Sửa câu hỏi</h2>
+        <div class="previewEditGrid">
+          <div class="previewEditField full"><label>Câu hỏi</label><textarea id="peQuestion"></textarea></div>
+          <div class="previewEditField"><label>Đáp án A</label><textarea id="peOptA"></textarea></div>
+          <div class="previewEditField"><label>Đáp án B</label><textarea id="peOptB"></textarea></div>
+          <div class="previewEditField"><label>Đáp án C</label><textarea id="peOptC"></textarea></div>
+          <div class="previewEditField"><label>Đáp án D</label><textarea id="peOptD"></textarea></div>
+          <div class="previewEditField"><label>Đáp án E</label><textarea id="peOptE"></textarea></div>
+          <div class="previewEditField"><label>Đáp án đúng</label><input id="peAnswer" placeholder="VD: A hoặc AC"></div>
+          <div class="previewEditField"><label>Giải thích</label><textarea id="peAnswerText"></textarea></div>
+        </div>
+        <div class="previewEditActions">
+          <button class="btn" type="button" onclick="window.__closePreviewEditModal()">Hủy</button>
+          <button class="primary" type="button" onclick="window.__saveImportPreviewQuestion()">Lưu sửa</button>
+        </div>
+      </div>`;
+      modal.addEventListener('mousedown', e => { if(e.target === modal) window.__closePreviewEditModal(); });
+      document.body.appendChild(modal);
+    }
+    window.__editingPreviewIndex = i;
+    document.getElementById('previewEditTitle').textContent = 'Sửa câu ' + (q.num || (i+1));
+    document.getElementById('peQuestion').value = q.question || '';
+    ['A','B','C','D','E'].forEach(k => { const el = document.getElementById('peOpt'+k); if(el) el.value = q.options?.[k] || ''; });
+    document.getElementById('peAnswer').value = String(q.answer || '').toUpperCase();
+    document.getElementById('peAnswerText').value = q.answer_text || q.answerText || '';
+    modal.classList.remove('hidden');
+  };
+
+  window.__closePreviewEditModal = function(){
+    document.getElementById('previewEditModal')?.classList.add('hidden');
+  };
+
+  window.__saveImportPreviewQuestion = function(){
+    const i = window.__editingPreviewIndex;
+    const data = window.__previewImportData || [];
+    const q = data[i];
+    if(!q) return;
+    const question = (document.getElementById('peQuestion')?.value || '').trim();
+    const answer = (document.getElementById('peAnswer')?.value || '').trim().toUpperCase();
+    if(!question) return alert('Câu hỏi không được để trống.');
+    if(!answer) return alert('Đáp án đúng không được để trống.');
+    const options = {};
+    ['A','B','C','D','E'].forEach(k => {
+      const v = (document.getElementById('peOpt'+k)?.value || '').trim();
+      if(v) options[k] = v;
+    });
+    if(!Object.keys(options).length) return alert('Cần có ít nhất một đáp án lựa chọn.');
+    q.question = question;
+    q.options = options;
+    q.answer = answer;
+    q.answer_text = (document.getElementById('peAnswerText')?.value || '').trim();
+    window.__closePreviewEditModal();
+    renderPreview(data);
+    if(typeof notify === 'function') notify('Đã cập nhật câu hỏi');
+  };
+})();
+
+// ===== IMPORT_PREVIEW_INLINE_EDIT_20260625 =====
+// Sửa trực tiếp ngay trên card xem trước, không mở modal riêng.
+(function(){
+  function escHtml(s){
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function getPreviewData(data){
+    const arr = data || window.__previewImportData || [];
+    window.__previewImportData = arr;
+    return arr;
+  }
+  function opt(q,k){ return q?.options?.[k] || ''; }
+  function renderPreviewInline(data){
+    data = getPreviewData(data);
+    let modal = document.getElementById('importPreviewModal');
+    if(!modal){
+      modal = document.createElement('div');
+      modal.id = 'importPreviewModal';
+      modal.className = 'modal importPreviewModal hidden';
+      modal.innerHTML = `<div class="box importPreviewModalBox">
+        <button class="modalX" type="button" onclick="window.__closeImportPreviewModal()">×</button>
+        <div class="importPreviewHead">
+          <div>
+            <span class="importPreviewLabel">XEM TRƯỚC IMPORT</span>
+            <h2>Kiểm tra câu hỏi</h2>
+            <p>Đáp án đúng đã hiển thị sẵn. Bấm “Sửa” để chỉnh ngay trên câu đó.</p>
+          </div>
+          <button class="primary importPreviewSaveTop" type="button" onclick="window.__closeImportPreviewModal(); window.__submitSubjectRequest();">Lưu Môn Học</button>
+        </div>
+        <div id="importPreviewStats" class="importPreviewStats"></div>
+        <div id="importPreviewList" class="importPreviewList"></div>
+      </div>`;
+      modal.addEventListener('mousedown', e => { if(e.target === modal) window.__closeImportPreviewModal(); });
+      document.body.appendChild(modal);
+    }
+    const imgCount = data.filter(q => q.images && q.images.length > 0).length;
+    const stats = document.getElementById('importPreviewStats');
+    if(stats) stats.textContent = `${data.length} câu hỏi${imgCount ? ' · '+imgCount+' câu có hình ảnh' : ''}`;
+    const list = document.getElementById('importPreviewList');
+    if(list){
+      list.innerHTML = data.map((q,i)=>cardHTML(q,i)).join('');
+    }
+    modal.classList.remove('hidden');
+  }
+  function cardHTML(q,i){
+    const answer = String(q.answer || '').toUpperCase();
+    const opts = Object.entries(q.options || {}).map(([k,v])=>{
+      const key = String(k).toUpperCase();
+      const isCorrect = answer.includes(key);
+      return `<div class="previewAnswerOption ${isCorrect ? 'correct' : ''}" data-pi="${i}" data-k="${escHtml(key)}">
+        <b>${escHtml(key)}</b><span>${escHtml(v)}</span>
+      </div>`;
+    }).join('');
+    const imgs = (q.images || []).map(im=>{
+      const src = typeof im === 'string' ? im : (im.src || im.url || '');
+      return src ? `<img src="${escHtml(src)}" alt="Ảnh câu ${i+1}" loading="lazy">` : '';
+    }).join('');
+    return `<article class="previewQuestionCard" data-pcard="${i}">
+      <div class="previewQuestionTop">
+        <b>Câu ${escHtml(q.num || (i+1))}</b>
+        <div class="previewTopActions">
+          <span class="previewAnswerBadge">Đáp án đúng: ${escHtml(answer || '?')}</span>
+          <button class="previewEditBtn" type="button" onclick="window.__editImportPreviewQuestion(${i})">Sửa</button>
+        </div>
+      </div>
+      <div class="previewQuestionText">${escHtml(q.question || '')}</div>
+      ${imgs ? `<div class="previewQuestionImages">${imgs}</div>` : ''}
+      <div class="previewAnswerGrid">${opts}</div>
+    </article>`;
+  }
+  window.__openImportPreviewModal = renderPreviewInline;
+  window.__editImportPreviewQuestion = function(i){
+    const data = getPreviewData();
+    const q = data[i];
+    const card = document.querySelector(`[data-pcard="${i}"]`);
+    if(!q || !card) return;
+    const answer = String(q.answer || '').toUpperCase();
+    card.classList.add('editing');
+    card.innerHTML = `
+      <div class="previewQuestionTop">
+        <b>Sửa câu ${escHtml(q.num || (i+1))}</b>
+        <div class="previewTopActions"><span class="previewAnswerBadge">Đáp án đúng: ${escHtml(answer || '?')}</span></div>
+      </div>
+      <div class="inlinePreviewEdit">
+        <div class="inlinePreviewEditGrid">
+          <div class="inlinePreviewEditField full"><label>Câu hỏi</label><textarea id="ipeQuestion_${i}">${escHtml(q.question || '')}</textarea></div>
+          <div class="inlinePreviewEditField"><label>Đáp án A</label><textarea id="ipeOptA_${i}">${escHtml(opt(q,'A'))}</textarea></div>
+          <div class="inlinePreviewEditField"><label>Đáp án B</label><textarea id="ipeOptB_${i}">${escHtml(opt(q,'B'))}</textarea></div>
+          <div class="inlinePreviewEditField"><label>Đáp án C</label><textarea id="ipeOptC_${i}">${escHtml(opt(q,'C'))}</textarea></div>
+          <div class="inlinePreviewEditField"><label>Đáp án D</label><textarea id="ipeOptD_${i}">${escHtml(opt(q,'D'))}</textarea></div>
+          <div class="inlinePreviewEditField"><label>Đáp án E</label><textarea id="ipeOptE_${i}">${escHtml(opt(q,'E'))}</textarea></div>
+          <div class="inlinePreviewEditField"><label>Đáp án đúng</label><input id="ipeAnswer_${i}" value="${escHtml(answer)}" placeholder="VD: A hoặc AC"></div>
+          <div class="inlinePreviewEditField"><label>Giải thích</label><textarea id="ipeAnswerText_${i}">${escHtml(q.answer_text || q.answerText || '')}</textarea></div>
+        </div>
+        <div class="inlinePreviewEditActions">
+          <button class="btn" type="button" onclick="window.__cancelInlinePreviewEdit(${i})">Hủy</button>
+          <button class="primary" type="button" onclick="window.__saveInlinePreviewEdit(${i})">Lưu sửa</button>
+        </div>
+      </div>`;
+  };
+  window.__cancelInlinePreviewEdit = function(i){
+    const data = getPreviewData();
+    const card = document.querySelector(`[data-pcard="${i}"]`);
+    if(card) card.outerHTML = cardHTML(data[i], i);
+  };
+  window.__saveInlinePreviewEdit = function(i){
+    const data = getPreviewData();
+    const q = data[i];
+    if(!q) return;
+    const question = (document.getElementById(`ipeQuestion_${i}`)?.value || '').trim();
+    const answer = (document.getElementById(`ipeAnswer_${i}`)?.value || '').trim().toUpperCase();
+    if(!question) return alert('Câu hỏi không được để trống.');
+    if(!answer) return alert('Đáp án đúng không được để trống.');
+    const options = {};
+    ['A','B','C','D','E'].forEach(k=>{
+      const v = (document.getElementById(`ipeOpt${k}_${i}`)?.value || '').trim();
+      if(v) options[k] = v;
+    });
+    if(!Object.keys(options).length) return alert('Cần có ít nhất một đáp án lựa chọn.');
+    q.question = question;
+    q.options = options;
+    q.answer = answer;
+    q.answer_text = (document.getElementById(`ipeAnswerText_${i}`)?.value || '').trim();
+    const card = document.querySelector(`[data-pcard="${i}"]`);
+    if(card) card.outerHTML = cardHTML(q, i);
+    if(typeof notify === 'function') notify('Đã cập nhật câu hỏi');
+  };
+})();
+
+// ===== IMPORT_PREVIEW_SAME_LAYOUT_EDIT_20260625 =====
+// Sửa ngay trên layout đang hiển thị của câu; nút + nhỏ để thêm đáp án.
+(function(){
+  const LETTERS = ['A','B','C','D','E','F','G'];
+  function escHtml(s){
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function data(){ return window.__previewImportData || []; }
+  function opt(q,k){ return q?.options?.[k] || ''; }
+  function optionKeys(q){
+    const keys = Object.keys(q.options || {}).map(k=>String(k).toUpperCase());
+    return LETTERS.filter(k => keys.includes(k));
+  }
+  function cardHTML(q,i){
+    const answer = String(q.answer || '').toUpperCase();
+    const keys = optionKeys(q).length ? optionKeys(q) : ['A','B','C','D'];
+    const opts = keys.map(k=>{
+      const isCorrect = answer.includes(k);
+      return `<div class="previewAnswerOption ${isCorrect ? 'correct' : ''}" data-pi="${i}" data-k="${escHtml(k)}">
+        <b>${escHtml(k)}</b><span>${escHtml(opt(q,k))}</span>
+      </div>`;
+    }).join('');
+    const imgs = (q.images || []).map(im=>{
+      const src = typeof im === 'string' ? im : (im.src || im.url || '');
+      return src ? `<img src="${escHtml(src)}" alt="Ảnh câu ${i+1}" loading="lazy">` : '';
+    }).join('');
+    return `<article class="previewQuestionCard" data-pcard="${i}">
+      <div class="previewQuestionTop">
+        <b>Câu ${escHtml(q.num || (i+1))}</b>
+        <div class="previewTopActions">
+          <span class="previewAnswerBadge">Đáp án đúng: ${escHtml(answer || '?')}</span>
+          <button class="previewEditBtn" type="button" onclick="window.__editImportPreviewQuestion(${i})">Sửa</button>
+        </div>
+      </div>
+      <div class="previewQuestionText">${escHtml(q.question || '')}</div>
+      ${imgs ? `<div class="previewQuestionImages">${imgs}</div>` : ''}
+      <div class="previewAnswerGrid">${opts}</div>
+    </article>`;
+  }
+  function rerenderOne(i){
+    const q = data()[i];
+    const card = document.querySelector(`[data-pcard="${i}"]`);
+    if(card && q) card.outerHTML = cardHTML(q,i);
+  }
+  function currentEditKeys(i){
+    return Array.from(document.querySelectorAll(`[data-edit-opt-for="${i}"]`)).map(el=>el.dataset.k);
+  }
+  function nextKey(keys){ return LETTERS.find(k=>!keys.includes(k)); }
+
+  window.__editImportPreviewQuestion = function(i){
+    const q = data()[i];
+    const card = document.querySelector(`[data-pcard="${i}"]`);
+    if(!q || !card) return;
+    const answer = String(q.answer || '').toUpperCase();
+    const keys = optionKeys(q).length ? optionKeys(q) : ['A','B','C','D'];
+    const rows = keys.map(k=>editOptionRow(i,k,opt(q,k),answer.includes(k))).join('');
+    const imgs = (q.images || []).map(im=>{
+      const src = typeof im === 'string' ? im : (im.src || im.url || '');
+      return src ? `<img src="${escHtml(src)}" alt="Ảnh câu ${i+1}" loading="lazy">` : '';
+    }).join('');
+    card.classList.add('sameLayoutEditing');
+    card.innerHTML = `
+      <div class="previewQuestionTop">
+        <b>Sửa câu ${escHtml(q.num || (i+1))}</b>
+        <div class="previewTopActions">
+          <span class="inlineAnswerBadgeEdit">Đáp án đúng <input id="sameAnswer_${i}" value="${escHtml(answer)}" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z]/g,'')"></span>
+        </div>
+      </div>
+      <div class="previewQuestionText"><textarea class="inlineQuestionEdit" id="sameQuestion_${i}">${escHtml(q.question || '')}</textarea></div>
+      ${imgs ? `<div class="previewQuestionImages">${imgs}</div>` : ''}
+      <div class="previewAnswerGrid" id="sameOptions_${i}">${rows}</div>
+      <button class="previewAddOptionMini" type="button" title="Thêm đáp án" onclick="window.__addInlinePreviewOption(${i})">+</button>
+      <div class="sameLayoutEditActions">
+        <button class="btn" type="button" onclick="window.__cancelSameLayoutEdit(${i})">Hủy</button>
+        <button class="primary" type="button" onclick="window.__saveSameLayoutEdit(${i})">Lưu sửa</button>
+      </div>`;
+  };
+
+  function editOptionRow(i,k,value,isCorrect){
+    return `<div class="previewOptionEditRow ${isCorrect ? 'isCorrect' : ''}" data-edit-opt-for="${i}" data-k="${escHtml(k)}">
+      <div class="optLetter">${escHtml(k)}</div>
+      <textarea id="sameOpt_${i}_${escHtml(k)}" placeholder="Nhập đáp án ${escHtml(k)}">${escHtml(value || '')}</textarea>
+    </div>`;
+  }
+
+  window.__addInlinePreviewOption = function(i){
+    const keys = currentEditKeys(i);
+    const k = nextKey(keys);
+    if(!k) return alert('Đã đủ số lựa chọn.');
+    const box = document.getElementById(`sameOptions_${i}`);
+    if(box) box.insertAdjacentHTML('beforeend', editOptionRow(i,k,'',false));
+  };
+
+  window.__cancelSameLayoutEdit = function(i){ rerenderOne(i); };
+
+  window.__saveSameLayoutEdit = function(i){
+    const q = data()[i];
+    if(!q) return;
+    const question = (document.getElementById(`sameQuestion_${i}`)?.value || '').trim();
+    const answer = (document.getElementById(`sameAnswer_${i}`)?.value || '').trim().toUpperCase();
+    if(!question) return alert('Câu hỏi không được để trống.');
+    if(!answer) return alert('Đáp án đúng không được để trống.');
+    const options = {};
+    currentEditKeys(i).forEach(k=>{
+      const v = (document.getElementById(`sameOpt_${i}_${k}`)?.value || '').trim();
+      if(v) options[k] = v;
+    });
+    if(!Object.keys(options).length) return alert('Cần có ít nhất một đáp án lựa chọn.');
+    q.question = question;
+    q.options = options;
+    q.answer = answer;
+    // Giữ giải thích cũ nếu có, vì layout hiện tại chỉ hiển thị câu hỏi và đáp án.
+    rerenderOne(i);
+    if(typeof notify === 'function') notify('Đã cập nhật câu hỏi');
+  };
+})();
+
+// ===== FINAL_INLINE_EDIT_KEEP_EXISTING_CARD_20260625 =====
+// Sửa tại chỗ trên đúng layout card hiện tại, không thay card thành form nên không bị co/bung.
+(function(){
+  const LETTERS = ['A','B','C','D','E','F','G'];
+  function escHtml(s){
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function getData(){ return window.__previewImportData || []; }
+  function optionKeys(q){
+    const keys = Object.keys(q?.options || {}).map(k => String(k).toUpperCase());
+    return LETTERS.filter(k => keys.includes(k));
+  }
+  function nextKey(keys){ return LETTERS.find(k => !keys.includes(k)); }
+  function markCorrect(card, answer){
+    card.querySelectorAll('.previewAnswerOption').forEach(opt => {
+      const k = String(opt.dataset.k || '').toUpperCase();
+      opt.classList.toggle('correct', answer.includes(k));
+    });
+  }
+  function refreshCardOnly(i){
+    const q = getData()[i];
+    if(!q) return;
+    const open = window.__openImportPreviewModal;
+    if(typeof open === 'function'){
+      // render lại toàn preview để đồng bộ, nhưng giữ đúng layout xem
+      open(getData());
+    }
+  }
+
+  window.__editImportPreviewQuestion = function(i){
+    const data = getData();
+    const q = data[i];
+    const card = document.querySelector(`[data-pcard="${i}"]`);
+    if(!q || !card) return;
+    if(card.classList.contains('inlineEditing')) return;
+
+    card.dataset.backupHtml = card.innerHTML;
+    card.classList.add('inlineEditing');
+
+    const questionEl = card.querySelector('.previewQuestionText');
+    if(questionEl){
+      questionEl.setAttribute('contenteditable','true');
+      questionEl.dataset.field = 'question';
+    }
+
+    card.querySelectorAll('.previewAnswerOption').forEach(opt => {
+      const span = opt.querySelector('span');
+      if(span){
+        span.setAttribute('contenteditable','true');
+        span.dataset.optText = opt.dataset.k || '';
+      }
+    });
+
+    const badge = card.querySelector('.previewAnswerBadge');
+    if(badge){
+      badge.innerHTML = `Đáp án đúng: <input class="inlineCorrectInput" value="${escHtml(String(q.answer || '').toUpperCase())}" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z]/g,'')">`;
+      const input = badge.querySelector('input');
+      input?.addEventListener('input', () => markCorrect(card, String(input.value || '').toUpperCase()));
+    }
+
+    const grid = card.querySelector('.previewAnswerGrid');
+    if(grid && !card.querySelector('.inlineAddOptionMini')){
+      grid.insertAdjacentHTML('afterend', `<button class="inlineAddOptionMini" type="button" title="Thêm đáp án" onclick="window.__inlineAddPreviewOption(${i})">+</button>`);
+    }
+    if(!card.querySelector('.inlineEditActionsMini')){
+      card.insertAdjacentHTML('beforeend', `<div class="inlineEditActionsMini"><button class="btn" type="button" onclick="window.__cancelInlineKeepEdit(${i})">Hủy</button><button class="primary" type="button" onclick="window.__saveInlineKeepEdit(${i})">Lưu sửa</button></div>`);
+    }
+    questionEl?.focus();
+  };
+
+  window.__inlineAddPreviewOption = function(i){
+    const card = document.querySelector(`[data-pcard="${i}"]`);
+    const grid = card?.querySelector('.previewAnswerGrid');
+    if(!card || !grid) return;
+    const keys = Array.from(grid.querySelectorAll('.previewAnswerOption')).map(x => String(x.dataset.k || '').toUpperCase());
+    const k = nextKey(keys);
+    if(!k) return alert('Đã đủ số lựa chọn.');
+    grid.insertAdjacentHTML('beforeend', `<div class="previewAnswerOption" data-pi="${i}" data-k="${k}"><b>${k}</b><span contenteditable="true" data-opt-text="${k}"></span></div>`);
+    grid.querySelector(`[data-k="${k}"] span`)?.focus();
+  };
+
+  window.__cancelInlineKeepEdit = function(i){
+    const card = document.querySelector(`[data-pcard="${i}"]`);
+    if(!card) return;
+    card.innerHTML = card.dataset.backupHtml || card.innerHTML;
+    card.classList.remove('inlineEditing');
+    delete card.dataset.backupHtml;
+  };
+
+  window.__saveInlineKeepEdit = function(i){
+    const data = getData();
+    const q = data[i];
+    const card = document.querySelector(`[data-pcard="${i}"]`);
+    if(!q || !card) return;
+
+    const question = (card.querySelector('.previewQuestionText')?.textContent || '').trim();
+    const answer = (card.querySelector('.inlineCorrectInput')?.value || '').trim().toUpperCase();
+    if(!question) return alert('Câu hỏi không được để trống.');
+    if(!answer) return alert('Đáp án đúng không được để trống.');
+
+    const options = {};
+    card.querySelectorAll('.previewAnswerOption').forEach(opt => {
+      const k = String(opt.dataset.k || '').toUpperCase();
+      const v = (opt.querySelector('span')?.textContent || '').trim();
+      if(k && v) options[k] = v;
+    });
+    if(!Object.keys(options).length) return alert('Cần có ít nhất một đáp án lựa chọn.');
+
+    q.question = question;
+    q.options = options;
+    q.answer = answer;
+    refreshCardOnly(i);
+    if(typeof notify === 'function') notify('Đã cập nhật câu hỏi');
+  };
+})();
+
+// ===== INLINE_DELETE_OPTION_20260625 =====
+// Thêm nút xóa từng đáp án khi sửa trực tiếp trong Xem trước import.
+(function(){
+  function ensureDeleteButtons(card){
+    if(!card) return;
+    card.querySelectorAll('.previewAnswerOption').forEach(opt => {
+      if(opt.querySelector('.inlineDeleteOptionBtn')) return;
+      const k = opt.dataset.k || '';
+      opt.insertAdjacentHTML('beforeend', `<button class="inlineDeleteOptionBtn" type="button" title="Xóa đáp án ${k}" onclick="window.__deleteInlinePreviewOption(this)">×</button>`);
+    });
+  }
+  window.__deleteInlinePreviewOption = function(btn){
+    const opt = btn?.closest?.('.previewAnswerOption');
+    const card = btn?.closest?.('.previewQuestionCard');
+    if(!opt || !card) return;
+    const count = card.querySelectorAll('.previewAnswerOption').length;
+    if(count <= 1) return alert('Phải còn ít nhất 1 đáp án.');
+    const k = String(opt.dataset.k || '').toUpperCase();
+    const input = card.querySelector('.inlineCorrectInput');
+    if(input && k){
+      input.value = String(input.value || '').toUpperCase().replaceAll(k, '');
+      card.querySelectorAll('.previewAnswerOption').forEach(o => {
+        const ok = String(input.value || '').includes(String(o.dataset.k || '').toUpperCase());
+        o.classList.toggle('correct', ok);
+      });
+    }
+    opt.remove();
+  };
+
+  const oldEdit = window.__editImportPreviewQuestion;
+  window.__editImportPreviewQuestion = function(i){
+    if(typeof oldEdit === 'function') oldEdit.apply(this, arguments);
+    setTimeout(() => ensureDeleteButtons(document.querySelector(`[data-pcard="${i}"]`)), 0);
+  };
+
+  const oldAdd = window.__inlineAddPreviewOption;
+  window.__inlineAddPreviewOption = function(i){
+    if(typeof oldAdd === 'function') oldAdd.apply(this, arguments);
+    setTimeout(() => ensureDeleteButtons(document.querySelector(`[data-pcard="${i}"]`)), 0);
+  };
 })();
