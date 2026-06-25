@@ -667,152 +667,6 @@ document.addEventListener('DOMContentLoaded', init);
 })();
 
 
-// ===== FINAL_ADMIN_AUTO_CHECK_LOADING_EFFECT_20260613 =====
-// Admin tự check mỗi 10 giây + có hiệu ứng loading khi đang check.
-(function(){
-  const AUTO_MS = 10000;
-  let timer = null;
-  let checking = false;
-  let knownPendingIds = null;
-
-  function pendingIdsFrom(list){
-    return new Set((list || []).filter(x => x.status === 'pending').map(x => String(x.id)));
-  }
-
-  function ensureStyle(){
-    if(document.getElementById('adminAutoCheckStyle')) return;
-    const style = document.createElement('style');
-    style.id = 'adminAutoCheckStyle';
-    style.textContent = `
-      #adminAutoCheckChip{
-        position:fixed;right:18px;bottom:18px;z-index:99999;
-        min-width:168px;height:40px;padding:0 14px;border-radius:999px;
-        display:flex;align-items:center;justify-content:center;gap:9px;
-        border:1px solid rgba(232,212,168,.28);
-        background:linear-gradient(145deg,rgba(24,16,11,.94),rgba(8,6,5,.94));
-        color:#e8d4a8;font-weight:900;font-size:13px;
-        box-shadow:0 18px 46px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.05);
-        backdrop-filter:blur(12px);opacity:.78;transform:translateY(0);
-        transition:opacity .18s ease, transform .18s ease, border-color .18s ease, box-shadow .18s ease;
-        pointer-events:none;
-      }
-      #adminAutoCheckChip.hidden{display:none!important}
-      #adminAutoCheckChip.is-checking{opacity:1;transform:translateY(-2px);border-color:rgba(232,212,168,.48);box-shadow:0 22px 58px rgba(0,0,0,.44),0 0 24px rgba(232,212,168,.14)}
-      #adminAutoCheckChip .autoDot{
-        width:18px;height:18px;border-radius:50%;border:2px solid rgba(232,212,168,.24);border-top-color:#e8d4a8;
-      }
-      #adminAutoCheckChip.is-checking .autoDot{animation:autoCheckSpin .72s linear infinite}
-      #adminAutoCheckChip.is-idle .autoDot{border-color:rgba(114,197,140,.38);background:rgba(114,197,140,.18)}
-      @keyframes autoCheckSpin{to{transform:rotate(360deg)}}
-      #refreshBtn.auto-checking{position:relative;color:transparent!important;pointer-events:none}
-      #refreshBtn.auto-checking:after{
-        content:'';position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;
-        border-radius:50%;border:2px solid rgba(232,212,168,.28);border-top-color:#e8d4a8;animation:autoCheckSpin .72s linear infinite;
-      }
-      @media(max-width:760px){#adminAutoCheckChip{right:12px;bottom:12px;min-width:140px;height:36px;font-size:12px}}
-    `;
-    document.head.appendChild(style);
-  }
-
-  function ensureChip(){
-    ensureStyle();
-    let chip = document.getElementById('adminAutoCheckChip');
-    if(!chip){
-      chip = document.createElement('div');
-      chip.id = 'adminAutoCheckChip';
-      chip.className = 'is-idle';
-      chip.innerHTML = '<span class="autoDot" aria-hidden="true"></span><span class="autoText">Tự check 10s</span>';
-      document.body.appendChild(chip);
-    }
-    return chip;
-  }
-
-  function setChecking(on){
-    const chip = ensureChip();
-    const text = chip.querySelector('.autoText');
-    chip.classList.toggle('is-checking', !!on);
-    chip.classList.toggle('is-idle', !on);
-    chip.classList.remove('hidden');
-    if(text) text.textContent = on ? 'Đang kiểm tra...' : 'Tự check 10s';
-    const btn = $('refreshBtn');
-    if(btn){
-      btn.classList.toggle('auto-checking', !!on);
-      btn.title = on ? 'Đang tự kiểm tra yêu cầu mới...' : 'Admin tự kiểm tra yêu cầu mới mỗi 10 giây';
-    }
-  }
-
-  function notifyNew(count){
-    if(count <= 0) return;
-    toast(count === 1 ? 'Có 1 yêu cầu sửa mới' : `Có ${count} yêu cầu sửa mới`);
-    const oldTitle = document.title;
-    document.title = `(${count}) Yêu cầu sửa mới`;
-    setTimeout(() => { document.title = oldTitle || 'Learning Hub Admin'; }, 3500);
-  }
-
-  async function autoCheck(){
-    if(checking) return;
-    if(!client || !user || !profile || !isEditor()) return;
-    if(document.body.classList.contains('is-busy')) return;
-    checking = true;
-    setChecking(true);
-    try{
-      const oldPending = knownPendingIds || pendingIdsFrom(cache.requests);
-      const req = await client.from('edit_requests').select('*').order('created_at', { ascending:false });
-      if(req.error) return;
-
-      const newRequests = req.data || [];
-      const newPending = pendingIdsFrom(newRequests);
-      let newCount = 0;
-      if(knownPendingIds){
-        newPending.forEach(id => { if(!oldPending.has(id)) newCount++; });
-      }
-      knownPendingIds = newPending;
-      cache.requests = newRequests;
-
-      if(isAdmin()){
-        const logs = await client.from('admin_logs').select('*').order('created_at', { ascending:false }).limit(500);
-        if(!logs.error) cache.logs = logs.data || [];
-      }
-
-      render();
-      notifyNew(newCount);
-    }catch(e){
-      console.warn('[Admin auto check]', e);
-    }finally{
-      checking = false;
-      setChecking(false);
-    }
-  }
-
-  function startAutoCheck(){
-    ensureChip();
-    setChecking(false);
-    if(timer) return;
-    timer = setInterval(autoCheck, AUTO_MS);
-    // Đợi vòng tròn chạy đủ 10 giây rồi mới tự check
-    // setTimeout(autoCheck, 2500);
-  }
-
-  const oldLoadAll = typeof loadAll === 'function' ? loadAll : null;
-  if(oldLoadAll && !window.__adminAutoCheckLoadingPatched){
-    window.__adminAutoCheckLoadingPatched = true;
-    loadAll = async function(){
-      const res = await oldLoadAll.apply(this, arguments);
-      knownPendingIds = pendingIdsFrom(cache.requests);
-      startAutoCheck();
-      return res;
-    };
-    window.loadAll = loadAll;
-  }
-
-  document.addEventListener('DOMContentLoaded', () => {
-    ensureChip();
-    setChecking(false);
-    setTimeout(startAutoCheck, 1500);
-  });
-})();
-
-
 // ===== FINAL_ADMIN_SHOW_LAST_ACTIVITY_20260613 =====
 // Tab Người dùng: hiển thị hoạt động gần nhất thay vì chỉ login.
 (function(){
@@ -4538,3 +4392,1082 @@ async function sendLoginToDiscord(email, role) {
   }
 }
 
+
+
+// ===== PATCH_AVATAR_ROLE_ACTIONS_APPROVAL_20260625 =====
+(function(){
+  function avUrl(p){return p?.avatar_url||p?.picture||p?.photo_url||p?.image_url||'';}
+  function avChar(p){return String(p?.email||p?.id||'?').trim().slice(0,1).toUpperCase()||'?';}
+  function avHtml(p,cls='userAvatar'){
+    const u=avUrl(p);
+    if(u) return `<button class="${cls}" onclick="openUserAvatar('${esc(p.id)}')" title="Xem avatar"><img src="${esc(u)}" alt="Avatar" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('button').classList.add('avatarBroken');this.remove();"></button>`;
+    return `<button class="${cls} avatarFallback" onclick="openUserAvatar('${esc(p.id)}')" title="Xem avatar"><span>${esc(avChar(p))}</span></button>`;
+  }
+  function rBadge(p){const r=p?.role||'user';return `<span class="badge roleBadge role-${esc(r)}">${esc(r)}</span>`;}
+  function menu(html){return `<details class="userActionMenu"><summary>Thao tác</summary><div class="userActionMenuBox">${html}</div></details>`;}
+  function at(p){return p?.last_activity||p?.last_login||p?.updated_at||p?.created_at||'';}
+  function ams(p){const n=new Date(at(p)).getTime();return Number.isFinite(n)?n:0;}
+  function atext(p){const t=at(p); if(!t)return 'Chưa có'; const d=Date.now()-new Date(t).getTime(); if(!Number.isFinite(d))return date(t); if(d<120000)return 'Đang hoạt động'; if(d<3600000)return Math.max(1,Math.floor(d/60000))+' phút trước'; return date(t);}
+
+  window.openUserAvatar=function(uid){
+    const p=(cache.profiles||[]).find(x=>String(x.id)===String(uid)); if(!p)return alert('Không tìm thấy người dùng.');
+    const u=avUrl(p), name=p.email||p.id||'Người dùng';
+    openModal('Avatar - '+name, u ? `<div class="avatarPreview"><img src="${esc(u)}" alt="Avatar" referrerpolicy="no-referrer"><p class="muted">${esc(name)}</p></div>` : `<div class="avatarPreview avatarPreviewFallback"><div>${esc(avChar(p))}</div><p class="muted">Chưa có ảnh avatar.</p><p class="muted">${esc(name)}</p></div>`);
+  };
+
+  const oldLP=typeof loadProfile==='function'?loadProfile:null;
+  if(oldLP&&!window.__avatarProfilePatch){window.__avatarProfilePatch=true;loadProfile=async function(){const out=await oldLP.apply(this,arguments);try{const a=user?.user_metadata?.avatar_url||user?.user_metadata?.picture||'';if(a&&profile&&profile.avatar_url!==a){await client.from('profiles').update({avatar_url:a,email:user.email||profile.email}).eq('id',user.id);profile.avatar_url=a;}}catch(e){console.warn('[avatar]',e)}return out};window.loadProfile=loadProfile;}
+
+  window.renderUsers=renderUsers=function(){
+    const arr=(cache.profiles||[]).filter(p=>match(`${p.email||''} ${p.role||''} ${p.id} ${p.last_activity||''}`)).sort((a,b)=>ams(b)-ams(a));
+    $('userList').innerHTML='<div class="userRow muted tableHead"><b></b><b>Email</b><b>Role</b><b>TT</b><b>Hoạt động gần nhất</b><b>Hành động</b></div>'+arr.map(p=>{
+      const acts=isAdmin()?`<button class="act" onclick="viewUserEdits('${p.id}')">Lịch sử</button><button class="act ${isBlocked(p)?'ok':'bad'}" onclick="toggleBlock('${p.id}',${!isBlocked(p)})">${isBlocked(p)?'Unblock':'Block'}</button><button class="act warn" onclick="setRole('${p.id}','${p.role==='editor'?'user':'editor'}')">${p.role==='editor'?'Gỡ editor':'Cho editor'}</button><button class="act warn" onclick="setRole('${p.id}','${p.role==='admin'?'user':'admin'}')">${p.role==='admin'?'Gỡ admin':'Cho admin'}</button>`:`<button class="act" onclick="viewUserEdits('${p.id}')">Lịch sử</button>`;
+      const tx=atext(p), cls=tx==='Đang hoạt động'?'activityNow':'';
+      return `<div class="userRow activitySortedRow ${cls}"><div class="avatarCell">${avHtml(p)}</div><div><div class="mail">${esc(p.email||p.id)}</div><div class="uid">${esc(p.id)}</div></div><div>${rBadge(p)}</div><div>${isBlocked(p)?badge('blocked'):badge('active')}</div><div><b class="lastActivity ${cls}">${esc(tx)}</b><div class="uid">${esc(date(at(p)))}</div></div><div class="actions compactUserActions">${menu(acts)}</div></div>`;
+    }).join('');
+  };
+
+  const oldReject=typeof rejectUser==='function'?rejectUser:null;
+  if(oldReject&&!window.__rejectReloadPatch){window.__rejectReloadPatch=true;rejectUser=async function(uid){await oldReject.apply(this,arguments);try{await loadAll()}catch(e){renderApprovals?.();renderUsers?.();}};window.rejectUser=rejectUser;}
+
+  if(typeof renderApprovals==='function'){
+    window.renderApprovals=renderApprovals=function(){
+      const pending=(cache.profiles||[]).filter(p=>p.approved===false), approved=(cache.profiles||[]).filter(p=>p.approved!==false);
+      const ab=document.getElementById('approvalBadge'); if(ab){ab.textContent=pending.length;ab.classList.toggle('hidden',pending.length===0)}
+      const ep=document.getElementById('afPending'),ea=document.getElementById('afApproved'),eall=document.getElementById('afAll'); if(ep)ep.textContent=pending.length;if(ea)ea.textContent=approved.length;if(eall)eall.textContent=(cache.profiles||[]).length;
+      const el=document.getElementById('approvalList'); if(!el)return; let arr=cache.profiles||[]; const f=document.querySelector('.approvalFilter.active')?.dataset?.af||'pending'; if(f==='pending')arr=arr.filter(p=>p.approved===false); else if(f==='approved')arr=arr.filter(p=>p.approved!==false);
+      const k=(document.getElementById('search')?.value||'').trim().toLowerCase(); if(k)arr=arr.filter(p=>`${p.email||''} ${p.id||''}`.toLowerCase().includes(k));
+      if(!arr.length){el.innerHTML='<p class="muted">'+(f==='pending'?'Không có tài khoản nào đang chờ duyệt.':'Không có.')+'</p>';return;}
+      el.innerHTML=arr.map(p=>{const pend=p.approved===false; const status=pend?'<span class="badge rejected">Chờ duyệt</span>':'<span class="badge approved">Đã duyệt</span>'; const acts=pend?`<button class="act ok" onclick="approveUser('${esc(p.id)}')">Phê duyệt</button><button class="act bad" onclick="rejectUser('${esc(p.id)}')">Từ chối & xóa</button>`:`<button class="act warn" onclick="revokeApproval('${esc(p.id)}')">Thu hồi quyền</button>`; return `<div class="approvalCard ${pend?'isPending':''}">${avHtml(p,'userAvatar approvalAvatar')}<div class="approvalCardInfo"><div class="mail">${esc(p.email||p.id)}</div><div class="meta">${rBadge(p)} ${status} · Đăng ký: ${esc(date(p.created_at))} · Login: ${esc(date(p.last_login||p.created_at))}</div></div><div class="approvalCardActions">${isAdmin()?menu(acts):'<span class="muted">Chỉ admin</span>'}</div></div>`}).join('');
+    };
+  }
+})();
+
+
+// ===== FINAL_USER_AVATAR_DOTS_ROLE_UI_20260625 =====
+(function(){
+  function avatarUrl(p){
+    return p?.avatar_url || p?.avatar || p?.picture || p?.photo_url || p?.image_url || '';
+  }
+  function avatarLetter(p){
+    return String(p?.email || p?.id || '?').trim().slice(0,1).toUpperCase() || '?';
+  }
+  function avatarButton(p){
+    const src = avatarUrl(p);
+    const title = esc(p?.email || 'Avatar');
+    if(src){
+      return `<button class="lhUserAvatar" type="button" title="Phóng to avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><img src="${esc(src)}" alt="${title}" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.classList.add('isBroken');this.remove();"></button>`;
+    }
+    return `<button class="lhUserAvatar avatarNoImage" type="button" title="Chưa có avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><span>${esc(avatarLetter(p))}</span></button>`;
+  }
+  function roleBadgeFinal(role){
+    const r = role || 'user';
+    return `<span class="badge lhRoleBadge lhRole-${esc(r)}">${esc(r)}</span>`;
+  }
+  function actionMenu(html){
+    return `<details class="lhDotsMenu"><summary title="Thao tác">...</summary><div class="lhDotsMenuBox">${html}</div></details>`;
+  }
+  function actTime(p){
+    return p?.last_activity || p?.last_login || p?.updated_at || p?.created_at || '';
+  }
+  function actMs(p){
+    const n = new Date(actTime(p)).getTime();
+    return Number.isFinite(n) ? n : 0;
+  }
+  function actText(p){
+    const t = actTime(p);
+    if(!t) return 'Chưa có';
+    const diff = Date.now() - new Date(t).getTime();
+    if(!Number.isFinite(diff)) return date(t);
+    if(diff < 2 * 60 * 1000) return 'Đang hoạt động';
+    if(diff < 60 * 60 * 1000) return Math.max(1, Math.floor(diff / 60000)) + ' phút trước';
+    return date(t);
+  }
+
+  window.openUserAvatarFinal = function(uid){
+    const p = (cache.profiles || []).find(x => String(x.id) === String(uid));
+    if(!p) return alert('Không tìm thấy người dùng.');
+    const src = avatarUrl(p);
+    const name = p.email || p.id || 'Người dùng';
+    if(src){
+      openModal('Avatar - ' + name, `<div class="lhAvatarPreview"><img src="${esc(src)}" alt="Avatar" referrerpolicy="no-referrer"><p class="muted">${esc(name)}</p></div>`);
+    }else{
+      openModal('Avatar - ' + name, `<div class="lhAvatarPreview lhAvatarPreviewEmpty"><div>${esc(avatarLetter(p))}</div><p class="muted">Tài khoản này chưa có avatar trong database.</p><p class="muted">${esc(name)}</p></div>`);
+    }
+  };
+
+  // Đồng bộ avatar Google của tài khoản admin/editor đang đăng nhập vào profiles.
+  const oldLoadProfile = typeof loadProfile === 'function' ? loadProfile : null;
+  if(oldLoadProfile && !window.__lhAvatarLoadProfileFinal){
+    window.__lhAvatarLoadProfileFinal = true;
+    loadProfile = async function(){
+      const out = await oldLoadProfile.apply(this, arguments);
+      try{
+        const a = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || '';
+        if(a && profile){
+          await client.from('profiles').update({ avatar_url:a, email:user.email || profile.email }).eq('id', user.id);
+          profile.avatar_url = a;
+        }
+      }catch(e){ console.warn('[avatar sync]', e); }
+      return out;
+    };
+    window.loadProfile = loadProfile;
+  }
+
+  window.renderUsers = renderUsers = function(){
+    const arr = (cache.profiles || [])
+      .filter(p => match(`${p.email || ''} ${p.role || ''} ${p.id || ''} ${p.last_activity || ''}`))
+      .sort((a,b) => actMs(b) - actMs(a));
+
+    $('userList').innerHTML = `<div class="userRow muted tableHead lhUserRowFinal">
+      <b>Avatar</b><b>Email</b><b>Role</b><b>TT</b><b>Hoạt động gần nhất</b><b>Hành động</b>
+    </div>` + arr.map(p => {
+      const acts = isAdmin()
+        ? `<button class="act" onclick="viewUserEdits('${p.id}')">Lịch sử</button>
+           <button class="act ${isBlocked(p) ? 'ok' : 'bad'}" onclick="toggleBlock('${p.id}',${!isBlocked(p)})">${isBlocked(p) ? 'Unblock' : 'Block'}</button>
+           <button class="act warn" onclick="setRole('${p.id}','${p.role === 'editor' ? 'user' : 'editor'}')">${p.role === 'editor' ? 'Gỡ editor' : 'Cho editor'}</button>
+           <button class="act warn" onclick="setRole('${p.id}','${p.role === 'admin' ? 'user' : 'admin'}')">${p.role === 'admin' ? 'Gỡ admin' : 'Cho admin'}</button>`
+        : `<button class="act" onclick="viewUserEdits('${p.id}')">Lịch sử</button>`;
+      const activeText = actText(p);
+      const activeClass = activeText === 'Đang hoạt động' ? 'activityNow' : '';
+      return `<div class="userRow activitySortedRow lhUserRowFinal ${activeClass}">
+        <div class="lhAvatarCell">${avatarButton(p)}</div>
+        <div><div class="mail">${esc(p.email || p.id)}</div><div class="uid">${esc(p.id)}</div></div>
+        <div>${roleBadgeFinal(p.role)}</div>
+        <div>${isBlocked(p) ? badge('blocked') : badge('active')}</div>
+        <div><b class="lastActivity ${activeClass}">${esc(activeText)}</b><div class="uid">${esc(date(actTime(p)))}</div></div>
+        <div class="actions lhActionsCell">${actionMenu(acts)}</div>
+      </div>`;
+    }).join('');
+  };
+
+  // Nếu đang ở tab Người dùng sau khi file load xong thì render lại ngay.
+  setTimeout(() => { try{ renderUsers(); }catch(e){} }, 300);
+})();
+
+
+// ===== FINAL_DOTS_MENU_FIXED_NO_JITTER_20260625 =====
+(function(){
+  function avatarUrl(p){ return p?.avatar_url || p?.avatar || p?.picture || p?.photo_url || p?.image_url || ''; }
+  function avatarLetter(p){ return String(p?.email || p?.id || '?').trim().slice(0,1).toUpperCase() || '?'; }
+  function avatarButton(p){
+    const src = avatarUrl(p);
+    const title = esc(p?.email || 'Avatar');
+    if(src){
+      return `<button class="lhUserAvatar" type="button" title="Phóng to avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><img src="${esc(src)}" alt="${title}" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.classList.add('isBroken');this.remove();"></button>`;
+    }
+    return `<button class="lhUserAvatar avatarNoImage" type="button" title="Chưa có avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><span>${esc(avatarLetter(p))}</span></button>`;
+  }
+  function roleBadgeFinal(role){
+    const r = role || 'user';
+    return `<span class="badge lhRoleBadge lhRole-${esc(r)}">${esc(r)}</span>`;
+  }
+  function actTime(p){ return p?.last_activity || p?.last_login || p?.updated_at || p?.created_at || ''; }
+  function actMs(p){ const n = new Date(actTime(p)).getTime(); return Number.isFinite(n) ? n : 0; }
+  function actText(p){
+    const t = actTime(p);
+    if(!t) return 'Chưa có';
+    const diff = Date.now() - new Date(t).getTime();
+    if(!Number.isFinite(diff)) return date(t);
+    if(diff < 2 * 60 * 1000) return 'Đang hoạt động';
+    if(diff < 60 * 60 * 1000) return Math.max(1, Math.floor(diff / 60000)) + ' phút trước';
+    return date(t);
+  }
+
+  window.closeUserActionMenuFinal = function(){
+    document.getElementById('lhActionBackdrop')?.remove();
+    document.getElementById('lhActionMenuFloat')?.remove();
+    document.querySelectorAll('.lhDotsBtn.isOpen').forEach(b => b.classList.remove('isOpen'));
+  };
+
+  window.openUserActionMenuFinal = function(ev, uid){
+    ev?.preventDefault?.();
+    ev?.stopPropagation?.();
+    const btn = ev?.currentTarget || ev?.target;
+    const p = (cache.profiles || []).find(x => String(x.id) === String(uid));
+    if(!p) return alert('Không tìm thấy người dùng.');
+
+    const wasOpen = btn?.classList?.contains('isOpen');
+    closeUserActionMenuFinal();
+    if(wasOpen) return;
+    btn?.classList?.add('isOpen');
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'lhActionBackdrop';
+    backdrop.onclick = closeUserActionMenuFinal;
+    document.body.appendChild(backdrop);
+
+    const menu = document.createElement('div');
+    menu.id = 'lhActionMenuFloat';
+    menu.innerHTML = isAdmin()
+      ? `<button class="act" onclick="viewUserEdits('${p.id}');closeUserActionMenuFinal();">Lịch sử</button>
+         <button class="act ${isBlocked(p) ? 'ok' : 'bad'}" onclick="toggleBlock('${p.id}',${!isBlocked(p)});closeUserActionMenuFinal();">${isBlocked(p) ? 'Unblock' : 'Block'}</button>
+         <button class="act warn" onclick="setRole('${p.id}','${p.role === 'editor' ? 'user' : 'editor'}');closeUserActionMenuFinal();">${p.role === 'editor' ? 'Gỡ editor' : 'Cho editor'}</button>
+         <button class="act warn" onclick="setRole('${p.id}','${p.role === 'admin' ? 'user' : 'admin'}');closeUserActionMenuFinal();">${p.role === 'admin' ? 'Gỡ admin' : 'Cho admin'}</button>`
+      : `<button class="act" onclick="viewUserEdits('${p.id}');closeUserActionMenuFinal();">Lịch sử</button>`;
+    document.body.appendChild(menu);
+
+    const r = btn.getBoundingClientRect();
+    const mw = menu.offsetWidth || 190;
+    const mh = menu.offsetHeight || 190;
+    let left = Math.min(window.innerWidth - mw - 14, Math.max(14, r.right - mw));
+    let top = r.bottom + 8;
+    if(top + mh > window.innerHeight - 14) top = Math.max(14, r.top - mh - 8);
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+  };
+
+  window.openUserAvatarFinal = window.openUserAvatarFinal || function(uid){
+    const p = (cache.profiles || []).find(x => String(x.id) === String(uid));
+    if(!p) return alert('Không tìm thấy người dùng.');
+    const src = avatarUrl(p), name = p.email || p.id || 'Người dùng';
+    if(src) openModal('Avatar - ' + name, `<div class="lhAvatarPreview"><img src="${esc(src)}" alt="Avatar" referrerpolicy="no-referrer"><p class="muted">${esc(name)}</p></div>`);
+    else openModal('Avatar - ' + name, `<div class="lhAvatarPreview lhAvatarPreviewEmpty"><div>${esc(avatarLetter(p))}</div><p class="muted">Tài khoản này chưa có avatar trong database.</p><p class="muted">${esc(name)}</p></div>`);
+  };
+
+  window.renderUsers = renderUsers = function(){
+    closeUserActionMenuFinal();
+    const arr = (cache.profiles || [])
+      .filter(p => match(`${p.email || ''} ${p.role || ''} ${p.id || ''} ${p.last_activity || ''}`))
+      .sort((a,b) => actMs(b) - actMs(a));
+    $('userList').innerHTML = `<div class="userRow muted tableHead lhUserRowFinal">
+      <b>Avatar</b><b>Email</b><b>Role</b><b>TT</b><b>Hoạt động gần nhất</b><b>Hành động</b>
+    </div>` + arr.map(p => {
+      const activeText = actText(p);
+      const activeClass = activeText === 'Đang hoạt động' ? 'activityNow' : '';
+      return `<div class="userRow activitySortedRow lhUserRowFinal ${activeClass}">
+        <div class="lhAvatarCell">${avatarButton(p)}</div>
+        <div><div class="mail">${esc(p.email || p.id)}</div><div class="uid">${esc(p.id)}</div></div>
+        <div>${roleBadgeFinal(p.role)}</div>
+        <div>${isBlocked(p) ? badge('blocked') : badge('active')}</div>
+        <div><b class="lastActivity ${activeClass}">${esc(activeText)}</b><div class="uid">${esc(date(actTime(p)))}</div></div>
+        <div class="actions lhActionsCell"><button class="lhDotsBtn" type="button" title="Thao tác" onclick="openUserActionMenuFinal(event,'${esc(p.id)}')">...</button></div>
+      </div>`;
+    }).join('');
+  };
+
+  document.addEventListener('click', e => {
+    if(e.target.closest('#lhActionMenuFloat') || e.target.closest('.lhDotsBtn')) return;
+    closeUserActionMenuFinal();
+  }, true);
+  window.addEventListener('resize', closeUserActionMenuFinal);
+  window.addEventListener('scroll', closeUserActionMenuFinal, true);
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') closeUserActionMenuFinal(); });
+})();
+
+
+// ===== REALTIME_ADMIN_UPDATES_NO_10S_20260625 =====
+(function(){
+  let rtChannel = null;
+  let rtTimer = null;
+  let rtBusy = false;
+  let rtPendingNotifyIds = new Set();
+  let rtRefreshTimer = null;
+
+  function rtSetChip(text, mode){
+    let chip = document.getElementById('adminAutoCheckChip');
+    if(!chip){
+      chip = document.createElement('div');
+      chip.id = 'adminAutoCheckChip';
+      chip.innerHTML = '<span class="autoDot" aria-hidden="true"></span><span class="autoText"></span>';
+      document.body.appendChild(chip);
+    }
+    chip.classList.remove('hidden','is-checking','is-idle','is-live','is-error');
+    chip.classList.add(mode || 'is-live');
+    const t = chip.querySelector('.autoText');
+    if(t) t.textContent = text || 'Realtime';
+  }
+
+  function rtPendingSet(){
+    return new Set((cache.requests || []).filter(x => x.status === 'pending').map(x => String(x.id)));
+  }
+
+  async function rtReloadLight(reason, payload){
+    if(rtBusy || !client || !user || !profile || !isEditor()) return;
+    rtBusy = true;
+    rtSetChip('Realtime...', 'is-checking');
+    try{
+      const oldPending = rtPendingSet();
+      const [profiles, requests, history] = await Promise.all([
+        client.from('profiles').select('*').order('last_activity', { ascending:false, nullsFirst:false }),
+        client.from('edit_requests').select('*').order('created_at', { ascending:false }),
+        client.from('question_history').select('*').order('created_at', { ascending:false }).limit(500)
+      ]);
+      if(!profiles.error) cache.profiles = profiles.data || [];
+      if(!requests.error) cache.requests = requests.data || [];
+      if(!history.error) cache.history = history.data || [];
+      if(isAdmin()){
+        const logs = await client.from('admin_logs').select('*').order('created_at', { ascending:false }).limit(500);
+        if(!logs.error) cache.logs = logs.data || [];
+      }
+
+      // Nếu câu hỏi đổi thì tải lại toàn bộ để tab Câu hỏi luôn đúng.
+      if(reason === 'questions'){
+        try{ await loadAll(); return; }catch(e){ console.warn('[realtime full reload]', e); }
+      }else{
+        render();
+        if(typeof renderApprovals === 'function') renderApprovals();
+      }
+
+      const newPending = rtPendingSet();
+      let added = 0;
+      newPending.forEach(id => { if(!oldPending.has(id) && !rtPendingNotifyIds.has(id)){ added++; rtPendingNotifyIds.add(id); } });
+      if(added > 0) toast(added === 1 ? 'Có 1 yêu cầu mới' : `Có ${added} yêu cầu mới`);
+    }catch(e){
+      console.warn('[Admin realtime]', e);
+      rtSetChip('Realtime lỗi', 'is-error');
+    }finally{
+      rtBusy = false;
+      if(!document.hidden) rtSetChip('Realtime', 'is-live');
+    }
+  }
+
+  function rtDebounce(reason, payload){
+    clearTimeout(rtRefreshTimer);
+    rtRefreshTimer = setTimeout(() => rtReloadLight(reason, payload), 220);
+  }
+
+  window.startAdminRealtime = function(){
+    if(!client || !user || !profile || !isEditor()) return;
+    if(rtChannel) return;
+    rtPendingNotifyIds = rtPendingSet();
+    rtSetChip('Realtime', 'is-live');
+    try{
+      rtChannel = client.channel('learning-hub-admin-realtime')
+        .on('postgres_changes', { event:'*', schema:'public', table:'edit_requests' }, p => rtDebounce('edit_requests', p))
+        .on('postgres_changes', { event:'*', schema:'public', table:'profiles' }, p => rtDebounce('profiles', p))
+        .on('postgres_changes', { event:'*', schema:'public', table:'question_history' }, p => rtDebounce('question_history', p))
+        .on('postgres_changes', { event:'*', schema:'public', table:'subject_requests' }, p => {
+          rtDebounce('subject_requests', p);
+          if(typeof loadSubjectRequests === 'function') setTimeout(loadSubjectRequests, 250);
+        })
+        .on('postgres_changes', { event:'*', schema:'public', table:'questions' }, p => rtDebounce('questions', p))
+        .subscribe(status => {
+          if(status === 'SUBSCRIBED') rtSetChip('Realtime', 'is-live');
+          if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') rtSetChip('Realtime lỗi', 'is-error');
+        });
+    }catch(e){
+      console.warn('[startAdminRealtime]', e);
+      rtSetChip('Realtime lỗi', 'is-error');
+    }
+  };
+
+  window.stopAdminRealtime = function(){
+    try{ if(rtChannel) client.removeChannel(rtChannel); }catch(e){}
+    rtChannel = null;
+  };
+
+  const oldLoadAll = typeof loadAll === 'function' ? loadAll : null;
+  if(oldLoadAll && !window.__adminRealtimeLoadAllPatched){
+    window.__adminRealtimeLoadAllPatched = true;
+    loadAll = async function(){
+      const out = await oldLoadAll.apply(this, arguments);
+      try{ startAdminRealtime(); }catch(e){}
+      return out;
+    };
+    window.loadAll = loadAll;
+  }
+
+  // Tắt chip/vòng tự check 10s cũ nếu còn tồn tại; realtime thay thế nó.
+  const style = document.createElement('style');
+  style.textContent = `
+    #adminAutoCheckChip{min-width:auto!important;width:auto!important;height:34px!important;padding:0 12px!important;pointer-events:none!important;}
+    #adminAutoCheckChip .autoText{display:inline!important;font-size:12px!important;}
+    #adminAutoCheckChip .autoDot{width:9px!important;height:9px!important;border-radius:50%!important;border:0!important;animation:none!important;background:var(--ok)!important;box-shadow:0 0 0 0 rgba(114,197,140,.45)!important;}
+    #adminAutoCheckChip.is-checking .autoDot{background:var(--gold2)!important;animation:autoCheckSpin .65s linear infinite!important;}
+    #adminAutoCheckChip.is-error .autoDot{background:var(--bad)!important;}
+  `;
+  document.head.appendChild(style);
+})();
+
+
+// ===== KILL_OLD_10S_AUTO_CHECK_20260625 =====
+(function(){
+  // Xóa text/vòng "Realtime" cũ. Realtime sẽ tự bật sau loadAll.
+  function killOldAutoCheckText(){
+    const chip = document.getElementById('adminAutoCheckChip');
+    if(chip){
+      const text = chip.querySelector('.autoText');
+      if(text && /Realtime|Tự check|10s/i.test(text.textContent || '')) text.textContent = 'Realtime';
+      chip.classList.remove('is-idle');
+      chip.classList.add('is-live');
+    }
+  }
+  document.addEventListener('DOMContentLoaded', killOldAutoCheckText);
+  setTimeout(killOldAutoCheckText, 300);
+  setTimeout(killOldAutoCheckText, 1500);
+})();
+
+
+// ===== MOVE_REALTIME_CHIP_NEXT_TO_SEARCH_20260625 =====
+(function(){
+  function moveRealtimeChipNextToSearch(){
+    const chip = document.getElementById('adminAutoCheckChip');
+    const topTools = document.querySelector('.topTools');
+    if(!chip || !topTools) return;
+
+    chip.classList.add('realtimeTopChip');
+
+    const searchWrap = document.querySelector('.searchWrap');
+    const searchInput = document.getElementById('search');
+
+    if(searchWrap && searchWrap.parentElement === topTools){
+      searchWrap.insertAdjacentElement('afterend', chip);
+    }else if(searchInput && searchInput.parentElement === topTools){
+      searchInput.insertAdjacentElement('afterend', chip);
+    }else{
+      topTools.insertBefore(chip, topTools.firstChild);
+    }
+  }
+
+  const oldStartRealtimeMoveChip = window.startAdminRealtime;
+  if(typeof oldStartRealtimeMoveChip === 'function' && !window.__moveRealtimeChipPatched){
+    window.__moveRealtimeChipPatched = true;
+    window.startAdminRealtime = function(){
+      const out = oldStartRealtimeMoveChip.apply(this, arguments);
+      setTimeout(moveRealtimeChipNextToSearch, 50);
+      setTimeout(moveRealtimeChipNextToSearch, 500);
+      return out;
+    };
+  }
+
+  const oldLoadAllMoveChip = typeof loadAll === 'function' ? loadAll : null;
+  if(oldLoadAllMoveChip && !window.__moveRealtimeChipLoadAllPatched){
+    window.__moveRealtimeChipLoadAllPatched = true;
+    loadAll = async function(){
+      const out = await oldLoadAllMoveChip.apply(this, arguments);
+      setTimeout(moveRealtimeChipNextToSearch, 80);
+      setTimeout(moveRealtimeChipNextToSearch, 600);
+      return out;
+    };
+    window.loadAll = loadAll;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(moveRealtimeChipNextToSearch, 300);
+    setTimeout(moveRealtimeChipNextToSearch, 1500);
+  });
+})();
+
+
+// ===== USER_DOTS_REVOKE_APPROVAL_AVATAR_APPROVALS_20260625 =====
+(function(){
+  function uAvatarUrl(p){ return p?.avatar_url || p?.avatar || p?.picture || p?.photo_url || p?.image_url || ''; }
+  function uAvatarLetter(p){ return String(p?.email || p?.id || '?').trim().slice(0,1).toUpperCase() || '?'; }
+  function uAvatarButton(p, extraClass=''){
+    const src = uAvatarUrl(p);
+    const cls = `lhUserAvatar ${extraClass}`.trim();
+    if(src){
+      return `<button class="${cls}" type="button" title="Phóng to avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><img src="${esc(src)}" alt="Avatar" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.classList.add('isBroken');this.remove();"></button>`;
+    }
+    return `<button class="${cls} avatarNoImage" type="button" title="Chưa có avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><span>${esc(uAvatarLetter(p))}</span></button>`;
+  }
+  function roleBadgeFinal(role){
+    const r = role || 'user';
+    return `<span class="badge lhRoleBadge lhRole-${esc(r)}">${esc(r)}</span>`;
+  }
+  function actTime(p){ return p?.last_activity || p?.last_login || p?.updated_at || p?.created_at || ''; }
+  function actMs(p){ const n = new Date(actTime(p)).getTime(); return Number.isFinite(n) ? n : 0; }
+  function actText(p){
+    const t = actTime(p);
+    if(!t) return 'Chưa có';
+    const diff = Date.now() - new Date(t).getTime();
+    if(!Number.isFinite(diff)) return date(t);
+    if(diff < 2 * 60 * 1000) return 'Đang hoạt động';
+    if(diff < 60 * 60 * 1000) return Math.max(1, Math.floor(diff / 60000)) + ' phút trước';
+    return date(t);
+  }
+
+  window.openUserAvatarFinal = window.openUserAvatarFinal || function(uid){
+    const p = (cache.profiles || []).find(x => String(x.id) === String(uid));
+    if(!p) return alert('Không tìm thấy người dùng.');
+    const src = uAvatarUrl(p), name = p.email || p.id || 'Người dùng';
+    if(src){
+      openModal('Avatar - ' + name, `<div class="lhAvatarPreview"><img src="${esc(src)}" alt="Avatar" referrerpolicy="no-referrer"><p class="muted">${esc(name)}</p></div>`);
+    }else{
+      openModal('Avatar - ' + name, `<div class="lhAvatarPreview lhAvatarPreviewEmpty"><div>${esc(uAvatarLetter(p))}</div><p class="muted">Tài khoản này chưa có avatar.</p><p class="muted">${esc(name)}</p></div>`);
+    }
+  };
+
+  // Ghi đè menu 3 chấm ở tab Người dùng: thêm Thu hồi quyền vào trong menu.
+  window.openUserActionMenuFinal = function(ev, uid){
+    ev?.preventDefault?.();
+    ev?.stopPropagation?.();
+    const btn = ev?.currentTarget || ev?.target;
+    const p = (cache.profiles || []).find(x => String(x.id) === String(uid));
+    if(!p) return alert('Không tìm thấy người dùng.');
+
+    const wasOpen = btn?.classList?.contains('isOpen');
+    if(typeof closeUserActionMenuFinal === 'function') closeUserActionMenuFinal();
+    if(wasOpen) return;
+    btn?.classList?.add('isOpen');
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'lhActionBackdrop';
+    backdrop.onclick = () => typeof closeUserActionMenuFinal === 'function' && closeUserActionMenuFinal();
+    document.body.appendChild(backdrop);
+
+    const canRevoke = p.approved !== false && p.role !== 'admin';
+    const revokeBtn = canRevoke
+      ? `<button class="act bad" onclick="revokeApproval('${p.id}');closeUserActionMenuFinal();">Thu hồi quyền</button>`
+      : '';
+
+    const menu = document.createElement('div');
+    menu.id = 'lhActionMenuFloat';
+    menu.innerHTML = isAdmin()
+      ? `<button class="act" onclick="viewUserEdits('${p.id}');closeUserActionMenuFinal();">Lịch sử</button>
+         <button class="act ${isBlocked(p) ? 'ok' : 'bad'}" onclick="toggleBlock('${p.id}',${!isBlocked(p)});closeUserActionMenuFinal();">${isBlocked(p) ? 'Unblock' : 'Block'}</button>
+         <button class="act warn" onclick="setRole('${p.id}','${p.role === 'editor' ? 'user' : 'editor'}');closeUserActionMenuFinal();">${p.role === 'editor' ? 'Gỡ editor' : 'Cho editor'}</button>
+         <button class="act warn" onclick="setRole('${p.id}','${p.role === 'admin' ? 'user' : 'admin'}');closeUserActionMenuFinal();">${p.role === 'admin' ? 'Gỡ admin' : 'Cho admin'}</button>
+         ${revokeBtn}`
+      : `<button class="act" onclick="viewUserEdits('${p.id}');closeUserActionMenuFinal();">Lịch sử</button>`;
+    document.body.appendChild(menu);
+
+    const r = btn.getBoundingClientRect();
+    const mw = menu.offsetWidth || 200;
+    const mh = menu.offsetHeight || 220;
+    let left = Math.min(window.innerWidth - mw - 14, Math.max(14, r.right - mw));
+    let top = r.bottom + 8;
+    if(top + mh > window.innerHeight - 14) top = Math.max(14, r.top - mh - 8);
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+  };
+
+  // Ghi đè renderUsers để chắc chắn nút 3 chấm dùng menu mới.
+  window.renderUsers = renderUsers = function(){
+    if(typeof closeUserActionMenuFinal === 'function') closeUserActionMenuFinal();
+    const arr = (cache.profiles || [])
+      .filter(p => match(`${p.email || ''} ${p.role || ''} ${p.id || ''} ${p.last_activity || ''}`))
+      .sort((a,b) => actMs(b) - actMs(a));
+    $('userList').innerHTML = `<div class="userRow muted tableHead lhUserRowFinal">
+      <b>Avatar</b><b>Email</b><b>Role</b><b>TT</b><b>Hoạt động gần nhất</b><b>Hành động</b>
+    </div>` + arr.map(p => {
+      const activeText = actText(p);
+      const activeClass = activeText === 'Đang hoạt động' ? 'activityNow' : '';
+      return `<div class="userRow activitySortedRow lhUserRowFinal ${activeClass}">
+        <div class="lhAvatarCell">${uAvatarButton(p)}</div>
+        <div><div class="mail">${esc(p.email || p.id)}</div><div class="uid">${esc(p.id)}</div></div>
+        <div>${roleBadgeFinal(p.role)}</div>
+        <div>${isBlocked(p) ? badge('blocked') : badge('active')}</div>
+        <div><b class="lastActivity ${activeClass}">${esc(activeText)}</b><div class="uid">${esc(date(actTime(p)))}</div></div>
+        <div class="actions lhActionsCell"><button class="lhDotsBtn" type="button" title="Thao tác" onclick="openUserActionMenuFinal(event,'${esc(p.id)}')">...</button></div>
+      </div>`;
+    }).join('');
+  };
+
+  // Ghi đè renderApprovals: thêm avatar vào thẻ phê duyệt.
+  window.renderApprovals = renderApprovals = function(){
+    if(typeof renderApprovalCounts === 'function') renderApprovalCounts();
+    if(typeof updateApprovalBadge === 'function') updateApprovalBadge();
+
+    const el = document.getElementById('approvalList');
+    if(!el) return;
+
+    let arr = cache.profiles || [];
+    if(typeof approvalFilter !== 'undefined'){
+      if(approvalFilter === 'pending') arr = arr.filter(p => p.approved === false);
+      else if(approvalFilter === 'approved') arr = arr.filter(p => p.approved !== false);
+    }
+
+    const k = (document.getElementById('search')?.value || '').trim().toLowerCase();
+    if(k) arr = arr.filter(p => `${p.email || ''} ${p.id || ''} ${p.role || ''}`.toLowerCase().includes(k));
+
+    if(!arr.length){
+      el.innerHTML = '<p class="muted">Không có tài khoản.</p>';
+      return;
+    }
+
+    el.innerHTML = arr.map(p => {
+      const isPending = p.approved === false;
+      const statusBadge = isPending
+        ? '<span class="badge rejected">Chờ duyệt</span>'
+        : '<span class="badge approved">Đã duyệt</span>';
+      const actions = isPending
+        ? `<button class="act ok" onclick="approveUser('${esc(p.id)}')">Phê duyệt</button><button class="act bad" onclick="rejectUser('${esc(p.id)}')">Từ chối & xóa</button>`
+        : `<button class="act warn" onclick="revokeApproval('${esc(p.id)}')">Thu hồi quyền</button>`;
+      return `<div class="approvalCard ${isPending ? 'isPending' : ''}">
+        <div class="approvalAvatarCell">${uAvatarButton(p, 'approvalAvatar')}</div>
+        <div class="approvalCardInfo">
+          <div class="mail">${esc(p.email || p.id)}</div>
+          <div class="meta">${roleBadgeFinal(p.role)} ${statusBadge} · Đăng ký: ${esc(date(p.created_at))} · Login: ${esc(date(p.last_login || p.created_at))}</div>
+          <div class="uid">${esc(p.id)}</div>
+        </div>
+        <div class="approvalCardActions">${isAdmin() ? actions : '<span class="muted">Chỉ admin</span>'}</div>
+      </div>`;
+    }).join('');
+  };
+
+  setTimeout(() => {
+    try{ renderUsers(); }catch(e){}
+    try{ renderApprovals(); }catch(e){}
+  }, 300);
+})();
+
+
+// ===== FINAL_APPROVALS_FILTER_AVATAR_FIX_20260625 =====
+(function(){
+  window.__approvalFilter = window.__approvalFilter || 'pending';
+
+  function avUrl(p){ return p?.avatar_url || p?.avatar || p?.picture || p?.photo_url || p?.image_url || ''; }
+  function avLetter(p){ return String(p?.email || p?.id || '?').trim().slice(0,1).toUpperCase() || '?'; }
+  function avBtn(p){
+    const src = avUrl(p);
+    if(src){
+      return `<button class="lhUserAvatar approvalAvatar" type="button" title="Phóng to avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><img src="${esc(src)}" alt="Avatar" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.classList.add('isBroken');this.remove();"></button>`;
+    }
+    return `<button class="lhUserAvatar approvalAvatar avatarNoImage" type="button" title="Chưa có avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><span>${esc(avLetter(p))}</span></button>`;
+  }
+  function roleBadge(role){
+    const r = role || 'user';
+    return `<span class="badge lhRoleBadge lhRole-${esc(r)}">${esc(r)}</span>`;
+  }
+  function pendingUsers(){ return (cache.profiles || []).filter(p => p.approved === false); }
+  function approvedUsers(){ return (cache.profiles || []).filter(p => p.approved !== false); }
+  function updateCounts(){
+    const pend = pendingUsers().length;
+    const appr = approvedUsers().length;
+    const all = (cache.profiles || []).length;
+    const ep = document.getElementById('afPending');
+    const ea = document.getElementById('afApproved');
+    const eall = document.getElementById('afAll');
+    if(ep) ep.textContent = pend;
+    if(ea) ea.textContent = appr;
+    if(eall) eall.textContent = all;
+    const badgeEl = document.getElementById('approvalBadge');
+    if(badgeEl){
+      badgeEl.textContent = pend;
+      badgeEl.classList.toggle('hidden', pend === 0);
+    }
+    const statPendingApproval = document.getElementById('statPendingApproval');
+    if(statPendingApproval) statPendingApproval.textContent = pend;
+  }
+
+  window.filterApprovals = function(f){
+    window.__approvalFilter = f || 'pending';
+    document.querySelectorAll('.approvalFilter').forEach(b => {
+      b.classList.toggle('active', b.dataset.af === window.__approvalFilter);
+    });
+    renderApprovals();
+  };
+
+  window.renderApprovals = renderApprovals = function(){
+    updateCounts();
+    const el = document.getElementById('approvalList');
+    if(!el) return;
+
+    let filter = window.__approvalFilter || 'pending';
+    const activeBtn = document.querySelector('.approvalFilter.active');
+    if(activeBtn?.dataset?.af) filter = activeBtn.dataset.af;
+    window.__approvalFilter = filter;
+
+    let arr = cache.profiles || [];
+    if(filter === 'pending') arr = arr.filter(p => p.approved === false);
+    else if(filter === 'approved') arr = arr.filter(p => p.approved !== false);
+
+    const k = (document.getElementById('search')?.value || '').trim().toLowerCase();
+    if(k) arr = arr.filter(p => `${p.email || ''} ${p.id || ''} ${p.role || ''}`.toLowerCase().includes(k));
+
+    if(!arr.length){
+      const msg = filter === 'pending' ? 'Không có tài khoản nào đang chờ duyệt.' : 'Không có tài khoản phù hợp.';
+      el.innerHTML = `<p class="muted">${msg}</p>`;
+      return;
+    }
+
+    el.innerHTML = arr.map(p => {
+      const isPending = p.approved === false;
+      const statusBadge = isPending
+        ? '<span class="badge rejected">Chờ duyệt</span>'
+        : '<span class="badge approved">Đã duyệt</span>';
+      const actions = isPending
+        ? `<button class="act ok" onclick="approveUser('${esc(p.id)}')">Phê duyệt</button><button class="act bad" onclick="rejectUser('${esc(p.id)}')">Từ chối & xóa</button>`
+        : (p.role === 'admin' ? '<span class="muted">Admin</span>' : `<button class="act warn" onclick="revokeApproval('${esc(p.id)}')">Thu hồi quyền</button>`);
+      return `<div class="approvalCard ${isPending ? 'isPending' : ''}">
+        <div class="approvalAvatarCell">${avBtn(p)}</div>
+        <div class="approvalCardInfo">
+          <div class="mail">${esc(p.email || p.id)}</div>
+          <div class="meta">${roleBadge(p.role)} ${statusBadge} · Đăng ký: ${esc(date(p.created_at))} · Login: ${esc(date(p.last_login || p.created_at))}</div>
+          <div class="uid">${esc(p.id)}</div>
+        </div>
+        <div class="approvalCardActions">${isAdmin() ? actions : '<span class="muted">Chỉ admin</span>'}</div>
+      </div>`;
+    }).join('');
+  };
+
+  const oldApproveUser = window.approveUser;
+  if(typeof oldApproveUser === 'function' && !window.__approvalApprovePatched){
+    window.__approvalApprovePatched = true;
+    window.approveUser = async function(uid){
+      const out = await oldApproveUser.apply(this, arguments);
+      setTimeout(() => { try{ renderApprovals(); }catch(e){} }, 150);
+      return out;
+    };
+  }
+
+  const oldRejectUser = window.rejectUser;
+  if(typeof oldRejectUser === 'function' && !window.__approvalRejectPatched){
+    window.__approvalRejectPatched = true;
+    window.rejectUser = async function(uid){
+      const out = await oldRejectUser.apply(this, arguments);
+      setTimeout(() => { try{ renderApprovals(); }catch(e){} }, 150);
+      return out;
+    };
+  }
+
+  const oldRevokeApproval = window.revokeApproval;
+  if(typeof oldRevokeApproval === 'function' && !window.__approvalRevokePatched){
+    window.__approvalRevokePatched = true;
+    window.revokeApproval = async function(uid){
+      const out = await oldRevokeApproval.apply(this, arguments);
+      setTimeout(() => { try{ renderApprovals(); renderUsers(); }catch(e){} }, 150);
+      return out;
+    };
+  }
+
+  setTimeout(() => { try{ renderApprovals(); }catch(e){} }, 300);
+})();
+
+
+// ===== APPROVAL_PENDING_ONLY_REVOKE_IN_USERS_DOTS_20260625 =====
+(function(){
+  function avUrl(p){ return p?.avatar_url || p?.avatar || p?.picture || p?.photo_url || p?.image_url || ''; }
+  function avLetter(p){ return String(p?.email || p?.id || '?').trim().slice(0,1).toUpperCase() || '?'; }
+  function avBtn(p){
+    const src = avUrl(p);
+    if(src){
+      return `<button class="lhUserAvatar approvalAvatar" type="button" title="Phóng to avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><img src="${esc(src)}" alt="Avatar" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.classList.add('isBroken');this.remove();"></button>`;
+    }
+    return `<button class="lhUserAvatar approvalAvatar avatarNoImage" type="button" title="Chưa có avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><span>${esc(avLetter(p))}</span></button>`;
+  }
+  function roleBadge(role){
+    const r = role || 'user';
+    return `<span class="badge lhRoleBadge lhRole-${esc(r)}">${esc(r)}</span>`;
+  }
+  function pendingUsers(){ return (cache.profiles || []).filter(p => p.approved === false); }
+  function updatePendingCount(){
+    const pend = pendingUsers().length;
+    const ep = document.getElementById('afPending');
+    if(ep) ep.textContent = pend;
+    const badgeEl = document.getElementById('approvalBadge');
+    if(badgeEl){
+      badgeEl.textContent = pend;
+      badgeEl.classList.toggle('hidden', pend === 0);
+    }
+    const statPendingApproval = document.getElementById('statPendingApproval');
+    if(statPendingApproval) statPendingApproval.textContent = pend;
+  }
+  function hideApprovalExtraFilters(){
+    document.querySelectorAll('.approvalFilter').forEach(btn => {
+      const af = btn.dataset.af;
+      if(af === 'approved' || af === 'all') btn.classList.add('hidden');
+      if(af === 'pending') btn.classList.add('active');
+    });
+  }
+
+  // Tab Phê duyệt chỉ còn Chờ duyệt. Không còn Đã duyệt/Tất cả.
+  window.filterApprovals = function(){
+    window.__approvalFilter = 'pending';
+    hideApprovalExtraFilters();
+    renderApprovals();
+  };
+
+  window.renderApprovals = renderApprovals = function(){
+    window.__approvalFilter = 'pending';
+    hideApprovalExtraFilters();
+    updatePendingCount();
+
+    const el = document.getElementById('approvalList');
+    if(!el) return;
+
+    let arr = pendingUsers();
+    const k = (document.getElementById('search')?.value || '').trim().toLowerCase();
+    if(k) arr = arr.filter(p => `${p.email || ''} ${p.id || ''} ${p.role || ''}`.toLowerCase().includes(k));
+
+    if(!arr.length){
+      el.innerHTML = '<p class="muted">Không có tài khoản nào đang chờ duyệt.</p>';
+      return;
+    }
+
+    el.innerHTML = arr.map(p => {
+      return `<div class="approvalCard isPending">
+        <div class="approvalAvatarCell">${avBtn(p)}</div>
+        <div class="approvalCardInfo">
+          <div class="mail">${esc(p.email || p.id)}</div>
+          <div class="meta">${roleBadge(p.role)} <span class="badge rejected">Chờ duyệt</span> · Đăng ký: ${esc(date(p.created_at))} · Login: ${esc(date(p.last_login || p.created_at))}</div>
+          <div class="uid">${esc(p.id)}</div>
+        </div>
+        <div class="approvalCardActions">${isAdmin() ? `<button class="act ok" onclick="approveUser('${esc(p.id)}')">Phê duyệt</button><button class="act bad" onclick="rejectUser('${esc(p.id)}')">Từ chối & xóa</button>` : '<span class="muted">Chỉ admin</span>'}</div>
+      </div>`;
+    }).join('');
+  };
+
+  // Đảm bảo Thu hồi quyền nằm trong dấu 3 chấm ở tab Người dùng.
+  const oldOpenUserActionMenuFinal = window.openUserActionMenuFinal;
+  window.openUserActionMenuFinal = function(ev, uid){
+    ev?.preventDefault?.();
+    ev?.stopPropagation?.();
+    const btn = ev?.currentTarget || ev?.target;
+    const p = (cache.profiles || []).find(x => String(x.id) === String(uid));
+    if(!p) return alert('Không tìm thấy người dùng.');
+
+    const wasOpen = btn?.classList?.contains('isOpen');
+    if(typeof closeUserActionMenuFinal === 'function') closeUserActionMenuFinal();
+    if(wasOpen) return;
+    btn?.classList?.add('isOpen');
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'lhActionBackdrop';
+    backdrop.onclick = () => typeof closeUserActionMenuFinal === 'function' && closeUserActionMenuFinal();
+    document.body.appendChild(backdrop);
+
+    const revokeBtn = (p.approved !== false && p.role !== 'admin')
+      ? `<button class="act bad" onclick="revokeApproval('${p.id}');closeUserActionMenuFinal();">Thu hồi quyền</button>`
+      : '';
+
+    const menu = document.createElement('div');
+    menu.id = 'lhActionMenuFloat';
+    menu.innerHTML = isAdmin()
+      ? `<button class="act" onclick="viewUserEdits('${p.id}');closeUserActionMenuFinal();">Lịch sử</button>
+         <button class="act ${isBlocked(p) ? 'ok' : 'bad'}" onclick="toggleBlock('${p.id}',${!isBlocked(p)});closeUserActionMenuFinal();">${isBlocked(p) ? 'Unblock' : 'Block'}</button>
+         <button class="act warn" onclick="setRole('${p.id}','${p.role === 'editor' ? 'user' : 'editor'}');closeUserActionMenuFinal();">${p.role === 'editor' ? 'Gỡ editor' : 'Cho editor'}</button>
+         <button class="act warn" onclick="setRole('${p.id}','${p.role === 'admin' ? 'user' : 'admin'}');closeUserActionMenuFinal();">${p.role === 'admin' ? 'Gỡ admin' : 'Cho admin'}</button>
+         ${revokeBtn}`
+      : `<button class="act" onclick="viewUserEdits('${p.id}');closeUserActionMenuFinal();">Lịch sử</button>`;
+    document.body.appendChild(menu);
+
+    const r = btn.getBoundingClientRect();
+    const mw = menu.offsetWidth || 205;
+    const mh = menu.offsetHeight || 230;
+    let left = Math.min(window.innerWidth - mw - 14, Math.max(14, r.right - mw));
+    let top = r.bottom + 8;
+    if(top + mh > window.innerHeight - 14) top = Math.max(14, r.top - mh - 8);
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+  };
+
+  setTimeout(() => {
+    try{ hideApprovalExtraFilters(); renderApprovals(); }catch(e){}
+  }, 300);
+})();
+
+
+// ===== FORCE_REVOKE_IN_USER_DOTS_20260625 =====
+(function(){
+  // Luôn hiện "Thu hồi quyền" trong dấu ... ở tab Người dùng cho mọi tài khoản không phải admin.
+  window.openUserActionMenuFinal = function(ev, uid){
+    ev?.preventDefault?.();
+    ev?.stopPropagation?.();
+
+    const btn = ev?.currentTarget || ev?.target;
+    const p = (cache.profiles || []).find(x => String(x.id) === String(uid));
+    if(!p) return alert('Không tìm thấy người dùng.');
+
+    const wasOpen = btn?.classList?.contains('isOpen');
+    if(typeof closeUserActionMenuFinal === 'function') closeUserActionMenuFinal();
+    if(wasOpen) return;
+    btn?.classList?.add('isOpen');
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'lhActionBackdrop';
+    backdrop.onclick = () => typeof closeUserActionMenuFinal === 'function' && closeUserActionMenuFinal();
+    document.body.appendChild(backdrop);
+
+    const role = String(p.role || 'user').toLowerCase();
+    const revokeBtn = role !== 'admin'
+      ? `<button class="act bad revokeAccessBtn" onclick="revokeApproval('${p.id}');closeUserActionMenuFinal();">Thu hồi quyền</button>`
+      : '';
+
+    const menu = document.createElement('div');
+    menu.id = 'lhActionMenuFloat';
+    menu.innerHTML = isAdmin()
+      ? `<button class="act" onclick="viewUserEdits('${p.id}');closeUserActionMenuFinal();">Lịch sử</button>
+         <button class="act ${isBlocked(p) ? 'ok' : 'bad'}" onclick="toggleBlock('${p.id}',${!isBlocked(p)});closeUserActionMenuFinal();">${isBlocked(p) ? 'Unblock' : 'Block'}</button>
+         <button class="act warn" onclick="setRole('${p.id}','${p.role === 'editor' ? 'user' : 'editor'}');closeUserActionMenuFinal();">${p.role === 'editor' ? 'Gỡ editor' : 'Cho editor'}</button>
+         <button class="act warn" onclick="setRole('${p.id}','${p.role === 'admin' ? 'user' : 'admin'}');closeUserActionMenuFinal();">${p.role === 'admin' ? 'Gỡ admin' : 'Cho admin'}</button>
+         ${revokeBtn}`
+      : `<button class="act" onclick="viewUserEdits('${p.id}');closeUserActionMenuFinal();">Lịch sử</button>`;
+    document.body.appendChild(menu);
+
+    const r = btn.getBoundingClientRect();
+    const mw = menu.offsetWidth || 210;
+    const mh = menu.offsetHeight || 240;
+    let left = Math.min(window.innerWidth - mw - 14, Math.max(14, r.right - mw));
+    let top = r.bottom + 8;
+    if(top + mh > window.innerHeight - 14) top = Math.max(14, r.top - mh - 8);
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+  };
+})();
+
+
+// ===== REVOKE_MOVES_USER_TO_APPROVAL_AND_APPROVED_USERS_UI_20260625 =====
+(function(){
+  function avUrl(p){ return p?.avatar_url || p?.avatar || p?.picture || p?.photo_url || p?.image_url || ''; }
+  function avLetter(p){ return String(p?.email || p?.id || '?').trim().slice(0,1).toUpperCase() || '?'; }
+  function avatarButton(p){
+    const src = avUrl(p);
+    if(src){
+      return `<button class="lhUserAvatar" type="button" title="Phóng to avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><img src="${esc(src)}" alt="Avatar" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.classList.add('isBroken');this.remove();"></button>`;
+    }
+    return `<button class="lhUserAvatar avatarNoImage" type="button" title="Chưa có avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><span>${esc(avLetter(p))}</span></button>`;
+  }
+  function roleBadgeFinal(role){
+    const r = role || 'user';
+    return `<span class="badge lhRoleBadge lhRole-${esc(r)}">${esc(r)}</span>`;
+  }
+  function actTime(p){ return p?.last_activity || p?.last_login || p?.updated_at || p?.created_at || ''; }
+  function actMs(p){ const n = new Date(actTime(p)).getTime(); return Number.isFinite(n) ? n : 0; }
+  function actText(p){
+    const t = actTime(p);
+    if(!t) return 'Chưa có';
+    const diff = Date.now() - new Date(t).getTime();
+    if(!Number.isFinite(diff)) return date(t);
+    if(diff < 2 * 60 * 1000) return 'Đang hoạt động';
+    if(diff < 60 * 60 * 1000) return Math.max(1, Math.floor(diff / 60000)) + ' phút trước';
+    return date(t);
+  }
+
+  // Thu hồi quyền = đưa user ra khỏi tab Người dùng và chuyển về tab Phê duyệt.
+  window.revokeApproval = async function(uid){
+    if(!isAdmin()) return alert('Chỉ admin.');
+    const p = (cache.profiles || []).find(x => String(x.id) === String(uid));
+    if(!p) return alert('Không tìm thấy user.');
+    if(String(p.role || '').toLowerCase() === 'admin') return alert('Không thể thu hồi quyền truy cập của admin.');
+    if(!confirm('Thu hồi quyền truy cập của: ' + (p.email || uid) + '?\n\nUser sẽ chuyển về tab Phê duyệt để admin duyệt lại.')) return;
+
+    setBusy(true, 'Đang thu hồi...');
+    try{
+      const r = await client.from('profiles').update({ approved:false }).eq('id', uid);
+      if(r.error) return alert('Lỗi: ' + r.error.message);
+      await logAction('revoke_approval', 'profiles', uid, { email:p.email });
+
+      p.approved = false;
+      renderUsers();
+      if(typeof renderApprovals === 'function') renderApprovals();
+      toast('Đã chuyển user sang tab Phê duyệt');
+    }finally{
+      setBusy(false);
+    }
+  };
+
+  // Tab Người dùng chỉ hiện user đã duyệt. User bị thu hồi sẽ biến mất khỏi đây.
+  window.renderUsers = renderUsers = function(){
+    if(typeof closeUserActionMenuFinal === 'function') closeUserActionMenuFinal();
+    const arr = (cache.profiles || [])
+      .filter(p => p.approved !== false)
+      .filter(p => match(`${p.email || ''} ${p.role || ''} ${p.id || ''} ${p.last_activity || ''}`))
+      .sort((a,b) => actMs(b) - actMs(a));
+
+    $('userList').innerHTML = `<div class="approvedUsersNote">Đang hiển thị người dùng đã duyệt. Muốn đưa user về phê duyệt lại thì bấm dấu <b>...</b> → <b>Thu hồi quyền</b>.</div>
+    <div class="userRow muted tableHead lhUserRowFinal approvedUsersHead">
+      <b>Avatar</b><b>Email</b><b>Role</b><b>TT</b><b>Hoạt động gần nhất</b><b>Hành động</b>
+    </div>` + (arr.map(p => {
+      const activeText = actText(p);
+      const activeClass = activeText === 'Đang hoạt động' ? 'activityNow' : '';
+      return `<div class="userRow activitySortedRow lhUserRowFinal approvedUserRow ${activeClass}">
+        <div class="lhAvatarCell">${avatarButton(p)}</div>
+        <div><div class="mail">${esc(p.email || p.id)}</div><div class="uid">${esc(p.id)}</div></div>
+        <div>${roleBadgeFinal(p.role)}</div>
+        <div>${isBlocked(p) ? badge('blocked') : '<span class="badge approved userApprovedBadge">Đã duyệt</span>'}</div>
+        <div><b class="lastActivity ${activeClass}">${esc(activeText)}</b><div class="uid">${esc(date(actTime(p)))}</div></div>
+        <div class="actions lhActionsCell"><button class="lhDotsBtn" type="button" title="Thao tác" onclick="openUserActionMenuFinal(event,'${esc(p.id)}')">...</button></div>
+      </div>`;
+    }).join('') || '<p class="muted">Không có người dùng đã duyệt.</p>');
+  };
+
+  setTimeout(() => { try{ renderUsers(); if(typeof renderApprovals === 'function') renderApprovals(); }catch(e){} }, 300);
+})();
+
+
+// ===== FINAL_APPROVAL_UI_AND_REMOVE_USER_NOTE_20260625 =====
+(function(){
+  function avUrl(p){ return p?.avatar_url || p?.avatar || p?.picture || p?.photo_url || p?.image_url || ''; }
+  function avLetter(p){ return String(p?.email || p?.id || '?').trim().slice(0,1).toUpperCase() || '?'; }
+  function avatarButton(p, cls=''){
+    const src = avUrl(p);
+    const klass = (`lhUserAvatar ${cls}`).trim();
+    if(src){
+      return `<button class="${klass}" type="button" title="Phóng to avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><img src="${esc(src)}" alt="Avatar" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.classList.add('isBroken');this.remove();"></button>`;
+    }
+    return `<button class="${klass} avatarNoImage" type="button" title="Chưa có avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><span>${esc(avLetter(p))}</span></button>`;
+  }
+  function roleBadgeFinal(role){
+    const r = role || 'user';
+    return `<span class="badge lhRoleBadge lhRole-${esc(r)}">${esc(r)}</span>`;
+  }
+  function actTime(p){ return p?.last_activity || p?.last_login || p?.updated_at || p?.created_at || ''; }
+  function actMs(p){ const n = new Date(actTime(p)).getTime(); return Number.isFinite(n) ? n : 0; }
+  function actText(p){
+    const t = actTime(p);
+    if(!t) return 'Chưa có';
+    const diff = Date.now() - new Date(t).getTime();
+    if(!Number.isFinite(diff)) return date(t);
+    if(diff < 2 * 60 * 1000) return 'Đang hoạt động';
+    if(diff < 60 * 60 * 1000) return Math.max(1, Math.floor(diff / 60000)) + ' phút trước';
+    return date(t);
+  }
+  function pendingUsers(){ return (cache.profiles || []).filter(p => p.approved === false); }
+
+  // Người dùng: bỏ dòng ghi chú, chỉ hiện user đã duyệt.
+  window.renderUsers = renderUsers = function(){
+    if(typeof closeUserActionMenuFinal === 'function') closeUserActionMenuFinal();
+    const arr = (cache.profiles || [])
+      .filter(p => p.approved !== false)
+      .filter(p => match(`${p.email || ''} ${p.role || ''} ${p.id || ''} ${p.last_activity || ''}`))
+      .sort((a,b) => actMs(b) - actMs(a));
+
+    $('userList').innerHTML = `<div class="userRow muted tableHead lhUserRowFinal approvedUsersHead">
+      <b>Avatar</b><b>Email</b><b>Role</b><b>TT</b><b>Hoạt động gần nhất</b><b>Hành động</b>
+    </div>` + (arr.map(p => {
+      const activeText = actText(p);
+      const activeClass = activeText === 'Đang hoạt động' ? 'activityNow' : '';
+      return `<div class="userRow activitySortedRow lhUserRowFinal approvedUserRow ${activeClass}">
+        <div class="lhAvatarCell">${avatarButton(p)}</div>
+        <div><div class="mail">${esc(p.email || p.id)}</div><div class="uid">${esc(p.id)}</div></div>
+        <div>${roleBadgeFinal(p.role)}</div>
+        <div>${isBlocked(p) ? badge('blocked') : '<span class="badge approved userApprovedBadge">Đã duyệt</span>'}</div>
+        <div><b class="lastActivity ${activeClass}">${esc(activeText)}</b><div class="uid">${esc(date(actTime(p)))}</div></div>
+        <div class="actions lhActionsCell"><button class="lhDotsBtn" type="button" title="Thao tác" onclick="openUserActionMenuFinal(event,'${esc(p.id)}')">...</button></div>
+      </div>`;
+    }).join('') || '<p class="muted">Không có người dùng đã duyệt.</p>');
+  };
+
+  // Phê duyệt: chỉ hiện tài khoản chờ duyệt, giao diện không bị bó hẹp.
+  window.renderApprovals = renderApprovals = function(){
+    document.querySelectorAll('.approvalFilter').forEach(btn => {
+      if(btn.dataset.af === 'approved' || btn.dataset.af === 'all') btn.classList.add('hidden');
+      if(btn.dataset.af === 'pending') btn.classList.add('active');
+    });
+
+    const pend = pendingUsers().length;
+    const ep = document.getElementById('afPending');
+    if(ep) ep.textContent = pend;
+    const badgeEl = document.getElementById('approvalBadge');
+    if(badgeEl){ badgeEl.textContent = pend; badgeEl.classList.toggle('hidden', pend === 0); }
+    const statPendingApproval = document.getElementById('statPendingApproval');
+    if(statPendingApproval) statPendingApproval.textContent = pend;
+
+    const el = document.getElementById('approvalList');
+    if(!el) return;
+
+    let arr = pendingUsers();
+    const k = (document.getElementById('search')?.value || '').trim().toLowerCase();
+    if(k) arr = arr.filter(p => `${p.email || ''} ${p.id || ''} ${p.role || ''}`.toLowerCase().includes(k));
+
+    if(!arr.length){
+      el.innerHTML = '<p class="muted">Không có tài khoản nào đang chờ duyệt.</p>';
+      return;
+    }
+
+    el.innerHTML = arr.map(p => `<div class="approvalCard isPending approvalCardFixed">
+      <div class="approvalAvatarCell">${avatarButton(p, 'approvalAvatar')}</div>
+      <div class="approvalCardInfo">
+        <div class="mail">${esc(p.email || p.id)}</div>
+        <div class="meta">${roleBadgeFinal(p.role)} <span class="badge rejected">Chờ duyệt</span> · Đăng ký: ${esc(date(p.created_at))} · Login: ${esc(date(p.last_login || p.created_at))}</div>
+        <div class="uid">${esc(p.id)}</div>
+      </div>
+      <div class="approvalCardActions">${isAdmin() ? `<button class="act ok" onclick="approveUser('${esc(p.id)}')">Phê duyệt</button><button class="act bad" onclick="rejectUser('${esc(p.id)}')">Từ chối & xóa</button>` : '<span class="muted">Chỉ admin</span>'}</div>
+    </div>`).join('');
+  };
+
+  setTimeout(() => { try{ renderUsers(); renderApprovals(); }catch(e){} }, 250);
+})();

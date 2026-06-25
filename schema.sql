@@ -339,3 +339,168 @@ create policy "subjects editor write" on public.subjects
   with check (public.is_editor_or_admin());
 
 notify pgrst, 'reload schema';
+
+
+-- ===== PATCH_AVATAR_ROLE_ACTIONS_APPROVAL_20260625 =====
+alter table public.profiles add column if not exists avatar_url text;
+
+update public.profiles p
+set avatar_url = coalesce(p.avatar_url, u.raw_user_meta_data ->> 'avatar_url', u.raw_user_meta_data ->> 'picture')
+from auth.users u
+where p.id = u.id and p.avatar_url is null;
+
+drop policy if exists "profiles admin delete" on public.profiles;
+create policy "profiles admin delete" on public.profiles
+  for delete to authenticated
+  using (public.is_admin());
+
+create or replace function public.sync_profile_from_auth()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email, avatar_url, role, approved)
+  values (new.id, new.email, coalesce(new.raw_user_meta_data ->> 'avatar_url', new.raw_user_meta_data ->> 'picture'), 'user', false)
+  on conflict (id) do update set
+    email = coalesce(excluded.email, public.profiles.email),
+    avatar_url = coalesce(excluded.avatar_url, public.profiles.avatar_url);
+  return new;
+end;
+$$;
+
+drop trigger if exists sync_profile_from_auth_trigger on auth.users;
+create trigger sync_profile_from_auth_trigger
+after insert or update of email, raw_user_meta_data on auth.users
+for each row execute function public.sync_profile_from_auth();
+
+notify pgrst, 'reload schema';
+
+-- =========================================================
+-- SUPABASE SECURITY LINT FIX - Learning Hub
+-- Chạy file này trong Supabase SQL Editor.
+-- Mục tiêu:
+-- 1) Khóa search_path cho các function bị Supabase cảnh báo.
+-- 2) Chặn anon/public gọi các function nhạy cảm qua RPC.
+-- 3) Chặn user thường gọi trực tiếp các function admin/notification qua RPC.
+-- Ghi chú: "Leaked Password Protection" phải bật thủ công trong Supabase Auth, SQL không bật được.
+-- =========================================================
+
+-- 1) Khóa search_path cho các function nếu function đang tồn tại
+DO $$
+DECLARE
+  fn text;
+  rp regprocedure;
+  funcs text[] := ARRAY[
+    'public.is_admin()',
+    'public.is_admin(uuid)',
+    'public.is_editor(uuid)',
+    'public.is_editor_or_admin()',
+    'public.is_editor_or_admin(uuid)',
+    'public.is_not_blocked()',
+    'public.is_not_blocked(uuid)',
+    'public.approve_edit_request(bigint)',
+    'public.reject_edit_request(bigint,text)',
+    'public.sync_profile_from_auth()',
+    'public.notify_discord_new_users()',
+    'public.notify_discord_subject_deleted()',
+    'public.notify_discord_settings_changed()',
+    'public.notify_discord_user_blocked()',
+    'public.notify_discord_user_login()',
+    'public.handle_learning_hub_notifications()',
+    'public.notify_discord_real_login()',
+    'public.notify_discord_auth_login()',
+    'public.notify_discord_edit_requests()'
+  ];
+BEGIN
+  FOREACH fn IN ARRAY funcs LOOP
+    rp := to_regprocedure(fn);
+    IF rp IS NOT NULL THEN
+      EXECUTE format('ALTER FUNCTION %s SET search_path = public', rp);
+    END IF;
+  END LOOP;
+END $$;
+
+-- 2) Function dùng trong RLS: chặn anon/public, vẫn cho authenticated dùng để web không lỗi
+DO $$
+DECLARE
+  fn text;
+  rp regprocedure;
+  funcs text[] := ARRAY[
+    'public.is_admin()',
+    'public.is_admin(uuid)',
+    'public.is_editor(uuid)',
+    'public.is_editor_or_admin()',
+    'public.is_editor_or_admin(uuid)',
+    'public.is_not_blocked()',
+    'public.is_not_blocked(uuid)'
+  ];
+BEGIN
+  FOREACH fn IN ARRAY funcs LOOP
+    rp := to_regprocedure(fn);
+    IF rp IS NOT NULL THEN
+      EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', rp);
+      EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM anon', rp);
+      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO authenticated', rp);
+    END IF;
+  END LOOP;
+END $$;
+
+-- 3) Function nhạy cảm/admin/trigger/discord: không cho gọi trực tiếp từ web qua RPC
+DO $$
+DECLARE
+  fn text;
+  rp regprocedure;
+  funcs text[] := ARRAY[
+    'public.approve_edit_request(bigint)',
+    'public.reject_edit_request(bigint,text)',
+    'public.sync_profile_from_auth()',
+    'public.notify_discord_new_users()',
+    'public.notify_discord_subject_deleted()',
+    'public.notify_discord_settings_changed()',
+    'public.notify_discord_user_blocked()',
+    'public.notify_discord_user_login()',
+    'public.handle_learning_hub_notifications()',
+    'public.notify_discord_real_login()',
+    'public.notify_discord_auth_login()',
+    'public.notify_discord_edit_requests()'
+  ];
+BEGIN
+  FOREACH fn IN ARRAY funcs LOOP
+    rp := to_regprocedure(fn);
+    IF rp IS NOT NULL THEN
+      EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', rp);
+      EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM anon', rp);
+      EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM authenticated', rp);
+    END IF;
+  END LOOP;
+END $$;
+
+-- 4) Đảm bảo policy xóa user chờ duyệt vẫn hoạt động cho admin
+DROP POLICY IF EXISTS "profiles admin delete" ON public.profiles;
+CREATE POLICY "profiles admin delete" ON public.profiles
+  FOR DELETE TO authenticated
+  USING (public.is_admin());
+
+NOTIFY pgrst, 'reload schema';
+
+-- ===== REALTIME FIX FOR ADMIN =====
+-- Chạy 1 lần trong Supabase SQL Editor.
+-- Bật realtime cho các bảng admin cần nghe thay đổi.
+
+do $$
+begin
+  begin alter publication supabase_realtime add table public.edit_requests; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.profiles; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.question_history; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.questions; exception when duplicate_object then null; end;
+  if to_regclass('public.subject_requests') is not null then
+    begin alter publication supabase_realtime add table public.subject_requests; exception when duplicate_object then null; end;
+  end if;
+  if to_regclass('public.admin_logs') is not null then
+    begin alter publication supabase_realtime add table public.admin_logs; exception when duplicate_object then null; end;
+  end if;
+end $$;
+
+notify pgrst, 'reload schema';

@@ -3964,79 +3964,633 @@ html,body{
   }
 }
 
-/* ===== AUTO_CHECK_CIRCLE_AND_HIDE_EXPORT_20260625 ===== */
-/* Ẩn nút Xuất dữ liệu trên thanh trên cùng */
-#exportBtn{
-  display:none!important;
+
+/* Hide export button */
+#exportBtn{display:none!important;}
+
+/* ===== PATCH_AVATAR_ROLE_ACTIONS_APPROVAL_20260625 ===== */
+.userRow{grid-template-columns:56px minmax(220px,1.35fr) minmax(92px,.45fr) minmax(84px,.5fr) minmax(130px,.8fr) minmax(120px,.7fr)!important;}
+.avatarCell{display:flex;align-items:center;justify-content:center}.userAvatar{width:42px;height:42px;border-radius:50%;padding:0;overflow:hidden;border:1px solid rgba(232,212,168,.42);background:rgba(200,169,110,.12);display:grid;place-items:center;cursor:pointer;flex:0 0 auto;box-shadow:0 8px 22px rgba(0,0,0,.26)}.userAvatar img{width:100%;height:100%;object-fit:cover;display:block}.userAvatar span{color:var(--gold2);font-weight:950;font-size:1rem}.userAvatar:hover{transform:translateY(-1px) scale(1.04);border-color:rgba(232,212,168,.70)}.avatarBroken::after{content:'?';color:var(--gold2);font-weight:950}.avatarPreview{display:grid;place-items:center;gap:12px;padding:10px}.avatarPreview img{max-width:min(520px,82vw);max-height:70vh;border-radius:22px;border:1px solid rgba(232,212,168,.34);background:rgba(255,255,255,.035);padding:6px}.avatarPreviewFallback div{width:180px;height:180px;border-radius:50%;display:grid;place-items:center;background:rgba(200,169,110,.16);border:1px solid rgba(232,212,168,.42);color:var(--gold2);font-size:4rem;font-weight:950}
+.badge.role-admin,.roleBadge.role-admin,.badge.admin{color:#ffb0a8!important;border-color:rgba(255,120,110,.45)!important;background:rgba(233,83,75,.16)!important}.badge.role-editor,.roleBadge.role-editor,.badge.editor{color:#8ee6a6!important;border-color:rgba(114,197,140,.45)!important;background:rgba(114,197,140,.14)!important}.badge.role-user,.roleBadge.role-user,.badge.user{color:#9fc7ff!important;border-color:rgba(100,160,255,.38)!important;background:rgba(80,140,255,.12)!important}
+.compactUserActions,.approvalCardActions{overflow:visible!important;max-height:none!important}.approvalCard{overflow:visible!important}.approvalAvatar{width:44px;height:44px}.userActionMenu{position:relative;width:max-content;max-width:100%}.userActionMenu summary{list-style:none;border:1px solid var(--bd);border-radius:999px;background:rgba(245,240,232,.045);color:var(--gold2);font-weight:900;padding:8px 12px;cursor:pointer;user-select:none}.userActionMenu summary::-webkit-details-marker{display:none}.userActionMenu summary::after{content:' ⋯';letter-spacing:2px}.userActionMenuBox{position:absolute;right:0;top:calc(100% + 7px);z-index:30;min-width:170px;display:grid;gap:7px;padding:9px;border:1px solid rgba(200,169,110,.26);border-radius:16px;background:linear-gradient(145deg,rgba(26,18,14,.98),rgba(9,7,6,.98));box-shadow:0 22px 55px rgba(0,0,0,.48)}.userActionMenuBox .act{width:100%;text-align:left;justify-content:flex-start}
+@media(max-width:900px){.userRow{grid-template-columns:46px 1fr!important}.userRow.tableHead{display:none!important}.userRow>div:nth-child(n+3){grid-column:2}.userActionMenuBox{left:0;right:auto}}
+
+
+/* ===== FINAL_USER_AVATAR_DOTS_ROLE_UI_20260625 ===== */
+#userList .userRow.lhUserRowFinal,
+#users .userRow.lhUserRowFinal{
+  grid-template-columns:58px minmax(240px,1.45fr) minmax(96px,.48fr) minmax(86px,.5fr) minmax(170px,.95fr) minmax(82px,.42fr) !important;
+  overflow:visible !important;
+}
+#userList .tableHead.lhUserRowFinal{
+  min-height:50px !important;
+}
+.lhAvatarCell{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  overflow:visible !important;
+}
+.lhUserAvatar{
+  width:42px !important;
+  height:42px !important;
+  min-width:42px !important;
+  border-radius:50% !important;
+  padding:0 !important;
+  overflow:hidden !important;
+  border:1px solid rgba(232,212,168,.46) !important;
+  background:rgba(200,169,110,.12) !important;
+  display:grid !important;
+  place-items:center !important;
+  cursor:pointer !important;
+  box-shadow:0 8px 22px rgba(0,0,0,.28) !important;
+  transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease !important;
+}
+.lhUserAvatar:hover{
+  transform:translateY(-1px) scale(1.06) !important;
+  border-color:rgba(232,212,168,.78) !important;
+  box-shadow:0 12px 28px rgba(0,0,0,.32),0 0 22px rgba(232,212,168,.10) !important;
+}
+.lhUserAvatar img{
+  width:100% !important;
+  height:100% !important;
+  object-fit:cover !important;
+  display:block !important;
+}
+.lhUserAvatar span,
+.lhUserAvatar.isBroken::after{
+  color:var(--gold2) !important;
+  font-weight:950 !important;
+  font-size:1rem !important;
+}
+.lhUserAvatar.isBroken::after{content:'?';}
+.lhAvatarPreview{
+  display:grid !important;
+  place-items:center !important;
+  gap:12px !important;
+  padding:10px !important;
+}
+.lhAvatarPreview img{
+  max-width:min(520px,82vw) !important;
+  max-height:70vh !important;
+  border-radius:22px !important;
+  border:1px solid rgba(232,212,168,.34) !important;
+  background:rgba(255,255,255,.035) !important;
+  padding:6px !important;
+}
+.lhAvatarPreviewEmpty div{
+  width:180px !important;
+  height:180px !important;
+  border-radius:50% !important;
+  display:grid !important;
+  place-items:center !important;
+  background:rgba(200,169,110,.16) !important;
+  border:1px solid rgba(232,212,168,.42) !important;
+  color:var(--gold2) !important;
+  font-size:4rem !important;
+  font-weight:950 !important;
+}
+.lhRoleBadge.lhRole-admin,
+.badge.admin{
+  color:#ffb0a8 !important;
+  border-color:rgba(255,120,110,.48) !important;
+  background:rgba(233,83,75,.18) !important;
+  box-shadow:0 0 18px rgba(233,83,75,.08) !important;
+}
+.lhRoleBadge.lhRole-editor,
+.badge.editor{
+  color:#8ee6a6 !important;
+  border-color:rgba(114,197,140,.48) !important;
+  background:rgba(114,197,140,.15) !important;
+  box-shadow:0 0 18px rgba(114,197,140,.08) !important;
+}
+.lhRoleBadge.lhRole-user,
+.badge.user{
+  color:#9fc7ff !important;
+  border-color:rgba(100,160,255,.42) !important;
+  background:rgba(80,140,255,.13) !important;
+  box-shadow:0 0 18px rgba(80,140,255,.06) !important;
+}
+.lhActionsCell{
+  overflow:visible !important;
+  max-height:none !important;
+  justify-content:flex-start !important;
+}
+.lhDotsMenu{
+  position:relative !important;
+  width:max-content !important;
+  overflow:visible !important;
+  z-index:10 !important;
+}
+.lhDotsMenu[open]{z-index:999 !important;}
+.lhDotsMenu summary{
+  list-style:none !important;
+  width:42px !important;
+  height:34px !important;
+  display:grid !important;
+  place-items:center !important;
+  border:1px solid var(--bd) !important;
+  border-radius:999px !important;
+  background:rgba(245,240,232,.045) !important;
+  color:var(--gold2) !important;
+  font-weight:950 !important;
+  font-size:1.05rem !important;
+  line-height:1 !important;
+  cursor:pointer !important;
+  user-select:none !important;
+}
+.lhDotsMenu summary::-webkit-details-marker{display:none !important;}
+.lhDotsMenu summary:hover{
+  background:rgba(200,169,110,.14) !important;
+  border-color:rgba(232,212,168,.38) !important;
+}
+.lhDotsMenuBox{
+  position:absolute !important;
+  right:0 !important;
+  top:calc(100% + 8px) !important;
+  min-width:176px !important;
+  display:grid !important;
+  gap:7px !important;
+  padding:9px !important;
+  border:1px solid rgba(200,169,110,.28) !important;
+  border-radius:16px !important;
+  background:linear-gradient(145deg,rgba(26,18,14,.98),rgba(9,7,6,.98)) !important;
+  box-shadow:0 22px 55px rgba(0,0,0,.55) !important;
+  z-index:1000 !important;
+}
+.lhDotsMenuBox .act{
+  width:100% !important;
+  text-align:left !important;
+  justify-content:flex-start !important;
+  min-height:34px !important;
+}
+#userList .userRow:hover{z-index:20 !important;}
+@media(max-width:900px){
+  #userList .userRow.lhUserRowFinal,
+  #users .userRow.lhUserRowFinal{
+    grid-template-columns:46px 1fr !important;
+  }
+  #userList .tableHead.lhUserRowFinal{display:none !important;}
+  #userList .userRow.lhUserRowFinal>div:nth-child(n+3){grid-column:2 !important;}
+  .lhDotsMenuBox{left:0 !important;right:auto !important;}
 }
 
-/* Tự check 10s: vòng tròn nhỏ, chạy hết vòng là tới lượt reload/check */
-@property --auto-check-pct{
-  syntax:'<percentage>';
-  inherits:false;
-  initial-value:0%;
+
+/* ===== FINAL_DOTS_MENU_FIXED_NO_JITTER_20260625 ===== */
+.lhDotsMenu{display:none!important;}
+.lhActionsCell{
+  overflow:visible!important;
+  max-height:none!important;
+  justify-content:flex-start!important;
 }
+.lhDotsBtn{
+  width:44px!important;
+  height:34px!important;
+  display:grid!important;
+  place-items:center!important;
+  border:1px solid var(--bd)!important;
+  border-radius:999px!important;
+  background:rgba(245,240,232,.055)!important;
+  color:var(--gold2)!important;
+  font-weight:950!important;
+  font-size:1.05rem!important;
+  line-height:1!important;
+  cursor:pointer!important;
+  box-shadow:0 8px 20px rgba(0,0,0,.22)!important;
+}
+.lhDotsBtn:hover,.lhDotsBtn.isOpen{
+  background:rgba(200,169,110,.18)!important;
+  border-color:rgba(232,212,168,.46)!important;
+  box-shadow:0 12px 28px rgba(0,0,0,.32),0 0 22px rgba(232,212,168,.10)!important;
+}
+#lhActionBackdrop{
+  position:fixed!important;
+  inset:0!important;
+  z-index:99990!important;
+  background:rgba(0,0,0,.34)!important;
+  backdrop-filter:blur(2px)!important;
+}
+#lhActionMenuFloat{
+  position:fixed!important;
+  z-index:99999!important;
+  min-width:190px!important;
+  display:grid!important;
+  gap:8px!important;
+  padding:10px!important;
+  border:1px solid rgba(232,212,168,.38)!important;
+  border-radius:18px!important;
+  background:linear-gradient(145deg,rgba(24,16,12,.99),rgba(7,6,5,.99))!important;
+  box-shadow:0 26px 70px rgba(0,0,0,.72),0 0 0 1px rgba(255,255,255,.035) inset!important;
+  animation:lhMenuPop .12s ease-out!important;
+}
+#lhActionMenuFloat .act{
+  width:100%!important;
+  min-height:38px!important;
+  justify-content:flex-start!important;
+  text-align:left!important;
+  border-radius:14px!important;
+  padding:9px 12px!important;
+  font-size:.9rem!important;
+  box-shadow:none!important;
+}
+#lhActionMenuFloat .act:hover{
+  transform:none!important;
+  filter:brightness(1.13)!important;
+}
+@keyframes lhMenuPop{
+  from{opacity:0;transform:translateY(-4px) scale(.98);}
+  to{opacity:1;transform:translateY(0) scale(1);}
+}
+#userList .userRow.lhUserRowFinal,
+#users .userRow.lhUserRowFinal{
+  overflow:visible!important;
+}
+#userList .userRow.lhUserRowFinal:hover{
+  z-index:5!important;
+}
+
+
+/* ===== REALTIME_CHIP_NO_10S_CIRCLE_20260625 ===== */
 #adminAutoCheckChip{
   right:18px!important;
   bottom:18px!important;
-  width:34px!important;
-  min-width:34px!important;
+  width:auto!important;
+  min-width:auto!important;
   height:34px!important;
-  padding:0!important;
-  border-radius:50%!important;
-  display:grid!important;
-  place-items:center!important;
-  gap:0!important;
+  padding:0 12px!important;
+  border-radius:999px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:8px!important;
   background:rgba(12,9,7,.86)!important;
   border:1px solid rgba(232,212,168,.26)!important;
   box-shadow:0 10px 26px rgba(0,0,0,.32)!important;
-  opacity:.9!important;
+  opacity:.92!important;
   pointer-events:none!important;
   transform:none!important;
 }
 #adminAutoCheckChip .autoText{
-  display:none!important;
+  display:inline!important;
+  color:var(--gold2)!important;
+  font-size:12px!important;
+  font-weight:900!important;
 }
 #adminAutoCheckChip .autoDot{
   position:relative!important;
-  width:22px!important;
-  height:22px!important;
+  width:9px!important;
+  height:9px!important;
   border-radius:50%!important;
   border:0!important;
-  background:conic-gradient(var(--ok) var(--auto-check-pct), rgba(232,212,168,.18) 0)!important;
-  animation:autoCheckCircleFill 10s linear infinite!important;
-  box-shadow:0 0 14px rgba(114,197,140,.10)!important;
+  background:var(--ok)!important;
+  animation:none!important;
+  box-shadow:0 0 12px rgba(114,197,140,.22)!important;
 }
-#adminAutoCheckChip .autoDot::after{
-  content:''!important;
-  position:absolute!important;
-  inset:5px!important;
-  border-radius:50%!important;
-  background:rgba(12,9,7,.96)!important;
-  border:1px solid rgba(232,212,168,.12)!important;
-}
+#adminAutoCheckChip .autoDot::after{content:none!important;}
 #adminAutoCheckChip.is-checking .autoDot{
+  background:var(--gold2)!important;
   animation:autoCheckSpin .65s linear infinite!important;
-  background:conic-gradient(var(--gold2) 30%, rgba(232,212,168,.18) 0)!important;
 }
-#refreshBtn.auto-checking{
-  color:transparent!important;
+#adminAutoCheckChip.is-error .autoDot{background:var(--bad)!important;}
+@media(max-width:760px){
+  #adminAutoCheckChip{right:12px!important;bottom:12px!important;height:30px!important;padding:0 10px!important;}
 }
-@keyframes autoCheckCircleFill{
-  from{--auto-check-pct:0%;}
-  to{--auto-check-pct:100%;}
+
+
+/* ===== MOVE_REALTIME_CHIP_NEXT_TO_SEARCH_20260625 ===== */
+#adminAutoCheckChip.realtimeTopChip{
+  position:static!important;
+  inset:auto!important;
+  right:auto!important;
+  bottom:auto!important;
+  width:auto!important;
+  min-width:auto!important;
+  height:40px!important;
+  padding:0 12px!important;
+  border-radius:999px!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:8px!important;
+  flex:0 0 auto!important;
+  margin:0 2px!important;
+  background:rgba(245,240,232,.045)!important;
+  border:1px solid var(--bd)!important;
+  color:var(--gold2)!important;
+  box-shadow:none!important;
+  opacity:1!important;
+  transform:none!important;
+  pointer-events:none!important;
+  z-index:auto!important;
+}
+#adminAutoCheckChip.realtimeTopChip .autoText{
+  display:inline!important;
+  color:var(--gold2)!important;
+  font-size:12px!important;
+  font-weight:900!important;
+  white-space:nowrap!important;
+}
+#adminAutoCheckChip.realtimeTopChip .autoDot{
+  width:8px!important;
+  height:8px!important;
+  min-width:8px!important;
+  border-radius:50%!important;
+  border:0!important;
+  background:var(--ok)!important;
+  animation:none!important;
+  box-shadow:0 0 12px rgba(114,197,140,.30)!important;
+}
+#adminAutoCheckChip.realtimeTopChip .autoDot::after{content:none!important;}
+#adminAutoCheckChip.realtimeTopChip.is-checking .autoDot{
+  background:var(--gold2)!important;
+  animation:autoCheckSpin .65s linear infinite!important;
+}
+#adminAutoCheckChip.realtimeTopChip.is-error .autoDot{background:var(--bad)!important;}
+@media(max-width:980px){
+  #adminAutoCheckChip.realtimeTopChip{height:34px!important;padding:0 10px!important;}
+  #adminAutoCheckChip.realtimeTopChip .autoText{font-size:11px!important;}
+}
+@media(max-width:680px){
+  #adminAutoCheckChip.realtimeTopChip{order:2!important;}
+}
+
+
+/* ===== USER_DOTS_REVOKE_APPROVAL_AVATAR_APPROVALS_20260625 ===== */
+#lhActionMenuFloat{
+  min-width:205px!important;
+}
+#lhActionMenuFloat .act.bad{
+  background:rgba(233,135,123,.14)!important;
+  color:var(--bad)!important;
+  border-color:rgba(233,135,123,.28)!important;
+}
+.approvalCard{
+  display:grid!important;
+  grid-template-columns:52px minmax(0,1fr) auto!important;
+  align-items:center!important;
+  gap:14px!important;
+  overflow:visible!important;
+}
+.approvalAvatarCell{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+}
+.approvalAvatar{
+  width:44px!important;
+  height:44px!important;
+  min-width:44px!important;
+}
+.approvalCardInfo{
+  min-width:0!important;
+}
+.approvalCardInfo .uid{
+  max-width:360px!important;
+}
+.approvalCardActions{
+  justify-content:flex-end!important;
+  overflow:visible!important;
+  max-height:none!important;
 }
 @media(max-width:760px){
-  #adminAutoCheckChip{
-    right:12px!important;
-    bottom:12px!important;
-    width:30px!important;
-    min-width:30px!important;
-    height:30px!important;
+  .approvalCard{
+    grid-template-columns:46px minmax(0,1fr)!important;
   }
-  #adminAutoCheckChip .autoDot{
-    width:20px!important;
-    height:20px!important;
+  .approvalCardActions{
+    grid-column:2!important;
+    justify-content:flex-start!important;
   }
 }
 
+
+/* ===== FINAL_APPROVALS_FILTER_AVATAR_FIX_20260625 ===== */
+.approvalCard{
+  display:grid!important;
+  grid-template-columns:52px minmax(0,1fr) auto!important;
+  align-items:center!important;
+  gap:14px!important;
+  overflow:visible!important;
+}
+.approvalAvatarCell{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+}
+.approvalAvatar{
+  width:44px!important;
+  height:44px!important;
+  min-width:44px!important;
+}
+.approvalCardInfo{min-width:0!important;}
+.approvalCardInfo .mail{
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+.approvalCardInfo .meta{
+  line-height:1.45!important;
+}
+.approvalCardInfo .uid{
+  max-width:380px!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+.approvalCardActions{
+  display:flex!important;
+  gap:7px!important;
+  flex-wrap:wrap!important;
+  justify-content:flex-end!important;
+  overflow:visible!important;
+  max-height:none!important;
+}
+@media(max-width:760px){
+  .approvalCard{grid-template-columns:46px minmax(0,1fr)!important;align-items:start!important;}
+  .approvalCardActions{grid-column:2!important;justify-content:flex-start!important;}
+}
+
+
+/* ===== APPROVAL_PENDING_ONLY_REVOKE_IN_USERS_DOTS_20260625 ===== */
+.approvalFilter[data-af="approved"],
+.approvalFilter[data-af="all"]{
+  display:none!important;
+}
+.approvalFilters{
+  gap:0!important;
+}
+.approvalCard{
+  display:grid!important;
+  grid-template-columns:52px minmax(0,1fr) auto!important;
+  align-items:center!important;
+  gap:14px!important;
+  overflow:visible!important;
+}
+.approvalAvatarCell{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+}
+.approvalAvatar{
+  width:44px!important;
+  height:44px!important;
+  min-width:44px!important;
+}
+.approvalCardActions{
+  display:flex!important;
+  gap:7px!important;
+  justify-content:flex-end!important;
+  flex-wrap:wrap!important;
+  overflow:visible!important;
+  max-height:none!important;
+}
+#lhActionMenuFloat{
+  min-width:205px!important;
+}
+#lhActionMenuFloat .act.bad{
+  background:rgba(233,135,123,.14)!important;
+  color:var(--bad)!important;
+  border-color:rgba(233,135,123,.28)!important;
+}
+@media(max-width:760px){
+  .approvalCard{grid-template-columns:46px minmax(0,1fr)!important;align-items:start!important;}
+  .approvalCardActions{grid-column:2!important;justify-content:flex-start!important;}
+}
+
+
+/* ===== FORCE_REVOKE_IN_USER_DOTS_20260625 ===== */
+#lhActionMenuFloat{
+  min-width:215px!important;
+}
+#lhActionMenuFloat .revokeAccessBtn,
+#lhActionMenuFloat .act.bad.revokeAccessBtn{
+  display:flex!important;
+  background:rgba(233,135,123,.16)!important;
+  color:var(--bad)!important;
+  border-color:rgba(233,135,123,.34)!important;
+  font-weight:950!important;
+}
+
+
+/* ===== REVOKE_MOVES_USER_TO_APPROVAL_AND_APPROVED_USERS_UI_20260625 ===== */
+.approvedUsersNote{
+  margin:0 0 10px!important;
+  padding:10px 12px!important;
+  border:1px solid rgba(114,197,140,.24)!important;
+  border-radius:14px!important;
+  background:rgba(114,197,140,.075)!important;
+  color:rgba(245,240,232,.76)!important;
+  font-size:.86rem!important;
+  line-height:1.45!important;
+}
+.approvedUsersNote b{
+  color:var(--gold2)!important;
+}
+.approvedUsersHead{
+  border-color:rgba(114,197,140,.18)!important;
+}
+.approvedUserRow{
+  border-color:rgba(200,169,110,.22)!important;
+}
+.userApprovedBadge{
+  color:var(--ok)!important;
+  border-color:rgba(114,197,140,.38)!important;
+  background:rgba(114,197,140,.12)!important;
+}
+#lhActionMenuFloat .revokeAccessBtn,
+#lhActionMenuFloat .act.bad.revokeAccessBtn{
+  display:flex!important;
+  background:rgba(233,135,123,.16)!important;
+  color:var(--bad)!important;
+  border-color:rgba(233,135,123,.34)!important;
+  font-weight:950!important;
+}
+
+
+/* ===== FINAL_APPROVAL_UI_AND_REMOVE_USER_NOTE_20260625 ===== */
+.approvedUsersNote{display:none!important;}
+.approvalFilter[data-af="approved"],
+.approvalFilter[data-af="all"]{display:none!important;}
+.approvalFilters{gap:0!important;margin-bottom:14px!important;}
+.approvalCard,
+.approvalCard.approvalCardFixed{
+  display:flex!important;
+  align-items:center!important;
+  gap:14px!important;
+  width:100%!important;
+  min-height:88px!important;
+  padding:14px 18px!important;
+  overflow:visible!important;
+  flex-wrap:nowrap!important;
+}
+.approvalAvatarCell{
+  flex:0 0 52px!important;
+  width:52px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+}
+.approvalAvatar{
+  width:44px!important;
+  height:44px!important;
+  min-width:44px!important;
+}
+.approvalCardInfo{
+  flex:1 1 auto!important;
+  min-width:0!important;
+  width:auto!important;
+  max-width:none!important;
+}
+.approvalCardInfo .mail{
+  display:block!important;
+  max-width:100%!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  font-size:.96rem!important;
+  line-height:1.25!important;
+}
+.approvalCardInfo .meta{
+  margin-top:5px!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:6px!important;
+  flex-wrap:wrap!important;
+  line-height:1.35!important;
+  white-space:normal!important;
+  word-break:normal!important;
+}
+.approvalCardInfo .uid{
+  margin-top:4px!important;
+  max-width:620px!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+.approvalCardActions{
+  flex:0 0 auto!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-end!important;
+  gap:8px!important;
+  margin-left:auto!important;
+  overflow:visible!important;
+  max-height:none!important;
+  white-space:nowrap!important;
+}
+.approvalCardActions .act{
+  min-height:38px!important;
+  padding:9px 14px!important;
+}
+@media(max-width:760px){
+  .approvalCard,
+  .approvalCard.approvalCardFixed{
+    align-items:flex-start!important;
+    flex-wrap:wrap!important;
+  }
+  .approvalCardActions{
+    width:100%!important;
+    margin-left:66px!important;
+    justify-content:flex-start!important;
+    white-space:normal!important;
+  }
+}
