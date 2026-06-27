@@ -5305,3 +5305,123 @@ async function sendLoginToDiscord(email, role) {
   setTimeout(function(){ run(); ensureFinalRender(); }, 300);
   setTimeout(run, 1200);
 })();
+
+
+// ===== COPILOT_ADMIN_CLOUDINARY_IMAGE_FIX_20260627 =====
+// Ảnh admin upload sẽ lên Cloudinary, KHÔNG lưu Base64 vào bảng questions.
+(function(){
+  const CLOUDINARY_CLOUD_NAME = 'ddc4uvm7m';
+  const CLOUDINARY_UPLOAD_PRESET = 'learninghub_unsigned';
+  function escAttr(s){ return esc(s).replace(/`/g,'&#96;'); }
+  function optVal(q,k){ return q?.options?.[k] || ''; }
+  function imgSrc(im){ if(!im) return ''; if(typeof im==='string') return im; return im.src||im.url||im.secure_url||im.publicUrl||im.public_url||im.path||''; }
+  async function uploadCloudinary(file){
+    if(!CLOUDINARY_UPLOAD_PRESET || CLOUDINARY_UPLOAD_PRESET === 'YOUR_UNSIGNED_UPLOAD_PRESET') throw new Error('Chưa có unsigned upload preset Cloudinary.');
+    const fd=new FormData();
+    fd.append('file',file);
+    fd.append('upload_preset',CLOUDINARY_UPLOAD_PRESET);
+    fd.append('folder','learninghub/questions');
+    const res=await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,{method:'POST',body:fd});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.error?.message || 'Upload Cloudinary thất bại');
+    return {id:data.public_id,public_id:data.public_id,src:data.secure_url,url:data.secure_url,width:data.width,height:data.height,source:'cloudinary'};
+  }
+  let directEditDraftImages=[];
+  function renderDirectEditImages(){
+    const box=$('dqEditImgs'); if(!box) return;
+    if(!directEditDraftImages.length){ box.innerHTML='<div class="dqNoImage">Chưa có hình.</div>'; return; }
+    box.innerHTML=directEditDraftImages.map((im,i)=>`<div class="dqEditImg"><button type="button" onclick="removeDirectEditImage(${i})">×</button><img src="${escAttr(imgSrc(im))}" alt="Ảnh câu hỏi"></div>`).join('');
+  }
+  window.removeDirectEditImage=function(i){ directEditDraftImages.splice(i,1); renderDirectEditImages(); };
+  async function getFullQuestion(id){
+    const r=await client.from('questions').select('*').eq('id',id).maybeSingle();
+    if(r.error){ alert('Không tải được câu hỏi: '+r.error.message); return null; }
+    return r.data || (cache.questions||[]).find(x=>String(x.id)===String(id));
+  }
+  window.editQuestionDirect = async function(id){
+    if(!isEditor()) return alert('Admin hoặc Editor mới được sửa.');
+    const q=await getFullQuestion(id); if(!q) return;
+    directEditDraftImages=Array.isArray(q.images)?JSON.parse(JSON.stringify(q.images)):(q.images?[q.images]:[]);
+    openModal(`Sửa trực tiếp câu ${q.num||q.id}`, `
+      <div class="directEditAppStyle directEditPolished">
+        <div class="directTopBar"><div class="directHint">Ảnh mới sẽ upload lên Cloudinary.</div><div class="directTopActions actions"><button class="act ok directSaveBtn" onclick="saveQuestionDirect(${q.id})">Lưu trực tiếp</button><button class="act directCloseBtn" onclick="closeModal()">Đóng</button></div></div>
+        <div class="directEditGrid compactDirectGrid">
+          <section class="directLeft directPanel">
+            <div class="field directQuestionField"><label>Câu hỏi</label><textarea id="dqQuestion">${esc(q.question||'')}</textarea></div>
+            <div class="directSmallGrid"><div class="field directAnswerField"><label>Đáp án đúng</label><input id="dqAnswer" value="${escAttr(q.answer||'')}" placeholder="VD: A hoặc AC"></div><div class="field directImageField"><label>Hình ảnh</label><input type="file" id="dqImgUpload" accept="image/*" multiple></div></div>
+            <div id="dqEditImgs" class="dqEditImgs"></div>
+          </section>
+          <section class="directRight directPanel">${['A','B','C','D','E'].map(k=>`<div class="field directOptionField"><label>Đáp án ${k}</label><textarea data-dq-opt="${k}">${esc(optVal(q,k))}</textarea></div>`).join('')}</section>
+        </div>
+      </div>`);
+    setTimeout(()=>{
+      renderDirectEditImages();
+      const inp=$('dqImgUpload');
+      if(inp) inp.onchange=async e=>{
+        const files=Array.from(e.target.files||[]); if(!files.length) return;
+        inp.disabled=true; toast('Đang upload ảnh lên Cloudinary...');
+        try{ for(const file of files) directEditDraftImages.push(await uploadCloudinary(file)); renderDirectEditImages(); toast('Đã upload ảnh'); }
+        catch(err){ alert(err.message||err); } finally{ inp.disabled=false; e.target.value=''; }
+      };
+    },0);
+  };
+  window.saveQuestionDirect = async function(id){
+    if(!isEditor()) return alert('Admin hoặc Editor mới được sửa.');
+    const oldQ=await getFullQuestion(id); if(!oldQ) return;
+    const ops={}; document.querySelectorAll('[data-dq-opt]').forEach(t=>{const v=(t.value||'').trim(); if(v) ops[t.dataset.dqOpt]=v;});
+    const question=($('dqQuestion')?.value||'').trim(); const answer=($('dqAnswer')?.value||'').trim().toUpperCase();
+    if(!question) return alert('Câu hỏi không được để trống.'); if(!answer) return alert('Đáp án đúng không được để trống.');
+    const payload={question,options:ops,answer,answer_text:Object.entries(ops).filter(([k])=>answer.includes(k)).map(([k,v])=>`${k}. ${v}`).join('; '),images:directEditDraftImages||[],updated_at:new Date().toISOString()};
+    setBusy(true,'Đang lưu...');
+    try{
+      const res=await client.from('questions').update(payload).eq('id',id).select('id,num,subject_code,question,options,answer,is_active,updated_at').maybeSingle();
+      if(res.error) return alert(res.error.message);
+      const idx=(cache.questions||[]).findIndex(x=>String(x.id)===String(id)); if(idx>=0) cache.questions[idx]={...cache.questions[idx],...(res.data||payload),images:payload.images};
+      try{ await client.from('question_history').insert({question_id:id,question_num:oldQ.num||null,subject_code:oldQ.subject_code||null,request_id:null,previous_data:{question:oldQ.question,options:oldQ.options||{},answer:oldQ.answer,answer_text:oldQ.answer_text,images:oldQ.images||[]},new_data:payload,changed_by:user.id,approved_by:user.id}); }catch(e){}
+      await logAction('direct_edit_question','questions',id,{subject_code:oldQ.subject_code,num:oldQ.num});
+      closeModal(); renderQuestions(); toast('Đã sửa trực tiếp');
+    }finally{ setBusy(false); }
+  };
+})();
+
+
+// ===== COPILOT_ADMIN_BANDWIDTH_FINAL_OVERRIDE_20260627 =====
+// Chỉ tải 50 câu/trang, không tải cột images trong danh sách admin.
+(function(){
+  const QUESTION_COLS='id,num,subject_code,question,options,answer,is_active,updated_at,created_at';
+  const STATE=window.__ADMIN_PAGE_STATE__=window.__ADMIN_PAGE_STATE__||{page:1,size:50,total:0,subject:localStorage.getItem('admin_question_subject_filter_v1')||'all',subjects:[]};
+  function search(){return String($('search')?.value||'').trim();}
+  async function safeQ(p){try{const r=await p;return r.error?[]:(r.data||[])}catch(e){return[]}}
+  async function loadSubjects(){const rows=await safeQ(client.from('questions').select('subject_code').limit(10000));const set=new Set(rows.map(x=>x.subject_code||'HOD102').filter(Boolean));if(!set.size){set.add('HOD102');set.add('MLN111')}STATE.subjects=[...set].sort();}
+  async function loadQuestionPage(){
+    const from=(STATE.page-1)*STATE.size,to=from+STATE.size-1;
+    let q=client.from('questions').select(QUESTION_COLS,{count:'exact'}).order('subject_code',{ascending:true}).order('num',{ascending:true}).range(from,to);
+    if(STATE.subject!=='all')q=q.eq('subject_code',STATE.subject);
+    const s=search(); if(s){ if(/^\d+$/.test(s))q=q.or(`num.eq.${Number(s)},id.eq.${Number(s)}`); else q=q.or(`question.ilike.%${s.replaceAll('%','')}%,answer.ilike.%${s.replaceAll('%','')}%`); }
+    const r=await q; if(r.error){err('Lỗi tải câu hỏi: '+r.error.message);cache.questions=[];STATE.total=0;return}
+    cache.questions=r.data||[]; STATE.total=r.count||0;
+  }
+  async function loadLightTables(){
+    const a=await Promise.all([
+      safeQ(client.from('profiles').select('*').order('last_activity',{ascending:false,nullsFirst:false})),
+      safeQ(client.from('edit_requests').select('id,status,created_at,user_email,email,user_id,question_id,question_num,admin_note,reviewed_at,reviewed_by').order('created_at',{ascending:false}).limit(300)),
+      safeQ(client.from('question_history').select('id,question_id,question_num,subject_code,created_at,changed_by,changed_by_email,user_email,admin_email,approved_by,request_id').order('created_at',{ascending:false}).limit(300)),
+      isAdmin()?safeQ(client.from('admin_logs').select('*').order('created_at',{ascending:false}).limit(200)):Promise.resolve([])
+    ]);
+    cache.profiles=a[0];cache.requests=a[1];cache.history=a[2];cache.logs=a[3];
+  }
+  window.loadAll=loadAll=async function(){clearErr();setBusy(true,'Đang tải trang hiện tại...');try{await Promise.all([loadLightTables(),loadSubjects()]);await loadQuestionPage();render();toast(`Đã tải ${cache.questions.length}/${STATE.total} câu`);if(typeof startAdminRealtime==='function')startAdminRealtime();}finally{setBusy(false)}};
+  window.setQuestionSubjectFilter=function(code){STATE.subject=code||'all';STATE.page=1;localStorage.setItem('admin_question_subject_filter_v1',STATE.subject);loadQuestionPage().then(renderQuestions)};
+  window.adminQuestionPage=function(d){const max=Math.max(1,Math.ceil((STATE.total||0)/STATE.size));STATE.page=Math.min(max,Math.max(1,STATE.page+d));loadQuestionPage().then(renderQuestions)};
+  window.renderQuestions=renderQuestions=function(){
+    const max=Math.max(1,Math.ceil((STATE.total||0)/STATE.size));
+    const tabs=`<div class="questionSubjectTabs"><button class="subjectTab ${STATE.subject==='all'?'active':''}" onclick="setQuestionSubjectFilter('all')">Tất cả</button>${STATE.subjects.map(s=>`<button class="subjectTab ${STATE.subject===s?'active':''}" onclick="setQuestionSubjectFilter('${esc(s)}')">${esc(s)}</button>`).join('')}</div>`;
+    const pager=`<div class="questionPager actions"><button class="act" onclick="adminQuestionPage(-1)" ${STATE.page<=1?'disabled':''}>‹ Trang trước</button><b>Trang ${STATE.page}/${max}</b><button class="act" onclick="adminQuestionPage(1)" ${STATE.page>=max?'disabled':''}>Trang sau ›</button></div>`;
+    const html=(cache.questions||[]).map(q=>`<div class="item questionAdminItem"><div class="head"><div><div class="questionSubjectCode">${esc(q.subject_code||'HOD102')}</div><b>Câu ${esc(q.num||q.id)}</b></div>${q.is_active===false?badge('hidden'):badge('active')}</div><p>${esc(q.question||'')}</p><p class="muted">Đáp án: ${esc(q.answer||'')}</p><div class="actions"><button class="act" onclick="viewQuestion(${q.id})">Xem</button><button class="act warn" onclick="editQuestionDirect(${q.id})">Sửa trực tiếp</button><button class="act warn" onclick="toggleQuestion(${q.id},${q.is_active===false})">${q.is_active===false?'Hiện':'Ẩn'}</button>${isAdmin()?`<button class="act bad" onclick="deleteQuestionAdmin(${q.id})">Xóa</button>`:''}</div></div>`).join('')||'<p class=muted>Không có câu hỏi.</p>';
+    $('questionList').innerHTML=`<div class="questionToolbar"><div>${tabs}</div><button class="act ok addQuestionBtn" onclick="openAddQuestionAdmin()">+ Thêm câu hỏi</button></div><div class="questionResultNote">Đang hiển thị ${cache.questions.length}/${STATE.total} câu. Không tải ảnh ở danh sách.</div>`+pager+html+pager;
+  };
+  window.viewQuestion=async function(id){const r=await client.from('questions').select('*').eq('id',id).maybeSingle();if(r.error)return alert(r.error.message);const q=r.data;if(!q)return;openModal(`Câu ${q.num||q.id}`,`<pre class=raw>${esc(safe(q))}</pre>`)};
+  let rt=null;window.startAdminRealtime=function(){if(rt||!client||!user||!profile||!isEditor())return;rt=client.channel('admin-lite-final').on('postgres_changes',{event:'*',schema:'public',table:'questions'},p=>{const row=p.new||p.old||{};const i=(cache.questions||[]).findIndex(x=>String(x.id)===String(row.id));if(p.eventType==='DELETE'&&i>=0)cache.questions.splice(i,1);else if(p.eventType==='UPDATE'&&i>=0)cache.questions[i]={...cache.questions[i],...row,images:undefined};else if(p.eventType==='INSERT')STATE.total++;renderQuestions();}).subscribe();};
+  const inp=$('search');if(inp&&!inp.__adminFinalSearch){inp.__adminFinalSearch=true;let t;inp.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{STATE.page=1;loadQuestionPage().then(render)},350)},{passive:true});}
+  const btn=$('refreshBtn');if(btn)btn.onclick=loadAll;
+})();

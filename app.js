@@ -1,3 +1,11 @@
+// ===== BUILT-IN CONFIG: không cần file config.js riêng =====
+window.APP_CONFIG = {
+  SUPABASE_URL: 'https://bdbkpqnhavyoalgkvqtw.supabase.co',
+  SUPABASE_ANON_KEY: 'sb_publishable_h-AYsKKK57i0uJpBxJeCHA_csNkgjyB',
+  LOGIN_NOTIFY_ENDPOINT: 'https://bdbkpqnhavyoalgkvqtw.supabase.co/functions/v1/login-notify'
+};
+// ===== END BUILT-IN CONFIG =====
+
 window.HOD_DATA=[];
 (function(){var s=document.createElement('script');s.type='application/json';s.id='data';s.textContent='[]';document.head.appendChild(s);})();
 
@@ -152,14 +160,46 @@ window.HODSupabase = (() => {
   }
 
 
-  // ===== APP_DISCORD_LOGIN_NOTIFY_PATCH_20260625 =====
-// SECURITY FIX: Discord webhook removed from frontend.
-// Do not put Discord webhook URLs inside app.js because anyone can view and abuse them.
+  // ===== APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627 =====
+// Gửi thông báo đăng nhập web trực tiếp qua Discord webhook giống admin.js.
 async function sendLoginToDiscord(email, role) {
-  return;
+  const discordUrl = 'https://discord.com/api/webhooks/1519452717947420732/j-EVKdyuRYHRXU6MJbW9z_2lAy-wV2XnEOVULJEtDSgtignSVh2fWTTJKFgHj2MgoTJQ';
+
+  let embedColor = 3447003;
+  if (role === 'admin') embedColor = 10038562;
+  else if (role === 'editor') embedColor = 3066993;
+
+  const payload = {
+    embeds: [{
+      title: '🔑 NGƯỜI DÙNG ĐĂNG NHẬP WEB',
+      color: embedColor,
+      fields: [
+        { name: '👤 Gmail', value: email || 'N/A', inline: true },
+        { name: '🎭 Vai trò', value: role || 'user', inline: true },
+        { name: '🌐 Nguồn', value: 'Web học', inline: true },
+        { name: '🔗 Trang', value: location.href.split('#')[0] || 'N/A', inline: false },
+        { name: '⏰ Thời điểm', value: new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }), inline: false }
+      ]
+    }]
+  };
+
+  try {
+    const res = await fetch(discordUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) console.warn('Discord login notify failed:', res.status, await res.text().catch(() => ''));
+  } catch (error) {
+    console.warn('Lỗi gửi thông báo login web:', error);
+  }
 }
 async function notifyLoginToDiscordOnce(){
-  return;
+  if (!currentUser) return;
+  const key = 'hod_web_login_discord_notified_' + currentUser.id;
+  if (sessionStorage.getItem(key)) return;
+  await sendLoginToDiscord(currentProfile?.email || currentUser.email, currentProfile?.role || 'user');
+  sessionStorage.setItem(key, 'true');
 }
 async function loadProfile(){
     if (!client || !currentUser) { currentProfile = null; updateAuthUI(); return null; }
@@ -228,7 +268,7 @@ async function loadProfile(){
   async function loadQuestionsFromSupabase(){
     if (!client || !currentUser) return false;
     const activeSubject = localStorage.getItem('learninghub_subject_code_merged_v1') || '';
-    let query = client.from('questions').select('*').eq('is_active', true);
+    let query = client.from('questions').select('id,subject_code,num,question,options,answer,answer_text,is_active,updated_at').eq('is_active', true);
     if (activeSubject) query = query.eq('subject_code', activeSubject);
     const { data, error } = await query.order('num', { ascending: true });
     if (error) { console.warn(error); notify2('Không tải được questions từ Supabase.'); return false; }
@@ -285,7 +325,7 @@ async function loadProfile(){
 
   async function signOut(){
     if (!client) return;
-    sessionStorage.removeItem('hod_web_login_discord_notified');
+    Object.keys(sessionStorage).filter(k => k.startsWith('hod_web_login_discord_notified_')).forEach(k => sessionStorage.removeItem(k));
     await client.auth.signOut();
     currentUser = null;
     currentProfile = null;
@@ -588,10 +628,10 @@ async function loadProfile(){
   async function refreshSubjects(){ if(!logged()) return; clearErr(); showLoading(true); try{ subjectsCache=await getSubjects(); if(!pickedCode && subjectCode()) pickedCode=subjectCode(); if(!pickedCode && subjectsCache[0]) pickedCode=subjectsCache[0].code; renderSubjects(); syncSubjectTexts(); } finally { showLoading(false); } }
   function openGate(){ if(!logged()) return; if($('subjectUserEmail')) $('subjectUserEmail').textContent=user()?.email||'Chưa đăng nhập'; gateOn(true); closeAccountMenu(); refreshSubjects(); }
   function closeGate(){ gateOn(false); }
-  async function loadBySubject(code){ const supa=c(); if(!supa || !logged() || !code) return false; const {data,error}=await supa.from('questions').select('*').eq('is_active', true).eq('subject_code', code).order('num',{ascending:true}); if(error){ console.warn(error); notifyUX('Không tải được dữ liệu môn học.'); return false; } if(!data || !data.length){ RAW=[]; pool=[]; ci=0; if($('idx')) $('idx').textContent='0'; if($('total')) $('total').textContent='0'; try{renderStudy()}catch(e){} try{renderQuiz()}catch(e){} notifyUX(`Môn ${code} chưa có dữ liệu.`); return false; } RAW=data.map(r=>({ id:r.id, subject_code:r.subject_code||code, num:r.num, question:r.question, options:r.options||{}, answer:r.answer, answer_text:r.answer_text, images:r.images || [] })); pool=[...RAW]; var _saved=+localStorage.getItem('learninghub_progress_'+code)||0; ci=Math.max(0,Math.min(_saved,pool.length-1)); flipped=false; if($('idx')) $('idx').textContent=String(ci+1); if($('total')) $('total').textContent=String(pool.length); updateBrand(code); syncSubjectTexts(); try{renderCard()}catch(e){} try{renderQuiz()}catch(e){} try{renderStudy()}catch(e){} notifyUX(`Đã tải ${label(code)}`); return true; }
+  async function loadBySubject(code){ const supa=c(); if(!supa || !logged() || !code) return false; const {data,error}=await supa.from('questions').select('id,subject_code,num,question,options,answer,answer_text,is_active,updated_at').eq('is_active', true).eq('subject_code', code).order('num',{ascending:true}); if(error){ console.warn(error); notifyUX('Không tải được dữ liệu môn học.'); return false; } if(!data || !data.length){ RAW=[]; pool=[]; ci=0; if($('idx')) $('idx').textContent='0'; if($('total')) $('total').textContent='0'; try{renderStudy()}catch(e){} try{renderQuiz()}catch(e){} notifyUX(`Môn ${code} chưa có dữ liệu.`); return false; } RAW=data.map(r=>({ id:r.id, subject_code:r.subject_code||code, num:r.num, question:r.question, options:r.options||{}, answer:r.answer, answer_text:r.answer_text, images:r.images || [] })); pool=[...RAW]; var _saved=+localStorage.getItem('learninghub_progress_'+code)||0; ci=Math.max(0,Math.min(_saved,pool.length-1)); flipped=false; if($('idx')) $('idx').textContent=String(ci+1); if($('total')) $('total').textContent=String(pool.length); updateBrand(code); syncSubjectTexts(); try{renderCard()}catch(e){} try{renderQuiz()}catch(e){} try{renderStudy()}catch(e){} notifyUX(`Đã tải ${label(code)}`); return true; }
   async function enterSubject(){ if(!pickedCode) return; setSubject(pickedCode); closeGate(); await loadBySubject(pickedCode); }
   async function logoutGate(){ closeGate(); setSubject(''); await window.HODSupabase?.signOut?.(); }
-  function patchSubmit(){ if(window.__hubPatchSubmitMerged || !window.HODSupabase?.submitEditRequest) return; window.__hubPatchSubmitMerged=true; const old=window.HODSupabase.submitEditRequest.bind(window.HODSupabase); window.HODSupabase.submitEditRequest=async function(newDraft, oldQ){ if(oldQ?.id) return old(newDraft, oldQ); const supa=c(); const code=oldQ?.subject_code || subjectCode(); const num=oldQ?.num; if(supa && code && num){ const {data,error}=await supa.from('questions').select('*').eq('subject_code', code).eq('num', num).maybeSingle(); if(!error && data) oldQ={...oldQ,id:data.id,subject_code:data.subject_code||code}; } return old(newDraft, oldQ); }; }
+  function patchSubmit(){ if(window.__hubPatchSubmitMerged || !window.HODSupabase?.submitEditRequest) return; window.__hubPatchSubmitMerged=true; const old=window.HODSupabase.submitEditRequest.bind(window.HODSupabase); window.HODSupabase.submitEditRequest=async function(newDraft, oldQ){ if(oldQ?.id) return old(newDraft, oldQ); const supa=c(); const code=oldQ?.subject_code || subjectCode(); const num=oldQ?.num; if(supa && code && num){ const {data,error}=await supa.from('questions').select('id,subject_code').eq('subject_code', code).eq('num', num).maybeSingle(); if(!error && data) oldQ={...oldQ,id:data.id,subject_code:data.subject_code||code}; } return old(newDraft, oldQ); }; }
   function patchSave(){ if(window.__hubPatchSaveMerged || typeof saveEditor!=='function') return; window.__hubPatchSaveMerged=true; const old=saveEditor; saveEditor=async function(){ let oldQ=clone(RAW.find(c=>c.num===editDraft.num)||pool[ci]||editDraft); editDraft.question=$('editQuestion').value.trim(); editDraft.answer=$('editAnswer').value.trim().toUpperCase(); let ops={}; document.querySelectorAll('[data-opt]').forEach(t=>{ if(t.value.trim()) ops[t.dataset.opt]=t.value.trim(); }); editDraft.options=ops; editDraft.answer_text=answerText(editDraft); editDraft.subject_code=subjectCode(); if(window.HODSupabase&&window.HODSupabase.isReady()){ await window.HODSupabase.submitEditRequest(editDraft, oldQ); return; } return old(); }; }
   function patchSignOut(){ if(window.__hubPatchSignoutMerged || !window.HODSupabase?.signOut) return; window.__hubPatchSignoutMerged=true; const old=window.HODSupabase.signOut.bind(window.HODSupabase); window.HODSupabase.signOut=async function(){ setSubject(''); return old(); }; }
   function ensureChangeBtn(){ if(!$('hodChangeSubjectBtn')) return; $('hodChangeSubjectBtn').onclick=e=>{ e?.preventDefault?.(); openGate(); }; }
@@ -1125,7 +1165,7 @@ window.__submitSubjectRequest = async function(){
     const c=supa(), subject=code();
     if(!c||!logged()){empty('Đăng nhập để tải dữ liệu từ Supabase');return false;}
     if(!subject){empty('Chọn môn để tải dữ liệu từ Supabase');return false;}
-    const {data,error}=await c.from('questions').select('*').eq('is_active',true).eq('subject_code',subject).order('num',{ascending:true});
+    const {data,error}=await c.from('questions').select('id,subject_code,num,question,options,answer,answer_text,is_active,updated_at').eq('is_active',true).eq('subject_code',subject).order('num',{ascending:true});
     if(error){console.warn('[NO LOCAL] Supabase load error',error);empty('Không tải được dữ liệu Supabase');return false;}
     RAW=(data||[]).map(r=>({id:r.id,subject_code:r.subject_code||subject,num:r.num,question:r.question,options:r.options||{},answer:r.answer,answer_text:r.answer_text,images:r.images||[]}));
     var _saved2=+localStorage.getItem('learninghub_progress_'+subject)||0;pool=[...RAW];ci=Math.max(0,Math.min(_saved2,pool.length-1));flipped=false;randomActive=false;localStorage.setItem('hod102_random_active','0');
@@ -4451,3 +4491,91 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c){const r
   window.addEventListener('resize', stableImage, {passive:true});
 })();
 // ===== FIX_DYNAMIC_IMAGE_ALIGN_BC_20260627 END =====
+
+
+// ===== COPILOT_CLOUDINARY_IMAGE_FIX_20260627 =====
+// Ảnh mới sẽ upload lên Cloudinary, KHÔNG lưu Base64 vào Supabase nữa.
+(function(){
+  const CLOUDINARY_CLOUD_NAME = 'ddc4uvm7m';
+  const CLOUDINARY_UPLOAD_PRESET = 'learninghub_unsigned'; // Cloudinary > Settings > Upload > unsigned preset
+  const SUBJECT_STORE = 'learninghub_subject_code_merged_v1';
+  const QUESTION_LIGHT_COLUMNS = 'id,subject_code,num,question,options,answer,answer_text,is_active,updated_at';
+  function $(id){ return document.getElementById(id); }
+  function supa(){ return window.HODSupabase?.__client || null; }
+  function user(){ return window.HODSupabase?.getUser?.() || null; }
+  function subject(){ return localStorage.getItem(SUBJECT_STORE) || ''; }
+  function notifyX(t){ if(typeof notify==='function') notify(t); else console.log(t); }
+  async function uploadCloudinary(file){
+    if(!CLOUDINARY_UPLOAD_PRESET || CLOUDINARY_UPLOAD_PRESET === 'YOUR_UNSIGNED_UPLOAD_PRESET') throw new Error('Chưa có unsigned upload preset Cloudinary.');
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    fd.append('folder', 'learninghub/questions');
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, { method:'POST', body:fd });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.error?.message || 'Upload Cloudinary thất bại');
+    return { id:data.public_id, public_id:data.public_id, src:data.secure_url, url:data.secure_url, width:data.width, height:data.height, source:'cloudinary' };
+  }
+  async function loadSubjectLight(force=false){
+    const c=supa(), code=subject();
+    if(!c||!user()) return false;
+    if(!code) return false;
+    const {data,error} = await c.from('questions').select(QUESTION_LIGHT_COLUMNS).eq('is_active',true).eq('subject_code',code).order('num',{ascending:true});
+    if(error){ console.warn('[light load]', error); return false; }
+    RAW=(data||[]).map(r=>({id:r.id,subject_code:r.subject_code||code,num:r.num,question:r.question,options:r.options||{},answer:r.answer||'',answer_text:r.answer_text||'',images:[],__imagesChecked:false}));
+    pool=[...RAW];
+    const saved=+localStorage.getItem('learninghub_progress_'+code)||0;
+    ci=Math.max(0,Math.min(saved,Math.max(0,pool.length-1)));
+    flipped=false;
+    try{ renderCard(); renderQuiz(); renderStudy(); }catch(e){}
+    return true;
+  }
+  window.loadCurrentSubjectOnly = loadSubjectLight;
+  function patchApi(){ if(window.HODSupabase) window.HODSupabase.loadQuestionsFromSupabase = loadSubjectLight; }
+  patchApi(); setTimeout(patchApi,500); setTimeout(patchApi,1500);
+
+  async function fetchImagesForCurrent(){
+    const c=supa(); const q=(pool&&pool[ci])||null;
+    if(!c||!q||!q.id||q.__imagesChecked) return;
+    q.__imagesChecked=true;
+    const {data,error}=await c.from('questions').select('id,images').eq('id',q.id).maybeSingle();
+    if(!error&&data){ q.images=data.images||[]; q.__imagesLoaded=true; try{ renderCard(); }catch(e){} }
+  }
+  const oldRenderCard = typeof renderCard==='function' ? renderCard : null;
+  if(oldRenderCard && !oldRenderCard.__cloudinaryLazy){
+    renderCard = function(){ oldRenderCard.apply(this,arguments); setTimeout(fetchImagesForCurrent,0); };
+    renderCard.__cloudinaryLazy=true; window.renderCard=renderCard;
+  }
+
+  function bindEditorUpload(){
+    const inp=$('imgUpload');
+    if(!inp || inp.__cloudinaryBound) return;
+    inp.__cloudinaryBound=true;
+    inp.onchange = async function(e){
+      const files=Array.from(e.target.files||[]);
+      if(!files.length) return;
+      inp.disabled=true; notifyX('Đang upload ảnh lên Cloudinary...');
+      try{
+        editDraft.images = editDraft.images || [];
+        for(const file of files){ editDraft.images.push(await uploadCloudinary(file)); }
+        if(typeof renderEditImages==='function') renderEditImages();
+        notifyX('Đã upload ảnh lên Cloudinary');
+      }catch(err){ alert(err.message || err); }
+      finally{ inp.disabled=false; e.target.value=''; }
+    };
+  }
+  const oldOpenEditor = typeof openEditor==='function' ? openEditor : null;
+  if(oldOpenEditor && !oldOpenEditor.__cloudinaryPatch){
+    openEditor = async function(){
+      const q=(pool&&pool[ci])||null;
+      if(q&&q.id&&!q.__imagesLoaded){
+        try{ const c=supa(); const {data}=await c.from('questions').select('*').eq('id',q.id).maybeSingle(); if(data) Object.assign(q,data,{images:data.images||[],__imagesLoaded:true}); }catch(e){}
+      }
+      const r = oldOpenEditor.apply(this,arguments);
+      setTimeout(bindEditorUpload,0);
+      return r;
+    };
+    openEditor.__cloudinaryPatch=true; window.openEditor=openEditor;
+  }
+  document.addEventListener('DOMContentLoaded',()=>{ patchApi(); setTimeout(bindEditorUpload,300); });
+})();
