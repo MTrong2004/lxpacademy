@@ -2609,3 +2609,29 @@ body:not(.hod-is-admin-final) #adminOpenBtn,body:not(.hod-is-admin-final) #hodFl
 #fc .front::-webkit-scrollbar-track,#fc .front.hasImg::-webkit-scrollbar-track,#fc .front.hasImg #images::-webkit-scrollbar-track{background:rgba(255,255,255,.045)!important;border-radius:999px!important;border:1px solid rgba(200,169,110,.16)!important;}
 #fc .front::-webkit-scrollbar-thumb,#fc .front.hasImg::-webkit-scrollbar-thumb,#fc .front.hasImg #images::-webkit-scrollbar-thumb{background:linear-gradient(180deg,var(--gold2),var(--gold))!important;border-radius:999px!important;border:2px solid rgba(18,12,9,.92)!important;}
 /* ===== FIX_DYNAMIC_IMAGE_ALIGN_BC_20260627 END ===== */
+
+
+/* ===== FIX_IMAGE_NO_JUMP_FINAL_20260627 =====
+   Chặn lỗi hình trong flashcard bị nhảy/rung do căn ảnh động.
+*/
+#fc .front.hasImg #images{
+  transform:none!important;
+  translate:none!important;
+  animation:none!important;
+  transition:none!important;
+  will-change:auto!important;
+  contain:layout paint!important;
+  align-self:start!important;
+}
+#fc .front.hasImg #images img{
+  transform:none!important;
+  translate:none!important;
+  animation:none!important;
+  transition:none!important;
+  will-change:auto!important;
+}
+#fc .front.hasImg #options,
+#fc .front.hasImg #question,
+#fc .front.hasImg #tag{
+  animation:none!important;
+}

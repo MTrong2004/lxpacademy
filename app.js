@@ -30,9 +30,9 @@ function renderCard(){let c=pool[ci]||RAW[0];if(!c)return;fit(c);applyCardFontSi
 // IMPORTANT: Never paste service_role key here. Use anon key only.
 // ===============================
 window.HODSupabase = (() => {
-  const CONFIG = {
-    SUPABASE_URL: 'https://bdbkpqnhavyoalgkvqtw.supabase.co',
-    SUPABASE_ANON_KEY: 'sb_publishable_h-AYsKKK57i0uJpBxJeCHA_csNkgjyB'
+  const CONFIG = window.APP_CONFIG || {
+    SUPABASE_URL: '',
+    SUPABASE_ANON_KEY: ''
   };
 
   let client = null;
@@ -153,50 +153,15 @@ window.HODSupabase = (() => {
 
 
   // ===== APP_DISCORD_LOGIN_NOTIFY_PATCH_20260625 =====
-  async function sendLoginToDiscord(email, role) {
-    const discordUrl = 'https://discord.com/api/webhooks/1519452717947420732/j-EVKdyuRYHRXU6MJbW9z_2lAy-wV2XnEOVULJEtDSgtignSVh2fWTTJKFgHj2MgoTJQ';
-
-    let embedColor = 3447003;
-    if (role === 'admin') embedColor = 10038562;
-    else if (role === 'editor') embedColor = 3066993;
-
-    const payload = {
-      embeds: [{
-        title: '🔑 ĐĂNG NHẬP WEB THÀNH CÔNG',
-        color: embedColor,
-        fields: [
-          { name: '👤 Tài khoản Gmail', value: email || 'N/A', inline: true },
-          { name: '🎭 Vai trò', value: role || 'user', inline: true },
-          { name: '⏰ Thời điểm', value: new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }), inline: false }
-        ]
-      }]
-    };
-
-    try {
-      await fetch(discordUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-    } catch (error) {
-      console.warn('Lỗi gửi thông báo login web:', error);
-    }
-  }
-
-  async function notifyLoginToDiscordOnce(){
-    try {
-      if (!currentUser) return;
-      const loginKey = 'hod_web_login_discord_notified';
-      const userKey = currentUser.id || currentUser.email || 'unknown';
-      if (sessionStorage.getItem(loginKey) === userKey) return;
-      await sendLoginToDiscord(currentProfile?.email || currentUser.email || '', currentProfile?.role || 'user');
-      sessionStorage.setItem(loginKey, userKey);
-    } catch (e) {
-      console.warn('Không gửi được thông báo Discord login web:', e);
-    }
-  }
-
-  async function loadProfile(){
+// SECURITY FIX: Discord webhook removed from frontend.
+// Do not put Discord webhook URLs inside app.js because anyone can view and abuse them.
+async function sendLoginToDiscord(email, role) {
+  return;
+}
+async function notifyLoginToDiscordOnce(){
+  return;
+}
+async function loadProfile(){
     if (!client || !currentUser) { currentProfile = null; updateAuthUI(); return null; }
     const now = new Date().toISOString();
     const base = { id: currentUser.id, email: currentUser.email, last_login: now };
@@ -550,8 +515,8 @@ window.HODSupabase = (() => {
 
 // ===== LEARNING HUB MERGED SUBJECT PATCH START =====
 (function(){
-  const HUB_URL='https://bdbkpqnhavyoalgkvqtw.supabase.co';
-  const HUB_KEY='sb_publishable_h-AYsKKK57i0uJpBxJeCHA_csNkgjyB';
+  const HUB_URL = window.APP_CONFIG?.SUPABASE_URL || '';
+  const HUB_KEY = window.APP_CONFIG?.SUPABASE_ANON_KEY || '';
   const SUBJECT_STORE='learninghub_subject_code_merged_v1';
   let subjectClient=null, subjectsCache=[], pickedCode=localStorage.getItem(SUBJECT_STORE)||'', lock=false;
   function c(){ if(!window.supabase) return null; if(!subjectClient) subjectClient=window.supabase.createClient(HUB_URL,HUB_KEY); return subjectClient; }
@@ -666,8 +631,8 @@ window.HODSupabase = (() => {
 
 // ===== ADD_SUBJECT_FEATURE_20260625 (UPGRADED TAB UX/UI) =====
 (function(){
-  const HUB_URL='https://bdbkpqnhavyoalgkvqtw.supabase.co';
-  const HUB_KEY='sb_publishable_h-AYsKKK57i0uJpBxJeCHA_csNkgjyB';
+  const HUB_URL = window.APP_CONFIG?.SUPABASE_URL || '';
+  const HUB_KEY = window.APP_CONFIG?.SUPABASE_ANON_KEY || '';
   const $=id=>document.getElementById(id);
   let supa=null;
   function client(){ if(!window.supabase) return null; if(!supa) supa=window.supabase.createClient(HUB_URL,HUB_KEY); return supa; }
@@ -4464,37 +4429,25 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c){const r
 // ===== LIBRARY_UX_STEP1_STABLE_RENDER_20260627 END =====
 
 
-// ===== FIX_DYNAMIC_IMAGE_ALIGN_BC_20260627 =====
+// ===== FIX_DYNAMIC_IMAGE_ALIGN_BC_20260627 DISABLED =====
+// Đã tắt căn ảnh động vì gây hiện tượng hình ảnh bị nhảy/rung liên tục.
 (function(){
-  function alignImageToBC(){
-    try{
-      if(!window.matchMedia || !window.matchMedia('(min-width:901px)').matches) return reset();
-      const front=document.querySelector('#fc .front.hasImg');
-      const imgs=document.getElementById('images');
-      const opts=document.getElementById('options');
-      if(!front||!imgs||!opts||!imgs.children.length) return reset();
-      const items=[...opts.querySelectorAll('.opt')];
-      if(items.length<3) return reset();
-      const b=items[1].getBoundingClientRect();
-      const c=items[2].getBoundingClientRect();
-      const img=imgs.getBoundingClientRect();
-      const target=((b.top+b.height/2)+(c.top+c.height/2))/2;
-      const current=img.top+img.height/2;
-      let shift=target-current;
-      if(!Number.isFinite(shift)) shift=0;
-      shift=Math.max(-140,Math.min(180,shift));
-      imgs.style.setProperty('--image-shift-y', shift.toFixed(1)+'px');
-    }catch(e){reset();}
+  function stableImage(){
+    const imgs = document.getElementById('images');
+    if(imgs) imgs.style.setProperty('--image-shift-y','0px');
   }
-  function reset(){document.getElementById('images')?.style.setProperty('--image-shift-y','0px')}
-  const oldRender=typeof renderCard==='function'?renderCard:null;
-  if(oldRender && !window.__alignImageBCPatched){
-    window.__alignImageBCPatched=true;
-    renderCard=function(){const r=oldRender.apply(this,arguments);requestAnimationFrame(()=>setTimeout(alignImageToBC,30));return r};
-    window.renderCard=renderCard;
+  const oldRender = typeof renderCard === 'function' ? renderCard : null;
+  if(oldRender && !window.__stableImageNoJumpPatch){
+    window.__stableImageNoJumpPatch = true;
+    renderCard = function(){
+      const r = oldRender.apply(this, arguments);
+      requestAnimationFrame(stableImage);
+      setTimeout(stableImage, 80);
+      return r;
+    };
+    window.renderCard = renderCard;
   }
-  window.addEventListener('resize',()=>setTimeout(alignImageToBC,80),{passive:true});
-  document.addEventListener('DOMContentLoaded',()=>setTimeout(alignImageToBC,200));
-  setTimeout(alignImageToBC,800);
+  document.addEventListener('DOMContentLoaded', stableImage);
+  window.addEventListener('resize', stableImage, {passive:true});
 })();
 // ===== FIX_DYNAMIC_IMAGE_ALIGN_BC_20260627 END =====
