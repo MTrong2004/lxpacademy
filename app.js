@@ -4206,3 +4206,63 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c){const r
     if(e.key==='Escape') closeImg();
   });
 })();
+
+
+;/* FINAL APP CLEANUP 20260627: remove old/duplicate UI shells after load */
+(function(){
+  window.__APP_UI_CLEAN_FINAL__ = '20260627';
+  function cleanupOldUI(){
+    ['#hodLoginScreen','#hodRoleBar','#hodUserDock','#hodFinalRoleBar','#hodFinalLogin','.hodAuthLanding','.hodFloatingAuth','.legacyLogin','.legacyAuth','.oldLanding'].forEach(function(s){
+      document.querySelectorAll(s).forEach(function(el){ el.remove(); });
+    });
+    // Giữ 1 avatar/menu/chip cuối, tránh patch cũ tạo trùng.
+    ['#hodTopAvatar','#subjectTopChip','#hodAccountMenu'].forEach(function(s){
+      var arr = Array.from(document.querySelectorAll(s));
+      arr.slice(0, Math.max(0, arr.length - 1)).forEach(function(el){ el.remove(); });
+    });
+    // Không cho nút admin cũ/float hiện với user thường.
+    if(!window.HODSupabase?.isAdmin?.()){
+      document.querySelectorAll('#adminOpenBtn,#hodFloatAdmin').forEach(function(el){ el.remove(); });
+      document.getElementById('adminModal')?.classList.add('hidden');
+    }
+    // Tắt nút random nếu theme cũ còn inject lại.
+    document.querySelectorAll('#shuffle,#stShuffle').forEach(function(el){ el.style.display='none'; el.disabled=true; });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', cleanupOldUI); else cleanupOldUI();
+  setTimeout(cleanupOldUI,300);
+  setTimeout(cleanupOldUI,1200);
+})();
+
+
+// ===== FINAL_EXAM_ONLY_QUIZ_UI_20260627 =====
+(function(){
+  let examOnlyIndex=0, examOnlyReview=false;
+  const $=id=>document.getElementById(id);
+  const E=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const S=s=>typeof sortAns==='function'?sortAns(s||''):String(s||'').split('').sort().join('');
+  const A=c=>{try{return typeof finalAnswerText==='function'?finalAnswerText(c):answerText(c)}catch(e){return (c.answer||'').split('').map(k=>k+'. '+((c.options||{})[k]||'')).join('; ')}};
+  const IMG=c=>{try{return typeof imgsHTML==='function'?imgsHTML(c):''}catch(e){return ''}};
+  const done=()=>Object.keys(qSel||{}).filter(k=>qSel[k]).length;
+  const time=()=>($('timer')?.textContent||'00:00');
+  function markTab(){document.querySelectorAll('.tab').forEach(t=>{if(t.dataset?.tab==='quiz')t.textContent='Kiểm tra'});}
+  function setup(){
+    const box=document.querySelector('#quiz .setup'); if(!box||box.dataset.examOnlyReady==='1')return; box.dataset.examOnlyReady='1'; qCnt=10;
+    box.innerHTML=`<div class="examOnlyStart"><div class="examOnlyBadge">KIỂM TRA</div><h3>Làm bài lấy điểm</h3><p>Làm như đề thi. Chọn đáp án từng câu, nộp bài xong mới xem điểm và đáp án.</p><div class="examOnlyLabel">Số câu kiểm tra</div><div class="examOnlyCountGrid"><button class="cnt sel" data-exam-cnt="10">10 câu</button><button class="cnt" data-exam-cnt="20">20 câu</button><button class="cnt" data-exam-cnt="30">30 câu</button><button class="cnt" data-exam-cnt="0">Thư viện</button></div><button id="start" class="start" type="button">Bắt đầu kiểm tra</button></div>`;
+    box.querySelectorAll('[data-exam-cnt]').forEach(b=>b.onclick=()=>{qCnt=+b.dataset.examCnt;box.querySelectorAll('[data-exam-cnt]').forEach(x=>x.classList.remove('sel'));b.classList.add('sel')});
+    $('start').onclick=start;
+  }
+  function start(){quizMode='exam';examSubmitted=false;examOnlyReview=false;examOnlyIndex=0;qSet=sample(RAW||[],qCnt||0);qDone={};qSel={};if(typeof startTimer==='function')startTimer();draw()}
+  function score(){let ok=0;(qSet||[]).forEach((c,i)=>{if(S(qSel[i])===S(c.answer))ok++});let total=(qSet||[]).length,pct=total?Math.round(ok/total*100):0;return{ok,bad:total-ok,total,pct}}
+  function draw(){const body=$('quizBody');if(!body)return;setup();if(!qSet||!qSet.length){body.innerHTML='<div class="examOnlyEmpty">Chọn số câu rồi bấm <b>Bắt đầu kiểm tra</b>.</div>';return}if(examSubmitted){result();return}
+    let c=qSet[examOnlyIndex],total=qSet.length,p=Math.round((examOnlyIndex+1)/total*100);
+    let opts=Object.entries(c.options||{}).map(([k,v])=>`<button type="button" class="examOnlyOption ${String(qSel[examOnlyIndex]||'').includes(k)?'sel':''}" data-exam-opt="${E(k)}"><span class="qkey">${E(k)}</span><span class="qtxt">${E(v)}</span></button>`).join('');
+    body.innerHTML=`<section class="examOnlyCard"><div class="examOnlyTopline"><div><div class="examOnlyQuestionNo">Câu ${examOnlyIndex+1} / ${total}</div><div class="examOnlyMeta">Đã làm: ${done()} / ${total} · Thời gian: ${time()}</div></div><button type="button" class="examOnlyExit" id="examOnlyExit">Thoát</button></div><div class="examOnlyProgress"><div style="width:${p}%"></div></div><div class="qq">${E(c.question)}</div><div class="qimgs">${IMG(c)}</div><div class="examOnlyOptions">${opts}</div><div class="examOnlyNav"><button type="button" class="btn" id="examPrev" ${examOnlyIndex<=0?'disabled':''}>← Câu trước</button><button type="button" class="btn" id="examNext" ${examOnlyIndex>=total-1?'disabled':''}>Câu tiếp →</button></div><button type="button" class="submitExam" id="examSubmit">Nộp bài</button></section>`}
+  function result(){const body=$('quizBody'),s=score(),label=s.pct>=90?'Xuất sắc':s.pct>=70?'Khá ổn rồi':s.pct>=50?'Cần ôn thêm':'Nên làm lại vài vòng';body.innerHTML=`<section class="examOnlyResult"><div class="examOnlyBadge">KẾT QUẢ KIỂM TRA</div><h2>${s.ok} / ${s.total} câu đúng</h2><div class="examOnlyScore">${s.pct}%</div><p>${label}</p><div class="examOnlyStats"><span>Đúng: <b>${s.ok}</b></span><span>Sai: <b>${s.bad}</b></span><span>Thời gian: <b>${time()}</b></span></div><div class="examOnlyActions"><button type="button" class="primary" id="examReviewBtn">Xem lại bài làm</button><button type="button" class="btn" id="examRetryBtn">Làm lại bộ này</button><button type="button" class="btn" id="examNewBtn">Tạo đề mới</button></div><div id="examReviewList" class="examOnlyReviewList hidden"></div></section>`;if(examOnlyReview)review()}
+  function review(){const list=$('examReviewList');if(!list)return;list.classList.remove('hidden');list.innerHTML=(qSet||[]).map((c,i)=>{let ch=qSel[i]||'Chưa chọn',ok=S(ch)===S(c.answer);return`<div class="examOnlyReviewItem ${ok?'ok':'bad'}"><div class="examOnlyReviewHead">Câu ${i+1} ${ok?'✅ Đúng':'❌ Sai'}</div><div class="examOnlyReviewQ">${E(c.question)}</div><div class="examOnlyReviewAns">Bạn chọn: <b>${E(ch)}</b></div><div class="examOnlyReviewAns">Đáp án đúng: <b>${E(c.answer)}</b></div><div class="examOnlyExplain">${E(A(c))}</div></div>`}).join('')}
+  function submit(){if(!confirm('Bạn chắc chắn muốn nộp bài?\n\nĐã làm: '+done()+' / '+(qSet||[]).length+' câu'))return;examSubmitted=true;if(typeof stopTimer==='function')stopTimer();result()}
+  function removeOldQuizUI(){document.querySelectorAll('#quiz .modeRow,#quiz .cntGrid:not(.examOnlyCountGrid),#practiceMode,#examMode').forEach(x=>x.remove())}
+  function bind(){markTab();removeOldQuizUI();setup();let l=$('quizModeLabel');if(l)l.textContent='Kiểm tra: nộp bài mới hiện đáp án';let body=$('quizBody');if(body&&body.dataset.examOnlyBound!=='1'){body.dataset.examOnlyBound='1';body.addEventListener('click',e=>{let o=e.target.closest('[data-exam-opt]');if(o&&!examSubmitted){let c=qSet[examOnlyIndex],k=o.dataset.examOpt;if(c&&String(c.answer||'').length>1){let set=new Set(String(qSel[examOnlyIndex]||'').split('').filter(Boolean));set.has(k)?set.delete(k):set.add(k);qSel[examOnlyIndex]=Array.from(set).sort().join('')}else qSel[examOnlyIndex]=k;draw()}if(e.target.id==='examPrev'){examOnlyIndex=Math.max(0,examOnlyIndex-1);draw()}if(e.target.id==='examNext'){examOnlyIndex=Math.min((qSet||[]).length-1,examOnlyIndex+1);draw()}if(e.target.id==='examSubmit')submit();if(e.target.id==='examReviewBtn'){examOnlyReview=true;review()}if(e.target.id==='examRetryBtn'){qSel={};examSubmitted=false;examOnlyReview=false;examOnlyIndex=0;if(typeof startTimer==='function')startTimer();draw()}if(e.target.id==='examNewBtn'||e.target.id==='examOnlyExit'){if(e.target.id==='examOnlyExit'&&!confirm('Thoát bài kiểm tra hiện tại?'))return;qSet=[];qSel={};examSubmitted=false;examOnlyReview=false;examOnlyIndex=0;if(typeof stopTimer==='function')stopTimer();let t=$('timer');if(t)t.textContent='00:00';draw()}})}draw()}
+  try{renderQuiz=function(){setup();draw()}}catch(e){window.renderQuiz=function(){setup();draw()}}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(bind,120));else setTimeout(bind,120);setTimeout(bind,900);
+})();
+// ===== FINAL_EXAM_ONLY_QUIZ_UI_20260627 END =====

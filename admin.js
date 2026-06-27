@@ -5278,3 +5278,30 @@ async function sendLoginToDiscord(email, role) {
 
   setTimeout(() => { try{ renderUsers(); renderApprovals(); }catch(e){} }, 250);
 })();
+
+;/* FINAL ADMIN CLEANUP: remove/disable legacy UI after all patches loaded */
+(function(){
+  window.__ADMIN_UI_CLEAN_FINAL__ = '20260627';
+  function closeLegacyUi(){
+    // Đóng menu/details cũ để không đè lên menu 3 chấm bản mới.
+    document.querySelectorAll('.userActionMenu').forEach(function(el){ el.remove(); });
+    document.querySelectorAll('.avatarCell,.compactUserActions').forEach(function(el){ el.remove(); });
+    // Nếu có nhiều menu nổi do patch cũ tạo, giữ lại menu final mới nhất.
+    var menus = Array.from(document.querySelectorAll('#userActionMenuFinal,.lhUserActionMenuFinal'));
+    menus.slice(0, Math.max(0, menus.length - 1)).forEach(function(el){ el.remove(); });
+    // Chặn modal cũ bị kẹt trạng thái hiển thị.
+    document.querySelectorAll('.modal').forEach(function(m){
+      if(m.id !== 'modal' && !m.classList.contains('keepModal')) m.classList.add('hidden');
+    });
+  }
+  function ensureFinalRender(){
+    try{
+      if(document.getElementById('users')?.classList.contains('active') && typeof renderUsers === 'function') renderUsers();
+      if(document.getElementById('approvals')?.classList.contains('active') && typeof renderApprovals === 'function') renderApprovals();
+    }catch(e){ console.warn('[admin cleanup render]', e); }
+  }
+  function run(){ closeLegacyUi(); }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+  setTimeout(function(){ run(); ensureFinalRender(); }, 300);
+  setTimeout(run, 1200);
+})();
