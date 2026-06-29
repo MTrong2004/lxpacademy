@@ -788,107 +788,22 @@ for each row
 execute function public.ensure_admin_editor_approved();
 
 notify pgrst, 'reload schema';
+
+-- ===== SECURITY_FIX_ADMIN_ROLE_FUNCTIONS_20260629 =====
+-- Chặn frontend gọi trực tiếp các hàm nhạy cảm.
+-- Lưu ý: nếu admin panel đang gọi RPC admin_set_user_role thì nút đổi role có thể cần sửa ở frontend.
+revoke all on function public.admin_set_user_role(uuid, text) from public;
+revoke execute on function public.admin_set_user_role(uuid, text) from anon;
+revoke execute on function public.admin_set_user_role(uuid, text) from authenticated;
+
+revoke all on function public.ensure_admin_editor_approved() from public;
+revoke execute on function public.ensure_admin_editor_approved() from anon;
+revoke execute on function public.ensure_admin_editor_approved() from authenticated;
+
+notify pgrst, 'reload schema';
+-- ===== END SECURITY_FIX_ADMIN_ROLE_FUNCTIONS_20260629 =====
+
 -- ===== END FIX_ADMIN_EDITOR_SKIP_APPROVAL_20260628 =====
-
--- ===== BANDWIDTH_USAGE_SETUP_20260628 =====
--- Bảng thống kê băng thông theo tài khoản.
-
-create table if not exists public.bandwidth_usage (
-  id bigserial primary key,
-  period text not null,
-  user_id uuid,
-  user_email text,
-  page text default 'app',
-  bytes bigint not null default 0,
-  requests integer not null default 0,
-  reloads integer not null default 0,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint bandwidth_usage_bytes_nonnegative check (bytes >= 0),
-  constraint bandwidth_usage_requests_nonnegative check (requests >= 0),
-  constraint bandwidth_usage_reloads_nonnegative check (reloads >= 0)
-);
-
-alter table public.bandwidth_usage add column if not exists period text;
-alter table public.bandwidth_usage add column if not exists user_id uuid;
-alter table public.bandwidth_usage add column if not exists user_email text;
-alter table public.bandwidth_usage add column if not exists page text default 'app';
-alter table public.bandwidth_usage add column if not exists bytes bigint not null default 0;
-alter table public.bandwidth_usage add column if not exists requests integer not null default 0;
-alter table public.bandwidth_usage add column if not exists reloads integer not null default 0;
-alter table public.bandwidth_usage add column if not exists created_at timestamptz not null default now();
-alter table public.bandwidth_usage add column if not exists updated_at timestamptz not null default now();
-
-create index if not exists idx_bandwidth_usage_period_bytes
-  on public.bandwidth_usage(period, bytes desc);
-
-create index if not exists idx_bandwidth_usage_user_period
-  on public.bandwidth_usage(user_id, period);
-
-create index if not exists idx_bandwidth_usage_updated_at
-  on public.bandwidth_usage(updated_at desc);
-
-alter table public.bandwidth_usage enable row level security;
-
-drop policy if exists "bandwidth_usage insert own" on public.bandwidth_usage;
-create policy "bandwidth_usage insert own"
-  on public.bandwidth_usage
-  for insert to authenticated
-  with check (
-    user_id = auth.uid()
-    and public.is_not_blocked()
-  );
-
-drop policy if exists "bandwidth_usage read own or editor" on public.bandwidth_usage;
-create policy "bandwidth_usage read own or editor"
-  on public.bandwidth_usage
-  for select to authenticated
-  using (
-    user_id = auth.uid()
-    or public.is_editor_or_admin()
-  );
-
-drop policy if exists "bandwidth_usage admin delete" on public.bandwidth_usage;
-create policy "bandwidth_usage admin delete"
-  on public.bandwidth_usage
-  for delete to authenticated
-  using (public.is_admin());
-
-do $$
-begin
-  if to_regclass('public.bandwidth_usage') is not null then
-    begin
-      alter publication supabase_realtime add table public.bandwidth_usage;
-    exception when duplicate_object then null;
-    end;
-  end if;
-end $$;
-
-notify pgrst, 'reload schema';
--- ===== END BANDWIDTH_USAGE_SETUP_20260628 =====
-
--- ===== SUPABASE_USAGE_BASELINE_SETTING_20260628 =====
--- Lưu mốc Usage gốc lấy từ Supabase Dashboard, ví dụ Egress 1.557/5GB.
--- Dùng bảng site_settings có sẵn, không tạo thêm bảng mới.
-
-insert into public.site_settings (key, value)
-values (
-  'supabase_usage_baseline',
-  jsonb_build_object(
-    'period', to_char(now(), 'YYYY-MM'),
-    'used_gb', 0,
-    'limit_gb', 5,
-    'used_bytes', 0,
-    'limit_bytes', 5368709120,
-    'billing_start', null,
-    'billing_end', null,
-    'saved_at', now()
-  )
-)
-on conflict (key) do nothing;
-
-notify pgrst, 'reload schema';
--- ===== END SUPABASE_USAGE_BASELINE_SETTING_20260628 =====
 
 -- ===== DISCORD_APPROVAL_BUTTONS_20260629 =====
 -- Bổ sung hỗ trợ duyệt / từ chối user qua nút Discord.
@@ -1006,3 +921,26 @@ revoke execute on function public.discord_reject_user(uuid,text,text,text) from 
 
 notify pgrst, 'reload schema';
 -- ===== END DISCORD_APPROVAL_BUTTONS_20260629 =====
+
+
+-- ===== CLEANUP_REMOVE_BANDWIDTH_USAGE_20260629 =====
+-- Xóa chức năng tự thống kê băng thông gây traffic ngầm.
+do $$
+begin
+  if to_regclass('public.bandwidth_usage') is not null then
+    begin
+      alter publication supabase_realtime drop table public.bandwidth_usage;
+    exception
+      when undefined_object then null;
+      when undefined_table then null;
+    end;
+  end if;
+end $$;
+
+drop table if exists public.bandwidth_usage cascade;
+
+delete from public.site_settings
+where key = 'supabase_usage_baseline';
+
+notify pgrst, 'reload schema';
+-- ===== END CLEANUP_REMOVE_BANDWIDTH_USAGE_20260629 =====

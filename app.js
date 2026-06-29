@@ -64,8 +64,8 @@ NHÓM CHÍNH TRONG app.js
 - Dùng cho: vuốt flashcard mobile, nền landing, cập nhật hoạt động người dùng.
 
 16) Cache / Bandwidth
-- Tìm: APP_F5_SUPABASE_CACHE_20260629, LOW_BANDWIDTH_SUPABASE_MODE, APP_REALTIME_CACHE_INVALIDATE, COPILOT_BANDWIDTH_DISCORD_ALERT_20260629
-- Dùng cho: giảm gọi Supabase, cache dữ liệu, cảnh báo bandwidth.
+- Tìm: APP_F5_SUPABASE_CACHE_20260629, APP_REALTIME_CACHE_INVALIDATE
+- Dùng cho: giảm gọi Supabase, cache dữ liệu.
 
 17) Block vá cuối file
 - Tìm: FINAL_, PATCH_, HOTFIX_, COPILOT_
@@ -78,7 +78,7 @@ GỢI Ý AI
 - Lỗi đăng nhập/quyền: xem nhóm 7 + 8 + 9 + 10.
 - Lỗi chọn môn/thêm môn: xem nhóm 11 + 12 + 13.
 - Lỗi ảnh/upload: xem nhóm 6 + 14.
-- Lỗi băng thông/cache: xem nhóm 16.
+- Lỗi cache/Supabase: xem nhóm 16.
 AI_JS_MAP_END */
 
 // ===== FIX_OAUTH_SESSION_FINAL_20260628 =====
@@ -2027,7 +2027,7 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
     ['click', 'touchstart', 'keydown'].forEach(ev => {
       window.addEventListener(ev, () => touchActivity(false), { passive: true });
     });
-    // Tắt ping activity khi focus/interval để tiết kiệm Supabase bandwidth.
+    // Tắt ping activity khi focus/interval để giảm gọi Supabase.
     // document.addEventListener('visibilitychange', () => { if(!document.hidden) touchActivity(true); });
     // window.addEventListener('focus', () => touchActivity(true));
     // // setInterval(() => { if(!document.hidden) touchActivity(false); }, 60000); // TẮT: chỉ cập nhật khi user đăng nhập/mở web hoặc có thao tác
@@ -2036,7 +2036,7 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindActivityEvents);
   else bindActivityEvents();
   setTimeout(() => touchActivity(true), 2500);
-  // setTimeout(() => touchActivity(true), 7000); // tiết kiệm bandwidth
+  // setTimeout(() => touchActivity(true), 7000); // giảm gọi Supabase
 })();
 
 // ===== FINAL_HEADER_SUBJECT_DYNAMIC_FIX_20260613 =====
@@ -5201,7 +5201,7 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
   setTimeout(approvePrivilegedProfile, 300);
   setTimeout(approvePrivilegedProfile, 1200);
   setTimeout(approvePrivilegedProfile, 3000);
-  // setInterval(approvePrivilegedProfile, 5000); // tắt update Supabase mỗi 5 giây để tiết kiệm bandwidth
+  // setInterval(approvePrivilegedProfile, 5000); // tắt update Supabase mỗi 5 giây để giảm gọi Supabase
 })();
 // ===== END FINAL_ADMIN_EDITOR_SKIP_APPROVAL_APP_20260628 =====
 
@@ -5324,7 +5324,7 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
 // ===== END PERSIST_LAST_TAB_AND_EXAM_20260628 =====
 
 
-// ===== LOW_BANDWIDTH_SUPABASE_MODE_20260628 =====
+// ===== SUPABASE_CACHE_CLEAR_HELPER_20260628 =====
 // Dùng trong Console nếu cần tải mới từ Supabase: localStorage.removeItem('learninghub_questions_cache_v1_' + localStorage.getItem('learninghub_subject_code_merged_v1')); location.reload();
 window.clearLearningHubQuestionCache = function () {
   try {
@@ -5333,7 +5333,7 @@ window.clearLearningHubQuestionCache = function () {
     if (typeof notify === 'function') notify('Đã xóa cache câu hỏi. Reload trang để tải mới.');
   } catch (e) { }
 };
-// ===== END LOW_BANDWIDTH_SUPABASE_MODE_20260628 =====
+// ===== END SUPABASE_CACHE_CLEAR_HELPER_20260628 =====
 
 
 
@@ -5758,28 +5758,17 @@ window.clearLearningHubQuestionCache = function () {
 // ===== END COPILOT_ULTRA_FINAL_EDIT_UPLOAD_LOCK_20260628 =====
 
 // ===== COPILOT_CLEAN_RUNTIME_GUARD_20260628 =====
-// Bản sạch: gom cache request Supabase + đo băng thông + chống spam profile/question/image vào 1 block duy nhất.
+// Bản sạch: cache request Supabase + chống spam profile/question/image. Đã xóa ghi bandwidth_usage.
 (function(){
   if (window.__COPILOT_CLEAN_RUNTIME_GUARD_20260628) return;
   window.__COPILOT_CLEAN_RUNTIME_GUARD_20260628 = true;
   if (!window.fetch) return;
 
   const SUBJECT_STORE = 'learninghub_subject_code_merged_v1';
-  const BW_TABLE = 'bandwidth_usage';
   const nativeFetch = window.fetch.bind(window);
   const cache = new Map();
   const pending = new Map();
 
-  let bwBytes = 0;
-  let bwRequests = 0;
-  let bwReloads = 1;
-  let bwBusy = false;
-  let bwLastFlush = 0;
-  const BW_FLUSH_GAP = 3 * 60 * 1000;
-
-  function monthKey(d = new Date()) {
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-  }
   function supabaseOrigin() {
     try { return new URL(window.APP_CONFIG?.SUPABASE_URL || '').origin; } catch(e) { return ''; }
   }
@@ -5799,9 +5788,6 @@ window.clearLearningHubQuestionCache = function () {
   function isRest(url) {
     return isSupabase(url) && url.pathname.includes('/rest/v1/');
   }
-  function isBandwidthLog(url) {
-    return isRest(url) && url.pathname.includes('/rest/v1/bandwidth_usage');
-  }
   function currentSubject() {
     return (localStorage.getItem(SUBJECT_STORE) || '').trim();
   }
@@ -5819,7 +5805,6 @@ window.clearLearningHubQuestionCache = function () {
   function ttlFor(url, method) {
     if (!isRest(url)) return 0;
     if (method !== 'GET' && method !== 'HEAD') return 0;
-    if (isBandwidthLog(url)) return 0;
 
     if (url.pathname.includes('/rest/v1/profiles')) return 10 * 60 * 1000;
     if (url.pathname.includes('/rest/v1/subjects')) return 2 * 60 * 1000;
@@ -5837,9 +5822,8 @@ window.clearLearningHubQuestionCache = function () {
     const params = Array.from(url.searchParams.entries()).sort((a,b) => (a[0]+'='+a[1]).localeCompare(b[0]+'='+b[1]));
     return method + ' ' + url.origin + url.pathname + '?' + params.map(x => x[0] + '=' + x[1]).join('&');
   }
-  async function packResponse(res, countBandwidth) {
+  async function packResponse(res) {
     const body = await res.clone().arrayBuffer();
-    if (countBandwidth) addBandwidth(body.byteLength || 0, 1);
     return {
       body,
       status: res.status,
@@ -5854,54 +5838,6 @@ window.clearLearningHubQuestionCache = function () {
       headers: new Headers(pack.headers)
     });
   }
-  function addBandwidth(bytes, requests) {
-    const n = Number(bytes || 0);
-    if (Number.isFinite(n) && n > 0) bwBytes += n;
-    bwRequests += Number(requests || 0);
-    scheduleBandwidthFlush(false);
-  }
-  function shouldTrackBandwidth(url) {
-    if (!isSupabase(url)) return false;
-    if (isBandwidthLog(url)) return false;
-    return url.pathname.includes('/rest/v1/') ||
-      url.pathname.includes('/auth/v1/') ||
-      url.pathname.includes('/realtime/v1/') ||
-      url.pathname.includes('/storage/v1/') ||
-      url.pathname.includes('/functions/v1/');
-  }
-  function client() { return window.HODSupabase?.__client || null; }
-  function user() { return window.HODSupabase?.getUser?.() || null; }
-  function profile() { return window.HODSupabase?.getProfile?.() || null; }
-
-  async function flushBandwidth() {
-    const c = client();
-    const u = user();
-    if (bwBusy || !c || !u) return;
-    if (!bwBytes && !bwRequests && !bwReloads) return;
-    bwBusy = true;
-    const payload = {
-      period: monthKey(),
-      user_id: u.id,
-      user_email: u.email || profile()?.email || '',
-      page: 'app',
-      bytes: Math.round(bwBytes),
-      requests: Math.round(bwRequests),
-      reloads: Math.round(bwReloads),
-      updated_at: new Date().toISOString()
-    };
-    bwBytes = 0;
-    bwRequests = 0;
-    bwReloads = 0;
-    try { await c.from(BW_TABLE).insert(payload); } catch(e) {}
-    bwBusy = false;
-  }
-  function scheduleBandwidthFlush(force) {
-    const now = Date.now();
-    if (force) return flushBandwidth();
-    if (now - bwLastFlush < BW_FLUSH_GAP) return;
-    bwLastFlush = now;
-    setTimeout(flushBandwidth, 800);
-  }
 
   window.fetch = async function(input, init) {
     let url = urlOf(input);
@@ -5913,17 +5849,8 @@ window.clearLearningHubQuestionCache = function () {
     if (typeof input === 'string') nextInput = url.toString();
     else if (input && input.url && input.url !== url.toString()) nextInput = new Request(url.toString(), input);
 
-    const track = shouldTrackBandwidth(url);
     const ttl = ttlFor(url, method);
-
-    if (!ttl) {
-      const res = await nativeFetch(nextInput, init);
-      if (track) {
-        const len = Number(res.headers.get('content-length') || 0);
-        addBandwidth(Number.isFinite(len) && len > 0 ? len : 0, 1);
-      }
-      return res;
-    }
+    if (!ttl) return nativeFetch(nextInput, init);
 
     const key = cacheKey(method, url);
     const hit = cache.get(key);
@@ -5932,7 +5859,7 @@ window.clearLearningHubQuestionCache = function () {
     if (pending.has(key)) return unpack(await pending.get(key));
 
     const job = nativeFetch(nextInput, init)
-      .then(res => packResponse(res, track))
+      .then(res => packResponse(res))
       .then(pack => {
         cache.set(key, { t: Date.now(), pack });
         pending.delete(key);
@@ -5942,9 +5869,13 @@ window.clearLearningHubQuestionCache = function () {
         pending.delete(key);
         throw err;
       });
-
     pending.set(key, job);
     return unpack(await job);
+  };
+
+  window.clearLearningHubSupabaseRuntimeCache = function(){
+    cache.clear();
+    pending.clear();
   };
 
   // Cache mềm getProfile để các interval UI không gây kiểm tra quyền quá dày.
@@ -5962,10 +5893,6 @@ window.clearLearningHubQuestionCache = function () {
     };
     api.__cleanProfileCached = true;
   }, 0);
-
-  setInterval(() => scheduleBandwidthFlush(false), BW_FLUSH_GAP);
-  setTimeout(() => scheduleBandwidthFlush(true), 15000);
-  window.addEventListener('pagehide', () => scheduleBandwidthFlush(true));
 })();
 // ===== END COPILOT_CLEAN_RUNTIME_GUARD_20260628 =====
 
@@ -6142,169 +6069,6 @@ window.clearLearningHubQuestionCache = function () {
   setTimeout(start, 2000);
 })();
 // ===== END APP_REALTIME_CACHE_INVALIDATE_20260629 =====
-
-
-// ===== TAB_SWITCH_NO_BANDWIDTH_20260629 =====
-// Khi chỉ bấm đổi tab trong app: không gửi last_activity / bandwidth_usage.
-// Mục tiêu: tab qua lại không tạo network nếu không có dữ liệu mới.
-(function(){
-  if(window.__TAB_SWITCH_NO_BANDWIDTH_20260629) return;
-  window.__TAB_SWITCH_NO_BANDWIDTH_20260629 = true;
-
-  const SUPPRESS_MS = 8000;
-  const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
-  if(!nativeFetch) return;
-
-  function markTabSwitch(){
-    window.__LH_SUPPRESS_TAB_NETWORK_UNTIL = Date.now() + SUPPRESS_MS;
-  }
-  function isSuppressed(){
-    return Date.now() < Number(window.__LH_SUPPRESS_TAB_NETWORK_UNTIL || 0);
-  }
-  function methodOf(init){
-    return String(init && init.method ? init.method : 'GET').toUpperCase();
-  }
-  function urlOf(input){
-    try{ return new URL(typeof input === 'string' ? input : input.url, location.href); }catch(e){ return null; }
-  }
-  function bodyOf(init){
-    try{ return String(init && init.body ? init.body : ''); }catch(e){ return ''; }
-  }
-  function isProfileActivity(url, init){
-    const m = methodOf(init);
-    if(m !== 'PATCH' && m !== 'PUT') return false;
-    if(!url || !/\/rest\/v1\/profiles\b/.test(url.pathname)) return false;
-    const body = bodyOf(init);
-    return /last_activity|last_login/.test(body) && !/role|approved|blocked|is_blocked|status/.test(body);
-  }
-  function isBandwidthInsert(url, init){
-    const m = methodOf(init);
-    if(m !== 'POST' && m !== 'PATCH' && m !== 'PUT') return false;
-    return !!url && /\/rest\/v1\/bandwidth_usage\b/.test(url.pathname);
-  }
-
-  window.fetch = function(input, init){
-    const url = urlOf(input);
-    if(isSuppressed() && isProfileActivity(url, init)){
-      return Promise.resolve(new Response(null, {status:204, statusText:'No Content', headers:{'x-learninghub-skip':'tab-profile-activity'}}));
-    }
-    if(isSuppressed() && isBandwidthInsert(url, init)){
-      return Promise.resolve(new Response('[]', {status:201, statusText:'Created', headers:{'content-type':'application/json','x-learninghub-skip':'tab-bandwidth-log'}}));
-    }
-    return nativeFetch(input, init);
-  };
-
-  // Bắt sớm mọi thao tác bấm tab để chặn network phụ.
-  ['pointerdown','mousedown','touchstart','click'].forEach(ev => {
-    document.addEventListener(ev, function(e){
-      if(e.target && e.target.closest && e.target.closest('.tab,[data-tab]')) markTabSwitch();
-    }, true);
-  });
-
-  // Bọc hàm switchTab nếu có.
-  const oldSwitchTab = typeof switchTab === 'function' ? switchTab : null;
-  if(oldSwitchTab && !window.__switchTabNoBandwidthPatched){
-    window.__switchTabNoBandwidthPatched = true;
-    switchTab = function(){
-      markTabSwitch();
-      return oldSwitchTab.apply(this, arguments);
-    };
-    window.switchTab = switchTab;
-  }
-})();
-// ===== END TAB_SWITCH_NO_BANDWIDTH_20260629 =====
-
-
-// ===== PAGE_RETURN_NO_BANDWIDTH_20260629 =====
-// Khi chuyển qua tab trình duyệt khác rồi quay lại trang học: không gửi activity/bandwidth log, ưu tiên cache.
-(function(){
-  if(window.__PAGE_RETURN_NO_BANDWIDTH_20260629) return;
-  window.__PAGE_RETURN_NO_BANDWIDTH_20260629 = true;
-
-  const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
-  if(!nativeFetch) return;
-
-  const SUPPRESS_MS = 90 * 1000;
-  const CACHE_PREFIX = 'lh_f5_cache:';
-
-  function markReturn(){
-    window.__LH_SUPPRESS_PAGE_RETURN_UNTIL = Date.now() + SUPPRESS_MS;
-    window.__LH_LAST_USER_ACTION_KIND = 'page-return';
-  }
-  function suppressed(){
-    return Date.now() < Number(window.__LH_SUPPRESS_PAGE_RETURN_UNTIL || 0);
-  }
-  function methodOf(init){ return String(init && init.method ? init.method : 'GET').toUpperCase(); }
-  function urlOf(input){ try{ return new URL(typeof input === 'string' ? input : input.url, location.href); }catch(e){ return null; } }
-  function bodyOf(init){ try{ return String(init && init.body ? init.body : ''); }catch(e){ return ''; } }
-  function headersOf(obj){
-    const out = {'x-learninghub-cache':'page-return'};
-    try{ Object.entries(obj || {}).forEach(([k,v]) => out[k] = v); }catch(e){}
-    return out;
-  }
-  function cacheKey(url){ return url.origin + url.pathname + url.search; }
-  function readCache(url){
-    try{
-      const key = CACHE_PREFIX + cacheKey(url);
-      const raw = sessionStorage.getItem(key);
-      if(!raw) return null;
-      const entry = JSON.parse(raw);
-      if(!entry || !entry.exp || Date.now() > entry.exp) return null;
-      return entry;
-    }catch(e){ return null; }
-  }
-  function responseFromCache(entry){
-    return new Response(entry.body, {
-      status: entry.status || 200,
-      statusText: entry.statusText || 'OK',
-      headers: headersOf(entry.headers)
-    });
-  }
-  function isCacheableGet(url, init){
-    if(methodOf(init) !== 'GET') return false;
-    if(!url || !/\/rest\/v1\//.test(url.pathname)) return false;
-    return /\/(questions|subjects|profiles|site_settings)\b/.test(url.pathname);
-  }
-  function isProfileActivity(url, init){
-    const m = methodOf(init);
-    if(m !== 'PATCH' && m !== 'PUT') return false;
-    if(!url || !/\/rest\/v1\/profiles\b/.test(url.pathname)) return false;
-    const body = bodyOf(init);
-    if(/last_login/.test(body)) return false; // đăng nhập/mở web phải được ghi nhận
-    return /last_activity|last_login|avatar_url|email/.test(body) && !/role|approved|blocked|is_blocked|status/.test(body);
-  }
-  function isBandwidthWrite(url, init){
-    const m = methodOf(init);
-    if(m !== 'POST' && m !== 'PATCH' && m !== 'PUT') return false;
-    return !!url && /\/rest\/v1\/bandwidth_usage\b/.test(url.pathname);
-  }
-
-  window.fetch = function(input, init){
-    const url = urlOf(input);
-
-    if(suppressed()){
-      if(isProfileActivity(url, init)){
-        return Promise.resolve(new Response(null, {status:204, statusText:'No Content', headers:{'x-learninghub-skip':'page-return-profile'}}));
-      }
-      if(isBandwidthWrite(url, init)){
-        return Promise.resolve(new Response('[]', {status:201, statusText:'Created', headers:{'content-type':'application/json','x-learninghub-skip':'page-return-bandwidth'}}));
-      }
-      if(isCacheableGet(url, init)){
-        const entry = readCache(url);
-        if(entry) return Promise.resolve(responseFromCache(entry));
-      }
-    }
-
-    return nativeFetch(input, init);
-  };
-
-  document.addEventListener('visibilitychange', function(){
-    if(!document.hidden) markReturn();
-  });
-  window.addEventListener('focus', markReturn);
-  window.addEventListener('pageshow', markReturn);
-})();
-// ===== END PAGE_RETURN_NO_BANDWIDTH_20260629 =====
 
 
 // ===== FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629 =====
@@ -6594,117 +6358,26 @@ window.clearLearningHubQuestionCache = function () {
 // ===== END SUBJECTS_CACHE_BUST_AFTER_ADD_20260629 =====
 
 
-// ===== COPILOT_BANDWIDTH_DISCORD_ALERT_20260629 =====
-// Gửi cảnh báo Discord khi user vượt ngưỡng băng thông đã đặt trong Admin > Băng thông.
-// Chạy ít: chỉ kiểm tra sau lần ghi bandwidth, tối đa 1 cảnh báo / user / tháng / ngưỡng trên trình duyệt đó.
+
+
+// ===== REMOVE_BANDWIDTH_USAGE_CLIENT_GUARD_20260629 =====
+// Chặn mọi request còn sót tới bảng bandwidth_usage để tránh tốn băng thông.
 (function(){
-  if(window.__COPILOT_BANDWIDTH_DISCORD_ALERT_20260629) return;
-  window.__COPILOT_BANDWIDTH_DISCORD_ALERT_20260629 = true;
-
-  const SETTING_KEY = 'bandwidth_alert_threshold_mb';
-  const MB = 1024 * 1024;
-  const DISCORD_URL = 'https://discord.com/api/webhooks/1519452717947420732/j-EVKdyuRYHRXU6MJbW9z_2lAy-wV2XnEOVULJEtDSgtignSVh2fWTTJKFgHj2MgoTJQ';
-  let checking = false;
-
-  function api(){ return window.HODSupabase || null; }
-  function client(){ return api()?.__client || null; }
-  function user(){ return api()?.getUser?.() || null; }
-  function profile(){ return api()?.getProfile?.() || null; }
-  function monthKey(d = new Date()){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
-  function fmtBytes(n){
-    n = Number(n || 0);
-    if(n >= 1073741824) return (n / 1073741824).toFixed(2) + ' GB';
-    if(n >= 1048576) return (n / 1048576).toFixed(2) + ' MB';
-    if(n >= 1024) return (n / 1024).toFixed(1) + ' KB';
-    return n + ' B';
-  }
-
-  async function getThresholdMb(){
-    const c = client();
-    if(!c) return 0;
-    try{
-      const r = await c.from('site_settings').select('value').eq('key', SETTING_KEY).maybeSingle();
-      if(r.error || !r.data) return 0;
-      const v = r.data.value;
-      const mb = Number(typeof v === 'object' ? (v.mb ?? v.value ?? 0) : String(v).replace(/"/g,''));
-      return Number.isFinite(mb) ? mb : 0;
-    }catch(e){ return 0; }
-  }
-
-  async function getUserMonthUsage(period, uid){
-    const c = client();
-    if(!c) return 0;
-    const r = await c.from('bandwidth_usage')
-      .select('bytes')
-      .eq('period', period)
-      .eq('user_id', uid)
-      .eq('page', 'app')
-      .limit(5000);
-    if(r.error) throw r.error;
-    return (r.data || []).reduce((sum, x) => sum + Number(x.bytes || 0), 0);
-  }
-
-  async function sendDiscord(totalBytes, thresholdMb){
-    const u = user();
-    const p = profile();
-    const email = u?.email || p?.email || 'Không rõ email';
-    const payload = {
-      embeds: [{
-        title: '🚨 CẢNH BÁO BĂNG THÔNG USER',
-        color: 15158332,
-        fields: [
-          { name: 'Tài khoản', value: String(email), inline: true },
-          { name: 'Đã dùng', value: fmtBytes(totalBytes), inline: true },
-          { name: 'Ngưỡng', value: thresholdMb + ' MB / tháng', inline: true },
-          { name: 'Tháng', value: monthKey(), inline: true },
-          { name: 'Thời điểm', value: new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }), inline: false }
-        ]
-      }]
-    };
-    try{ await fetch(DISCORD_URL, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); }
-    catch(e){ console.warn('[bandwidth discord alert]', e); }
-  }
-
-  async function checkBandwidthAlert(force=false){
-    const c = client();
-    const u = user();
-    if(!c || !u || checking) return false;
-    checking = true;
-    try{
-      const thresholdMb = await getThresholdMb();
-      if(!thresholdMb || thresholdMb <= 0) return false;
-      const period = monthKey();
-      const total = await getUserMonthUsage(period, u.id);
-      if(total < thresholdMb * MB) return false;
-      const sentKey = 'lh_bw_discord_alert_sent:' + period + ':' + u.id + ':' + thresholdMb;
-      if(!force && localStorage.getItem(sentKey)) return false;
-      localStorage.setItem(sentKey, String(Date.now()));
-      await sendDiscord(total, thresholdMb);
-      return true;
-    }catch(e){
-      console.warn('[bandwidth alert check]', e?.message || e);
-      return false;
-    }finally{
-      checking = false;
-    }
-  }
-
-  window.LH_checkBandwidthAlertNow = function(){ return checkBandwidthAlert(true); };
-
-  // Hook vào hàm ghi băng thông chắc chắn nếu đang có.
-  const oldWrite = window.LH_writeAppBandwidthNow;
-  if(typeof oldWrite === 'function' && !oldWrite.__bwAlertHooked){
-    const wrapped = async function(){
-      const out = await oldWrite.apply(this, arguments);
-      setTimeout(() => checkBandwidthAlert(false), 1500);
-      return out;
-    };
-    wrapped.__bwAlertHooked = true;
-    window.LH_writeAppBandwidthNow = wrapped;
-  }
-
-  // Kiểm tra sau khi app vừa mở/ghi heartbeat.
-  setTimeout(() => checkBandwidthAlert(false), 12000);
-  window.addEventListener('pagehide', () => { try{ checkBandwidthAlert(false); }catch(e){} });
+  if (window.__REMOVE_BANDWIDTH_USAGE_CLIENT_GUARD_20260629 || !window.fetch) return;
+  window.__REMOVE_BANDWIDTH_USAGE_CLIENT_GUARD_20260629 = true;
+  const oldFetch = window.fetch.bind(window);
+  window.fetch = function(input, init){
+    try {
+      const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+      if (/\/rest\/v1\/bandwidth_usage\b/.test(url.pathname)) {
+        return Promise.resolve(new Response('[]', {
+          status: 204,
+          statusText: 'No Content',
+          headers: {'content-type': 'application/json', 'x-learninghub-skip': 'bandwidth-usage-removed'}
+        }));
+      }
+    } catch(e) {}
+    return oldFetch(input, init);
+  };
 })();
-// ===== END_COPILOT_BANDWIDTH_DISCORD_ALERT_20260629 =====
+// ===== END REMOVE_BANDWIDTH_USAGE_CLIENT_GUARD_20260629 =====
