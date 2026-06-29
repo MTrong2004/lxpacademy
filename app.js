@@ -1201,11 +1201,18 @@ async function getSubjects() {
     };
 
     runSubjectCheckOnce();
-    setTimeout(runSubjectCheckOnce, 800);
+    const checkInterval = setInterval(() => {
+      if (logged() && isApproved()) {
+        runSubjectCheckOnce();
+        clearInterval(checkInterval);
+      }
+    }, 200);
+    setTimeout(() => clearInterval(checkInterval), 15000);
   }
   window.getSubjectsCache = () => subjectsCache;
   window.loadBySubject = loadBySubject;
   window.setSubject = setSubject;
+  window.openGate = openGate;
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind); else bind();
 })();
 // ===== LEARNING HUB MERGED SUBJECT PATCH END =====
@@ -5288,7 +5295,11 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
   let activeLoadPromises = {};
   async function loadSubjectLight(force = false) {
     const code = subject();
-    if (!user() || !code) return false;
+    if (!user()) return false;
+    if (!code) {
+      if (typeof window.openGate === 'function') window.openGate();
+      return false;
+    }
     if (!force) {
       const cached = readQuestionCache(code);
       if (cached && cached.length) { applyQuestionRows(cached, code); return true; }
