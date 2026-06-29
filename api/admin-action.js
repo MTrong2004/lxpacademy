@@ -264,6 +264,19 @@ export default async function handler(req) {
 
       case 'add_subject': {
         const { code, name, description, cover, sort_order, questions } = payload;
+        
+        let finalCode = code.toUpperCase().trim();
+        const existed = await db.execute({
+          sql: "select code from subjects where code = ? or code like ?",
+          args: [finalCode, `${finalCode}_%`]
+        });
+        const usedCodes = new Set((existed.rows || []).map(x => String(x.code || '').toUpperCase()));
+        if (usedCodes.has(finalCode)) {
+          let n = 2;
+          while (usedCodes.has(`${finalCode}_${n}`)) n++;
+          finalCode = `${finalCode}_${n}`;
+        }
+
         let finalSortOrder = sort_order;
         if (!finalSortOrder) {
           const maxRes = await db.execute('select max(sort_order) as m from subjects');
@@ -272,7 +285,7 @@ export default async function handler(req) {
         const res = await db.execute({
           sql: `insert into subjects (code, name, description, cover, sort_order, is_active, created_at)
                 values (?, ?, ?, ?, ?, 1, ?)`,
-          args: [code.toUpperCase().trim(), name, description || '', cover || '', finalSortOrder, now]
+          args: [finalCode, name, description || '', cover || '', finalSortOrder, now]
         });
 
         const newId = Number(res.lastInsertRowid);
@@ -285,7 +298,7 @@ export default async function handler(req) {
               sql: `insert into questions (subject_code, num, question, options, answer, answer_text, images, is_active, has_image, error_risk, error_risk_reason, created_at, updated_at)
                     values (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
               args: [
-                code.toUpperCase().trim(),
+                finalCode,
                 q.num,
                 q.question || '',
                 JSON.stringify(q.options || {}),
@@ -302,8 +315,8 @@ export default async function handler(req) {
           }
         }
 
-        await logAdminAction('add_subject', 'subjects', newId, { code });
-        return json({ ok: true, id: newId });
+        await logAdminAction('add_subject', 'subjects', newId, { code: finalCode });
+        return json({ ok: true, id: newId, code: finalCode });
       }
 
       case 'edit_subject': {
