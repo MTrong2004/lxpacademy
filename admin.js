@@ -65,7 +65,7 @@ NHÓM CHÍNH TRONG admin.js
 
 16) UI runtime / hotfix cuối file
 - Tìm: HOTFIX, FINAL_, COPILOT_, injectAdminStyles, avatar, dots menu, request images force
-- Dùng cho: vá giao diện, avatar, menu 3 chấm, ảnh trong request, tối ưu bandwidth.
+- Dùng cho: vá giao diện, avatar, menu 3 chấm, ảnh trong request, tối ưu cache.
 
 GỢI Ý AI
 - Lỗi câu hỏi/admin question list: xem nhóm 3 + 5 + 6.
@@ -78,8 +78,8 @@ GỢI Ý AI
 AI_ADMIN_JS_MAP_END */
 
 const CONFIG = {
-  SUPABASE_URL: 'https://kxyukiwhhorvxgxxxmfq.supabase.co',
-  SUPABASE_ANON_KEY: 'sb_publishable_yOIciG2SCPyu8mP5KWE5RQ_qIgCd4-f'
+  SUPABASE_URL: window.APP_CONFIG?.SUPABASE_URL || 'https://kxyukiwhhorvxgxxxmfq.supabase.co',
+  SUPABASE_ANON_KEY: window.APP_CONFIG?.SUPABASE_ANON_KEY || 'sb_publishable_yOIciG2SCPyu8mP5KWE5RQ_qIgCd4-f'
 };
 
 let client, user, profile, activeStatus = 'all';
@@ -286,7 +286,7 @@ async function loadAll() {
   setBusy(true);
   try {
     cache.profiles = await safeLoad('profiles', client.from('profiles').select('*').order('created_at', { ascending: false }));
-    cache.questions = await safeLoad('questions', client.from('questions').select('*').order('num', { ascending: true }));
+    cache.questions = await safeLoad('questions', client.from('questions').select('id,num,subject_code,question,options,answer,is_active,updated_at,created_at,has_image,error_risk,error_risk_reason').order('num', { ascending: true }));
     cache.requests = await safeLoad('edit_requests', client.from('edit_requests').select('*').order('created_at', { ascending: false }));
     cache.history = await safeLoad('question_history', client.from('question_history').select('*').order('created_at', { ascending: false }).limit(500));
     cache.logs = isAdmin()
@@ -626,54 +626,343 @@ async function toggleQuestion(id, a) {
 }
 
 function exportAll() {
-  openModal('Xuất dữ liệu', `
-    <div style="padding:10px 0;">
-      <p style="color:rgba(245,240,232,.72);margin-bottom:20px;font-size:0.9rem;line-height:1.4;">Chọn định dạng dữ liệu bạn muốn tải xuống từ Supabase:</p>
-      <div style="display:grid;grid-template-columns:1fr;gap:12px;">
-        <button class="act ok" id="exportBtnQuestions" style="width:100%;text-align:center;padding:12px;font-size:0.9rem;border-radius:8px;background:rgba(200,169,110,.16);color:var(--gold2);border:1px solid rgba(200,169,110,.35);font-weight:bold;cursor:pointer;">
-          📦 Chỉ danh sách câu hỏi (${(cache.questions || []).length} câu)
+  const subjects = Array.from(new Set((cache.questions || []).map(q => q.subject_code || 'HOD102').filter(Boolean))).sort();
+  const subjectOptions = ['all', ...subjects].map(code => `<option value="${esc(code)}">${code === 'all' ? 'Tất cả môn' : esc(code)}</option>`).join('');
+  openModal('Tải dữ liệu Supabase', `
+    <div style="padding:10px 0;display:grid;gap:14px;">
+      <p style="color:rgba(245,240,232,.72);margin:0 0 4px;font-size:0.9rem;line-height:1.4;">
+        Chọn dữ liệu cần tải. Phần câu hỏi có thể tải hết 1 lần hoặc chọn đúng môn.
+      </p>
+
+      <div style="border:1px solid rgba(200,169,110,.22);border-radius:16px;padding:14px;background:rgba(255,255,255,.025);display:grid;gap:10px;">
+        <b style="color:var(--gold2);">Seed questions</b>
+        <select id="exportQuestionSubject" style="width:100%;background:rgba(255,255,255,.045);border:1px solid var(--bd);border-radius:12px;color:var(--fog);padding:10px 12px;">
+          ${subjectOptions}
+        </select>
+        <button class="act ok" id="exportSeedSqlBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
+          📦 Tải seed_questions.sql
         </button>
-        <button class="act" id="exportBtnFull" style="width:100%;text-align:center;padding:12px;font-size:0.9rem;border-radius:8px;background:rgba(245,240,232,.04);color:var(--mist);border:1px solid var(--bd);font-weight:bold;cursor:pointer;">
-          💾 Toàn bộ cơ sở dữ liệu (Sao lưu cấu hình, user, lịch sử...)
+        <button class="act" id="exportQuestionsJsonBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
+          📄 Tải questions JSON
+        </button>
+      </div>
+
+      <div style="border:1px solid rgba(200,169,110,.22);border-radius:16px;padding:14px;background:rgba(255,255,255,.025);display:grid;gap:10px;">
+        <b style="color:var(--gold2);">Hồ sơ người dùng</b>
+        <button class="act" id="exportProfilesJsonBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
+          👤 Tải profiles JSON
+        </button>
+        <button class="act" id="exportProfilesCsvBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
+          📊 Tải profiles CSV
+        </button>
+      </div>
+
+      <div style="border:1px solid rgba(200,169,110,.22);border-radius:16px;padding:14px;background:rgba(255,255,255,.025);display:grid;gap:10px;">
+        <b style="color:var(--gold2);">Cấu hình Supabase</b>
+        <button class="act" id="exportSupabaseConfigBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
+          ⚙️ Tải supabase_config JSON
+        </button>
+      </div>
+
+      <div style="border:1px solid rgba(200,169,110,.14);border-radius:16px;padding:14px;background:rgba(255,255,255,.015);display:grid;gap:10px;">
+        <b style="color:var(--mist);">Sao lưu đầy đủ</b>
+        <button class="act" id="exportBtnFull" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
+          💾 Tải full_backup JSON
+        </button>
+      </div>
+
+      <div style="border:1px solid rgba(200,169,110,.35);border-radius:16px;padding:14px;background:rgba(200,169,110,.05);display:grid;gap:10px;">
+        <b style="color:var(--gold2);">Chuyển sang Supabase mới</b>
+        <button class="act ok" id="exportMigrationSqlBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;background:var(--gold);color:black;">
+          🚀 Tải 1-Click SQL Di chuyển (Môn học & Câu hỏi)
         </button>
       </div>
     </div>
   `);
 
-  document.getElementById('exportBtnQuestions').onclick = () => {
-    downloadExportFile('questions');
-  };
-  document.getElementById('exportBtnFull').onclick = () => {
-    downloadExportFile('full');
-  };
+  $('exportSeedSqlBtn').onclick = () => downloadExportFile('seed_sql', $('exportQuestionSubject')?.value || 'all');
+  $('exportQuestionsJsonBtn').onclick = () => downloadExportFile('questions_json', $('exportQuestionSubject')?.value || 'all');
+  $('exportProfilesJsonBtn').onclick = () => downloadExportFile('profiles_json');
+  $('exportProfilesCsvBtn').onclick = () => downloadExportFile('profiles_csv');
+  $('exportSupabaseConfigBtn').onclick = () => downloadExportFile('supabase_config');
+  $('exportBtnFull').onclick = () => downloadExportFile('full');
+  $('exportMigrationSqlBtn').onclick = () => { downloadMigrationSql(); closeModal(); };
 }
 
-async function downloadExportFile(type) {
-  let data, filename;
-  if (type === 'questions') {
-    data = cache.questions || [];
-    filename = 'learninghub_questions_export.json';
-    try { await logAction('export_data', 'questions', 'json', {}); } catch(e){}
-  } else {
-    data = cache;
-    filename = 'learninghub_full_backup.json';
-    try { await logAction('export_data', 'backup', 'json', {}); } catch(e){}
+async function downloadMigrationSql() {
+  try {
+    setBusy(true, 'Đang chuẩn bị file SQL di chuyển...');
+    const subjects = await fetchSubjectsForConfigExport();
+    const questions = await fetchQuestionsForExport('all');
+    const settings = await fetchSiteSettingsForExport();
+    
+    let sql = `-- =========================================================\n`;
+    sql += `-- Learning Hub Complete Migration SQL Data Backup\n`;
+    sql += `-- Generated at: \${new Date().toISOString()}\n`;
+    sql += `-- Contains: Subjects, Questions, Site Settings\n`;
+    sql += `-- =========================================================\n\n`;
+    
+    sql += `SET session_replication_role = 'replica';\n\n`;
+    
+    // 1. Subjects Data
+    sql += `-- ===== SUBJECTS DATA (\${subjects.length} rows) =====\n`;
+    if (subjects.length) {
+      sql += 'INSERT INTO public.subjects (code, name, description, cover, sort_order, is_active) VALUES\n';
+      sql += subjects.map(s => {
+        return '  (' + [
+          sqlQuote(s.code),
+          sqlQuote(s.name),
+          s.description ? sqlQuote(s.description) : 'null',
+          s.cover ? sqlQuote(s.cover) : 'null',
+          Number(s.sort_order) || 0,
+          s.is_active === false ? 'false' : 'true'
+        ].join(', ') + ')';
+      }).join(',\n') + '\n';
+      sql += 'ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, cover = EXCLUDED.cover, sort_order = EXCLUDED.sort_order, is_active = EXCLUDED.is_active;\n\n';
+    }
+    
+    // 2. Questions Data
+    sql += `-- ===== QUESTIONS DATA (\${questions.length} rows) =====\n`;
+    if (questions.length) {
+      sql += 'INSERT INTO public.questions (subject_code, num, question, options, answer, answer_text, images, is_active, has_image, error_risk, error_risk_reason) VALUES\n';
+      sql += questions.map(q => {
+        const images = q.images || [];
+        const hasImage = q.has_image === true || (Array.isArray(images) && images.length > 0);
+        return '  (' + [
+          sqlQuote(q.subject_code || 'HOD102'),
+          Number(q.num) || 0,
+          sqlQuote(q.question || ''),
+          sqlJsonb(q.options || {}),
+          sqlQuote(q.answer || ''),
+          sqlQuote(q.answer_text || ''),
+          sqlJsonb(images),
+          q.is_active === false ? 'false' : 'true',
+          hasImage ? 'true' : 'false',
+          sqlQuote(q.error_risk || 'low'),
+          q.error_risk_reason ? sqlQuote(q.error_risk_reason) : 'null'
+        ].join(', ') + ')';
+      }).join(',\n') + '\n';
+      sql += 'ON CONFLICT (subject_code, num) DO UPDATE SET question = EXCLUDED.question, options = EXCLUDED.options, answer = EXCLUDED.answer, answer_text = EXCLUDED.answer_text, images = EXCLUDED.images, is_active = EXCLUDED.is_active, has_image = EXCLUDED.has_image, error_risk = EXCLUDED.error_risk, error_risk_reason = EXCLUDED.error_risk_reason;\n\n';
+    }
+    
+    // 3. Site Settings
+    sql += `-- ===== SITE SETTINGS DATA (\${settings.length} rows) =====\n`;
+    if (settings.length) {
+      sql += 'INSERT INTO public.site_settings (key, value) VALUES\n';
+      sql += settings.map(s => {
+        return '  (' + [
+          sqlQuote(s.key),
+          sqlQuote(s.value)
+        ].join(', ') + ')';
+      }).join(',\n') + '\n';
+      sql += 'ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;\n\n';
+    }
+    
+    sql += `SET session_replication_role = 'origin';\n`;
+    sql += `SELECT pg_notify('pgrst', 'reload schema');\n`;
+    
+    downloadBlobFile(sql, 'supabase_complete_migration_data.sql', 'text/plain;charset=utf-8');
+    toast('Đã tải complete_migration_data.sql');
+  } catch (err) {
+    alert('Không thể tạo file di chuyển: ' + (err.message || err));
+  } finally {
+    setBusy(false);
   }
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+}
+
+function downloadBlobFile(content, filename, type = 'application/json') {
+  const blob = new Blob([content], { type });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = filename;
   a.click();
   URL.revokeObjectURL(a.href);
-  closeModal();
-  toast('Đã xuất dữ liệu thành công!');
 }
+
+function safeFilePart(s) {
+  return String(s || 'all').replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '') || 'all';
+}
+
+async function fetchAllRows(table, select = '*', applyQuery) {
+  const pageSize = 1000;
+  let from = 0;
+  let rows = [];
+  while (true) {
+    let q = client.from(table).select(select);
+    if (typeof applyQuery === 'function') q = applyQuery(q);
+    q = q.range(from, from + pageSize - 1);
+    const { data, error } = await q;
+    if (error) throw error;
+    const batch = data || [];
+    rows = rows.concat(batch);
+    if (batch.length < pageSize) break;
+    from += pageSize;
+  }
+  return rows;
+}
+
+async function fetchQuestionsForExport(subjectCode) {
+  return await fetchAllRows('questions', '*', q => {
+    q = q.order('subject_code', { ascending: true }).order('num', { ascending: true });
+    if (subjectCode && subjectCode !== 'all') q = q.eq('subject_code', subjectCode);
+    return q;
+  });
+}
+
+async function fetchProfilesForExport() {
+  return await fetchAllRows('profiles', '*', q => q.order('created_at', { ascending: false }));
+}
+
+async function fetchSiteSettingsForExport() {
+  try {
+    return await fetchAllRows('site_settings', '*', q => q.order('key', { ascending: true }));
+  } catch (e) {
+    console.warn('Không tải được site_settings:', e);
+    return [];
+  }
+}
+
+async function fetchSubjectsForConfigExport() {
+  try {
+    return await fetchAllRows('subjects', '*', q => q.order('sort_order', { ascending: true }).order('code', { ascending: true }));
+  } catch (e) {
+    console.warn('Không tải được subjects:', e);
+    return [];
+  }
+}
+
+async function buildSupabaseConfigExport() {
+  return {
+    exported_at: new Date().toISOString(),
+    supabase: {
+      url: CONFIG.SUPABASE_URL,
+      anon_key: CONFIG.SUPABASE_ANON_KEY
+    },
+    site_settings: await fetchSiteSettingsForExport(),
+    subjects: await fetchSubjectsForConfigExport()
+  };
+}
+
+function sqlQuote(v) {
+  if (v === null || v === undefined) return 'null';
+  return "'" + String(v).replace(/'/g, "''") + "'";
+}
+
+function sqlJsonb(v) {
+  return sqlQuote(JSON.stringify(v ?? (Array.isArray(v) ? [] : {}))) + '::jsonb';
+}
+
+function buildSeedQuestionsSql(rows, subjectCode) {
+  const now = new Date().toISOString();
+  const header = [
+    '-- =========================================================',
+    '-- Learning Hub seed_questions.sql',
+    '-- Xuất từ Admin Supabase: ' + now,
+    '-- Môn: ' + (subjectCode && subjectCode !== 'all' ? subjectCode : 'Tất cả'),
+    '-- Tổng câu: ' + rows.length,
+    '-- =========================================================',
+    '',
+    'insert into public.questions',
+    '  (subject_code, num, question, options, answer, answer_text, images, is_active, has_image, error_risk, error_risk_reason)',
+    'values'
+  ].join('\n');
+
+  if (!rows.length) return header + '\n-- Không có câu hỏi để xuất.\n';
+
+  const values = rows.map(q => {
+    const images = q.images || [];
+    const hasImage = q.has_image === true || (Array.isArray(images) && images.length > 0);
+    return '  (' + [
+      sqlQuote(q.subject_code || subjectCode || 'HOD102'),
+      Number(q.num) || 0,
+      sqlQuote(q.question || ''),
+      sqlJsonb(q.options || {}),
+      sqlQuote(q.answer || ''),
+      sqlQuote(q.answer_text || ''),
+      sqlJsonb(images),
+      q.is_active === false ? 'false' : 'true',
+      hasImage ? 'true' : 'false',
+      sqlQuote(q.error_risk || 'low'),
+      q.error_risk_reason ? sqlQuote(q.error_risk_reason) : 'null'
+    ].join(', ') + ')';
+  }).join(',\n');
+
+  return header + '\n' + values + '\n' +
+    'on conflict (subject_code, num) do update set\n' +
+    '  question = excluded.question,\n' +
+    '  options = excluded.options,\n' +
+    '  answer = excluded.answer,\n' +
+    '  answer_text = excluded.answer_text,\n' +
+    '  images = excluded.images,\n' +
+    '  is_active = excluded.is_active,\n' +
+    '  has_image = excluded.has_image,\n' +
+    '  error_risk = excluded.error_risk,\n' +
+    '  error_risk_reason = excluded.error_risk_reason,\n' +
+    '  updated_at = now();\n\n' +
+    "notify pgrst, 'reload schema';\n";
+}
+
+function toCsv(rows) {
+  const cols = ['id','email','full_name','role','approved','blocked','avatar_url','last_login','last_activity','created_at'];
+  const escCsv = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  return cols.join(',') + '\n' + rows.map(r => cols.map(c => escCsv(r[c])).join(',')).join('\n');
+}
+
+async function downloadExportFile(type, subjectCode = 'all') {
+  try {
+    setBusy(true, 'Đang xuất...');
+    if (type === 'seed_sql') {
+      const rows = await fetchQuestionsForExport(subjectCode);
+      const sql = buildSeedQuestionsSql(rows, subjectCode);
+      downloadBlobFile(sql, `seed_questions_${safeFilePart(subjectCode)}.sql`, 'text/plain;charset=utf-8');
+      try { await logAction('export_seed_questions', 'questions', subjectCode, { count: rows.length }); } catch(e){}
+      toast('Đã tải seed_questions.sql');
+    } else if (type === 'questions_json') {
+      const rows = await fetchQuestionsForExport(subjectCode);
+      downloadBlobFile(JSON.stringify(rows, null, 2), `questions_${safeFilePart(subjectCode)}.json`, 'application/json;charset=utf-8');
+      try { await logAction('export_questions_json', 'questions', subjectCode, { count: rows.length }); } catch(e){}
+      toast('Đã tải questions JSON');
+    } else if (type === 'profiles_json') {
+      const rows = await fetchProfilesForExport();
+      downloadBlobFile(JSON.stringify(rows, null, 2), 'profiles_export.json', 'application/json;charset=utf-8');
+      try { await logAction('export_profiles_json', 'profiles', 'all', { count: rows.length }); } catch(e){}
+      toast('Đã tải profiles JSON');
+    } else if (type === 'profiles_csv') {
+      const rows = await fetchProfilesForExport();
+      downloadBlobFile(toCsv(rows), 'profiles_export.csv', 'text/csv;charset=utf-8');
+      try { await logAction('export_profiles_csv', 'profiles', 'all', { count: rows.length }); } catch(e){}
+      toast('Đã tải profiles CSV');
+    } else if (type === 'supabase_config') {
+      const cfg = await buildSupabaseConfigExport();
+      downloadBlobFile(JSON.stringify(cfg, null, 2), 'supabase_config.json', 'application/json;charset=utf-8');
+      try { await logAction('export_supabase_config', 'config', 'supabase', { settings: cfg.site_settings.length, subjects: cfg.subjects.length }); } catch(e){}
+      toast('Đã tải cấu hình Supabase');
+    } else {
+      const full = {
+        profiles: await fetchProfilesForExport(),
+        questions: await fetchQuestionsForExport('all'),
+        requests: cache.requests || [],
+        history: cache.history || [],
+        logs: cache.logs || []
+      };
+      downloadBlobFile(JSON.stringify(full, null, 2), 'learninghub_full_backup.json', 'application/json;charset=utf-8');
+      try { await logAction('export_full_backup', 'backup', 'json', { questions: full.questions.length, profiles: full.profiles.length }); } catch(e){}
+      toast('Đã tải full backup');
+    }
+    closeModal();
+  } catch (e) {
+    alert('Xuất dữ liệu thất bại: ' + (e?.message || e));
+  } finally {
+    setBusy(false);
+  }
+}
+
 
 Object.assign(window, { approve, rejectReq, toggleBlock, setRole, toggleQuestion, viewReq, viewHistory, viewQuestion, viewUserEdits });
 
 
 // ===== F5_SUPABASE_MICRO_CACHE_20260629 =====
-// Giảm băng thông khi F5: cache/dedupe các GET nhẹ từ Supabase trong thời gian ngắn.
+// Giảm gọi Supabase khi F5: cache/dedupe các GET nhẹ từ Supabase trong thời gian ngắn.
 // Lưu ý: F5 vẫn phải tải khung web; phần này chỉ giảm các request Supabase lặp và request không đổi.
 (function(){
   if(window.__F5_SUPABASE_MICRO_CACHE_20260629) return;
@@ -690,14 +979,13 @@ Object.assign(window, { approve, rejectReq, toggleBlock, setRole, toggleQuestion
   function isGet(init){ return String(init && init.method ? init.method : 'GET').toUpperCase() === 'GET'; }
   function isSupabaseRest(url){ return /\/rest\/v1\//.test(url.pathname); }
   function isSafePath(path){
-    return /\/(profiles|bandwidth_usage|site_settings|subjects|subject_requests|edit_requests|question_history|admin_logs|questions)\b/.test(path);
+    return /\/(profiles|site_settings|subjects|subject_requests|edit_requests|question_history|admin_logs|questions)\b/.test(path);
   }
   function ttlFor(url){
     const p = url.pathname;
     const q = url.search || '';
     if(/\/profiles\b/.test(p) && /id=eq\./.test(q)) return 10 * 60 * 1000;
     if(/\/site_settings\b/.test(p)) return 10 * 60 * 1000;
-    if(/\/bandwidth_usage\b/.test(p)) return 60 * 1000;
     if(/\/subjects\b/.test(p)) return 0; // FIX: không cache môn học để xóa/sửa hiện ngay
     if(/\/subject_requests\b/.test(p)) return 45 * 1000;
     if(/\/edit_requests\b/.test(p)) return 30 * 1000;
@@ -3927,7 +4215,7 @@ async function sendLoginToDiscord(email, role) {
     const question=($('dqQuestion')?.value||'').trim(); const answer=($('dqAnswer')?.value||'').trim().toUpperCase();
     if(!question) return alert('Câu hỏi không được để trống.'); if(!answer) return alert('Đáp án đúng không được để trống.');
     const list = directEditDraftImages || [];
-    const localHasImg = !!(list.length || oldQ.has_image);
+    const localHasImg = list.length > 0;
     const text = question + ' ' + Object.values(ops).join(' ');
     const needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(text);
     const hasPlaceholder = list.some(im => {
@@ -3962,6 +4250,9 @@ async function sendLoginToDiscord(email, role) {
     try{
       const res=await client.from('questions').update(payload).eq('id',id).select('id,num,subject_code,question,options,answer,is_active,updated_at,has_image,error_risk,error_risk_reason').maybeSingle();
       if(res.error) return alert(res.error.message);
+      if (typeof window.clearLearningHubQuestionCache === 'function') {
+        window.clearLearningHubQuestionCache();
+      }
       const idx=(cache.questions||[]).findIndex(x=>String(x.id)===String(id)); if(idx>=0) cache.questions[idx]={...cache.questions[idx],...(res.data||payload),images:payload.images};
       try{ await client.from('question_history').insert({question_id:id,question_num:oldQ.num||null,subject_code:oldQ.subject_code||null,request_id:null,previous_data:{question:oldQ.question,options:oldQ.options||{},answer:oldQ.answer,answer_text:oldQ.answer_text,images:oldQ.images||[]},new_data:payload,changed_by:user.id,approved_by:user.id}); }catch(e){}
       await logAction('direct_edit_question','questions',id,{subject_code:oldQ.subject_code,num:oldQ.num});
@@ -3971,7 +4262,7 @@ async function sendLoginToDiscord(email, role) {
 })();
 
 
-// ===== COPILOT_ADMIN_BANDWIDTH_FINAL_OVERRIDE_20260627 =====
+// ===== COPILOT_ADMIN_QUESTION_PAGE_FINAL_OVERRIDE_20260627 =====
 // Chỉ tải 50 câu/trang, không tải cột images trong danh sách admin.
 (function(){
   const QUESTION_COLS='id,num,subject_code,question,options,answer,is_active,updated_at,created_at,has_image,error_risk,error_risk_reason';
@@ -4345,7 +4636,7 @@ ${E(val)}</pre>`;
 
     chip('Realtime...', 'is-checking');
     try{
-      // Tối ưu hóa băng thông: Chỉ lắng nghe edit_requests và subject_requests.
+      // Tối ưu tải dữ liệu: Chỉ lắng nghe edit_requests và subject_requests.
       // Bỏ profiles (bị spam touchActivity từ người dùng học bài) và questions, question_history
       ch = client.channel('learning-hub-admin-realtime-final')
         .on('postgres_changes', {event:'*', schema:'public', table:'edit_requests'}, () => debounced('edit_requests'))
@@ -4364,7 +4655,7 @@ ${E(val)}</pre>`;
             try{ if(ch) client.removeChannel(ch); }catch(e){}
             ch = null;
             
-            // Cơ chế Exponential Backoff để tránh spam kết nối lại liên tục làm treo máy và tốn băng thông
+            // Cơ chế Exponential Backoff để tránh spam kết nối lại liên tục làm treo máy và tốn tài nguyên
             if(!reconnectTimer){
               reconnectTimer = setTimeout(() => {
                 reconnectTimer = null;
@@ -4422,12 +4713,12 @@ ${E(val)}</pre>`;
 // ===== END FINAL_FORCE_ADMIN_REALTIME_RESTORE_20260628 =====
 
 
-// ===== COPILOT_ADMIN_RELOAD_BANDWIDTH_GUARD_20260628 =====
-// Giảm băng thông khi reload admin: không tải full question_history 500 dòng mỗi lần.
+// ===== COPILOT_ADMIN_RELOAD_DATA_GUARD_20260628 =====
+// Giảm dữ liệu tải khi reload admin: không tải full question_history 500 dòng mỗi lần.
 // Dòng nặng nhất trước đây là question_history?select=*... ~1.4MB.
 (function () {
-  if (window.__COPILOT_ADMIN_RELOAD_BANDWIDTH_GUARD_20260628) return;
-  window.__COPILOT_ADMIN_RELOAD_BANDWIDTH_GUARD_20260628 = true;
+  if (window.__COPILOT_ADMIN_RELOAD_DATA_GUARD_20260628) return;
+  window.__COPILOT_ADMIN_RELOAD_DATA_GUARD_20260628 = true;
 
   const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
   if (!nativeFetch) return;
@@ -4546,208 +4837,7 @@ ${E(val)}</pre>`;
     }
   };
 })();
-// ===== END COPILOT_ADMIN_RELOAD_BANDWIDTH_GUARD_20260628 =====
-
-// ===== BW_SUPABASE_CARD_MODAL_20260629 =====
-(function(){
-  if(window.__BW_SUPABASE_CARD_MODAL_20260629) return;
-  window.__BW_SUPABASE_CARD_MODAL_20260629 = true;
-
-  const TABLE = 'bandwidth_usage';
-  const BASELINE_KEY = 'supabase_usage_baseline';
-  const LIMIT = 5 * 1024 * 1024 * 1024;
-  const $ = id => document.getElementById(id);
-  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const nf = new Intl.NumberFormat('vi-VN');
-  const month = (d = new Date()) => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-  const fmtBytes = n => { n=+n||0; if(n>=1073741824) return (n/1073741824).toFixed(2)+' GB'; if(n>=1048576) return (n/1048576).toFixed(2)+' MB'; if(n>=1024) return (n/1024).toFixed(1)+' KB'; return n+' B'; };
-  const pct = n => Math.min(100, Math.round(((+n||0)/LIMIT)*100));
-  const c = () => { try { return (typeof client !== 'undefined' && client) ? client : null; } catch(e){ return null; } };
-  const u = () => { try { return (typeof user !== 'undefined' && user) ? user : null; } catch(e){ return null; } };
-  const p = () => { try { return (typeof profile !== 'undefined' && profile) ? profile : null; } catch(e){ return null; } };
-
-  function ensureBandwidthPage(){
-    const side = document.querySelector('.side');
-    const foot = side?.querySelector('.foot');
-    if(side && !$('bandwidthNav')){
-      const b = document.createElement('button');
-      b.id = 'bandwidthNav';
-      b.className = 'nav';
-      b.type = 'button';
-      b.dataset.page = 'bandwidth';
-      b.dataset.short = 'BT';
-      b.innerHTML = '<span class="navGlyph">↗</span><span class="navText">Băng thông</span>';
-      b.onclick = () => { setPage?.('bandwidth','Băng thông'); setTimeout(loadBandwidthStats, 40); };
-      side.insertBefore(b, foot || null);
-      try{ window.organizeAdminSidebarTree?.(); }catch(e){}
-    }
-    const ws = document.querySelector('.workspace');
-    if(ws && !$('bandwidth')){
-      const sec = document.createElement('section');
-      sec.id = 'bandwidth';
-      sec.className = 'page';
-      ws.appendChild(sec);
-    }
-    const page = $('bandwidth');
-    if(page && !page.querySelector('.bwFinal')){
-      page.innerHTML = `
-        <div class="panel bwFinal">
-          <div class="bwFinalHead">
-            <div><h3>Thống kê băng thông</h3><p>Theo dõi app tự đo và mốc Supabase chính thức.</p></div>
-            <div class="bwFinalTools"><input id="bwMonth" type="month" value="${month()}"><button id="bwReloadBtn" type="button">Tải lại</button></div>
-          </div>
-          <div class="bwSummaryBox">
-            <div class="bwStatGrid">
-              <div class="bwStatCard" data-icon="↗"><span>App tự đo tháng này</span><b id="bwTotalBytes">0 B</b><small id="bwLimitText">0% / 5GB</small></div>
-              <div class="bwStatCard bwSupabaseCard" data-icon="◉"><span>Supabase chính thức</span><b id="bwBaseText">Chưa nhập</b><small id="bwBaseNote">Bấm icon để chỉnh</small><div class="bwUsageBar bwBaseMiniBar"><i id="bwBaseBar"></i></div><button id="bwOpenBase" class="bwSupabaseEdit" title="Chỉnh mốc Supabase" type="button">✎</button></div>
-              <div class="bwStatCard" data-icon="⇄"><span>Số request</span><b id="bwTotalRequests">0</b><small>Toàn bộ tài khoản</small></div>
-              <div class="bwStatCard" data-icon="⟳"><span>Lượt reload</span><b id="bwTotalReloads">0</b><small>Ước tính</small></div>
-              <div class="bwStatCard" data-icon="◎"><span>Tài khoản có dữ liệu</span><b id="bwTotalUsers">0</b><small>Trong tháng chọn</small></div>
-            </div>
-            <div class="bwUsageBar"><i id="bwLimitBar"></i></div>
-            <div id="bwError" class="bwEmpty hidden"></div>
-          </div>
-          <div class="bwUsersBox">
-            <div class="bwPanelHead"><div><h4>Mức sử dụng từng người</h4><p>Dữ liệu lấy từ bảng bandwidth_usage.</p></div></div>
-            <div id="bwList" class="bwUserList"><div class="bwEmpty">Chưa tải dữ liệu.</div></div>
-          </div>
-        </div>
-        <div id="bwBaseModal" class="bwBaseModal hidden">
-          <div class="bwBaseModalBox">
-            <button id="bwBaseClose" class="bwBaseClose" type="button">×</button>
-            <h3>Chỉnh mốc Supabase</h3>
-            <p>Nhập số từ Supabase Usage để đối chiếu với app tự đo.</p>
-            <div class="bwBaseForm">
-              <label>Tháng<input id="bwBaseMonth" type="month" value="${month()}"></label>
-              <label>Đã dùng Egress (GB)<input id="bwBaseUsed" type="number" step="0.001" min="0" placeholder="1.557"></label>
-              <label>Giới hạn (GB)<input id="bwBaseLimit" type="number" step="0.1" min="0" value="5"></label>
-              <label>Kết thúc chu kỳ<input id="bwBaseEnd" type="date"></label>
-            </div>
-            <div class="bwBaseActions"><button id="bwBaseCancel" class="act" type="button">Đóng</button><button id="bwBaseSave" class="act ok" type="button">Lưu mốc</button></div>
-          </div>
-        </div>`;
-      $('bwReloadBtn')?.addEventListener('click', loadBandwidthStats);
-      $('bwMonth')?.addEventListener('change', () => { const bm=$('bwBaseMonth'); if(bm) bm.value=$('bwMonth').value; loadBandwidthStats(); });
-      $('bwOpenBase')?.addEventListener('click', openBaseModal);
-      $('bwBaseClose')?.addEventListener('click', closeBaseModal);
-      $('bwBaseCancel')?.addEventListener('click', closeBaseModal);
-      $('bwBaseModal')?.addEventListener('mousedown', e => { if(e.target === $('bwBaseModal')) closeBaseModal(); });
-      $('bwBaseSave')?.addEventListener('click', saveBaseline);
-    }
-  }
-  function openBaseModal(){ $('bwBaseModal')?.classList.remove('hidden'); }
-  function closeBaseModal(){ $('bwBaseModal')?.classList.add('hidden'); }
-
-  function groupRows(rows){
-    const m = new Map();
-    (rows||[]).forEach(r => {
-      const k = r.user_id || r.user_email || r.email || 'unknown';
-      const x = m.get(k) || {id:r.user_id||'', email:r.user_email||r.email||r.user_id||'Không rõ', bytes:0, req:0, reload:0, last:''};
-      x.bytes += +(r.bytes || r.total_bytes || 0);
-      x.req += +(r.requests || r.request_count || 0);
-      x.reload += +(r.reloads || r.reload_count || 0);
-      const t = r.updated_at || r.created_at || r.last_seen || '';
-      if(t && (!x.last || new Date(t) > new Date(x.last))) x.last = t;
-      m.set(k, x);
-    });
-    return [...m.values()].sort((a,b)=>b.bytes-a.bytes);
-  }
-  function renderRows(rows){
-    const a = groupRows(rows);
-    const totalBytes = a.reduce((s,x)=>s+x.bytes,0);
-    const totalReq = a.reduce((s,x)=>s+x.req,0);
-    const totalReload = a.reduce((s,x)=>s+x.reload,0);
-    const pp = pct(totalBytes);
-    if($('bwTotalBytes')) $('bwTotalBytes').textContent = fmtBytes(totalBytes);
-    if($('bwTotalRequests')) $('bwTotalRequests').textContent = nf.format(totalReq);
-    if($('bwTotalReloads')) $('bwTotalReloads').textContent = nf.format(totalReload);
-    if($('bwTotalUsers')) $('bwTotalUsers').textContent = nf.format(a.length);
-    if($('bwLimitText')) $('bwLimitText').textContent = pp + '% / 5GB';
-    if($('bwLimitBar')) $('bwLimitBar').style.width = pp + '%';
-    const list = $('bwList');
-    if(!list) return;
-    if(!a.length){ list.innerHTML = '<div class="bwEmpty">Chưa có dữ liệu băng thông trong tháng này.</div>'; return; }
-    list.innerHTML = '<div class="bwRow head"><b>Tài khoản</b><b>Dung lượng</b><b>Request</b><b>Reload</b><b>Lần cuối</b><b>TT</b></div>' + a.map(x=>{
-      const p = pct(x.bytes), cl = p >= 80 ? 'danger' : (p >= 50 ? 'warn' : 'ok');
-      const st = cl === 'danger' ? 'Cao' : (cl === 'warn' ? 'Chú ý' : 'Ổn');
-      const last = x.last ? new Date(x.last).toLocaleString('vi-VN', {hour:'2-digit', minute:'2-digit', day:'2-digit', month:'2-digit'}) : '—';
-      return `<div class="bwRow ${cl}"><div class="bwEmail"><b>${esc(x.email)}</b><small>${esc(x.id)}</small></div><div class="bwBytes"><b>${fmtBytes(x.bytes)}</b><span class="bwMini"><i style="width:${p}%"></i></span></div><div class="bwNum">${nf.format(x.req)}</div><div class="bwNum">${nf.format(x.reload)}</div><div class="bwLast">${esc(last)}</div><div class="bwStatus">${st}</div></div>`;
-    }).join('');
-  }
-  async function loadBaseline(){
-    const cli = c(); if(!cli) return null;
-    try{ const {data,error} = await cli.from('site_settings').select('value').eq('key', BASELINE_KEY).maybeSingle(); if(error || !data) return null; return typeof data.value === 'string' ? JSON.parse(data.value) : data.value; }catch(e){ return null; }
-  }
-  async function saveBaseline(){
-    const cli = c(); if(!cli) return alert('Chưa kết nối Supabase.');
-    const val = { month:$('bwBaseMonth')?.value || $('bwMonth')?.value || month(), used_gb:Number($('bwBaseUsed')?.value || 0), limit_gb:Number($('bwBaseLimit')?.value || 5), cycle_end:$('bwBaseEnd')?.value || '' };
-    const {error} = await cli.from('site_settings').upsert({key:BASELINE_KEY, value:val, updated_at:new Date().toISOString(), updated_by:u()?.id||null});
-    if(error) return alert('Lưu mốc thất bại: ' + error.message);
-    if(typeof toast === 'function') toast('Đã lưu mốc Supabase');
-    renderBaseline(val); closeBaseModal();
-  }
-  function renderBaseline(v){
-    if(!v){ if($('bwBaseText')) $('bwBaseText').textContent = 'Chưa nhập'; if($('bwBaseBar')) $('bwBaseBar').style.width='0%'; if($('bwBaseNote')) $('bwBaseNote').textContent='Bấm icon để chỉnh'; return; }
-    if($('bwBaseMonth')) $('bwBaseMonth').value = v.month || $('bwMonth')?.value || month();
-    if($('bwBaseUsed')) $('bwBaseUsed').value = v.used_gb ?? '';
-    if($('bwBaseLimit')) $('bwBaseLimit').value = v.limit_gb || 5;
-    if($('bwBaseEnd')) $('bwBaseEnd').value = v.cycle_end || '';
-    const used = Number(v.used_gb || 0), limit = Number(v.limit_gb || 5) || 5;
-    const p = Math.min(100, Math.round(used / limit * 100));
-    if($('bwBaseText')) $('bwBaseText').textContent = used.toFixed(3) + ' / ' + limit + ' GB';
-    if($('bwBaseBar')) $('bwBaseBar').style.width = p + '%';
-    if($('bwBaseNote')) $('bwBaseNote').textContent = 'Supabase Usage · ' + p + '%';
-  }
-  window.loadBandwidthStats = async function(){
-    ensureBandwidthPage();
-    const list = $('bwList'), box = $('bwError');
-    if(list) list.innerHTML = '<div class="bwEmpty">Đang tải thống kê băng thông...</div>';
-    box?.classList.add('hidden');
-    const cli = c();
-    if(!cli){ if(list) list.innerHTML = '<div class="bwEmpty">Chưa kết nối Supabase.</div>'; return; }
-    try{
-      const period = $('bwMonth')?.value || month();
-      const {data,error} = await cli.from(TABLE).select('*').eq('period', period).order('bytes', {ascending:false}).limit(1000);
-      if(error) throw error;
-      renderRows(data || []);
-      renderBaseline(await loadBaseline());
-    }catch(e){
-      if(list) list.innerHTML = '<div class="bwEmpty">Chưa có bảng dữ liệu băng thông hoặc chưa có quyền đọc.</div>';
-      if(box){ box.textContent = 'Cần bảng bandwidth_usage để lưu dữ liệu theo tài khoản.'; box.classList.remove('hidden'); }
-      renderBaseline(await loadBaseline());
-    }
-  };
-  (function trackBandwidth(){
-    if(window.__BW_TRACK_CARD_MODAL_20260629) return;
-    window.__BW_TRACK_CARD_MODAL_20260629 = true;
-    const native = window.fetch ? window.fetch.bind(window) : null;
-    if(!native) return;
-    let bytes = 0, req = 0, reload = 1, busy = false;
-    window.fetch = async function(input, init){ const res = await native(input, init); try{ req++; const n = +(res.headers.get('content-length') || 0); if(n > 0) bytes += n; }catch(e){} return res; };
-    async function flush(){
-      const cli = c(), usr = u();
-      if(busy || !cli || !usr || (!bytes && !req && !reload)) return;
-      busy = true;
-      const payload = {period:month(), user_id:usr.id, user_email:usr.email || p()?.email || '', page:'admin', bytes, requests:req, reloads:reload, updated_at:new Date().toISOString()};
-      bytes = 0; req = 0; reload = 0;
-      try{ await cli.from(TABLE).insert(payload); }catch(e){}
-      busy = false;
-    }
-    setInterval(flush, 300000); window.addEventListener('pagehide', flush); setTimeout(flush, 15000);
-  })();
-  const oldSet = typeof setPage === 'function' ? setPage : null;
-  if(oldSet && !window.__BW_CARD_MODAL_SET_PAGE_PATCH_20260629){
-    window.__BW_CARD_MODAL_SET_PAGE_PATCH_20260629 = true;
-    setPage = function(id,n){ ensureBandwidthPage(); const out = oldSet.apply(this, arguments); if(id === 'bandwidth') setTimeout(loadBandwidthStats, 60); return out; };
-    window.setPage = setPage;
-  }
-  document.addEventListener('DOMContentLoaded', () => { ensureBandwidthPage(); setTimeout(ensureBandwidthPage, 700); });
-  setTimeout(ensureBandwidthPage, 600);
-})();
-// ===== END BW_SUPABASE_CARD_MODAL_20260629 =====
-
-
-
+// ===== END COPILOT_ADMIN_RELOAD_DATA_GUARD_20260628 =====
 
 // ===== COPILOT_DELETE_BAD_SUBJECT_REQUEST_20260629 =====
 // Thêm nút "Xóa yêu cầu lỗi" trong tab Yêu cầu thêm môn để xóa dòng subject_requests bị lỗi.
@@ -4842,525 +4932,8 @@ ${E(val)}</pre>`;
 // ===== END_COPILOT_DELETE_BAD_SUBJECT_REQUEST_20260629 =====
 
 
-// ===== COPILOT_BANDWIDTH_ALERT_SETTING_20260629 =====
-// Cài ngưỡng cảnh báo băng thông trong tab Băng thông. Lưu vào site_settings: bandwidth_alert_threshold_mb
-(function(){
-  if(window.__COPILOT_BANDWIDTH_ALERT_SETTING_20260629) return;
-  window.__COPILOT_BANDWIDTH_ALERT_SETTING_20260629 = true;
-
-  const KEY = 'bandwidth_alert_threshold_mb';
-  const $id = id => document.getElementById(id);
-
-  async function getSetting(){
-    try{
-      const r = await client.from('site_settings').select('value').eq('key', KEY).maybeSingle();
-      if(r.error) return '';
-      const v = r.data?.value;
-      if(v === undefined || v === null) return '';
-      if(typeof v === 'object') return String(v.mb ?? v.value ?? '');
-      return String(v).replace(/"/g,'');
-    }catch(e){ return ''; }
-  }
-
-  async function saveSetting(){
-    if(!isAdmin()) return alert('Chỉ admin mới được chỉnh ngưỡng băng thông.');
-    const input = $id('bwAlertThresholdMb');
-    const mb = Number(input?.value || 0);
-    if(!Number.isFinite(mb) || mb < 0) return alert('Nhập số MB hợp lệ.');
-    setBusy(true, 'Đang lưu ngưỡng...');
-    try{
-      const r = await client.from('site_settings').upsert({
-        key: KEY,
-        value: String(mb),
-        updated_at: new Date().toISOString(),
-        updated_by: user?.id || null
-      }, { onConflict: 'key' });
-      if(r.error) return alert('Không lưu được ngưỡng: ' + r.error.message);
-      toast(mb > 0 ? ('Đã lưu ngưỡng cảnh báo: ' + mb + ' MB/user/tháng') : 'Đã tắt cảnh báo băng thông');
-      if(typeof logAction === 'function') await logAction('set_bandwidth_alert_threshold', 'site_settings', KEY, {mb});
-    }finally{ setBusy(false); }
-  }
-
-  function ensureSettingUI(){
-    const page = $id('bandwidth');
-    if(!page || $id('bwAlertSettingBox')) return;
-    const summary = page.querySelector('.bwSummaryBox') || page.querySelector('.bwFinal') || page;
-    const box = document.createElement('div');
-    box.id = 'bwAlertSettingBox';
-    box.className = 'bwUsersBox bwAlertSettingBox';
-    box.innerHTML = `
-      <div class="bwPanelHead">
-        <div>
-          <h4>Cảnh báo Discord</h4>
-          <p>Khi một user vượt ngưỡng băng thông trong tháng, web học sẽ gửi cảnh báo lên Discord. Đặt 0 để tắt.</p>
-        </div>
-      </div>
-      <div class="bwAlertForm" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:12px;">
-        <label style="display:grid;gap:6px;font-weight:800;color:var(--gold2);">Ngưỡng / user / tháng (MB)
-          <input id="bwAlertThresholdMb" type="number" min="0" step="1" placeholder="Ví dụ: 500" style="min-width:180px;">
-        </label>
-        <button id="bwSaveAlertThreshold" class="act ok" type="button">Lưu ngưỡng</button>
-        <span class="muted">Gợi ý: 500 MB hoặc 1000 MB.</span>
-      </div>`;
-    summary.insertAdjacentElement('afterend', box);
-    $id('bwSaveAlertThreshold')?.addEventListener('click', saveSetting);
-    getSetting().then(v => { if($id('bwAlertThresholdMb')) $id('bwAlertThresholdMb').value = v || '0'; });
-  }
-
-  const oldSetPage = setPage;
-  setPage = function(id, n){
-    oldSetPage(id, n);
-    if(id === 'bandwidth') setTimeout(ensureSettingUI, 80);
-  };
-  window.setPage = setPage;
-
-  document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(ensureSettingUI, 800);
-    setInterval(() => { if($id('bandwidth')?.classList.contains('active')) ensureSettingUI(); }, 1500);
-  });
-})();
-// ===== END_COPILOT_BANDWIDTH_ALERT_SETTING_20260629 =====
-
-
-// ===== COPILOT_BANDWIDTH_CHARTS_20260629 =====
-// Thêm biểu đồ thống kê trong tab Băng thông: cột theo user + donut tỉ lệ usage.
-(function(){
-  if(window.__COPILOT_BANDWIDTH_CHARTS_20260629) return;
-  window.__COPILOT_BANDWIDTH_CHARTS_20260629 = true;
-
-  function $(id){ return document.getElementById(id); }
-  const nf = new Intl.NumberFormat('vi-VN');
-  function fmtBytes(n){
-    n = Number(n || 0);
-    if(n >= 1073741824) return (n / 1073741824).toFixed(2) + ' GB';
-    if(n >= 1048576) return (n / 1048576).toFixed(2) + ' MB';
-    if(n >= 1024) return (n / 1024).toFixed(1) + ' KB';
-    return n + ' B';
-  }
-  function escHtml(s){
-    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  }
-
-  function injectStyle(){
-    if($('bwChartsStyle')) return;
-    const st = document.createElement('style');
-    st.id = 'bwChartsStyle';
-    st.textContent = `
-      #bandwidth .bwChartBox{
-        margin:0!important;
-        border-radius:22px!important;
-        border:1px solid rgba(232,212,168,.16)!important;
-        background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015))!important;
-        padding:14px 18px!important;
-        overflow:hidden!important;
-      }
-      #bandwidth .bwChartHead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;padding-bottom:9px;border-bottom:1px solid rgba(232,212,168,.12);}
-      #bandwidth .bwChartHead h4{margin:0!important;font-size:1.05rem!important;color:var(--gold2,#f3d99b)!important;}
-      #bandwidth .bwChartHead p{margin:2px 0 0!important;font-size:.84rem!important;color:rgba(245,240,232,.62)!important;}
-      #bandwidth .bwChartsGrid{display:grid;grid-template-columns:1.25fr .75fr;gap:12px;align-items:stretch;}
-      #bandwidth .bwBarChart{display:grid;gap:8px;min-height:150px;}
-      #bandwidth .bwBarRow{display:grid;grid-template-columns:minmax(130px,.7fr) minmax(180px,1fr) 74px;gap:10px;align-items:center;}
-      #bandwidth .bwBarName{font-weight:900;color:#fff;font-size:.82rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-      #bandwidth .bwBarTrack{height:12px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);}
-      #bandwidth .bwBarFill{height:100%;border-radius:999px;background:linear-gradient(90deg,#79d18b,#f3d99b,#ff8f7a);min-width:3px;}
-      #bandwidth .bwBarValue{text-align:right;font-weight:900;color:var(--gold2,#f3d99b);font-size:.82rem;}
-      #bandwidth .bwDonutWrap{display:grid;place-items:center;min-height:150px;position:relative;}
-      #bandwidth .bwDonut{width:142px;height:142px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(#79d18b 0deg,#79d18b var(--deg),rgba(255,255,255,.09) var(--deg),rgba(255,255,255,.09) 360deg);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);}
-      #bandwidth .bwDonut::after{content:'';width:94px;height:94px;border-radius:50%;background:#15110d;box-shadow:inset 0 0 0 1px rgba(232,212,168,.12);position:absolute;}
-      #bandwidth .bwDonutText{position:absolute;text-align:center;z-index:1;}
-      #bandwidth .bwDonutText b{display:block;font-size:1.35rem;color:#fff;line-height:1;}
-      #bandwidth .bwDonutText span{display:block;margin-top:5px;font-size:.76rem;color:rgba(245,240,232,.62);font-weight:800;}
-      #bandwidth .bwChartEmpty{padding:18px;border-radius:16px;background:rgba(255,255,255,.05);color:rgba(245,240,232,.65);font-weight:800;}
-      @media(max-width:1280px){#bandwidth .bwChartsGrid{grid-template-columns:1fr;}#bandwidth .bwBarRow{grid-template-columns:120px 1fr 70px;}}
-    `;
-    document.head.appendChild(st);
-  }
-
-  function getRowsFromDom(){
-    const rows = Array.from(document.querySelectorAll('#bwList .bwUserRow'));
-    return rows.map(row => {
-      const email = row.querySelector('.mail')?.textContent?.trim() || row.textContent.trim().slice(0,40) || 'User';
-      const valueText = row.querySelector('.bwUserUsage, .bwUsageText')?.textContent || row.children?.[1]?.textContent || '';
-      const raw = row.textContent || '';
-      return { email, raw, valueText };
-    });
-  }
-
-  function getDataFromBandwidthRows(){
-    let arr = [];
-    try{
-      // Ưu tiên đọc từ DOM vì các block cũ dùng biến nội bộ không public.
-      const domRows = getRowsFromDom();
-      arr = domRows.map(r => {
-        const m = r.raw.match(/([\d.,]+)\s*(GB|MB|KB|B)/i);
-        let bytes = 0;
-        if(m){
-          const num = Number(String(m[1]).replace(/\./g,'').replace(',', '.')) || 0;
-          const unit = m[2].toUpperCase();
-          bytes = unit === 'GB' ? num*1073741824 : unit === 'MB' ? num*1048576 : unit === 'KB' ? num*1024 : num;
-        }
-        return { email:r.email, bytes };
-      }).filter(x => x.email && x.bytes >= 0);
-    }catch(e){}
-    return arr;
-  }
-
-  function ensureChartsBox(){
-    const page = $('bandwidth');
-    if(!page) return null;
-    const left = page.querySelector('.bwLeftCol') || page.querySelector('.bwSummaryBox')?.parentElement || page.querySelector('.bwFinal');
-    if(!left) return null;
-    let box = $('bwChartsBox');
-    if(!box){
-      box = document.createElement('div');
-      box.id = 'bwChartsBox';
-      box.className = 'bwChartBox';
-      box.innerHTML = `<div class="bwChartHead"><div><h4>Biểu đồ thống kê</h4><p>Top user dùng nhiều nhất và tỉ lệ dùng so với 5GB.</p></div></div><div id="bwChartsBody"></div>`;
-    }
-    const alertBox = $('bwAlertSettingBox');
-    if(alertBox && box.parentElement !== left) left.insertBefore(box, alertBox);
-    else if(!box.parentElement) left.appendChild(box);
-    return box;
-  }
-
-  function renderCharts(){
-    injectStyle();
-    const box = ensureChartsBox();
-    const body = $('bwChartsBody');
-    if(!box || !body) return;
-
-    const rows = getDataFromBandwidthRows().sort((a,b)=>b.bytes-a.bytes).slice(0,5);
-    const totalText = $('bwTotalBytes')?.textContent || '0 B';
-    const totalMatch = totalText.match(/([\d.,]+)\s*(GB|MB|KB|B)/i);
-    let totalBytes = rows.reduce((s,x)=>s+x.bytes,0);
-    if(totalMatch){
-      const num = Number(String(totalMatch[1]).replace(/\./g,'').replace(',', '.')) || 0;
-      const unit = totalMatch[2].toUpperCase();
-      totalBytes = unit === 'GB' ? num*1073741824 : unit === 'MB' ? num*1048576 : unit === 'KB' ? num*1024 : num;
-    }
-    const limit = 5 * 1024 * 1024 * 1024;
-    const percent = Math.min(100, Math.round(totalBytes / limit * 100));
-    const deg = Math.round(percent / 100 * 360);
-
-    if(!rows.length || totalBytes <= 0){
-      body.innerHTML = '<div class="bwChartEmpty">Chưa có dữ liệu để vẽ biểu đồ.</div>';
-      return;
-    }
-
-    const max = Math.max(...rows.map(x=>x.bytes), 1);
-    const bars = rows.map(r => {
-      const w = Math.max(2, Math.round(r.bytes / max * 100));
-      return `<div class="bwBarRow"><div class="bwBarName" title="${escHtml(r.email)}">${escHtml(r.email)}</div><div class="bwBarTrack"><div class="bwBarFill" style="width:${w}%"></div></div><div class="bwBarValue">${fmtBytes(r.bytes)}</div></div>`;
-    }).join('');
-
-    body.innerHTML = `<div class="bwChartsGrid"><div class="bwBarChart">${bars}</div><div class="bwDonutWrap"><div class="bwDonut" style="--deg:${deg}deg"></div><div class="bwDonutText"><b>${percent}%</b><span>${fmtBytes(totalBytes)} / 5GB</span></div></div></div>`;
-  }
-
-  const oldSetPage = setPage;
-  setPage = function(id, n){
-    oldSetPage(id, n);
-    if(id === 'bandwidth'){
-      setTimeout(renderCharts, 200);
-      setTimeout(renderCharts, 900);
-    }
-  };
-  window.setPage = setPage;
-
-  // Hook reload bandwidth nếu hàm tồn tại.
-  const hookTimer = setInterval(() => {
-    if(typeof window.loadBandwidthStats === 'function' && !window.loadBandwidthStats.__chartHooked){
-      const old = window.loadBandwidthStats;
-      window.loadBandwidthStats = async function(){
-        const out = await old.apply(this, arguments);
-        setTimeout(renderCharts, 150);
-        return out;
-      };
-      window.loadBandwidthStats.__chartHooked = true;
-      clearInterval(hookTimer);
-    }
-  }, 500);
-
-  document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(renderCharts, 1200);
-    setInterval(() => { if($('bandwidth')?.classList.contains('active')) renderCharts(); }, 2500);
-  });
-})();
-// ===== END_COPILOT_BANDWIDTH_CHARTS_20260629 =====
-
-
-// ===== COPILOT_BANDWIDTH_UI_POLISH_FINAL_20260629 =====
-// Làm gọn lại giao diện Băng thông: bỏ đè chữ, gom ngưỡng cảnh báo thành 1 dòng, biểu đồ nhỏ gọn, hạn chế cuộn.
-(function(){
-  if(window.__COPILOT_BANDWIDTH_UI_POLISH_FINAL_20260629) return;
-  window.__COPILOT_BANDWIDTH_UI_POLISH_FINAL_20260629 = true;
-
-  function $(id){ return document.getElementById(id); }
-  function inject(){
-    if($('bwPolishFinalStyle')) return;
-    const st=document.createElement('style');
-    st.id='bwPolishFinalStyle';
-    st.textContent=`
-      #bandwidth.page.active{overflow:hidden!important;}
-      #bandwidth .bwFinal{
-        height:calc(100vh - 118px)!important;
-        max-height:calc(100vh - 118px)!important;
-        overflow:hidden!important;
-        padding:14px 16px!important;
-        gap:10px!important;
-      }
-      #bandwidth .bwFinalHead{display:none!important;}
-      #bandwidth .bwNoScrollGrid{
-        height:100%!important;
-        grid-template-columns:minmax(620px,1fr) minmax(520px,.86fr)!important;
-        gap:12px!important;
-      }
-      #bandwidth .bwLeftCol,#bandwidth .bwRightCol{gap:10px!important;min-height:0!important;}
-
-      /* Tổng quan */
-      #bandwidth .bwSummaryBox{padding:14px!important;}
-      #bandwidth .bwStatGrid{grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:10px!important;}
-      #bandwidth .bwStatCard{min-height:108px!important;padding:14px 16px!important;}
-      #bandwidth .bwStatCard span{font-size:.78rem!important;line-height:1.15!important;}
-      #bandwidth .bwStatCard b{font-size:1.35rem!important;margin-top:8px!important;white-space:nowrap!important;}
-      #bandwidth .bwStatCard small{font-size:.74rem!important;}
-      #bandwidth .bwUsageBar{height:9px!important;margin-top:10px!important;}
-
-      /* Biểu đồ */
-      #bandwidth #bwChartsBox{padding:12px 14px!important;min-height:190px!important;}
-      #bandwidth #bwChartsBox .bwChartHead{margin-bottom:8px!important;padding-bottom:8px!important;}
-      #bandwidth #bwChartsBox h4{font-size:1rem!important;}
-      #bandwidth #bwChartsBox p{font-size:.78rem!important;}
-      #bandwidth .bwChartsGrid{grid-template-columns:1fr 132px!important;gap:10px!important;}
-      #bandwidth .bwBarChart{gap:7px!important;min-height:118px!important;}
-      #bandwidth .bwBarRow{grid-template-columns:120px 1fr 72px!important;gap:8px!important;}
-      #bandwidth .bwBarName{font-size:.76rem!important;}
-      #bandwidth .bwBarTrack{height:10px!important;}
-      #bandwidth .bwBarValue{font-size:.76rem!important;}
-      #bandwidth .bwDonutWrap{min-height:118px!important;}
-      #bandwidth .bwDonut{width:112px!important;height:112px!important;}
-      #bandwidth .bwDonut:after{width:74px!important;height:74px!important;}
-      #bandwidth .bwDonutText b{font-size:1.05rem!important;}
-      #bandwidth .bwDonutText span{font-size:.66rem!important;max-width:82px!important;}
-      #bandwidth .bwChartEmpty{padding:12px!important;font-size:.82rem!important;}
-
-      /* Cảnh báo: sửa lỗi input đè tiêu đề danh sách */
-      #bandwidth #bwAlertSettingBox{
-        padding:12px 14px!important;
-        flex:0 0 auto!important;
-        min-height:0!important;
-        position:relative!important;
-        z-index:1!important;
-      }
-      #bandwidth #bwAlertSettingBox .bwPanelHead{
-        display:flex!important;align-items:center!important;justify-content:space-between!important;
-        padding:0!important;margin:0 0 8px!important;border:0!important;
-      }
-      #bandwidth #bwAlertSettingBox h4{font-size:1rem!important;margin:0!important;}
-      #bandwidth #bwAlertSettingBox p{display:none!important;}
-      #bandwidth .bwAlertForm{
-        display:grid!important;
-        grid-template-columns:190px 120px 1fr!important;
-        gap:8px!important;
-        align-items:end!important;
-        margin:0!important;
-      }
-      #bandwidth .bwAlertForm label{font-size:.8rem!important;gap:4px!important;}
-      #bandwidth #bwAlertThresholdMb{
-        width:190px!important;min-width:0!important;height:36px!important;
-        background:rgba(255,255,255,.08)!important;color:#fff!important;
-        border:1px solid rgba(232,212,168,.25)!important;border-radius:12px!important;
-      }
-      #bandwidth #bwSaveAlertThreshold{height:36px!important;padding:0 14px!important;border-radius:16px!important;white-space:nowrap!important;}
-      #bandwidth .bwAlertForm .muted{font-size:.78rem!important;align-self:center!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
-
-      /* Danh sách người dùng */
-      #bandwidth .bwRightCol>.bwUsersBox{padding:14px!important;min-height:0!important;flex:1 1 auto!important;}
-      #bandwidth .bwRightCol .bwPanelHead{padding:0 0 8px!important;margin:0 0 8px!important;}
-      #bandwidth .bwRightCol .bwPanelHead h4{font-size:1rem!important;margin:0!important;}
-      #bandwidth .bwRightCol .bwPanelHead p{display:none!important;}
-      #bandwidth .bwUserList{overflow:auto!important;min-height:0!important;}
-      #bandwidth .bwUserHead{position:sticky!important;top:0!important;z-index:2!important;background:#130f0b!important;}
-      #bandwidth .bwUserRow,#bandwidth .bwUserHead{min-height:46px!important;padding:9px 12px!important;}
-      #bandwidth .bwUserRow{grid-template-columns:minmax(210px,1.6fr) minmax(110px,.8fr) 80px 70px 92px 54px!important;}
-      #bandwidth .bwUserHead{grid-template-columns:minmax(210px,1.6fr) minmax(110px,.8fr) 80px 70px 92px 54px!important;}
-
-      @media(max-width:1450px){
-        #bandwidth .bwStatGrid{grid-template-columns:repeat(3,minmax(0,1fr))!important;}
-        #bandwidth .bwNoScrollGrid{grid-template-columns:1fr!important;overflow:auto!important;}
-        #bandwidth.page.active{overflow:auto!important;}
-        #bandwidth .bwFinal{height:auto!important;max-height:none!important;overflow:visible!important;}
-      }
-    `;
-    document.head.appendChild(st);
-  }
-
-  function moveAndFix(){
-    inject();
-    const page=$('bandwidth'); if(!page) return;
-    const grid=page.querySelector('.bwNoScrollGrid');
-    const left=page.querySelector('.bwLeftCol');
-    const right=page.querySelector('.bwRightCol');
-    const summary=page.querySelector('.bwSummaryBox');
-    const charts=$('bwChartsBox');
-    const alert=$('bwAlertSettingBox');
-    const users=page.querySelector('.bwUsersBox:not(#bwAlertSettingBox)');
-    if(left){
-      if(summary && summary.parentElement!==left) left.appendChild(summary);
-      if(charts && charts.parentElement!==left) left.appendChild(charts);
-      if(alert && alert.parentElement!==left) left.appendChild(alert);
-    }
-    if(right && users && users.parentElement!==right) right.appendChild(users);
-
-    // Đổi text gợi ý ngắn hơn
-    const hint=alert?.querySelector('.bwAlertForm .muted');
-    if(hint) hint.textContent='0 = tắt cảnh báo';
-
-    // Fix input không được hiện chữ lạ do đè style
-    const inp=$('bwAlertThresholdMb');
-    if(inp){ inp.placeholder='MB'; inp.title='Ngưỡng MB/user/tháng'; }
-  }
-
-  const oldSetPage=setPage;
-  setPage=function(id,n){
-    oldSetPage(id,n);
-    if(id==='bandwidth'){
-      setTimeout(moveAndFix,80);
-      setTimeout(moveAndFix,500);
-      setTimeout(moveAndFix,1200);
-    }
-  };
-  window.setPage=setPage;
-
-  document.addEventListener('DOMContentLoaded',()=>{
-    setTimeout(moveAndFix,1000);
-    setInterval(()=>{ if($('bandwidth')?.classList.contains('active')) moveAndFix(); },1000);
-  });
-})();
-// ===== END_COPILOT_BANDWIDTH_UI_POLISH_FINAL_20260629 =====
-
-
-// ===== COPILOT_BANDWIDTH_FINAL_REBUILD_20260629 =====
-// Tự đánh giá và sửa cuối: ép layout 2 tầng rõ ràng + biểu đồ lấy trực tiếp từ bandwidth_usage.
-(function(){
-  if(window.__COPILOT_BANDWIDTH_FINAL_REBUILD_20260629) return;
-  window.__COPILOT_BANDWIDTH_FINAL_REBUILD_20260629 = true;
-
-  function $(id){ return document.getElementById(id); }
-  function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-  function month(){ return new Date().getFullYear() + '-' + String(new Date().getMonth()+1).padStart(2,'0'); }
-  function fmtBytes(n){ n=Number(n||0); if(n>=1073741824)return(n/1073741824).toFixed(2)+' GB'; if(n>=1048576)return(n/1048576).toFixed(2)+' MB'; if(n>=1024)return(n/1024).toFixed(1)+' KB'; return n+' B'; }
-  function cli(){ try{return client||null;}catch(e){return null;} }
-
-  async function getBandwidthRows(){
-    const c = cli(); if(!c) return [];
-    const period = $('bwMonth')?.value || month();
-    const r = await c.from('bandwidth_usage').select('*').eq('period', period).order('bytes', {ascending:false}).limit(1000);
-    if(r.error) return [];
-    const map = new Map();
-    (r.data||[]).forEach(x=>{
-      const id = x.user_id || x.user_email || 'unknown';
-      const m = map.get(id) || {id, email:x.user_email||id, bytes:0, req:0, reload:0, last:''};
-      m.bytes += Number(x.bytes||0);
-      m.req += Number(x.requests||x.request_count||0);
-      m.reload += Number(x.reloads||x.reload_count||0);
-      const t = x.updated_at || x.created_at || '';
-      if(t && (!m.last || new Date(t) > new Date(m.last))) m.last = t;
-      map.set(id,m);
-    });
-    return Array.from(map.values()).sort((a,b)=>b.bytes-a.bytes);
-  }
-
-  function buildShell(){
-    const page = $('bandwidth'); if(!page) return;
-    const panel = page.querySelector('.bwFinal'); if(!panel) return;
-    const summary = page.querySelector('.bwSummaryBox');
-    const users = page.querySelector('.bwUsersBox:not(#bwAlertSettingBox)');
-    const alert = $('bwAlertSettingBox');
-    let charts = $('bwChartsBox');
-    if(!charts){
-      charts = document.createElement('div');
-      charts.id='bwChartsBox';
-      charts.className='bwChartBox';
-      charts.innerHTML='<div class="bwChartHead"><div><h4>Biểu đồ thống kê</h4><p>Top người dùng và tỉ lệ dùng 5GB.</p></div></div><div id="bwChartsBody"></div>';
-    }
-    let main = $('bwFinalMainGrid');
-    if(!main){
-      main = document.createElement('div');
-      main.id='bwFinalMainGrid';
-      main.innerHTML='<div id="bwFinalLeft"></div><div id="bwFinalRight"></div>';
-      panel.appendChild(main);
-    }
-    const left = $('bwFinalLeft'), right = $('bwFinalRight');
-    if(summary && summary.parentElement !== panel) panel.insertBefore(summary, main);
-    else if(summary && summary.nextElementSibling !== main) panel.insertBefore(summary, main);
-    if(charts.parentElement !== left) left.appendChild(charts);
-    if(alert && alert.parentElement !== left) left.appendChild(alert);
-    if(users && users.parentElement !== right) right.appendChild(users);
-  }
-
-  async function renderFinalCharts(){
-    buildShell();
-    const body = $('bwChartsBody'); if(!body) return;
-    const rows = await getBandwidthRows();
-    const total = rows.reduce((s,x)=>s+x.bytes,0);
-    const top = rows.slice(0,5);
-    if(!top.length || total <= 0){
-      body.innerHTML = '<div class="bwChartEmpty">Chưa có dữ liệu để vẽ biểu đồ.</div>';
-      return;
-    }
-    const max = Math.max(...top.map(x=>x.bytes),1);
-    const percent = Math.min(100, Math.round(total / (5*1024*1024*1024) * 100));
-    const deg = Math.round(percent*3.6);
-    const bars = top.map(x=>{
-      const w = Math.max(3, Math.round(x.bytes/max*100));
-      return `<div class="bwBarRow"><b title="${esc(x.email)}">${esc(x.email)}</b><span><i style="width:${w}%"></i></span><em>${fmtBytes(x.bytes)}</em></div>`;
-    }).join('');
-    body.innerHTML = `<div class="bwFinalChartsGrid"><div class="bwFinalBars">${bars}</div><div class="bwFinalDonut" style="--deg:${deg}deg"><div><b>${percent}%</b><span>${fmtBytes(total)}</span></div></div></div>`;
-  }
-
-  async function apply(){
-    buildShell();
-    await renderFinalCharts();
-    const hint = document.querySelector('#bwAlertSettingBox .bwAlertForm .muted');
-    if(hint) hint.textContent = '0 = tắt';
-    const input = $('bwAlertThresholdMb');
-    if(input){ input.placeholder='MB'; input.title='Ngưỡng cảnh báo MB/user/tháng'; }
-  }
-
-  const oldSetPage = setPage;
-  setPage = function(id,n){
-    oldSetPage(id,n);
-    if(id==='bandwidth'){
-      setTimeout(apply,100);
-      setTimeout(apply,700);
-    }
-  };
-  window.setPage=setPage;
-
-  const patchLoad = setInterval(()=>{
-    if(typeof window.loadBandwidthStats === 'function' && !window.loadBandwidthStats.__finalRebuild){
-      const old = window.loadBandwidthStats;
-      window.loadBandwidthStats = async function(){
-        const out = await old.apply(this, arguments);
-        setTimeout(apply,120);
-        setTimeout(apply,600);
-        return out;
-      };
-      window.loadBandwidthStats.__finalRebuild = true;
-      clearInterval(patchLoad);
-    }
-  },300);
-
-  document.addEventListener('DOMContentLoaded',()=>{
-    setTimeout(apply,1200);
-    setInterval(()=>{ if($('bandwidth')?.classList.contains('active')) apply(); },2500);
-  });
-})();
-// ===== END_COPILOT_BANDWIDTH_FINAL_REBUILD_20260629 =====
-
-
 // ===== MANUAL_ADMIN_RELOAD_ONLY_20260629 =====
-// Tắt realtime tự cập nhật để tiết kiệm băng thông.
+// Tắt realtime tự cập nhật để giảm gọi Supabase.
 // Admin cần bấm nút "Tải lại" để cập nhật danh sách user/trạng thái hoạt động.
 (function(){
   if(window.__MANUAL_ADMIN_RELOAD_ONLY_20260629) return;
@@ -5396,3 +4969,147 @@ ${E(val)}</pre>`;
   setInterval(setManualChip, 3000);
 })();
 // ===== END MANUAL_ADMIN_RELOAD_ONLY_20260629 =====
+
+// ===== COPILOT_DISABLE_ALL_ADMIN_REALTIME_FINAL_20260629 =====
+// Tắt sạch realtime admin để giảm gọi Supabase ngầm.
+// Từ giờ admin chỉ tải dữ liệu khi bấm nút "Tải lại" hoặc thao tác chủ động.
+(function(){
+  if(window.__COPILOT_DISABLE_ALL_ADMIN_REALTIME_FINAL_20260629) return;
+  window.__COPILOT_DISABLE_ALL_ADMIN_REALTIME_FINAL_20260629 = true;
+
+  function setManualChip(){
+    try{
+      const chip = document.getElementById('adminAutoCheckChip');
+      if(!chip) return;
+      chip.classList.remove('is-live','is-checking','is-error','is-idle');
+      chip.classList.add('is-manual');
+      const text = chip.querySelector('.autoText');
+      if(text) text.textContent = 'Thủ công';
+      const dot = chip.querySelector('.autoDot');
+      if(dot) dot.style.background = 'var(--gold2)';
+    }catch(e){}
+  }
+
+  function removeAdminRealtimeChannels(){
+    try{
+      if(!client || typeof client.getChannels !== 'function') return;
+      client.getChannels().forEach(function(ch){
+        const topic = String(ch?.topic || ch?.subTopic || '');
+        if(topic.includes('learning-hub-admin-realtime') || topic.includes('admin-lite-final')){
+          try{ client.removeChannel(ch); }catch(e){}
+        }
+      });
+    }catch(e){}
+  }
+
+  window.startAdminRealtime = function(){
+    removeAdminRealtimeChannels();
+    setManualChip();
+    return null;
+  };
+  window.startAdminRealtimeFinal = function(){
+    removeAdminRealtimeChannels();
+    setManualChip();
+    return null;
+  };
+  window.stopAdminRealtime = function(){
+    removeAdminRealtimeChannels();
+    setManualChip();
+    return null;
+  };
+  window.stopAdminRealtimeFinal = function(){
+    removeAdminRealtimeChannels();
+    setManualChip();
+    return null;
+  };
+
+  document.addEventListener('DOMContentLoaded', function(){
+    setManualChip();
+    setTimeout(function(){ removeAdminRealtimeChannels(); setManualChip(); }, 500);
+    setTimeout(function(){ removeAdminRealtimeChannels(); setManualChip(); }, 1500);
+  });
+
+  setTimeout(function(){ removeAdminRealtimeChannels(); setManualChip(); }, 300);
+  setInterval(function(){ removeAdminRealtimeChannels(); setManualChip(); }, 10000);
+})();
+// ===== END COPILOT_DISABLE_ALL_ADMIN_REALTIME_FINAL_20260629 =====
+
+// ===== MOBILE_APPROVAL_LITE_ADMIN_20260629 =====
+// Mobile admin nhẹ: ưu tiên màn Phê duyệt user, giảm khu vực không cần thiết trên điện thoại.
+(function(){
+  if(window.__MOBILE_APPROVAL_LITE_ADMIN_20260629) return;
+  window.__MOBILE_APPROVAL_LITE_ADMIN_20260629 = true;
+
+  var mq = window.matchMedia ? window.matchMedia('(max-width: 680px)') : null;
+  function isMobile(){ return mq ? mq.matches : window.innerWidth <= 680; }
+
+  function applyMobileClass(){
+    document.body.classList.toggle('adminMobileLite', isMobile());
+  }
+
+  function openApprovalsOnMobile(force){
+    if(!isMobile()) return;
+    var appBox = document.getElementById('appBox');
+    if(appBox && appBox.classList.contains('hidden')) return;
+    var target = document.querySelector('.nav[data-page="approvals"]');
+    if(!target) return;
+    if(!force && sessionStorage.getItem('admin_mobile_lite_opened') === '1') return;
+    try{ sessionStorage.setItem('admin_mobile_lite_opened','1'); }catch(e){}
+    if(typeof setPage === 'function') setPage('approvals','Phê duyệt');
+    else target.click();
+    setTimeout(function(){
+      if(typeof renderApprovals === 'function') renderApprovals();
+      if(typeof loadRegistrationMode === 'function') loadRegistrationMode();
+    }, 80);
+  }
+
+  // Giảm tải Supabase trên điện thoại: chỉ tải profiles để duyệt user.
+  // Desktop vẫn dùng loadAll gốc đầy đủ.
+  var originalLoadAll = typeof loadAll === 'function' ? loadAll : null;
+  if(originalLoadAll){
+    loadAll = async function(){
+      if(!isMobile()) return originalLoadAll.apply(this, arguments);
+      clearErr();
+      setBusy(true, 'Đang tải duyệt user...');
+      try{
+        cache.profiles = await safeLoad('profiles', client.from('profiles').select('*').order('created_at', { ascending:false }));
+        cache.questions = [];
+        cache.requests = [];
+        cache.history = [];
+        cache.logs = [];
+        if(typeof renderApprovals === 'function') renderApprovals();
+        if(typeof renderStats === 'function') renderStats();
+        if(typeof loadRegistrationMode === 'function') loadRegistrationMode();
+        openApprovalsOnMobile(true);
+        toast('Đã tải duyệt user');
+      } finally {
+        setBusy(false);
+      }
+    };
+  }
+
+  function install(){
+    applyMobileClass();
+    openApprovalsOnMobile(false);
+    setTimeout(function(){ openApprovalsOnMobile(false); }, 500);
+    setTimeout(function(){ openApprovalsOnMobile(false); }, 1500);
+  }
+
+  if(mq && mq.addEventListener){
+    mq.addEventListener('change', function(){
+      applyMobileClass();
+      openApprovalsOnMobile(true);
+    });
+  } else {
+    window.addEventListener('resize', function(){
+      applyMobileClass();
+      openApprovalsOnMobile(false);
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', install);
+  setTimeout(install, 300);
+  setTimeout(install, 1200);
+})();
+// ===== MOBILE_APPROVAL_LITE_ADMIN_20260629_END =====
+

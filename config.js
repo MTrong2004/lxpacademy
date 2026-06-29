@@ -3,7 +3,9 @@
 window.APP_CONFIG = {
   SUPABASE_URL: 'https://kxyukiwhhorvxgxxxmfq.supabase.co',
   SUPABASE_ANON_KEY: 'sb_publishable_yOIciG2SCPyu8mP5KWE5RQ_qIgCd4-f',
-  LOGIN_NOTIFY_ENDPOINT: 'https://kxyukiwhhorvxgxxxmfq.supabase.co/functions/v1/login-notify',
+  get LOGIN_NOTIFY_ENDPOINT() {
+    return (this.SUPABASE_URL || '').replace(/\/+$/, '') + '/functions/v1/login-notify';
+  },
 
   // ===== DISCORD CONFIG =====
   // Đổi webhook Discord thì chỉ sửa dòng dưới đây.

@@ -1,45 +1,71 @@
 /* AI_LANDING_CSS_MAP_START
-Mục đích: Bản đồ nhanh cho AI đọc landing.css đỡ tốn token. Không ảnh hưởng giao diện web.
-Quy tắc sửa: giữ nguyên 1 file landing.css, chỉ sửa nhóm liên quan, tránh vá chồng.
+Mục đích:
+- CSS riêng cho màn hình landing/login/chờ duyệt.
+- Giúp giảm sửa nhầm trong app.css/app.js.
+- File này chỉ điều khiển giao diện landing, không xử lý đăng nhập Supabase.
+
+Quy tắc sửa:
+- Giữ nguyên 1 file landing.css.
+- Chỉ sửa đúng nhóm liên quan.
+- File có nhiều selector lặp có chủ ý để override bản cũ. Không xóa selector lặp nếu chưa kiểm tra thứ tự ưu tiên.
+- landing.css nên load sau app.css để các override landing có hiệu lực.
+- Nếu sửa nền/particles, kiểm tra thêm app.js vì app.js hiện vẫn có runtime tạo landingParticles/landingBgMover.
 
 NHÓM CHÍNH TRONG landing.css
+
 1) Nền tảng landing
 - Tìm: :root, .hodLoginGate, .hodLoginGate.hidden
-- Dùng cho: font, khung full-screen, nền cơ bản.
+- Dùng cho: font, khung full-screen, z-index, nền cơ bản.
+- Lưu ý: .hodLoginGate xuất hiện nhiều lần để override các bản cũ.
 
 2) Background động
-- Tìm: FINAL_LANDING_OBVIOUS_SWAY_FIX, .hodLoginGate::before, .hodLoginGate::after, landingMainBgClearlyMove, landingBeforeBgClearlyMove, landingOverlayClearlyMove
-- Dùng cho: background.webp đung đưa rõ, overlay ánh sáng, motion nền.
+- Tìm: FINAL_LANDING_OBVIOUS_SWAY_FIX, background.webp, landingBgSwaySoft, landingMainBgClearlyMove, landingBeforeBgClearlyMove, landingOverlayClearlyMove
+- Dùng cho: nền background.webp đung đưa, overlay ánh sáng, motion nền.
+- Lưu ý: có cả nền bằng .hodLoginGate và lớp ::before/::after.
 
 3) Particles canvas
 - Tìm: #landingParticles
 - Dùng cho: canvas hạt bay trên nền landing.
+- Lưu ý: JS tạo canvas nằm trong app.js, không nằm trong landing.js.
 
 4) Panel landing
 - Tìm: .hodLoginGatePanel.simpleLanding, .hodLoginBrandRow, .hodLogoClean, .hodLoginTagline, .simpleLanding h1, .simpleLanding p
 - Dùng cho: khung kính landing, logo, headline, mô tả.
 
 5) Feature list
-- Tìm: .hodLoginFeatureLine, .hodLoginFeatureLine::before, .hodLoginFeatureLine::after, .hodLoginFeatureLine span
+- Tìm: .hodLoginFeatureLine, .hodLoginFeatureLinebefore, .hodLoginFeatureLineafter, .hodLoginFeatureLine span
 - Dùng cho: cột tính năng bên phải.
 
 6) Nút Google
 - Tìm: FINAL_GOOGLE_BUTTON_SMALL_ATTACH_FIX, .hodGoogleClean#hodGateLoginBtn, #authGoogle
-- Dùng cho: nút đăng nhập Google dính rìa phải, hover/active, responsive.
+- Dùng cho: nút đăng nhập Google, nút dính rìa phải, hover/active, responsive.
+- Lưu ý: có nhiều rule lặp để khóa nút không bị tách mép phải.
 
 7) Pending approval screen
 - Tìm: PENDING_APPROVAL_SCREEN, .hodPendingApproval, .hodPendingPanel, .hodPendingIcon, .hodPendingEmail, .hodPendingActions
 - Dùng cho: màn hình chờ admin duyệt tài khoản.
 
-8) Mobile / Responsive
-- Tìm: @media(max-width:860px), @media(max-width:480px), prefers-reduced-motion
-- Dùng cho: mobile landing, nút Google mobile, pending approval mobile.
+8) Cinematic intro / logo intro
+- Tìm: LH_INTRO_FINAL_NO_LOGO_OVERLAP, #lhCinematicIntro, .lhStep05Logo, body.lhIntroRunning, body.lhIntroDone
+- Dùng cho: hiệu ứng intro, tránh logo chồng lên web, reveal panel sau intro.
+- Lưu ý: logic tạo intro nằm trong landing.js.
+
+9) Mobile / Responsive
+- Tìm: @media(max-width:860px), @media(max-width:680px), @media(max-width:480px), prefers-reduced-motion
+- Dùng cho: mobile landing, nút Google mobile, pending approval mobile, intro mobile.
+
+10) Selector lặp có chủ ý
+- Tìm: .hodLoginGate, #landingParticles, .hodLoginGatePanel.simpleLanding, .hodGoogleClean#hodGateLoginBtn
+- Dùng cho: override bản cũ theo thứ tự cuối file thắng đầu file.
+- Lưu ý: không xem đây là lỗi trùng vô nghĩa. Nếu muốn gộp, phải test lại giao diện landing.
 
 GỢI Ý AI
-- Lỗi nền landing: xem nhóm 2 + 3 + 8.
-- Lỗi nút Google: xem nhóm 6 + 8.
-- Lỗi layout panel/title: xem nhóm 4 + 5 + 8.
-- Lỗi màn hình chờ duyệt: xem nhóm 7 + 8.
+- Lỗi nền landing: xem nhóm 1 + 2 + 3.
+- Lỗi nút Google: xem nhóm 6 + 9.
+- Lỗi layout panel/title: xem nhóm 4 + 5 + 9.
+- Lỗi màn hình chờ duyệt: xem nhóm 7 + 9.
+- Lỗi intro/logo chồng web: xem nhóm 8 và landing.js.
+- Lỗi hiệu ứng nặng máy: xem nhóm 2 + 3 + 8 + prefers-reduced-motion.
 AI_LANDING_CSS_MAP_END */
 
 /* ===== landing.css - màn hình đăng nhập / landing ===== */
@@ -549,3 +575,50 @@ body.lhIntroDone #authGoogle::after{content:''!important;position:absolute!impor
 @media(max-width:680px){.lhStep05Logo{transform:translate3d(-50%,-50%,0) scale(.92)!important;}body.lhIntroDone .hodLoginGatePanel.simpleLanding{animation-duration:.9s!important;}body.lhIntroDone .simpleLanding h1{animation-delay:.24s!important;animation-duration:.68s!important;}body.lhIntroDone .simpleLanding p{animation-delay:.36s!important;animation-duration:.56s!important;}body.lhIntroDone .hodGoogleClean#hodGateLoginBtn,body.lhIntroDone #authGoogle{animation-duration:.82s!important;animation-delay:.32s!important;}}
 @media(prefers-reduced-motion:reduce){body.lhIntroDone *{animation-duration:.2s!important;animation-delay:0s!important;}}
 /* ===== LH_INTRO_FINAL_NO_LOGO_OVERLAP_20260628_END ===== */
+
+/* ===== FIX_CHONG_CSS_LANDING_20260629 ===== */
+#authGoogle{display:none!important;}
+.hodGoogleClean#hodGateLoginBtn{display:inline-flex!important;position:absolute!important;right:0!important;left:auto!important;bottom:36px!important;width:285px!important;max-width:32vw!important;height:50px!important;min-height:50px!important;border-radius:999px 0 0 999px!important;border-right:0!important;transform:none!important;}
+.hodGoogleClean#hodGateLoginBtn:hover{right:0!important;left:auto!important;transform:translateY(-1px)!important;}
+.hodLoginGate{position:fixed!important;inset:0!important;z-index:2147483000!important;isolation:isolate!important;overflow:hidden!important;}
+#landingParticles{position:absolute!important;inset:0!important;z-index:2!important;pointer-events:none!important;}
+.hodLoginGatePanel.simpleLanding{position:relative!important;z-index:3!important;}
+body:not(.lhIntroRunning) #lhCinematicIntro{display:none!important;pointer-events:none!important;}
+body.lhIntroDone #lhCinematicIntro,body.lhIntroDone .lhStep05Logo{display:none!important;pointer-events:none!important;}
+/* ===== FIX_CHONG_CSS_LANDING_20260629_END ===== */
+
+/* ===== FIX_MOBILE_LANDING_20260629 ===== */
+@media(max-width:860px){
+  .hodLoginGate{padding:10px!important;align-items:stretch!important;background-size:100% 100%,cover!important;animation-duration:14s!important;}
+  .hodLoginGate::before,.hodLoginGate:before{left:-8vw!important;top:-6vh!important;width:116vw!important;height:112vh!important;animation-duration:14s!important;filter:none!important;}
+  .hodLoginGate::after,.hodLoginGate:after{opacity:.12!important;animation:none!important;}
+  #landingParticles{opacity:.28!important;mix-blend-mode:normal!important;}
+  .hodLoginGatePanel.simpleLanding{width:100%!important;height:calc(100dvh - 20px)!important;min-height:0!important;max-height:calc(100dvh - 20px)!important;border-radius:24px!important;display:flex!important;flex-direction:column!important;box-shadow:0 20px 54px rgba(0,0,0,.34)!important;backdrop-filter:blur(12px)!important;}
+  .hodLoginBrandRow{flex:1 1 auto!important;min-height:0!important;padding:28px 22px 10px!important;overflow:auto!important;scrollbar-width:none!important;}
+  .hodLoginBrandRow::-webkit-scrollbar{display:none!important;}
+  .simpleLanding h1{font-size:clamp(2.35rem,12vw,4.1rem)!important;line-height:.95!important;margin:0 0 14px!important;}
+  .simpleLanding p{font-size:.92rem!important;line-height:1.55!important;}
+  .hodLoginFeatureLine{flex:0 0 auto!important;padding:8px 22px 88px!important;gap:8px!important;display:grid!important;grid-template-columns:1fr!important;}
+  .hodLoginFeatureLine span{padding:11px 13px!important;border-radius:15px!important;font-size:.86rem!important;backdrop-filter:blur(8px)!important;}
+  .hodGoogleClean#hodGateLoginBtn{right:0!important;left:auto!important;bottom:18px!important;width:270px!important;max-width:82vw!important;height:48px!important;min-height:48px!important;padding:0 18px 0 14px!important;font-size:.84rem!important;border-radius:999px 0 0 999px!important;}
+  .hodGoogleClean#hodGateLoginBtn:hover{transform:translateY(-1px)!important;}
+}
+@media(max-width:480px){
+  .hodLoginGate{padding:8px!important;}
+  .hodLoginGatePanel.simpleLanding{height:calc(100dvh - 16px)!important;max-height:calc(100dvh - 16px)!important;border-radius:20px!important;}
+  .hodLoginBrandRow{padding:22px 18px 8px!important;}
+  .hodLoginBrandRow .hodLogoClean{width:50px!important;height:50px!important;margin-bottom:20px!important;border-radius:16px!important;}
+  .hodLoginTagline{font-size:.66rem!important;letter-spacing:.13em!important;margin-bottom:14px!important;max-width:100%!important;white-space:normal!important;}
+  .simpleLanding h1{font-size:clamp(2.05rem,13vw,3.35rem)!important;}
+  .simpleLanding p{font-size:.88rem!important;line-height:1.5!important;}
+  .simpleLanding p::after{margin-top:14px!important;font-size:.84rem!important;}
+  .hodLoginFeatureLine{padding:6px 18px 82px!important;}
+  .hodLoginFeatureLine span{font-size:.82rem!important;padding:10px 12px!important;}
+  .hodGoogleClean#hodGateLoginBtn{bottom:16px!important;width:255px!important;max-width:86vw!important;height:46px!important;min-height:46px!important;font-size:.82rem!important;}
+}
+@media(max-width:860px) and (prefers-reduced-motion:reduce){
+  .hodLoginGate,.hodLoginGate::before,.hodLoginGate:before,.hodLoginGate::after,.hodLoginGate:after,#landingParticles{animation:none!important;}
+  body.lhIntroDone *{animation-duration:.15s!important;animation-delay:0s!important;}
+}
+/* ===== FIX_MOBILE_LANDING_20260629_END ===== */
+

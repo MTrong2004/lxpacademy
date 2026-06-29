@@ -944,3 +944,153 @@ where key = 'supabase_usage_baseline';
 
 notify pgrst, 'reload schema';
 -- ===== END CLEANUP_REMOVE_BANDWIDTH_USAGE_20260629 =====
+
+-- ===== COPILOT_FINAL_NO_REALTIME_AND_DEFAULT_ADMIN_20260629 =====
+-- Mục tiêu:
+-- 1) Tắt Supabase Realtime cho các bảng của Learning Hub để giảm băng thông ngầm.
+-- 2) Khi đổi server/reset data, tài khoản inbm2004@gmail.com luôn được tạo/cập nhật là admin.
+-- 3) Giữ cổng đăng ký ở chế độ cần duyệt để user mới không tự vào nếu chưa được duyệt.
+
+-- A) Tắt realtime cho các bảng app/admin.
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    if to_regclass('public.edit_requests') is not null then
+      begin alter publication supabase_realtime drop table public.edit_requests; exception when undefined_object then null; when undefined_table then null; end;
+    end if;
+    if to_regclass('public.profiles') is not null then
+      begin alter publication supabase_realtime drop table public.profiles; exception when undefined_object then null; when undefined_table then null; end;
+    end if;
+    if to_regclass('public.question_history') is not null then
+      begin alter publication supabase_realtime drop table public.question_history; exception when undefined_object then null; when undefined_table then null; end;
+    end if;
+    if to_regclass('public.questions') is not null then
+      begin alter publication supabase_realtime drop table public.questions; exception when undefined_object then null; when undefined_table then null; end;
+    end if;
+    if to_regclass('public.subject_requests') is not null then
+      begin alter publication supabase_realtime drop table public.subject_requests; exception when undefined_object then null; when undefined_table then null; end;
+    end if;
+    if to_regclass('public.admin_logs') is not null then
+      begin alter publication supabase_realtime drop table public.admin_logs; exception when undefined_object then null; when undefined_table then null; end;
+    end if;
+    if to_regclass('public.site_settings') is not null then
+      begin alter publication supabase_realtime drop table public.site_settings; exception when undefined_object then null; when undefined_table then null; end;
+    end if;
+    if to_regclass('public.deleted_questions') is not null then
+      begin alter publication supabase_realtime drop table public.deleted_questions; exception when undefined_object then null; when undefined_table then null; end;
+    end if;
+    if to_regclass('public.deleted_subjects') is not null then
+      begin alter publication supabase_realtime drop table public.deleted_subjects; exception when undefined_object then null; when undefined_table then null; end;
+    end if;
+    if to_regclass('public.discord_approval_logs') is not null then
+      begin alter publication supabase_realtime drop table public.discord_approval_logs; exception when undefined_object then null; when undefined_table then null; end;
+    end if;
+  end if;
+end $$;
+
+-- B) Đảm bảo cột profile cần thiết luôn có.
+alter table public.profiles add column if not exists full_name text;
+alter table public.profiles add column if not exists avatar_url text;
+alter table public.profiles add column if not exists approved boolean default false;
+alter table public.profiles add column if not exists blocked boolean default false;
+alter table public.profiles add column if not exists role text default 'user';
+
+-- C) Cổng đăng ký mặc định: cần admin duyệt.
+insert into public.site_settings (key, value)
+values ('registration_mode', '"approval"'::jsonb)
+on conflict (key) do update set
+  value = excluded.value,
+  updated_at = now();
+
+-- D) Trigger cuối cùng: email admin mặc định luôn là admin + approved.
+create or replace function public.sync_profile_from_auth()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  reg_mode text;
+  auto_approve boolean;
+  final_role text;
+  final_approved boolean;
+begin
+  select trim(both '"' from (value #>> '{}'))
+  into reg_mode
+  from public.site_settings
+  where key = 'registration_mode';
+
+  reg_mode := coalesce(reg_mode, 'approval');
+  auto_approve := (reg_mode = 'open');
+
+  if lower(coalesce(new.email, '')) = 'inbm2004@gmail.com' then
+    final_role := 'admin';
+    final_approved := true;
+  else
+    final_role := 'user';
+    final_approved := auto_approve;
+  end if;
+
+  insert into public.profiles (id, email, full_name, avatar_url, role, approved, blocked)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data ->> 'full_name', new.raw_user_meta_data ->> 'name'),
+    coalesce(new.raw_user_meta_data ->> 'avatar_url', new.raw_user_meta_data ->> 'picture'),
+    final_role,
+    final_approved,
+    false
+  )
+  on conflict (id) do update set
+    email = coalesce(excluded.email, public.profiles.email),
+    full_name = coalesce(excluded.full_name, public.profiles.full_name),
+    avatar_url = coalesce(excluded.avatar_url, public.profiles.avatar_url),
+    role = case
+      when lower(coalesce(excluded.email, public.profiles.email, '')) = 'inbm2004@gmail.com' then 'admin'
+      else public.profiles.role
+    end,
+    approved = case
+      when lower(coalesce(excluded.email, public.profiles.email, '')) = 'inbm2004@gmail.com' then true
+      else public.profiles.approved
+    end,
+    blocked = case
+      when lower(coalesce(excluded.email, public.profiles.email, '')) = 'inbm2004@gmail.com' then false
+      else public.profiles.blocked
+    end;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists sync_profile_from_auth_trigger on auth.users;
+create trigger sync_profile_from_auth_trigger
+after insert or update of email, raw_user_meta_data on auth.users
+for each row execute function public.sync_profile_from_auth();
+
+-- E) Nếu tài khoản admin đã tồn tại trong Auth/Profile thì nâng quyền ngay.
+insert into public.profiles (id, email, full_name, avatar_url, role, approved, blocked)
+select
+  u.id,
+  u.email,
+  coalesce(u.raw_user_meta_data ->> 'full_name', u.raw_user_meta_data ->> 'name'),
+  coalesce(u.raw_user_meta_data ->> 'avatar_url', u.raw_user_meta_data ->> 'picture'),
+  'admin',
+  true,
+  false
+from auth.users u
+where lower(u.email) = 'inbm2004@gmail.com'
+on conflict (id) do update set
+  email = excluded.email,
+  full_name = coalesce(excluded.full_name, public.profiles.full_name),
+  avatar_url = coalesce(excluded.avatar_url, public.profiles.avatar_url),
+  role = 'admin',
+  approved = true,
+  blocked = false;
+
+update public.profiles
+set role = 'admin', approved = true, blocked = false
+where lower(email) = 'inbm2004@gmail.com';
+
+notify pgrst, 'reload schema';
+-- ===== END COPILOT_FINAL_NO_REALTIME_AND_DEFAULT_ADMIN_20260629 =====
+
