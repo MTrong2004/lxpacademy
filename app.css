@@ -2767,23 +2767,25 @@ body:not(.hod-is-admin-final) #adminOpenBtn,body:not(.hod-is-admin-final) #hodFl
 
 
 /* ===== COPILOT_FIX_SUBJECT_NEW_BADGE_POSITION_20260630 ===== */
-/* Định vị huy hiệu NEW nằm gọn trong thẻ để không bị cắt bóng, chừa khoảng trống cho tiêu đề */
+/* Định vị huy hiệu NEW đè lên góc phải trên của thẻ, không đẩy tiêu đề môn học qua trái */
 .subjectCard.hasNewBadge,
 .subjectCard:has(.subjectNewBadge){
+  overflow:visible!important; /* Đảm bảo không bị cắt bóng khi hiển thị huy hiệu nhảy ra ngoài thẻ */
   padding-top:14px!important;
   padding-right:16px!important;
 }
 .subjectCard.hasNewBadge .subjectCardTitle,
 .subjectCard:has(.subjectNewBadge) .subjectCardTitle{
-  padding-right:68px!important; /* Chừa khoảng trống bên phải cho tiêu đề không đè lên huy hiệu NEW */
+  padding-right:0!important; /* Cho phép tiêu đề căn lề phải tự nhiên giống các thẻ khác */
 }
 .subjectCard.hasNewBadge .subjectCardCode,
 .subjectCard:has(.subjectNewBadge) .subjectCardCode{
-  margin-right:0!important; /* Bỏ margin-right để nhường toàn bộ không gian cho tiêu đề hiển thị đầy đủ */
+  margin-right:0!important;
 }
 .subjectNewBadge{
-  top:10px!important;
-  right:12px!important; /* Cho lùi vào trong thẻ 12px để không bị container cắt bóng */
+  position:absolute!important;
+  top:-9px!important;
+  right:-9px!important; /* Đặt đè lên góc phải trên của thẻ */
   min-width:54px!important;
   height:26px!important;
   padding:0 10px!important;
@@ -2812,8 +2814,8 @@ body:not(.hod-is-admin-final) #adminOpenBtn,body:not(.hod-is-admin-final) #hodFl
 @media (max-width:760px){
   .subjectCard.hasNewBadge,
   .subjectCard:has(.subjectNewBadge){padding-top:14px!important;padding-right:12px!important;}
-  .subjectNewBadge{top:8px!important;right:8px!important;min-width:48px!important;height:22px!important;font-size:.62rem!important;}
+  .subjectNewBadge{top:-7px!important;right:-7px!important;min-width:48px!important;height:24px!important;font-size:.62rem!important;}
   .subjectCard.hasNewBadge .subjectCardTitle,
-  .subjectCard:has(.subjectNewBadge) .subjectCardTitle{padding-right:58px!important;}
+  .subjectCard:has(.subjectNewBadge) .subjectCardTitle{padding-right:0!important;}
 }
 /* ===== END_COPILOT_FIX_SUBJECT_NEW_BADGE_POSITION_20260630 ===== */
