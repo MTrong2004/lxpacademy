@@ -327,6 +327,11 @@ window.HODSupabase = (() => {
   const configured = () => CONFIG.SUPABASE_URL.startsWith('https://') && !CONFIG.SUPABASE_ANON_KEY.startsWith('PASTE_');
   const isReady = () => !!client && !!currentUser;
   const isAdmin = () => currentProfile?.role === 'admin';
+  const isEditor = () => {
+    const role = String(currentProfile?.role || '').toLowerCase();
+    const blocked = currentProfile?.blocked || currentProfile?.is_blocked || currentProfile?.status === 'blocked';
+    return ['admin', 'editor'].includes(role) && !blocked;
+  };
   const $id = id => document.getElementById(id);
 
   function safeJson(obj) {
@@ -370,7 +375,7 @@ window.HODSupabase = (() => {
 
   function openAuth() { $id('authModal')?.classList.remove('hidden'); }
   function closeAuth() { $id('authModal')?.classList.add('hidden'); }
-  function openAdmin() { if (!isAdmin()) { alert('Tài khoản Google này chưa có quyền admin.'); return; } window.open('admin.html', '_blank'); }
+  function openAdmin() { if (!isEditor()) { alert('Tài khoản Google này chưa có quyền quản trị.'); return; } window.open('admin.html', '_blank'); }
   function closeAdmin() { $id('adminModal')?.classList.add('hidden'); }
 
   function setupHeaderAuthUI() {
@@ -894,7 +899,7 @@ window.HODSupabase = (() => {
 
   document.addEventListener('DOMContentLoaded', init);
 
-  return { init, isReady, isAdmin, submitEditRequest, loadQuestionsFromSupabase, openAuth, openAdmin, signOut, signInGoogle, getUser: () => currentUser, getProfile: () => currentProfile, get __client() { return client; } };
+  return { init, isReady, isAdmin, isEditor, submitEditRequest, loadQuestionsFromSupabase, openAuth, openAdmin, signOut, signInGoogle, getUser: () => currentUser, getProfile: () => currentProfile, get __client() { return client; } };
 })();
 
 // ===== HOD Login + Admin UI (added) =====
@@ -921,45 +926,12 @@ window.HODSupabase = (() => {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind); else bind();
 })();
 
-// ===== Admin visibility hard fix =====
-(function () {
-  function applyAdminGuard() {
-    const isAdmin = !!window.HODSupabase?.isAdmin?.();
-    document.body?.classList.toggle('hod-is-admin', isAdmin);
-    ['adminOpenBtn', 'hodFloatAdmin'].forEach(id => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.classList.toggle('hidden', !isAdmin);
-      el.style.display = isAdmin ? '' : 'none';
-    });
-    const modal = document.getElementById('adminModal');
-    if (modal && !isAdmin) modal.classList.add('hidden');
-  }
-  function patchOpenAdmin() {
-    if (!window.HODSupabase || window.HODSupabase.__adminGuardPatched) return;
-    const oldOpen = window.HODSupabase.openAdmin;
-    window.HODSupabase.openAdmin = function () {
-      if (!window.HODSupabase.isAdmin?.()) {
-        document.getElementById('adminModal')?.classList.add('hidden');
-        alert('Tài khoản Google này chưa có quyền admin.');
-        applyAdminGuard();
-        return;
-      }
-      return oldOpen?.apply(this, arguments);
-    };
-    window.HODSupabase.__adminGuardPatched = true;
-  }
-  function tick() { patchOpenAdmin(); applyAdminGuard(); }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
-  setInterval(tick, 500);
-})();
-
 // ===== ACCOUNT AVATAR CLEAN FINAL =====
 (function () {
   function $(id) { return document.getElementById(id) }
   function user() { return window.HODSupabase?.getUser?.() || null }
   function profile() { return window.HODSupabase?.getProfile?.() || null }
-  function isAdmin() { return !!window.HODSupabase?.isAdmin?.() }
+  function isAdmin() { return !!window.HODSupabase?.isAdmin?.() || !!window.HODSupabase?.isEditor?.() }
   function email() { return profile()?.email || user()?.email || '' }
   function meta() { return user()?.user_metadata || {} }
   function avatarHTML() { const u = meta().avatar_url || meta().picture || ''; const e = email(); const l = (e || 'U').trim().charAt(0).toUpperCase(); return u ? '<img src="' + esc(u) + '" alt="avatar">' : l }
@@ -969,10 +941,10 @@ window.HODSupabase = (() => {
   function hideLogin() { document.body?.classList.remove('hod-locked'); $('hodLoginGate')?.classList.add('hidden'); }
   function login() { const api = window.HODSupabase; if (!api) { alert('Supabase chưa sẵn sàng, hãy tải lại trang.'); return } if (api.signInGoogle) { api.signInGoogle(); return } api.openAuth?.() }
   async function logout() { await window.HODSupabase?.signOut?.(); showLogin(); updateAll() }
-  function openDash() { if (isAdmin()) window.open('admin.html', '_blank'); else alert('Tài khoản này không có quyền admin.') }
-  function updateMenu() { const admin = isAdmin(); const mail = $('hodAccountEmail'); if (mail) mail.textContent = email() || 'Chưa đăng nhập'; const role = $('hodAccountRole'); if (role) role.textContent = admin ? 'Admin' : 'Người học'; const av = $('hodAccountAvatarBig'); if (av) av.innerHTML = avatarHTML(); $('hodAccountDashboard')?.classList.toggle('hidden', !admin) }
+  function openDash() { if (isAdmin()) window.open('admin.html', '_blank'); else alert('Tài khoản này không có quyền quản trị.') }
+  function updateMenu() { const admin = isAdmin(); const mail = $('hodAccountEmail'); if (mail) mail.textContent = email() || 'Chưa đăng nhập'; const role = $('hodAccountRole'); if (role) { const r = profile()?.role; role.textContent = r === 'admin' ? 'Admin' : (r === 'editor' ? 'Editor' : 'Người học'); } const av = $('hodAccountAvatarBig'); if (av) av.innerHTML = avatarHTML(); $('hodAccountDashboard')?.classList.toggle('hidden', !admin) }
   function updateAll() { ensureAvatar(); const u = user(); const p = profile(); const admin = isAdmin(); const pending = u && p && p.approved === false; document.body?.classList.toggle('hod-is-admin-final', admin); if (pending) { $('hodLoginGate')?.classList.add('hidden'); $('hodPendingApproval')?.classList.remove('hidden'); document.body?.classList.add('hod-locked'); const emailEl = $('hodPendingEmail'); if (emailEl) emailEl.textContent = p.email || u.email || ''; } else if (u) { hideLogin(); $('hodPendingApproval')?.classList.add('hidden'); } else { showLogin(); } const top = $('hodTopAvatar'); if (top) { top.innerHTML = avatarHTML(); top.style.display = (u && !pending) ? 'grid' : 'none' } const headerAdmin = $('adminOpenBtn'); if (headerAdmin) { headerAdmin.remove(); } if (!admin) $('adminModal')?.classList.add('hidden'); updateMenu() }
-  function patchAdmin() { if (!window.HODSupabase || window.HODSupabase.__avatarCleanPatch) return; const old = window.HODSupabase.openAdmin; window.HODSupabase.openAdmin = function () { if (!window.HODSupabase.isAdmin?.()) { $('adminModal')?.classList.add('hidden'); alert('Tài khoản này không có quyền admin.'); return } return old?.apply(this, arguments) }; window.HODSupabase.__avatarCleanPatch = true }
+  function patchAdmin() { if (!window.HODSupabase || window.HODSupabase.__avatarCleanPatch) return; const old = window.HODSupabase.openAdmin; window.HODSupabase.openAdmin = function () { if (!window.HODSupabase.isAdmin?.() && !window.HODSupabase.isEditor?.()) { $('adminModal')?.classList.add('hidden'); alert('Tài khoản này không có quyền quản trị.'); return } return old?.apply(this, arguments) }; window.HODSupabase.__avatarCleanPatch = true }
   function bind() { $('hodGateLoginBtn')?.addEventListener('click', login); $('hodLogoutBtn')?.addEventListener('click', logout); $('hodAccountDashboard')?.addEventListener('click', openDash); document.addEventListener('click', e => { const m = $('hodAccountMenu'), a = $('hodTopAvatar'); if (m && !m.contains(e.target) && a && !a.contains(e.target)) m.classList.add('hidden') }); setInterval(() => { patchAdmin(); updateAll() }, 500); setTimeout(() => { patchAdmin(); updateAll() }, 250) }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind); else bind();
 })();

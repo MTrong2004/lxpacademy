@@ -1481,15 +1481,21 @@ document.addEventListener('DOMContentLoaded', init);
 (function(){
   let activeQuestionSubject = localStorage.getItem('admin_question_subject_filter_v1') || 'all';
 
+  function isQuestionActiveForDeletedSubjectFix(q){
+    return !(q?.is_active === false || q?.is_active === 0 || q?.is_active === '0');
+  }
+
   function subjectsFromQuestions(){
-    const set = new Set((cache.questions || []).map(q => q.subject_code || 'HOD102').filter(Boolean));
+    const rows = (cache.questions || []).filter(isQuestionActiveForDeletedSubjectFix);
+    const set = new Set(rows.map(q => q.subject_code || 'HOD102').filter(Boolean));
     if(!set.size){ set.add('HOD102'); set.add('MLN111'); }
     return Array.from(set).sort((a,b) => String(a).localeCompare(String(b)));
   }
 
   function subjectCount(code){
-    if(code === 'all') return (cache.questions || []).length;
-    return (cache.questions || []).filter(q => (q.subject_code || 'HOD102') === code).length;
+    const rows = (cache.questions || []).filter(isQuestionActiveForDeletedSubjectFix);
+    if(code === 'all') return rows.length;
+    return rows.filter(q => (q.subject_code || 'HOD102') === code).length;
   }
 
   function currentSubjectForAdd(){
@@ -1632,32 +1638,13 @@ document.addEventListener('DOMContentLoaded', init);
       <div>${tabs}</div>
       <button class="act ok addQuestionBtn" onclick="openAddQuestionAdmin()">+ Thêm câu hỏi</button>
     </div>`;
+    const visibleSubjectSet = new Set(subjectsFromQuestions());
     const arr = (cache.questions || [])
+      .filter(q => visibleSubjectSet.has(q.subject_code || 'HOD102'))
       .filter(q => activeQuestionSubject === 'all' || (q.subject_code || 'HOD102') === activeQuestionSubject)
       .filter(q => match(`${q.subject_code || ''} ${q.num || ''} ${q.question || ''} ${q.answer || ''}`))
       .sort((a,b) => String(a.subject_code || '').localeCompare(String(b.subject_code || '')) || (Number(a.num)||0) - (Number(b.num)||0))
       .slice(0, 300);
-
-    const html = arr.map(q => `<div class="item questionAdminItem">
-      <div class="head questionAdminHead">
-        <div>
-          <div class="questionSubjectCode">${esc(q.subject_code || 'HOD102')}</div>
-          <b>Câu ${esc(q.num || q.id)}</b>
-        </div>
-        ${q.is_active === false ? badge('hidden') : badge('active')}
-      </div>
-      <p class="questionPreview">${esc(q.question || '')}</p>
-      <p class="muted">Đáp án: ${esc(q.answer || '')}</p>
-      <div class="adminOptionPreview">
-        ${['A','B','C','D','E'].filter(k => optionText(q,k)).map(k => `<span><b>${k}</b> ${esc(optionText(q,k))}</span>`).join('')}
-      </div>
-      <div class="actions">
-        <button class="act" onclick="viewQuestion(${q.id})">Xem</button>
-        <button class="act warn" onclick="editQuestionDirect(${q.id})">Sửa trực tiếp</button>
-        <button class="act warn" onclick="toggleQuestion(${q.id},${q.is_active === false})">${q.is_active === false ? 'Hiện' : 'Ẩn'}</button>
-        ${isAdmin() ? `<button class="act bad" onclick="deleteQuestionAdmin(${q.id})">Xóa</button>` : ''}
-      </div>
-    </div>`).join('') || '<p class=muted>Không có câu hỏi.</p>';
 
     $('questionList').innerHTML = toolbar + `<div class="questionResultNote">Đang hiển thị ${arr.length} câu${activeQuestionSubject !== 'all' ? ' của môn ' + esc(activeQuestionSubject) : ''}.</div>` + html;
   };
@@ -2291,35 +2278,21 @@ Bắt đầu ngay từ câu 1.`;
         closeModal();
         setBusy(true, 'Đang tiến hành xóa môn học...');
         try {
-          const resQ = await client.from('questions').select('*').eq('subject_code', code);
-          if(resQ.error) throw new Error('Không đọc được câu hỏi: '+resQ.error.message);
-          const questionsData = resQ.data || [];
-
-          const backup = {
-            subject: subjectData,
-            questions: questionsData,
-            deleted_at: new Date().toISOString()
-          };
-
-          const insBackup = await client.from('deleted_subjects').insert({
-            original_data: backup,
-            deleted_by: user?.id,
-            deleted_by_email: user?.email || profile?.email
+          const actionRes = await fetch('/api/admin-action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: user?.id,
+              action: 'delete_subject',
+              payload: { subject_id: subjectData.id }
+            })
           });
-          if(insBackup.error) throw new Error('Không lưu backup vào thùng rác: '+insBackup.error.message);
-
-          if(questionsData.length){
-            const delQ = await client.from('questions').delete().eq('subject_code', code);
-            if(delQ.error) throw new Error('Lỗi xóa câu hỏi: '+delQ.error.message);
+          const actionJson = await actionRes.json().catch(() => ({}));
+          if(!actionRes.ok || actionJson.error){
+            throw new Error(actionJson.error || 'Không xóa được môn học.');
           }
 
-          const delS = await client.from('subjects').delete().eq('code', code);
-          if(delS.error) throw new Error('Đã xóa câu hỏi nhưng lỗi xóa môn: '+delS.error.message);
-
-          await logAction('delete_subject', 'subjects', code, {
-            subject_code: code,
-            questions_count: questionsData.length
-          });
+          const questionsData = Array.from(cache.questions || []).filter(q => String(q.subject_code || '').toUpperCase() === String(code || '').toUpperCase());
 
           // FIX: cập nhật giao diện ngay, tránh thấy môn vừa xóa do cache/trang hiện tại.
           cache.questions = (cache.questions || []).filter(q => String(q.subject_code || '').toUpperCase() !== String(code || '').toUpperCase());
@@ -5699,7 +5672,7 @@ ${E(val)}</pre>`;
     try{
       const {data, error} = await client.from('subjects').select('*').order('sort_order',{ascending:true}).order('code',{ascending:true});
       if(error) return alert('Không tải được danh sách môn: ' + error.message);
-      dragSubjectCache = (data || []).slice();
+      dragSubjectCache = (data || []).filter(s => !(s?.is_active === false || s?.is_active === 0 || s?.is_active === '0')).slice();
       renderSubjectAdminList();
     }finally{
       setBusy(false);
