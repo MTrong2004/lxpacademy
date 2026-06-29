@@ -1,5 +1,7 @@
 import { db, json } from './_db.js';
 
+export const config = { runtime: 'edge' };
+
 export default async function handler(req) {
   if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
 

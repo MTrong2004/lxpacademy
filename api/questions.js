@@ -1,5 +1,7 @@
 import { db, json } from './_db.js';
 
+export const config = { runtime: 'edge' };
+
 function parseJson(v, fallback) {
   if (v === null || v === undefined || v === '') return fallback;
   if (typeof v !== 'string') return v;

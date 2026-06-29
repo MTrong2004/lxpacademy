@@ -1,5 +1,7 @@
 import { db, json } from './_db.js';
 
+export const config = { runtime: 'edge' };
+
 export default async function handler() {
   console.log('[health check] Starting database query test...');
   console.log('[health check] Environment check:', {
