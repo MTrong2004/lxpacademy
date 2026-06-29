@@ -249,7 +249,9 @@ function createTursoClientMock(supaClient) {
 
     const chain = {
       select: (cols) => {
-        queryType = 'select';
+        if (!queryType || queryType === 'select') {
+          queryType = 'select';
+        }
         selectCols = cols || '*';
         return chain;
       },
