@@ -10,10 +10,23 @@ const url = rawUrl.startsWith('libsql://')
   ? rawUrl.replace('libsql://', 'https://')
   : rawUrl;
 
-export const db = createClient({
-  url,
-  authToken: clean(process.env.TURSO_AUTH_TOKEN)
-});
+let realDb = null;
+function getRealDb() {
+  if (!realDb) {
+    const rawUrl = url;
+    realDb = createClient({
+      url: rawUrl,
+      authToken: clean(process.env.TURSO_AUTH_TOKEN)
+    });
+  }
+  return realDb;
+}
+
+export const db = {
+  execute(...args) {
+    return getRealDb().execute(...args);
+  }
+};
 
 export function json(res, status = 200) {
   return new Response(JSON.stringify(res), {
