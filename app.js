@@ -7641,3 +7641,247 @@ try {
 } catch(e) {}
 })();
 // ===== END COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630 =====
+
+// ===== FIX_ADD_SUBJECT_504_PROGRESS_CHUNKED_20260701 =====
+(function(){
+  if(window.__FIX_ADD_SUBJECT_504_PROGRESS_CHUNKED_20260701) return;
+  window.__FIX_ADD_SUBJECT_504_PROGRESS_CHUNKED_20260701 = true;
+  const $ = id => document.getElementById(id);
+  const LIMIT = 80;
+  function u(){ return window.HODSupabase?.getUser?.() || null; }
+  function p(){ return window.HODSupabase?.getProfile?.() || null; }
+  function admin(){ const r=String(p()?.role||'').toLowerCase(); return !!(window.HODSupabase?.isAdmin?.() || r==='admin' || r==='editor'); }
+  function msg(t){ try{ if(typeof notify==='function') notify(t); }catch(e){} }
+  function prog(t,c,n,d){ try{ if(typeof showProgress==='function') showProgress(t,c,n,d||''); }catch(e){} }
+  function hide(){ try{ if(typeof hideProgress==='function') hideProgress(); }catch(e){} }
+  function clean(arr){ return (Array.isArray(arr)?arr:[]).map((q,i)=>{ const o=(q&&typeof q.options==='object'&&!Array.isArray(q.options))?q.options:{}; const a=String(q?.answer||'').toUpperCase().replace(/[^A-Z]/g,''); const im=Array.isArray(q?.images)?q.images:[]; return {num:Number(q?.num)||i+1,question:String(q?.question||'').trim(),options:o,answer:a,answer_text:q?.answer_text||a.split('').map(k=>k+'. '+(o[k]||'')).join('; '),images:im,has_image:!!(q?.has_image||im.length),error_risk:q?.error_risk||'low',error_risk_reason:q?.error_risk_reason||null}; }).filter(q=>q.question&&q.answer&&q.options); }
+  function readQs(){ let arr=window.__previewImportData||window.__LH_LAST_PREVIEW_IMPORT_DATA||[]; if(!Array.isArray(arr)||!arr.length){ try{ let s=String($('userImportData')?.value||localStorage.getItem('learninghub_add_subject_file_data_v1')||'').trim(); const m=s.match(/```json\s*([\s\S]*?)```/i)||s.match(/```\s*([\s\S]*?)```/); if(m) s=m[1].trim(); const j=JSON.parse(s); arr=Array.isArray(j)?j:(Array.isArray(j?.questions)?j.questions:[]); }catch(e){ arr=[]; } } return clean(arr); }
+  async function post(action,payload){ const res=await fetch('/api/admin-action',{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',body:JSON.stringify({user_id:u()?.id,action,payload})}); const out=await res.json().catch(()=>({})); if(!res.ok||out.error) throw new Error(out.error||('HTTP '+res.status)); return out; }
+  function cache(code,count){ try{ const k='learninghub_subject_counts_cache_v3'; const s=JSON.parse(localStorage.getItem(k)||'{}')||{}; s.counts=s.counts||{}; s.confirmed=s.confirmed||{}; s.counts[code]=count; s.confirmed[code]=true; s.updated_at=new Date().toISOString(); localStorage.setItem(k,JSON.stringify(s)); localStorage.setItem('learninghub_subjects_dirty_v3',String(Date.now())); localStorage.removeItem('learninghub_subjects_cache_v1'); sessionStorage.removeItem('learninghub_subject_counts_cache_v1'); window.clearLearningHubSupabaseCache?.('subjects'); window.clearLearningHubSupabaseCache?.('questions'); window.clearLearningHubQuestionCache?.(); }catch(e){} }
+  function clearState(){ try{ window.__previewImportData=[]; window.__LH_LAST_PREVIEW_IMPORT_DATA=[]; $('importPreviewModal')?.classList.add('hidden'); ['learninghub_add_subject_file_name_v1','learninghub_add_subject_file_size_v1','learninghub_add_subject_file_data_v1','learninghub_add_subject_file_previewed_v1'].forEach(k=>localStorage.removeItem(k)); }catch(e){} }
+  async function one(code,q,i){ await post('add_question',{question_data:{subject_code:code,num:Number(q.num)||i+1,question:q.question,options:q.options||{},answer:q.answer,answer_text:q.answer_text||'',images:q.images||[],has_image:!!q.has_image,error_risk:q.error_risk||'low',error_risk_reason:q.error_risk_reason||null,updated_at:new Date().toISOString()}}); }
+  async function big(code,name,desc,qs){ prog('Đang tạo môn học...',0,qs.length,'Tạo môn trước để tránh lỗi 504...'); const created=await post('add_subject',{code,name:name||code,description:desc||'',questions:[]}); const finalCode=created.code||created.subject_code||code; for(let i=0;i<qs.length;i++){ prog('Đang upload câu hỏi...',i,qs.length,'Đang gửi câu '+(i+1)+'/'+qs.length); try{ await one(finalCode,qs[i],i); }catch(e){ throw new Error('Lỗi ở câu '+(qs[i].num||i+1)+': '+(e?.message||e)); } prog('Đang upload câu hỏi...',i+1,qs.length,'Đã gửi '+(i+1)+'/'+qs.length+' câu'); if(i%20===0) await new Promise(r=>setTimeout(r,30)); } cache(finalCode,qs.length); return {finalCode,success:qs.length}; }
+  async function small(code,name,desc,qs){ prog('Đang lưu môn học...',0,100,'Đang tạo môn và nhập câu hỏi...'); const out=await post('add_subject',{code,name:name||code,description:desc||'',questions:qs}); const finalCode=out.code||out.subject_code||code; cache(finalCode,qs.length); prog('Đang lưu môn học...',100,100,'Hoàn tất'); return {finalCode,success:qs.length}; }
+  window.__submitSubjectRequest = async function(){
+    const code=($('addSubjectCode')?.value||'').trim().toUpperCase(), name=($('addSubjectName')?.value||'').trim(), desc=($('addSubjectDesc')?.value||'').trim(), qs=readQs();
+    if(!code){ alert('Vui lòng nhập mã môn'); $('addSubjectCode')?.focus(); return; }
+    if(!/^[A-Z0-9_]{2,20}$/.test(code)){ alert('Mã môn chỉ gồm chữ, số, gạch dưới (2-20 ký tự)'); $('addSubjectCode')?.focus(); return; }
+    if(!name){ alert('Vui lòng nhập tên môn'); $('addSubjectName')?.focus(); return; }
+    if(!qs.length){ alert('Bạn cần chọn file và bấm Xem trước trước khi lưu môn học.'); return; }
+    if(!u()){ alert('Bạn cần đăng nhập trước khi lưu môn học.'); return; }
+    const b=$('userImportBtn'), old=b?b.textContent:''; if(b){ b.disabled=true; b.textContent='Đang lưu...'; }
+    try{ let r; if(admin()){ r=qs.length>LIMIT?await big(code,name,desc,qs):await small(code,name,desc,qs); const ok='Đã thêm môn '+r.finalCode+' với '+r.success+' câu hỏi'; prog('Hoàn tất upload',r.success,r.success,ok); alert(ok); msg(ok); clearState(); window.__switchSubjectGateTab?.('list'); try{ $('subjectRefresh')?.click(); setTimeout(()=>$('subjectRefresh')?.click(),5600); setTimeout(()=>window.refreshSubjectCountsOnce?.(),6500); }catch(e){} } else { prog('Đang gửi yêu cầu tạo môn học...',0,100,'Đang tải dữ liệu câu hỏi...'); await post('add_subject_request',{code,name,description:desc||'',questions_data:qs}); prog('Hoàn tất',100,100,'Đã gửi yêu cầu'); const ok='Đã gửi yêu cầu thêm môn '+code+'. Vui lòng chờ admin duyệt.'; alert(ok); msg(ok); clearState(); window.__switchSubjectGateTab?.('list'); } }
+    catch(e){ console.warn('Add subject chunked import error:',e); alert('Lỗi tạo môn: '+(e?.message||e)); msg('Lỗi tạo môn'); }
+    finally{ if(b){ b.disabled=false; b.textContent=old||'Lưu Môn Học'; } setTimeout(hide,450); }
+  };
+})();
+// ===== END FIX_ADD_SUBJECT_504_PROGRESS_CHUNKED_20260701 =====
+
+// ===== FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701 =====
+// Tăng tốc upload môn lớn: vẫn tránh 504 nhưng gửi nhiều câu song song có giới hạn.
+(function(){
+  if(window.__FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701) return;
+  window.__FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701 = true;
+
+  const $ = id => document.getElementById(id);
+  const LARGE_LIMIT = 80;
+  const CONCURRENCY = 8; // số câu gửi cùng lúc; đủ nhanh nhưng không ép server quá mạnh
+
+  function user(){ return window.HODSupabase?.getUser?.() || null; }
+  function profile(){ return window.HODSupabase?.getProfile?.() || null; }
+  function canManage(){
+    const role = String(profile()?.role || '').toLowerCase();
+    return !!user() && (window.HODSupabase?.isAdmin?.() || role === 'admin' || role === 'editor');
+  }
+  function toast(msg){ try{ if(typeof notify === 'function') notify(msg); }catch(e){} }
+  function prog(title, current, total, detail){ try{ if(typeof showProgress === 'function') showProgress(title, current, total, detail || ''); }catch(e){} }
+  function hideProg(){ try{ if(typeof hideProgress === 'function') hideProgress(); }catch(e){} }
+
+  function cleanQuestions(arr){
+    return (Array.isArray(arr) ? arr : []).map((q, i) => {
+      const opts = (q && typeof q.options === 'object' && !Array.isArray(q.options)) ? q.options : {};
+      const answer = String(q?.answer || '').toUpperCase().replace(/[^A-Z]/g, '');
+      const images = Array.isArray(q?.images) ? q.images : [];
+      return {
+        num: Number(q?.num) || (i + 1),
+        question: String(q?.question || '').trim(),
+        options: opts,
+        answer,
+        answer_text: q?.answer_text || answer.split('').map(k => k + '. ' + (opts[k] || '')).join('; '),
+        images,
+        has_image: !!(q?.has_image || images.length),
+        error_risk: q?.error_risk || 'low',
+        error_risk_reason: q?.error_risk_reason || null
+      };
+    }).filter(q => q.question && q.answer && q.options);
+  }
+
+  function readQuestions(){
+    let arr = window.__previewImportData || window.__LH_LAST_PREVIEW_IMPORT_DATA || [];
+    if(!Array.isArray(arr) || !arr.length){
+      try{
+        let s = String($('userImportData')?.value || localStorage.getItem('learninghub_add_subject_file_data_v1') || '').trim();
+        const m = s.match(/```json\s*([\s\S]*?)```/i) || s.match(/```\s*([\s\S]*?)```/);
+        if(m) s = m[1].trim();
+        const j = JSON.parse(s);
+        arr = Array.isArray(j) ? j : (Array.isArray(j?.questions) ? j.questions : []);
+      }catch(e){ arr = []; }
+    }
+    return cleanQuestions(arr);
+  }
+
+  async function postAction(action, payload){
+    const res = await fetch('/api/admin-action', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      cache:'no-store',
+      body: JSON.stringify({ user_id:user()?.id, action, payload })
+    });
+    const out = await res.json().catch(() => ({}));
+    if(!res.ok || out.error) throw new Error(out.error || ('HTTP ' + res.status));
+    return out;
+  }
+
+  function cacheCount(code, count){
+    try{
+      const key='learninghub_subject_counts_cache_v3';
+      const store=JSON.parse(localStorage.getItem(key)||'{}')||{};
+      store.counts=store.counts||{};
+      store.confirmed=store.confirmed||{};
+      store.counts[code]=count;
+      store.confirmed[code]=true;
+      store.updated_at=new Date().toISOString();
+      localStorage.setItem(key, JSON.stringify(store));
+      localStorage.setItem('learninghub_subjects_dirty_v3', String(Date.now()));
+      localStorage.removeItem('learninghub_subjects_cache_v1');
+      sessionStorage.removeItem('learninghub_subject_counts_cache_v1');
+      window.clearLearningHubSupabaseCache?.('subjects');
+      window.clearLearningHubSupabaseCache?.('questions');
+      window.clearLearningHubQuestionCache?.();
+    }catch(e){}
+  }
+
+  function clearState(){
+    try{
+      window.__previewImportData=[];
+      window.__LH_LAST_PREVIEW_IMPORT_DATA=[];
+      $('importPreviewModal')?.classList.add('hidden');
+      ['learninghub_add_subject_file_name_v1','learninghub_add_subject_file_size_v1','learninghub_add_subject_file_data_v1','learninghub_add_subject_file_previewed_v1'].forEach(k => localStorage.removeItem(k));
+    }catch(e){}
+  }
+
+  async function uploadOne(finalCode, q, i){
+    await postAction('add_question', { question_data: {
+      subject_code: finalCode,
+      num: Number(q.num) || (i + 1),
+      question: q.question,
+      options: q.options || {},
+      answer: q.answer,
+      answer_text: q.answer_text || '',
+      images: q.images || [],
+      has_image: !!q.has_image,
+      error_risk: q.error_risk || 'low',
+      error_risk_reason: q.error_risk_reason || null,
+      updated_at: new Date().toISOString()
+    }});
+  }
+
+  async function uploadParallel(finalCode, questions){
+    let done = 0;
+    let next = 0;
+    const total = questions.length;
+    const errors = [];
+    prog('Đang upload câu hỏi...', 0, total, 'Upload nhanh: gửi ' + CONCURRENCY + ' câu cùng lúc');
+
+    async function worker(){
+      while(next < total && !errors.length){
+        const i = next++;
+        try{
+          await uploadOne(finalCode, questions[i], i);
+        }catch(e){
+          errors.push('Câu ' + (questions[i].num || (i + 1)) + ': ' + (e?.message || e));
+          break;
+        }
+        done++;
+        prog('Đang upload câu hỏi...', done, total, 'Đã gửi ' + done + '/' + total + ' câu');
+      }
+    }
+
+    const workers = Array.from({length: Math.min(CONCURRENCY, total)}, () => worker());
+    await Promise.all(workers);
+    if(errors.length) throw new Error(errors[0]);
+    return done;
+  }
+
+  async function createLarge(code, name, desc, questions){
+    prog('Đang tạo môn học...', 0, questions.length, 'Tạo môn trước, rồi upload nhiều câu song song...');
+    const created = await postAction('add_subject', { code, name:name || code, description:desc || '', questions:[] });
+    const finalCode = created.code || created.subject_code || code;
+    const success = await uploadParallel(finalCode, questions);
+    cacheCount(finalCode, success);
+    return { finalCode, success };
+  }
+
+  async function createSmall(code, name, desc, questions){
+    prog('Đang lưu môn học...', 0, 100, 'Đang tạo môn và nhập câu hỏi...');
+    const out = await postAction('add_subject', { code, name:name || code, description:desc || '', questions });
+    const finalCode = out.code || out.subject_code || code;
+    cacheCount(finalCode, questions.length);
+    prog('Đang lưu môn học...', 100, 100, 'Hoàn tất');
+    return { finalCode, success:questions.length };
+  }
+
+  window.__submitSubjectRequest = async function(){
+    const code = ($('addSubjectCode')?.value || '').trim().toUpperCase();
+    const name = ($('addSubjectName')?.value || '').trim();
+    const desc = ($('addSubjectDesc')?.value || '').trim();
+    const questions = readQuestions();
+
+    if(!code){ alert('Vui lòng nhập mã môn'); $('addSubjectCode')?.focus(); return; }
+    if(!/^[A-Z0-9_]{2,20}$/.test(code)){ alert('Mã môn chỉ gồm chữ, số, gạch dưới (2-20 ký tự)'); $('addSubjectCode')?.focus(); return; }
+    if(!name){ alert('Vui lòng nhập tên môn'); $('addSubjectName')?.focus(); return; }
+    if(!questions.length){ alert('Bạn cần chọn file và bấm Xem trước trước khi lưu môn học.'); return; }
+    if(!user()){ alert('Bạn cần đăng nhập trước khi lưu môn học.'); return; }
+
+    const btn = $('userImportBtn');
+    const old = btn ? btn.textContent : '';
+    if(btn){ btn.disabled = true; btn.textContent = 'Đang lưu...'; }
+
+    try{
+      if(canManage()){
+        const rs = questions.length > LARGE_LIMIT
+          ? await createLarge(code, name, desc, questions)
+          : await createSmall(code, name, desc, questions);
+        const ok = 'Đã thêm môn ' + rs.finalCode + ' với ' + rs.success + ' câu hỏi';
+        prog('Hoàn tất upload', rs.success, rs.success, ok);
+        alert(ok);
+        toast(ok);
+        clearState();
+        window.__switchSubjectGateTab?.('list');
+        try{
+          $('subjectRefresh')?.click();
+          setTimeout(() => $('subjectRefresh')?.click(), 5600);
+          setTimeout(() => window.refreshSubjectCountsOnce?.(), 6500);
+        }catch(e){}
+      }else{
+        prog('Đang gửi yêu cầu tạo môn học...', 0, 100, 'Đang tải dữ liệu câu hỏi...');
+        await postAction('add_subject_request', { code, name, description:desc || '', questions_data:questions });
+        prog('Hoàn tất', 100, 100, 'Đã gửi yêu cầu');
+        const ok='Đã gửi yêu cầu thêm môn ' + code + '. Vui lòng chờ admin duyệt.';
+        alert(ok);
+        toast(ok);
+        clearState();
+        window.__switchSubjectGateTab?.('list');
+      }
+    }catch(e){
+      console.warn('Fast add subject upload error:', e);
+      alert('Lỗi tạo môn: ' + (e?.message || e));
+      toast('Lỗi tạo môn');
+    }finally{
+      if(btn){ btn.disabled = false; btn.textContent = old || 'Lưu Môn Học'; }
+      setTimeout(hideProg, 450);
+    }
+  };
+})();
+// ===== END FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701 =====
+
