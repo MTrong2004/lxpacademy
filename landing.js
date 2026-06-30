@@ -85,6 +85,19 @@ AI_LANDING_JS_MAP_END */
 
   var HAS_AUTH_SESSION_ON_BOOT = hasKnownAuthSession();
 
+
+  function canPrebootIntro() {
+    return !window.__LOCAL_DEV_MODE && !HAS_AUTH_SESSION_ON_BOOT && !prefersReducedMotion();
+  }
+
+  function installIntroPrebootGuard() {
+    if (canPrebootIntro()) document.documentElement.classList.add('lhIntroBooting');
+  }
+
+  function clearIntroPrebootGuard() {
+    document.documentElement.classList.remove('lhIntroBooting');
+  }
+
   function installAuthBootGuard() {
     if (!HAS_AUTH_SESSION_ON_BOOT) return;
     document.documentElement.classList.add('lhAuthBoot');
@@ -104,6 +117,15 @@ AI_LANDING_JS_MAP_END */
     return r.width > 0 && r.height > 0;
   }
 
+
+  function prefersReducedMotion() {
+    try {
+      return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    } catch (e) {
+      return false;
+    }
+  }
+
   // --- [FIX 2] Dùng isVisible thay vì chỉ kiểm tra class 'hidden' ---
   function releaseBootGuardIfAuthFailed() {
     if (!HAS_AUTH_SESSION_ON_BOOT) return;
@@ -114,7 +136,7 @@ AI_LANDING_JS_MAP_END */
   }
 
   function shouldShowIntro() {
-    if (window.__LOCAL_DEV_MODE) return false;
+    if (window.__LOCAL_DEV_MODE || prefersReducedMotion()) return false;
     if (HAS_AUTH_SESSION_ON_BOOT || hasKnownAuthSession()) return false;
     var gate = document.getElementById('hodLoginGate');
     if (!gate || gate.classList.contains('hidden') || !isVisible(gate)) return false;
@@ -134,28 +156,33 @@ AI_LANDING_JS_MAP_END */
 
   // --- [FIX 3] closeIntro là nguồn sự thật duy nhất cho lhIntroRunning/lhIntroDone ---
   function closeIntro(el) {
+    clearIntroPrebootGuard();
     if (!el || el.__closing) return;
     el.__closing = true;
     document.body.classList.remove('lhIntroRunning');
     document.body.classList.add('lhIntroDone');
-    el.style.transition = 'opacity 380ms ease';
+    el.style.transition = 'opacity 260ms ease';
     el.style.opacity = '0';
-    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 430);
+    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
   }
 
   function createIntro() {
-    if (!shouldShowIntro() || document.getElementById('lhCinematicIntro')) return;
+    if (!shouldShowIntro() || document.getElementById('lhCinematicIntro')) {
+      clearIntroPrebootGuard();
+      return;
+    }
+    clearIntroPrebootGuard();
     document.body.classList.add('lhIntroRunning');
 
     // --- [FIX 4] Tập trung mốc thời gian - chỉnh tại đây khi cần ---
     var T = {
-      beam:    250,
-      expand:  640,
-      split:   900,
-      flash:   1120,
-      fadeOut: 1900,
-      cleanup: 2400,
-      close:   3520
+      beam:    180,
+      expand:  500,
+      split:   760,
+      flash:   980,
+      fadeOut: 1500,
+      cleanup: 1900,
+      close:   2520
     };
 
     var root = make('div', 'lhFinalIntro', 'position:fixed!important;inset:0!important;z-index:2147483600!important;overflow:hidden!important;background:#000!important;isolation:isolate!important;pointer-events:auto!important;opacity:1!important;');
@@ -167,7 +194,7 @@ AI_LANDING_JS_MAP_END */
     var beam        = make('div', 'lhFinalBeam',       'position:absolute!important;left:50%!important;top:50%!important;z-index:6!important;width:290vw!important;height:7px!important;border-radius:999px!important;background:#fff!important;opacity:0!important;transform:translate3d(-50%,-50%,0) rotate(-45deg) scaleX(0)!important;transform-origin:center center!important;box-shadow:0 0 18px #fff,0 0 50px #fff,0 0 125px rgba(130,230,255,.88)!important;filter:blur(6px)!important;transition:opacity 150ms ease, transform 560ms cubic-bezier(.14,.78,.10,1), filter 380ms ease!important;');
     var blade       = make('div', 'lhFinalBlade',      'position:absolute!important;left:50%!important;top:50%!important;z-index:7!important;width:90vw!important;height:9px!important;border-radius:999px!important;background:linear-gradient(90deg,transparent,#fff 18%,#fff 82%,transparent)!important;opacity:0!important;transform:translate3d(-50%,-50%,0) rotate(-45deg) scaleX(.05)!important;transform-origin:center center!important;box-shadow:0 0 18px #fff,0 0 60px #fff,0 0 140px rgba(140,235,255,.88)!important;filter:blur(6px)!important;transition:opacity 150ms ease, transform 580ms cubic-bezier(.14,.78,.10,1), filter 360ms ease!important;');
     var fullWhite   = make('div', 'lhFinalFullWhite',  'position:absolute!important;inset:-10%!important;z-index:8!important;background:radial-gradient(circle at 50% 50%,#fff 0%,#fff 48%,rgba(255,255,255,.96) 72%,rgba(255,255,255,.92) 100%)!important;opacity:0!important;pointer-events:none!important;transition:opacity 1120ms cubic-bezier(.24,.74,.14,1)!important;');
-    var logo        = make('div', 'lhStep05Logo',      'position:absolute!important;left:50%!important;top:50%!important;z-index:9!important;text-align:center!important;opacity:0!important;transform:translate3d(-50%,-50%,0) scale(.96)!important;color:#102233!important;font-family:var(--landing-font,Segoe UI,Arial,sans-serif)!important;letter-spacing:.08em!important;text-shadow:0 1px 0 rgba(255,255,255,.35),0 12px 36px rgba(0,0,0,.08)!important;transition:opacity 620ms ease, transform 800ms cubic-bezier(.22,.75,.12,1)!important;pointer-events:none!important;user-select:none!important;');
+    var logo        = make('div', 'lhStep05Logo',      'position:absolute!important;left:50%!important;top:50%!important;z-index:9!important;text-align:center!important;opacity:0!important;transform:translate3d(-50%,-50%,0) scale(.96)!important;color:var(--landing-intro-logo,#102233)!important;font-family:var(--landing-font,Segoe UI,Arial,sans-serif)!important;letter-spacing:.08em!important;text-shadow:0 1px 0 rgba(255,255,255,.35),0 12px 36px rgba(0,0,0,.08)!important;transition:opacity 620ms ease, transform 800ms cubic-bezier(.22,.75,.12,1)!important;pointer-events:none!important;user-select:none!important;');
     logo.innerHTML  = '<div style="font-weight:950;font-size:clamp(1.35rem,3.2vw,2.2rem);line-height:1;letter-spacing:.16em">HOD</div><div style="margin-top:8px;font-size:clamp(.58rem,1.2vw,.72rem);font-weight:850;letter-spacing:.26em;color:rgba(16,34,51,.55)">LEARNING HUB</div>';
 
     // --- [FIX 5] Thêm aria-label cho nút skip ---
@@ -239,12 +266,15 @@ AI_LANDING_JS_MAP_END */
 
   function bootIntro() {
     if (HAS_AUTH_SESSION_ON_BOOT) {
+      clearIntroPrebootGuard();
       setTimeout(releaseBootGuardIfAuthFailed, 5200);
       return;
     }
-    setTimeout(createIntro, 120);
+    if (window.requestAnimationFrame) requestAnimationFrame(createIntro);
+    else setTimeout(createIntro, 0);
   }
 
+  installIntroPrebootGuard();
   installAuthBootGuard();
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootIntro);
   else bootIntro();

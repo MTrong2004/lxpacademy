@@ -72,6 +72,7 @@ AI_LANDING_CSS_MAP_END */
 :root{
   --landing-font:'Segoe UI',Tahoma,Arial,Roboto,Helvetica,sans-serif;
   --landing-serif:Georgia,'Times New Roman',serif;
+  --landing-intro-logo:#102233;
 }
 
 .hodLoginGate{
@@ -414,19 +415,6 @@ AI_LANDING_CSS_MAP_END */
   z-index:3!important;
 }
 
-/* Không tắt motion vì user đang cần thấy background đung đưa */
-@media (prefers-reduced-motion: reduce){
-  .hodLoginGate,
-  .hodLoginGate::before,
-  .hodLoginGate:before,
-  .hodLoginGate::after,
-  .hodLoginGate:after{
-    animation-play-state:running!important;
-    animation-duration:4.8s!important;
-    animation-iteration-count:infinite!important;
-  }
-}
-
 /* ===== PENDING_APPROVAL_SCREEN_20260624 ===== */
 .hodPendingApproval{
   position:fixed!important;
@@ -583,7 +571,6 @@ body.lhIntroDone #authGoogle::after{content:''!important;position:absolute!impor
 .hodLoginGate{position:fixed!important;inset:0!important;z-index:2147483000!important;isolation:isolate!important;overflow:hidden!important;}
 #landingParticles{position:absolute!important;inset:0!important;z-index:2!important;pointer-events:none!important;}
 .hodLoginGatePanel.simpleLanding{position:relative!important;z-index:3!important;}
-body:not(.lhIntroRunning) #lhCinematicIntro{display:none!important;pointer-events:none!important;}
 body.lhIntroDone #lhCinematicIntro,body.lhIntroDone .lhStep05Logo{display:none!important;pointer-events:none!important;}
 /* ===== FIX_CHONG_CSS_LANDING_20260629_END ===== */
 
@@ -622,3 +609,306 @@ body.lhIntroDone #lhCinematicIntro,body.lhIntroDone .lhStep05Logo{display:none!i
 }
 /* ===== FIX_MOBILE_LANDING_20260629_END ===== */
 
+
+
+/* ===== LANDING_PERFORMANCE_ACCESSIBILITY_FIX_20260630 =====
+   Fix: chỉ giữ 1 lớp nền chuyển động nhẹ, tôn trọng prefers-reduced-motion,
+   và bỏ rule có thể gây race condition intro.
+*/
+.hodLoginGate{
+  animation:none!important;
+  will-change:auto!important;
+  background-position:50% 50%,50% 50%!important;
+  background-size:100% 100%,118% auto!important;
+}
+.hodLoginGate::before,
+.hodLoginGate:before{
+  animation:landingBgSwayOptimized 16s ease-in-out infinite alternate!important;
+  will-change:transform!important;
+  background-position:50% 50%,50% 50%!important;
+  filter:none!important;
+}
+.hodLoginGate::after,
+.hodLoginGate:after{
+  animation:none!important;
+  will-change:auto!important;
+  transform:none!important;
+  opacity:.14!important;
+}
+#landingParticles{
+  opacity:.38!important;
+}
+body.lhIntroRunning #landingParticles{
+  opacity:.18!important;
+}
+body.lhIntroDone .hodLoginGate{
+  animation:lhFinalBgReveal .8s cubic-bezier(.22,.75,.12,1) both!important;
+}
+@keyframes landingBgSwayOptimized{
+  0%{transform:translate3d(-14px,-8px,0) scale(1.08);}
+  50%{transform:translate3d(12px,-6px,0) scale(1.09);}
+  100%{transform:translate3d(14px,8px,0) scale(1.08);}
+}
+@media (prefers-reduced-motion: reduce){
+  .hodLoginGate,
+  .hodLoginGate::before,
+  .hodLoginGate:before,
+  .hodLoginGate::after,
+  .hodLoginGate:after,
+  .hodLoginGatePanel.simpleLanding,
+  .hodPendingIcon,
+  body.lhIntroDone .hodLoginGate,
+  body.lhIntroDone .hodLoginGatePanel.simpleLanding,
+  body.lhIntroDone .hodLoginBrandRow .hodLogoClean,
+  body.lhIntroDone .hodLoginTagline,
+  body.lhIntroDone .simpleLanding h1,
+  body.lhIntroDone .simpleLanding p,
+  body.lhIntroDone .hodLoginFeatureLine::before,
+  body.lhIntroDone .hodLoginFeatureLine::after,
+  body.lhIntroDone .hodLoginFeatureLine span,
+  body.lhIntroDone .hodGoogleClean#hodGateLoginBtn,
+  body.lhIntroDone #authGoogle{
+    animation:none!important;
+    transition:none!important;
+    transform:none!important;
+    filter:none!important;
+    will-change:auto!important;
+  }
+  #landingParticles{
+    display:none!important;
+  }
+  #lhCinematicIntro,
+  .lhStep05Logo{
+    display:none!important;
+    pointer-events:none!important;
+  }
+}
+/* ===== LANDING_PERFORMANCE_ACCESSIBILITY_FIX_20260630_END ===== */
+
+
+/* ===== INTRO_PREBOOT_FLASH_FIX_20260630 ===== */
+html.lhIntroBooting .hodLoginGate{filter:brightness(.82)!important;}
+html.lhIntroBooting .hodLoginGatePanel.simpleLanding{
+  opacity:0!important;
+  transform:translate3d(0,20px,0) scale(.988)!important;
+  filter:brightness(.9)!important;
+}
+html.lhIntroBooting .simpleLanding h1,
+html.lhIntroBooting .simpleLanding p,
+html.lhIntroBooting .hodLoginTagline,
+html.lhIntroBooting .hodLoginBrandRow .hodLogoClean,
+html.lhIntroBooting .hodLoginFeatureLine::before,
+html.lhIntroBooting .hodLoginFeatureLine::after,
+html.lhIntroBooting .hodLoginFeatureLine span,
+html.lhIntroBooting .hodGoogleClean#hodGateLoginBtn{
+  opacity:0!important;
+}
+/* ===== INTRO_PREBOOT_FLASH_FIX_20260630_END ===== */
+
+
+/* ===== INTRO_PARTICLES_OFF_NO_DELAY_FIX_20260630 ===== */
+body.lhIntroRunning #landingParticles,
+body.lhIntroBooting #landingParticles,
+html.lhIntroBooting #landingParticles{
+  display:none!important;
+  opacity:0!important;
+}
+/* ===== INTRO_PARTICLES_OFF_NO_DELAY_FIX_20260630_END ===== */
+
+
+/* ===== LANDING_VISUAL_POLISH_20260630 ===== */
+.hodLoginGatePanel.simpleLanding{
+  background:linear-gradient(135deg,rgba(22,26,38,.54),rgba(15,20,32,.34))!important;
+  border:1px solid rgba(255,255,255,.24)!important;
+  box-shadow:0 34px 90px rgba(0,0,0,.38),inset 0 1px 0 rgba(255,255,255,.24)!important;
+  backdrop-filter:blur(15px) saturate(1.08)!important;
+}
+.hodLoginGatePanel.simpleLanding::before{
+  background:
+    linear-gradient(105deg,rgba(0,0,0,.20),rgba(0,0,0,.08) 42%,rgba(255,255,255,.08) 100%),
+    radial-gradient(circle at 18% 22%,rgba(255,255,255,.13),transparent 24%),
+    radial-gradient(circle at 80% 12%,rgba(160,210,255,.12),transparent 26%)!important;
+}
+.hodLoginBrandRow .hodLogoClean{
+  box-shadow:0 14px 34px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.28)!important;
+  animation:landingLogoPolish .65s cubic-bezier(.22,.75,.12,1) .08s both!important;
+}
+.hodLoginTagline{
+  background:rgba(255,255,255,.13)!important;
+  border-color:rgba(255,255,255,.24)!important;
+  animation:landingTextPolish .56s cubic-bezier(.22,.75,.12,1) .14s both!important;
+}
+.simpleLanding h1{
+  text-shadow:0 20px 52px rgba(0,0,0,.34),0 1px 0 rgba(255,255,255,.10)!important;
+  animation:landingTitlePolish .72s cubic-bezier(.18,.82,.16,1) .18s both!important;
+}
+.simpleLanding p{
+  color:rgba(255,255,255,.86)!important;
+  text-shadow:0 10px 24px rgba(0,0,0,.24)!important;
+  animation:landingTextPolish .62s cubic-bezier(.22,.75,.12,1) .30s both!important;
+}
+.simpleLanding p::after{
+  color:rgba(255,231,172,.98)!important;
+  text-shadow:0 10px 24px rgba(0,0,0,.22)!important;
+}
+.hodLoginFeatureLine::before{
+  text-shadow:0 10px 28px rgba(0,0,0,.30)!important;
+  animation:landingTextPolish .56s cubic-bezier(.22,.75,.12,1) .24s both!important;
+}
+.hodLoginFeatureLine::after{
+  color:rgba(255,255,255,.76)!important;
+  animation:landingTextPolish .56s cubic-bezier(.22,.75,.12,1) .34s both!important;
+}
+.hodLoginFeatureLine span{
+  background:linear-gradient(135deg,rgba(255,255,255,.16),rgba(255,255,255,.075))!important;
+  border-color:rgba(255,255,255,.22)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 12px 28px rgba(0,0,0,.12)!important;
+  transition:transform .22s cubic-bezier(.2,.8,.2,1),background .22s ease,border-color .22s ease,box-shadow .22s ease!important;
+  animation:landingFeaturePolish .54s cubic-bezier(.22,.75,.12,1) both!important;
+}
+.hodLoginFeatureLine span:nth-child(1){animation-delay:.38s!important;}
+.hodLoginFeatureLine span:nth-child(2){animation-delay:.46s!important;}
+.hodLoginFeatureLine span:nth-child(3){animation-delay:.54s!important;}
+.hodLoginFeatureLine span:nth-child(4){animation-delay:.62s!important;}
+.hodLoginFeatureLine span:hover{
+  transform:translate3d(0,-2px,0)!important;
+  background:linear-gradient(135deg,rgba(255,255,255,.21),rgba(255,255,255,.10))!important;
+  border-color:rgba(255,255,255,.34)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 16px 34px rgba(0,0,0,.16)!important;
+}
+.hodLoginFeatureLine span::before{
+  background:rgba(255,255,255,.18)!important;
+  box-shadow:0 6px 16px rgba(0,0,0,.12)!important;
+}
+.hodGoogleClean#hodGateLoginBtn{
+  right:38px!important;
+  left:auto!important;
+  bottom:46px!important;
+  width:310px!important;
+  max-width:calc(100% - 76px)!important;
+  border-radius:999px!important;
+  border-right:1px solid rgba(255,255,255,.46)!important;
+  background:linear-gradient(135deg,#f7fdff 0%,#eafaff 48%,#fff2c8 100%)!important;
+  box-shadow:0 16px 42px rgba(0,0,0,.25),0 0 28px rgba(117,218,255,.10),inset 0 1px 0 rgba(255,255,255,.92)!important;
+  animation:landingGooglePolish .72s cubic-bezier(.22,.75,.12,1) .44s both!important;
+}
+.hodGoogleClean#hodGateLoginBtn:hover{
+  right:38px!important;
+  transform:translate3d(0,-2px,0)!important;
+  background:linear-gradient(135deg,#fff 0%,#f2fcff 48%,#ffeeb4 100%)!important;
+  box-shadow:0 20px 50px rgba(0,0,0,.31),0 0 30px rgba(117,218,255,.14),inset 0 1px 0 rgba(255,255,255,.96)!important;
+}
+@keyframes landingLogoPolish{
+  from{opacity:0;transform:translate3d(0,10px,0) scale(.96);}
+  to{opacity:1;transform:translate3d(0,0,0) scale(1);}
+}
+@keyframes landingTitlePolish{
+  from{opacity:0;transform:translate3d(0,18px,0) scale(.985);}
+  to{opacity:1;transform:translate3d(0,0,0) scale(1);}
+}
+@keyframes landingTextPolish{
+  from{opacity:0;transform:translate3d(0,10px,0);}
+  to{opacity:1;transform:translate3d(0,0,0);}
+}
+@keyframes landingFeaturePolish{
+  from{opacity:0;transform:translate3d(18px,0,0);}
+  to{opacity:1;transform:translate3d(0,0,0);}
+}
+@keyframes landingGooglePolish{
+  from{opacity:0;transform:translate3d(20px,0,0) scale(.985);}
+  to{opacity:1;transform:translate3d(0,0,0) scale(1);}
+}
+@media(max-width:860px){
+  .hodLoginGatePanel.simpleLanding{backdrop-filter:blur(12px) saturate(1.04)!important;}
+  .hodGoogleClean#hodGateLoginBtn{
+    right:18px!important;
+    left:18px!important;
+    bottom:18px!important;
+    width:auto!important;
+    max-width:none!important;
+    border-radius:999px!important;
+    border-right:1px solid rgba(255,255,255,.46)!important;
+  }
+  .hodGoogleClean#hodGateLoginBtn:hover{right:18px!important;}
+}
+@media(prefers-reduced-motion:reduce){
+  .hodLoginBrandRow .hodLogoClean,
+  .hodLoginTagline,
+  .simpleLanding h1,
+  .simpleLanding p,
+  .hodLoginFeatureLine::before,
+  .hodLoginFeatureLine::after,
+  .hodLoginFeatureLine span,
+  .hodGoogleClean#hodGateLoginBtn{
+    animation:none!important;
+  }
+}
+/* ===== LANDING_VISUAL_POLISH_20260630_END ===== */
+
+
+/* ===== RESTORE_GLASS_PANEL_ORIGINAL_20260630 ===== */
+.hodLoginGatePanel.simpleLanding{
+  background:linear-gradient(135deg,rgba(255,255,255,.13),rgba(255,255,255,.045))!important;
+  border:1px solid rgba(255,255,255,.18)!important;
+  box-shadow:0 38px 110px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.20)!important;
+  backdrop-filter:blur(20px)!important;
+}
+.hodLoginGatePanel.simpleLanding::before{
+  background:linear-gradient(110deg,rgba(255,255,255,.12),transparent 30%,rgba(255,255,255,.06) 64%,transparent 100%),radial-gradient(circle at 82% 12%,rgba(132,224,255,.18),transparent 25%)!important;
+}
+@media(max-width:860px){
+  .hodLoginGatePanel.simpleLanding{
+    backdrop-filter:blur(12px)!important;
+  }
+}
+/* ===== RESTORE_GLASS_PANEL_ORIGINAL_20260630_END ===== */
+
+
+/* ===== RESTORE_GOOGLE_BUTTON_EDGE_MATCH_20260630 ===== */
+.hodGoogleClean#hodGateLoginBtn{
+  right:0!important;
+  left:auto!important;
+  bottom:46px!important;
+  width:285px!important;
+  max-width:32vw!important;
+  height:50px!important;
+  min-height:50px!important;
+  padding:0 22px 0 16px!important;
+  border-radius:999px 0 0 999px!important;
+  border-right:0!important;
+  background:#eafaff!important;
+  color:#102233!important;
+  box-shadow:0 14px 36px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.86)!important;
+}
+.hodGoogleClean#hodGateLoginBtn:hover{
+  right:0!important;
+  left:auto!important;
+  transform:translateY(-1px)!important;
+  border-right:0!important;
+  background:#f2fcff!important;
+  color:#102233!important;
+  box-shadow:0 18px 44px rgba(0,0,0,.30),0 0 22px rgba(117,218,255,.14),inset 0 1px 0 rgba(255,255,255,.92)!important;
+}
+@media(max-width:860px){
+  .hodGoogleClean#hodGateLoginBtn{
+    right:0!important;
+    left:auto!important;
+    bottom:18px!important;
+    width:270px!important;
+    max-width:82vw!important;
+    border-radius:999px 0 0 999px!important;
+    border-right:0!important;
+  }
+  .hodGoogleClean#hodGateLoginBtn:hover{
+    right:0!important;
+    left:auto!important;
+  }
+}
+@media(max-width:480px){
+  .hodGoogleClean#hodGateLoginBtn{
+    bottom:16px!important;
+    width:255px!important;
+    max-width:86vw!important;
+  }
+}
+/* ===== RESTORE_GOOGLE_BUTTON_EDGE_MATCH_20260630_END ===== */

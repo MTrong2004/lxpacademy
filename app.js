@@ -99,6 +99,97 @@ window.APP_CONFIG = window.APP_CONFIG || {
   CLOUDINARY_UPLOAD_URL: 'https://api.cloudinary.com/v1_1/ddc4uvm7m/image/upload'
 };
 // ===== END CONFIG FALLBACK =====
+
+// ===== APP_API_DEDUPE_QUESTIONS_PROFILE_20260630 =====
+// Chống gọi trùng /api/questions và /api/profile trong lúc app khởi động/chọn môn.
+// Giữ nguyên dữ liệu đang dùng, chỉ gộp các request giống nhau đang chạy cùng lúc.
+(function(){
+  if(window.__APP_API_DEDUPE_QUESTIONS_PROFILE_20260630) return;
+  window.__APP_API_DEDUPE_QUESTIONS_PROFILE_20260630 = true;
+
+  const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+  if(!nativeFetch) return;
+
+  const pending = new Map();
+  const shortCache = new Map();
+  const QUESTION_TTL = 2500;
+  const PROFILE_TTL = 2500;
+
+  function methodOf(init){
+    return String(init && init.method ? init.method : 'GET').toUpperCase();
+  }
+
+  function makeKey(input, init){
+    let url;
+    try { url = new URL(typeof input === 'string' ? input : input.url, location.href); }
+    catch(e){ return null; }
+
+    const method = methodOf(init);
+    const path = url.pathname;
+
+    if(path === '/api/questions' && method === 'GET'){
+      const subject = url.searchParams.get('subject_code') || '';
+      if(!subject) return null;
+      return { key: 'GET:/api/questions:' + subject, ttl: QUESTION_TTL };
+    }
+
+    if(path === '/api/profile' && method === 'POST'){
+      let uid = '';
+      try { uid = JSON.parse(String(init && init.body || '{}')).id || ''; } catch(e) {}
+      return { key: 'POST:/api/profile:' + uid, ttl: PROFILE_TTL };
+    }
+
+    return null;
+  }
+
+  async function packResponse(res){
+    const body = await res.clone().text();
+    return {
+      body,
+      status: res.status,
+      statusText: res.statusText,
+      headers: Array.from(res.headers.entries()),
+      exp: Date.now()
+    };
+  }
+
+  function unpack(pack){
+    return new Response(pack.body, {
+      status: pack.status,
+      statusText: pack.statusText,
+      headers: new Headers(pack.headers)
+    });
+  }
+
+  window.fetch = async function(input, init){
+    const info = makeKey(input, init);
+    if(!info) return nativeFetch(input, init);
+
+    const cached = shortCache.get(info.key);
+    if(cached && Date.now() - cached.exp < info.ttl){
+      return unpack(cached);
+    }
+
+    if(pending.has(info.key)){
+      const pack = await pending.get(info.key);
+      return unpack(pack);
+    }
+
+    const job = nativeFetch(input, init)
+      .then(async res => {
+        const pack = await packResponse(res);
+        shortCache.set(info.key, pack);
+        return pack;
+      })
+      .finally(() => pending.delete(info.key));
+
+    pending.set(info.key, job);
+    const pack = await job;
+    return unpack(pack);
+  };
+})();
+// ===== END APP_API_DEDUPE_QUESTIONS_PROFILE_20260630 =====
+
 window.HOD_DATA = [];
 (function () { var s = document.createElement('script'); s.type = 'application/json'; s.id = 'data'; s.textContent = '[]'; document.head.appendChild(s); })();
 
