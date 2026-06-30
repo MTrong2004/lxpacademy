@@ -33,7 +33,12 @@ const db = {
 function json(res, status = 200) {
   return new Response(JSON.stringify(res), {
     status,
-    headers: { 'content-type': 'application/json; charset=utf-8' }
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store, no-cache, must-revalidate, max-age=0',
+      'pragma': 'no-cache',
+      'expires': '0'
+    }
   });
 }
 
@@ -120,7 +125,24 @@ export default async function handler(req) {
 
     if (path === 'questions') {
       if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
-      
+
+      const countOnly = parsedUrl.searchParams.get('count_only') === '1';
+      if (countOnly) {
+        const r = await db.execute({
+          sql: `select upper(trim(subject_code)) as subject_code, count(*) as question_count
+                from questions
+                where coalesce(is_active, 1) = 1
+                group by upper(trim(subject_code))
+                order by upper(trim(subject_code)) asc`,
+          args: []
+        });
+        return json({ data: (r.rows || []).map(row => ({
+          subject_code: row.subject_code,
+          question_count: Number(row.question_count || 0),
+          count: Number(row.question_count || 0)
+        })) });
+      }
+
       const subject = (parsedUrl.searchParams.get('subject_code') || '').trim().toUpperCase();
       let sql = `select id, subject_code, num, question, options, answer, answer_text,
                         images, is_active, created_at, updated_at, has_image,

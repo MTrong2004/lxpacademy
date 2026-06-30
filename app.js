@@ -7348,7 +7348,8 @@ window.APP_CONFIG.USE_TURSO_API = true;
       const counts = {};
       rows.forEach(q => {
         const code = norm(q.subject_code);
-        if(code) counts[code] = (counts[code] || 0) + 1;
+        const n = Number(q.question_count ?? q.questions_count ?? q.count ?? 1);
+        if(code) counts[code] = (counts[code] || 0) + (Number.isFinite(n) && n > 0 ? n : 1);
       });
       writeCounts(counts);
       return counts;
@@ -7398,3 +7399,59 @@ window.APP_CONFIG.USE_TURSO_API = true;
   });
 })();
 // ===== END TURSO_SUBJECT_COUNTS_FALLBACK_20260630 =====
+
+// ===== APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630 =====
+// Fix nhẹ: mới vào web tự tải câu hỏi + thư viện, không cần F5. Không chạy vòng lặp dài.
+(function(){
+  if (window.__APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630) return;
+  window.__APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630 = true;
+
+  const SUBJECT_STORE = 'learninghub_subject_code_merged_v1';
+  let running = false;
+  let doneFor = '';
+  function subject(){ return localStorage.getItem(SUBJECT_STORE) || ''; }
+  function user(){ return window.HODSupabase?.getUser?.() || null; }
+  function profile(){ return window.HODSupabase?.getProfile?.() || null; }
+  function approved(){
+    const p = profile();
+    return !p || !(p.approved === false || p.approved === 0 || p.approved === '0');
+  }
+  function dataOk(code){
+    try { return !!code && Array.isArray(RAW) && RAW.length > 0 && RAW.some(q => String(q.subject_code || code).toUpperCase() === String(code).toUpperCase()); }
+    catch(e){ return false; }
+  }
+  function renderAll(){
+    try { renderCard?.(); } catch(e) {}
+    try { renderQuiz?.(); } catch(e) {}
+    try { renderStudy?.(); } catch(e) {}
+  }
+  async function loadOnce(reason){
+    const code = subject();
+    if (!code || !user() || !approved() || running) return false;
+    if (dataOk(code)) { doneFor = code; renderAll(); return true; }
+    if (doneFor === code) return true;
+    running = true;
+    try {
+      let ok = false;
+      if (typeof window.loadCurrentSubjectOnly === 'function') ok = await window.loadCurrentSubjectOnly(false);
+      else if (window.HODSupabase?.loadQuestionsFromSupabase) ok = await window.HODSupabase.loadQuestionsFromSupabase();
+      if (ok || dataOk(code)) { doneFor = code; renderAll(); return true; }
+    } catch(e) { console.warn('[startup auto load]', reason, e); }
+    finally { running = false; }
+    return false;
+  }
+  function schedule(reason){ [300, 1300, 3500].forEach(ms => setTimeout(() => loadOnce(reason + ':' + ms), ms)); }
+  function boot(){
+    schedule('boot');
+    document.querySelectorAll('.tab').forEach(btn => {
+      if (btn.__startupAutoLoadBound) return;
+      btn.__startupAutoLoadBound = true;
+      btn.addEventListener('click', () => setTimeout(() => loadOnce('tab'), 120));
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  window.addEventListener('focus', () => loadOnce('focus'));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadOnce('visible'); });
+})();
+// ===== END APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630 =====
+
