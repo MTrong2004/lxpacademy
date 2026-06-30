@@ -1,3 +1,27 @@
+/* AI_INDEX_JS_MAP_START
+INDEX_NOTE_20260630_IMAGE_PRESERVE: approve_request/save_question_direct không xóa images nếu payload không gửi trường images.
+Mục đích: API backend chạy Edge Runtime, kết nối Turso bằng @libsql/client/web.
+Nguồn cấu hình: TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, ADMIN_EMAIL trong biến môi trường.
+API chính:
+- /api/subjects: lấy danh sách môn học đang active và đếm số câu theo subject_code.
+- /api/questions: lấy câu hỏi đang active, parse options/images từ JSON text để trả về frontend.
+- /api/profile: tạo/cập nhật hồ sơ user, tự set admin nếu email khớp ADMIN_EMAIL.
+- /api/edit-requests: user gửi yêu cầu sửa câu hỏi, lưu old_data/new_data vào edit_requests.
+- /api/admin-dashboard: admin lấy profiles, questions, requests, history, logs, subjects, trash.
+- /api/admin-action: xử lý các hành động admin/editor.
+Lưu ý ảnh:
+- Action save_question_direct đã lưu images vào bảng questions bằng JSON.stringify(new_data.images || []).
+- Action approve_request, add_question, add_subject, restore_subject cũng ghi images vào database.
+- index.js không upload ảnh lên Cloudinary; việc upload nằm ở frontend app.js.
+- Không lưu data:image/base64 ở backend nếu frontend đã lọc đúng; ảnh nên là URL https://res.cloudinary.com/...
+Lưu ý quyền:
+- add_subject_request cho user đã approved.
+- Các action admin/editor còn lại cần admin cấu hình hoặc user có role admin/editor và approved, không bị blocked.
+Lưu ý khi sửa:
+- Không đụng Discord webhook vì file này không xử lý Discord.
+- Nếu sửa lưu ảnh mất sau refresh/reset, kiểm tra cả app.js và action save_question_direct trong file này.
+AI_INDEX_JS_MAP_END */
+
 import { createClient } from '@libsql/client/web';
 
 export const config = { runtime: 'edge' };
@@ -86,6 +110,18 @@ function subjectCoverWithNewBadge(cover, enabled) {
   return JSON.stringify(meta);
 }
 
+
+function hasOwn(obj, key) {
+  return !!obj && Object.prototype.hasOwnProperty.call(obj, key);
+}
+function normalizeImagesForDb(newData, oldData) {
+  if (hasOwn(newData, 'images')) {
+    return Array.isArray(newData.images) ? newData.images : [];
+  }
+  if (Array.isArray(oldData?.images)) return oldData.images;
+  return [];
+}
+
 // Router handler
 export default async function handler(req) {
   const parsedUrl = new URL(req.url);
@@ -152,7 +188,7 @@ export default async function handler(req) {
       const args = [];
 
       if (subject) {
-        sql += ' and upper(trim(subject_code)) = ?';
+        sql += ' and subject_code = ?';
         args.push(subject);
       }
       sql += ' order by subject_code asc, num asc';
@@ -272,6 +308,19 @@ export default async function handler(req) {
       return json({ ok: true });
     }
 
+    if (path === 'settings') {
+      if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      let registration_mode = 'approval';
+      try {
+        const r = await db.execute({ sql: "select value from site_settings where key = 'registration_mode'", args: [] });
+        if (r.rows && r.rows[0]) {
+          const v = r.rows[0].value;
+          registration_mode = (typeof v === 'string' ? v.replace(/"/g, '') : String(v)) || 'approval';
+        }
+      } catch (e) { /* default approval */ }
+      return json({ registration_mode });
+    }
+
     if (path === 'admin-dashboard') {
       if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
       
@@ -357,6 +406,8 @@ export default async function handler(req) {
           if (!request) return json({ error: 'Request not found' }, 404);
 
           const new_data = safeParse(request.new_data, {});
+          const old_data = safeParse(request.old_data, {});
+          const finalImages = normalizeImagesForDb(new_data, old_data);
 
           await db.execute({
             sql: `update questions
@@ -368,8 +419,8 @@ export default async function handler(req) {
               JSON.stringify(new_data.options || {}),
               new_data.answer,
               new_data.answer_text || '',
-              JSON.stringify(new_data.images || []),
-              new_data.has_image ? 1 : 0,
+              JSON.stringify(finalImages),
+              (hasOwn(new_data, 'has_image') ? new_data.has_image : finalImages.length > 0) ? 1 : 0,
               new_data.error_risk || 'low',
               new_data.error_risk_reason || null,
               now,
@@ -413,6 +464,7 @@ export default async function handler(req) {
 
         case 'save_question_direct': {
           const { question_id, new_data, old_data } = payload;
+          const finalImages = normalizeImagesForDb(new_data || {}, old_data || {});
           await db.execute({
             sql: `update questions
                   set question = ?, options = ?, answer = ?, answer_text = ?, images = ?,
@@ -423,8 +475,8 @@ export default async function handler(req) {
               JSON.stringify(new_data.options || {}),
               new_data.answer,
               new_data.answer_text || '',
-              JSON.stringify(new_data.images || []),
-              new_data.has_image ? 1 : 0,
+              JSON.stringify(finalImages),
+              (hasOwn(new_data, 'has_image') ? new_data.has_image : finalImages.length > 0) ? 1 : 0,
               new_data.error_risk || 'low',
               new_data.error_risk_reason || null,
               now,
@@ -451,7 +503,7 @@ export default async function handler(req) {
 
         case 'add_question': {
           const { question_data } = payload;
-          const subjectCode = String(question_data.subject_code || 'HOD102').trim().toUpperCase();
+          const subjectCode = question_data.subject_code || 'HOD102';
           
           let finalNum = Number(question_data.num);
           const existRes = await db.execute({
@@ -619,6 +671,29 @@ export default async function handler(req) {
           return json({ ok: true });
         }
 
+        case 'rename_subject_code': {
+          const oc = String(payload.old_code || '').toUpperCase().trim();
+          const nc = String(payload.new_code || '').toUpperCase().trim();
+          if (!oc || !nc) return json({ error: 'Thiếu mã môn' }, 400);
+          const oldRes = await db.execute({ sql: 'select * from subjects where code = ?', args: [oc] });
+          const oldSub = oldRes.rows?.[0];
+          if (!oldSub) return json({ error: 'Không tìm thấy môn ' + oc }, 404);
+          if (nc !== oc) {
+            const exist = await db.execute({ sql: 'select id from subjects where code = ?', args: [nc] });
+            if (exist.rows && exist.rows.length) return json({ error: 'Mã môn ' + nc + ' đã tồn tại' }, 400);
+          }
+          await db.execute({
+            sql: `insert into subjects (code, name, description, cover, sort_order, is_active, created_at)
+                  values (?, ?, ?, ?, ?, 1, ?)
+                  on conflict(code) do update set name = excluded.name, description = excluded.description`,
+            args: [nc, payload.name || oldSub.name, payload.description || oldSub.description || '', oldSub.cover || '', oldSub.sort_order || 0, now]
+          });
+          await db.execute({ sql: 'update questions set subject_code = ? where subject_code = ?', args: [nc, oc] });
+          if (nc !== oc) await db.execute({ sql: 'delete from subjects where code = ?', args: [oc] });
+          await logAdminAction('rename_subject_code', 'subjects', nc, { old_code: oc, new_code: nc });
+          return json({ ok: true });
+        }
+
         case 'reorder_subjects': {
           const items = Array.isArray(payload?.subjects) ? payload.subjects : [];
           if (!items.length) return json({ error: 'Missing subjects' }, 400);
@@ -678,7 +753,7 @@ export default async function handler(req) {
           if (!sub) return json({ error: 'Subject not found' }, 404);
 
           const qRes = await db.execute({
-            sql: 'select * from questions where upper(trim(subject_code)) = upper(trim(?)) order by num asc',
+            sql: 'select * from questions where subject_code = ? order by num asc',
             args: [sub.code]
           });
           const backup = { subject: sub, questions: qRes.rows || [] };
@@ -688,7 +763,7 @@ export default async function handler(req) {
             args: [subject_id]
           });
           await db.execute({
-            sql: 'update questions set is_active = 0, updated_at = ? where upper(trim(subject_code)) = upper(trim(?))',
+            sql: 'update questions set is_active = 0, updated_at = ? where subject_code = ?',
             args: [now, sub.code]
           });
 
@@ -726,7 +801,7 @@ export default async function handler(req) {
           const code = String(sub.code || '').trim();
 
           if (code) {
-            await db.execute({ sql: 'delete from questions where upper(trim(subject_code)) = upper(trim(?))', args: [code] });
+            await db.execute({ sql: 'delete from questions where subject_code = ?', args: [code] });
             await db.execute({ sql: 'delete from subjects where code = ?', args: [code] });
           }
 
@@ -930,7 +1005,27 @@ export default async function handler(req) {
           return json({ ok: true });
         }
 
-        case 'set_registration_mode': {  
+        case 'revoke_user_approval': {
+          const { target_user_id } = payload;
+          await db.execute({
+            sql: 'update profiles set approved = 0 where id = ?',
+            args: [target_user_id]
+          });
+          await logAdminAction('revoke_user_approval', 'profiles', target_user_id);
+          return json({ ok: true });
+        }
+
+        case 'toggle_question': {
+          const { question_id, is_active } = payload;
+          await db.execute({
+            sql: 'update questions set is_active = ?, updated_at = ? where id = ?',
+            args: [is_active ? 1 : 0, now, question_id]
+          });
+          await logAdminAction(is_active ? 'show_question' : 'hide_question', 'questions', question_id);
+          return json({ ok: true });
+        }
+
+        case 'set_registration_mode': {
           let { mode } = payload;  
           if (typeof mode !== 'string') mode = String(mode || 'approval');  
           try { mode = JSON.parse(mode); } catch {}  

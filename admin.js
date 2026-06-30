@@ -75,6 +75,13 @@ GỢI Ý AI
 - Lỗi import/thêm môn: xem nhóm 11 + 12.
 - Lỗi thùng rác: xem nhóm 13.
 - Lỗi realtime: xem nhóm 14.
+- NOTE_20260630: Chống mất ảnh khi admin sửa/duyệt: tải cột images, lưu qua /api/admin-action, không lưu base64.
+- NOTE_20260630: Triệt để lỗi mất ảnh admin: QUESTION_COLS có images, realtime không xóa images, reload xóa session cache ảnh.
+- NOTE_CLEANUP_20260630: Đã rà soát dọn dẹp — admin.js không còn dead code/console.log debug. Các comment "(... removed — superseded by ...)" được giữ lại có chủ đích để đánh dấu hàm cũ đã bị thay thế, tránh AI sau thêm lại.
+- QUY_ƯỚC_CẤU_TRÚC: File là chuỗi bản vá theo ngày, bọc bởi marker "// ===== TÊN_NGÀY =====". KHÔNG xóa marker (là điểm neo tìm kiếm theo nhóm ở trên). Khi sửa, tìm marker liên quan và sửa trong block đó, ưu tiên hợp nhất thay vì vá chồng.
+- KIẾN_TRÚC_20260701 (QUAN TRỌNG): Supabase CHỈ dùng Auth. Mọi dữ liệu admin đọc qua GET /api/admin-dashboard (trả profiles/questions/requests/history/logs/subjects/subject_requests/trash — nhớ parse JSON các cột text), ghi qua helper adminAction(action,payload) → POST /api/admin-action. KHÔNG dùng client.from(...) để đọc/ghi nữa.
+- NHIỀU HÀM BỊ OVERRIDE (định nghĩa sau thắng): khi tìm hàm active, lấy bản window.X = ... CUỐI CÙNG trong file (vd loadAll, approve, saveSubjectAdmin, loadSubjectsAdmin, viewReq, revokeApproval...). CODE CHẾT còn sót dùng client.from(...) nằm trong các bản CŨ đã bị đè (loadAll #1 ~636, approve ~907, setRegistrationMode cũ, saveSubjectAdmin ~4737) + helper deleteRowById/fetchAllRows chỉ phục vụ code cũ — KHÔNG dựa vào, KHÔNG hồi sinh.
+- compareHTML/viewReq render ẢNH THẬT từ cache Turso. logAction chỉ còn gửi Discord (admin_logs do API tự ghi). Xem thêm [[lxpacademy-data-source-split]] trong memory.
 AI_ADMIN_JS_MAP_END */
 
 const CONFIG = {
@@ -590,7 +597,12 @@ function show(x) {
   $('appBox').classList.toggle('hidden', x !== 'app');
 }
 
+function cleanPageName(n) {
+  // Bỏ icon/ký tự đầu và số badge cuối khi tên lấy từ textContent của nav (vd "✓ Phê duyệt 0" -> "Phê duyệt").
+  return String(n || '').replace(/^[^\p{L}\p{N}]+/u, '').replace(/\s*\d+\s*$/, '').replace(/\s+/g, ' ').trim();
+}
 function setPage(id, n) {
+  n = cleanPageName(n);
   document.querySelectorAll('.nav').forEach(x => x.classList.toggle('active', x.dataset.page === id));
   document.querySelectorAll('.page').forEach(x => x.classList.toggle('active', x.id === id));
   $('crumb').textContent = n;
@@ -600,8 +612,18 @@ function setPage(id, n) {
 }
 
 async function loadProfile() {
-  const r = await client.from('profiles').select('*').eq('id', user.id).maybeSingle();
-  profile = r.data || { id: user.id, email: user.email, role: 'user' };
+  // Lấy/đồng bộ profile (role/approved/blocked) từ Turso. Supabase chỉ dùng cho Auth.
+  try {
+    const md = user.user_metadata || {};
+    const res = await fetch('/api/profile', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
+      body: JSON.stringify({ id: user.id, email: user.email, full_name: md.full_name || md.name || '', avatar_url: md.avatar_url || md.picture || '' })
+    });
+    const out = await res.json().catch(() => ({}));
+    profile = out.data || { id: user.id, email: user.email, role: 'user' };
+  } catch (e) {
+    profile = { id: user.id, email: user.email, role: 'user' };
+  }
   $('adminChip').textContent = `${profile.email || user.email} · ${profile.role}`;
   document.body.classList.toggle('role-admin', isAdmin());
 
@@ -635,7 +657,7 @@ async function loadAll() {
   if (client.clearCache) client.clearCache();
   try {
     cache.profiles = await safeLoad('profiles', client.from('profiles').select('*').order('created_at', { ascending: false }));
-    cache.questions = await safeLoad('questions', client.from('questions').select('id,num,subject_code,question,options,answer,is_active,updated_at,created_at,has_image,error_risk,error_risk_reason').order('num', { ascending: true }));
+    cache.questions = await safeLoad('questions', client.from('questions').select('id,num,subject_code,question,options,answer,images,is_active,updated_at,created_at,has_image,error_risk,error_risk_reason').order('num', { ascending: true }));
     cache.requests = await safeLoad('edit_requests', client.from('edit_requests').select('*').order('created_at', { ascending: false }));
     cache.history = await safeLoad('question_history', client.from('question_history').select('*').order('created_at', { ascending: false }).limit(500));
     cache.logs = isAdmin()
@@ -653,23 +675,24 @@ async function loadAll() {
 async function logAction(a, t, id, d) {
   if (!isAdmin() || !user) return;
   try {
-    // 1. Ghi vào Database Supabase để lưu trữ lịch sử hệ thống
-    await client.from('admin_logs').insert({
-      admin_id: user.id,
-      admin_email: user.email,
-      action: a,
-      target_type: t,
-      target_id: String(id || ''),
-      details: d || {}
-    });
-
-    // 2. Kích hoạt lệnh gửi thông báo màu sắc sang Discord ngay lập tức từ mạng của Web
+    // admin_logs đã được /api/admin-action tự ghi vào Turso. Ở đây chỉ gửi thông báo Discord.
     await sendActionToDiscord(a, t, id, d);
-    
-  } catch (e) { 
-    console.warn('logAction failed:', e); 
+  } catch (e) {
+    console.warn('logAction failed:', e);
   }
 }
+
+// Helper gọi action ghi dữ liệu vào Turso (Supabase chỉ còn dùng cho Auth).
+async function adminAction(action, payload) {
+  if (!user) { alert('Chưa đăng nhập.'); return false; }
+  try {
+    const res = await fetch('/api/admin-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ user_id: user.id, action, payload: payload || {} }) });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok || out.error) { alert('Thao tác thất bại: ' + (out.error || res.status)); return false; }
+    return out;
+  } catch (e) { alert('Lỗi mạng: ' + (e.message || e)); return false; }
+}
+window.adminAction = adminAction;
 
 function key() {
   return ($('search').value || '').trim().toLowerCase();
@@ -842,10 +865,29 @@ function compareHTML(oldData, newData) {
   if (!fields.length) {
     return `<div class="diffList compactDiffList"><p class="muted compactNoDiff">Không có nội dung cần hiển thị.</p></div>`;
   }
+  const imgSrc = im => typeof im === 'string' ? im : (im && (im.secure_url || im.src || im.url || im.public_url || im.image_url)) || '';
+  const imgsHTML = v => {
+    let arr = v;
+    if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch (e) { arr = arr ? [arr] : []; } }
+    if (!Array.isArray(arr)) arr = arr ? [arr] : [];
+    const srcs = arr.map(imgSrc).filter(s => /^https?:\/\//i.test(s));
+    if (!srcs.length) return '<span class="muted">Không có ảnh</span>';
+    return `<div style="display:flex;flex-wrap:wrap;gap:8px">${srcs.map(s => `<a href="${esc(s)}" target="_blank" rel="noopener"><img src="${esc(s)}" style="max-width:120px;max-height:120px;border-radius:8px;border:1px solid rgba(200,169,110,.3)"></a>`).join('')}</div>`;
+  };
   return `<div class="diffList compactDiffList">${fields.map(f => {
-    const before = formatValue(oldData?.[f]);
-    const after = formatValue(newData?.[f]);
-    const changed = before !== after;
+    const isImg = f === 'images';
+    const before = isImg ? imgsHTML(oldData?.[f]) : formatValue(oldData?.[f]);
+    const after = isImg ? imgsHTML(newData?.[f]) : formatValue(newData?.[f]);
+    const changed = isImg ? (formatValue(oldData?.[f]) !== formatValue(newData?.[f])) : (before !== after);
+    if (isImg) {
+      return `<section class="diffBlock ${changed ? 'changed' : ''} compactDiffBlock">
+        <h3>${esc(labelField(f))}<span>${changed ? 'Đã đổi' : 'Không đổi'}</span></h3>
+        <div class="compare compactCompare">
+          <div class="oldValue"><b>Trước</b><br>${before}</div>
+          <div class="newValue ${changed ? 'changedValue' : ''}"><b>Sau</b><br>${after}</div>
+        </div>
+      </section>`;
+    }
     return `<section class="diffBlock ${changed ? 'changed' : ''} compactDiffBlock">
       <h3>${esc(labelField(f))}<span>${changed ? 'Đã đổi' : 'Không đổi'}</span></h3>
       <div class="compare compactCompare">
@@ -932,14 +974,9 @@ async function rejectReq(id) {
 
   setBusy(true, 'Đang từ chối...');
   try {
-    const res = await client.from('edit_requests').update({
-      status: 'rejected',
-      admin_note: note || '',
-      reviewed_at: new Date().toISOString(),
-      reviewed_by: user.id
-    }).eq('id', id);
-    if (res.error) return alert(res.error.message);
-    await logAction('reject_request', 'edit_requests', id, { note });
+    const res = await fetch('/api/admin-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ user_id: user.id, action: 'reject_request', payload: { request_id: id, admin_note: note || '' } }) });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok || out.error) return alert(out.error || 'Không từ chối được');
     await loadAll();
   } finally {
     setBusy(false);
@@ -950,8 +987,7 @@ async function toggleBlock(id, b) {
   if (!isAdmin()) return alert('Chỉ admin được block.');
   if (user && id === user.id && b) return alert('Không nên tự khóa tài khoản đang dùng.');
   if (!confirm(`${b ? 'Block' : 'Unblock'} user này?`)) return;
-  const r = await client.from('profiles').update({ blocked: b }).eq('id', id);
-  if (r.error) return alert(r.error.message);
+  if (!await adminAction('toggle_user_block', { target_user_id: id, blocked: b })) return;
   await logAction(b ? 'block_user' : 'unblock_user', 'profiles', id, {});
   cache.profiles = (cache.profiles || []).map(p => String(p.id) === String(id) ? { ...p, blocked: b } : p);
   render();
@@ -962,8 +998,7 @@ async function setRole(id, role) {
   if (!isAdmin()) return alert('Chỉ admin được cấp/gỡ quyền.');
   if (user && id === user.id && role !== 'admin') return alert('Không nên tự gỡ quyền admin của tài khoản đang dùng.');
   if (!confirm(`Đổi vai trò thành ${role}?`)) return;
-  const r = await client.from('profiles').update({ role }).eq('id', id);
-  if (r.error) return alert(r.error.message);
+  if (!await adminAction('set_user_role', { target_user_id: id, role })) return;
   await logAction('change_role', 'profiles', id, { role });
   cache.profiles = (cache.profiles || []).map(p => String(p.id) === String(id) ? { ...p, role } : p);
   render();
@@ -972,8 +1007,7 @@ async function setRole(id, role) {
 
 async function toggleQuestion(id, a) {
   if (!confirm(`${a ? 'Hiện' : 'Ẩn'} câu hỏi này?`)) return;
-  const r = await client.from('questions').update({ is_active: a }).eq('id', id);
-  if (r.error) return alert(r.error.message);
+  if (!await adminAction('toggle_question', { question_id: id, is_active: a })) return;
   await logAction(a ? 'show_question' : 'hide_question', 'questions', id, {});
   cache.questions = (cache.questions || []).map(q => String(q.id) === String(id) ? { ...q, is_active: a } : q);
   render();
@@ -983,22 +1017,22 @@ async function toggleQuestion(id, a) {
 function exportAll() {
   const subjects = Array.from(new Set((cache.questions || []).map(q => q.subject_code || 'HOD102').filter(Boolean))).sort();
   const subjectOptions = ['all', ...subjects].map(code => `<option value="${esc(code)}">${code === 'all' ? 'Tất cả môn' : esc(code)}</option>`).join('');
-  openModal('Tải dữ liệu Supabase', `
+  openModal('Xuất dữ liệu (Turso)', `
     <div style="padding:10px 0;display:grid;gap:14px;">
       <p style="color:rgba(245,240,232,.72);margin:0 0 4px;font-size:0.9rem;line-height:1.4;">
-        Chọn dữ liệu cần tải. Phần câu hỏi có thể tải hết 1 lần hoặc chọn đúng môn.
+        Dữ liệu xuất lấy trực tiếp từ Turso (database hiện tại). Phần câu hỏi có thể tải hết 1 lần hoặc chọn đúng môn.
       </p>
 
       <div style="border:1px solid rgba(200,169,110,.22);border-radius:16px;padding:14px;background:rgba(255,255,255,.025);display:grid;gap:10px;">
-        <b style="color:var(--gold2);">Seed questions</b>
+        <b style="color:var(--gold2);">Câu hỏi</b>
         <select id="exportQuestionSubject" style="width:100%;background:rgba(255,255,255,.045);border:1px solid var(--bd);border-radius:12px;color:var(--fog);padding:10px 12px;">
           ${subjectOptions}
         </select>
-        <button class="act ok" id="exportSeedSqlBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
-          📦 Tải seed_questions.sql
+        <button class="act ok" id="exportQuestionsJsonBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
+          📄 Tải câu hỏi JSON (import lại được)
         </button>
-        <button class="act" id="exportQuestionsJsonBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
-          📄 Tải questions JSON
+        <button class="act" id="exportQuestionsCsvBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
+          📊 Tải câu hỏi CSV (mở Excel)
         </button>
       </div>
 
@@ -1012,117 +1046,20 @@ function exportAll() {
         </button>
       </div>
 
-      <div style="border:1px solid rgba(200,169,110,.22);border-radius:16px;padding:14px;background:rgba(255,255,255,.025);display:grid;gap:10px;">
-        <b style="color:var(--gold2);">Cấu hình Supabase</b>
-        <button class="act" id="exportSupabaseConfigBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
-          ⚙️ Tải supabase_config JSON
-        </button>
-      </div>
-
       <div style="border:1px solid rgba(200,169,110,.14);border-radius:16px;padding:14px;background:rgba(255,255,255,.015);display:grid;gap:10px;">
         <b style="color:var(--mist);">Sao lưu đầy đủ</b>
         <button class="act" id="exportBtnFull" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
-          💾 Tải full_backup JSON
-        </button>
-      </div>
-
-      <div style="border:1px solid rgba(200,169,110,.35);border-radius:16px;padding:14px;background:rgba(200,169,110,.05);display:grid;gap:10px;">
-        <b style="color:var(--gold2);">Chuyển sang Supabase mới</b>
-        <button class="act ok" id="exportMigrationSqlBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;background:var(--gold);color:black;">
-          🚀 Tải 1-Click SQL Di chuyển (Môn học & Câu hỏi)
+          💾 Tải full_backup JSON (câu hỏi + môn + user + lịch sử)
         </button>
       </div>
     </div>
   `);
 
-  $('exportSeedSqlBtn').onclick = () => downloadExportFile('seed_sql', $('exportQuestionSubject')?.value || 'all');
   $('exportQuestionsJsonBtn').onclick = () => downloadExportFile('questions_json', $('exportQuestionSubject')?.value || 'all');
+  $('exportQuestionsCsvBtn').onclick = () => downloadExportFile('questions_csv', $('exportQuestionSubject')?.value || 'all');
   $('exportProfilesJsonBtn').onclick = () => downloadExportFile('profiles_json');
   $('exportProfilesCsvBtn').onclick = () => downloadExportFile('profiles_csv');
-  $('exportSupabaseConfigBtn').onclick = () => downloadExportFile('supabase_config');
   $('exportBtnFull').onclick = () => downloadExportFile('full');
-  $('exportMigrationSqlBtn').onclick = () => { downloadMigrationSql(); closeModal(); };
-}
-
-async function downloadMigrationSql() {
-  try {
-    setBusy(true, 'Đang chuẩn bị file SQL di chuyển...');
-    const subjects = await fetchSubjectsForConfigExport();
-    const questions = await fetchQuestionsForExport('all');
-    const settings = await fetchSiteSettingsForExport();
-    
-    let sql = `-- =========================================================\n`;
-    sql += `-- Learning Hub Complete Migration SQL Data Backup\n`;
-    sql += `-- Generated at: \${new Date().toISOString()}\n`;
-    sql += `-- Contains: Subjects, Questions, Site Settings\n`;
-    sql += `-- =========================================================\n\n`;
-    
-    sql += `SET session_replication_role = 'replica';\n\n`;
-    
-    // 1. Subjects Data
-    sql += `-- ===== SUBJECTS DATA (\${subjects.length} rows) =====\n`;
-    if (subjects.length) {
-      sql += 'INSERT INTO public.subjects (code, name, description, cover, sort_order, is_active) VALUES\n';
-      sql += subjects.map(s => {
-        return '  (' + [
-          sqlQuote(s.code),
-          sqlQuote(s.name),
-          s.description ? sqlQuote(s.description) : 'null',
-          s.cover ? sqlQuote(s.cover) : 'null',
-          Number(s.sort_order) || 0,
-          s.is_active === false ? 'false' : 'true'
-        ].join(', ') + ')';
-      }).join(',\n') + '\n';
-      sql += 'ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, cover = EXCLUDED.cover, sort_order = EXCLUDED.sort_order, is_active = EXCLUDED.is_active;\n\n';
-    }
-    
-    // 2. Questions Data
-    sql += `-- ===== QUESTIONS DATA (\${questions.length} rows) =====\n`;
-    if (questions.length) {
-      sql += 'INSERT INTO public.questions (subject_code, num, question, options, answer, answer_text, images, is_active, has_image, error_risk, error_risk_reason) VALUES\n';
-      sql += questions.map(q => {
-        const images = q.images || [];
-        const hasImage = q.has_image === true || (Array.isArray(images) && images.length > 0);
-        return '  (' + [
-          sqlQuote(q.subject_code || 'HOD102'),
-          Number(q.num) || 0,
-          sqlQuote(q.question || ''),
-          sqlJsonb(q.options || {}),
-          sqlQuote(q.answer || ''),
-          sqlQuote(q.answer_text || ''),
-          sqlJsonb(images),
-          q.is_active === false ? 'false' : 'true',
-          hasImage ? 'true' : 'false',
-          sqlQuote(q.error_risk || 'low'),
-          q.error_risk_reason ? sqlQuote(q.error_risk_reason) : 'null'
-        ].join(', ') + ')';
-      }).join(',\n') + '\n';
-      sql += 'ON CONFLICT (subject_code, num) DO UPDATE SET question = EXCLUDED.question, options = EXCLUDED.options, answer = EXCLUDED.answer, answer_text = EXCLUDED.answer_text, images = EXCLUDED.images, is_active = EXCLUDED.is_active, has_image = EXCLUDED.has_image, error_risk = EXCLUDED.error_risk, error_risk_reason = EXCLUDED.error_risk_reason;\n\n';
-    }
-    
-    // 3. Site Settings
-    sql += `-- ===== SITE SETTINGS DATA (\${settings.length} rows) =====\n`;
-    if (settings.length) {
-      sql += 'INSERT INTO public.site_settings (key, value) VALUES\n';
-      sql += settings.map(s => {
-        return '  (' + [
-          sqlQuote(s.key),
-          sqlQuote(s.value)
-        ].join(', ') + ')';
-      }).join(',\n') + '\n';
-      sql += 'ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;\n\n';
-    }
-    
-    sql += `SET session_replication_role = 'origin';\n`;
-    sql += `SELECT pg_notify('pgrst', 'reload schema');\n`;
-    
-    downloadBlobFile(sql, 'supabase_complete_migration_data.sql', 'text/plain;charset=utf-8');
-    toast('Đã tải complete_migration_data.sql');
-  } catch (err) {
-    alert('Không thể tạo file di chuyển: ' + (err.message || err));
-  } finally {
-    setBusy(false);
-  }
 }
 
 function downloadBlobFile(content, filename, type = 'application/json') {
@@ -1157,104 +1094,36 @@ async function fetchAllRows(table, select = '*', applyQuery) {
 }
 
 async function fetchQuestionsForExport(subjectCode) {
-  return await fetchAllRows('questions', '*', q => {
-    q = q.order('subject_code', { ascending: true }).order('num', { ascending: true });
-    if (subjectCode && subjectCode !== 'all') q = q.eq('subject_code', subjectCode);
-    return q;
-  });
+  // Nguồn Turso: GET /api/questions (options/images đã parse, đúng schema import lại được).
+  const p = new URLSearchParams({ ts: String(Date.now()) });
+  if (subjectCode && subjectCode !== 'all') p.set('subject_code', subjectCode);
+  const res = await fetch('/api/questions?' + p.toString(), { cache: 'no-store' });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || j.error) throw new Error(j.error || ('HTTP ' + res.status));
+  const rows = Array.isArray(j.data) ? j.data : [];
+  rows.sort((a, b) => String(a.subject_code || '').localeCompare(String(b.subject_code || '')) || (Number(a.num) || 0) - (Number(b.num) || 0));
+  return rows;
 }
 
 async function fetchProfilesForExport() {
-  return await fetchAllRows('profiles', '*', q => q.order('created_at', { ascending: false }));
+  // Nguồn Turso: dùng cache (đã nạp từ /api/admin-dashboard), nếu trống thì gọi lại.
+  if (Array.isArray(cache.profiles) && cache.profiles.length) return cache.profiles;
+  const res = await fetch('/api/admin-dashboard', { cache: 'no-store' });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || j.error) throw new Error(j.error || ('HTTP ' + res.status));
+  return j.profiles || [];
 }
 
-async function fetchSiteSettingsForExport() {
-  try {
-    return await fetchAllRows('site_settings', '*', q => q.order('key', { ascending: true }));
-  } catch (e) {
-    console.warn('Không tải được site_settings:', e);
-    return [];
-  }
-}
-
-async function fetchSubjectsForConfigExport() {
-  try {
-    return await fetchAllRows('subjects', '*', q => q.order('sort_order', { ascending: true }).order('code', { ascending: true }));
-  } catch (e) {
-    console.warn('Không tải được subjects:', e);
-    return [];
-  }
-}
-
-async function buildSupabaseConfigExport() {
-  return {
-    exported_at: new Date().toISOString(),
-    supabase: {
-      url: CONFIG.SUPABASE_URL,
-      anon_key: CONFIG.SUPABASE_ANON_KEY
-    },
-    site_settings: await fetchSiteSettingsForExport(),
-    subjects: await fetchSubjectsForConfigExport()
-  };
-}
-
-function sqlQuote(v) {
-  if (v === null || v === undefined) return 'null';
-  return "'" + String(v).replace(/'/g, "''") + "'";
-}
-
-function sqlJsonb(v) {
-  return sqlQuote(JSON.stringify(v ?? (Array.isArray(v) ? [] : {}))) + '::jsonb';
-}
-
-function buildSeedQuestionsSql(rows, subjectCode) {
-  const now = new Date().toISOString();
-  const header = [
-    '-- =========================================================',
-    '-- Learning Hub seed_questions.sql',
-    '-- Xuất từ Admin Supabase: ' + now,
-    '-- Môn: ' + (subjectCode && subjectCode !== 'all' ? subjectCode : 'Tất cả'),
-    '-- Tổng câu: ' + rows.length,
-    '-- =========================================================',
-    '',
-    'insert into public.questions',
-    '  (subject_code, num, question, options, answer, answer_text, images, is_active, has_image, error_risk, error_risk_reason)',
-    'values'
-  ].join('\n');
-
-  if (!rows.length) return header + '\n-- Không có câu hỏi để xuất.\n';
-
-  const values = rows.map(q => {
-    const images = q.images || [];
-    const hasImage = q.has_image === true || (Array.isArray(images) && images.length > 0);
-    return '  (' + [
-      sqlQuote(q.subject_code || subjectCode || 'HOD102'),
-      Number(q.num) || 0,
-      sqlQuote(q.question || ''),
-      sqlJsonb(q.options || {}),
-      sqlQuote(q.answer || ''),
-      sqlQuote(q.answer_text || ''),
-      sqlJsonb(images),
-      q.is_active === false ? 'false' : 'true',
-      hasImage ? 'true' : 'false',
-      sqlQuote(q.error_risk || 'low'),
-      q.error_risk_reason ? sqlQuote(q.error_risk_reason) : 'null'
-    ].join(', ') + ')';
-  }).join(',\n');
-
-  return header + '\n' + values + '\n' +
-    'on conflict (subject_code, num) do update set\n' +
-    '  question = excluded.question,\n' +
-    '  options = excluded.options,\n' +
-    '  answer = excluded.answer,\n' +
-    '  answer_text = excluded.answer_text,\n' +
-    '  images = excluded.images,\n' +
-    '  is_active = excluded.is_active,\n' +
-    '  has_image = excluded.has_image,\n' +
-    '  error_risk = excluded.error_risk,\n' +
-    '  error_risk_reason = excluded.error_risk_reason,\n' +
-    '  updated_at = now();\n\n' +
-    "notify pgrst, 'reload schema';\n";
+// CSV cho câu hỏi: tách options A..E ra cột riêng cho dễ đọc trong Excel/Sheets.
+function questionsToCsv(rows) {
+  const esc = v => '"' + String(v == null ? '' : v).replace(/"/g, '""').replace(/\r?\n/g, ' ') + '"';
+  const header = ['subject_code', 'num', 'question', 'A', 'B', 'C', 'D', 'E', 'answer', 'answer_text', 'has_image', 'error_risk'];
+  const lines = [header.join(',')];
+  (rows || []).forEach(q => {
+    const o = q.options || {};
+    lines.push([q.subject_code, q.num, q.question, o.A, o.B, o.C, o.D, o.E, q.answer, q.answer_text, q.has_image ? 1 : 0, q.error_risk || 'low'].map(esc).join(','));
+  });
+  return '﻿' + lines.join('\r\n'); // BOM để Excel đọc đúng UTF-8 (tiếng Việt)
 }
 
 function toCsv(rows) {
@@ -1266,17 +1135,16 @@ function toCsv(rows) {
 async function downloadExportFile(type, subjectCode = 'all') {
   try {
     setBusy(true, 'Đang xuất...');
-    if (type === 'seed_sql') {
-      const rows = await fetchQuestionsForExport(subjectCode);
-      const sql = buildSeedQuestionsSql(rows, subjectCode);
-      downloadBlobFile(sql, `seed_questions_${safeFilePart(subjectCode)}.sql`, 'text/plain;charset=utf-8');
-      try { await logAction('export_seed_questions', 'questions', subjectCode, { count: rows.length }); } catch(e){}
-      toast('Đã tải seed_questions.sql');
-    } else if (type === 'questions_json') {
+    if (type === 'questions_json') {
       const rows = await fetchQuestionsForExport(subjectCode);
       downloadBlobFile(JSON.stringify(rows, null, 2), `questions_${safeFilePart(subjectCode)}.json`, 'application/json;charset=utf-8');
       try { await logAction('export_questions_json', 'questions', subjectCode, { count: rows.length }); } catch(e){}
-      toast('Đã tải questions JSON');
+      toast('Đã tải câu hỏi JSON');
+    } else if (type === 'questions_csv') {
+      const rows = await fetchQuestionsForExport(subjectCode);
+      downloadBlobFile(questionsToCsv(rows), `questions_${safeFilePart(subjectCode)}.csv`, 'text/csv;charset=utf-8');
+      try { await logAction('export_questions_csv', 'questions', subjectCode, { count: rows.length }); } catch(e){}
+      toast('Đã tải câu hỏi CSV');
     } else if (type === 'profiles_json') {
       const rows = await fetchProfilesForExport();
       downloadBlobFile(JSON.stringify(rows, null, 2), 'profiles_export.json', 'application/json;charset=utf-8');
@@ -1287,13 +1155,11 @@ async function downloadExportFile(type, subjectCode = 'all') {
       downloadBlobFile(toCsv(rows), 'profiles_export.csv', 'text/csv;charset=utf-8');
       try { await logAction('export_profiles_csv', 'profiles', 'all', { count: rows.length }); } catch(e){}
       toast('Đã tải profiles CSV');
-    } else if (type === 'supabase_config') {
-      const cfg = await buildSupabaseConfigExport();
-      downloadBlobFile(JSON.stringify(cfg, null, 2), 'supabase_config.json', 'application/json;charset=utf-8');
-      try { await logAction('export_supabase_config', 'config', 'supabase', { settings: cfg.site_settings.length, subjects: cfg.subjects.length }); } catch(e){}
-      toast('Đã tải cấu hình Supabase');
     } else {
       const full = {
+        exported_at: new Date().toISOString(),
+        source: 'turso',
+        subjects: cache.subjects || [],
         profiles: await fetchProfilesForExport(),
         questions: await fetchQuestionsForExport('all'),
         requests: cache.requests || [],
@@ -1582,9 +1448,8 @@ document.addEventListener('DOMContentLoaded', init);
         is_active: true,
         updated_at: new Date().toISOString()
       };
-      const r = await client.from('questions').insert(payload).select('*').single();
-      if(r.error) return alert('Không thêm được câu hỏi: ' + r.error.message);
-      await logAction('add_question', 'questions', r.data?.id || num, { subject_code: subject, num });
+      if(!await adminAction('add_question', { question_data: payload })) return;
+      await logAction('add_question', 'questions', num, { subject_code: subject, num });
       activeQuestionSubject = subject;
       localStorage.setItem('admin_question_subject_filter_v1', subject);
       closeModal();
@@ -1603,21 +1468,11 @@ document.addEventListener('DOMContentLoaded', init);
     if(!ok) return;
     setBusy(true, 'Đang xóa...');
     try{
-      let backedUp = false;
-      try{
-        const backup = await client.from('deleted_questions').insert({
-          id: q.id,
-          original_data: q,
-          deleted_by: user?.id,
-          deleted_by_email: user?.email || profile?.email
-        });
-        backedUp = !backup.error;
-      }catch(e){}
-      const r = await client.from('questions').delete().eq('id', id);
-      if(r.error) return alert('Không xóa được: ' + r.error.message + '\nBạn có thể dùng nút Ẩn thay thế.');
+      // Server (Turso) soft-delete + tự backup vào deleted_questions.
+      if(!await adminAction('delete_question', { question_id: id })) return;
       await logAction('delete_question', 'questions', id, { subject_code: q.subject_code, num: q.num });
       await loadAll();
-      toast(backedUp ? 'Đã chuyển vào Thùng rác' : 'Đã xóa (chưa có bảng backup)');
+      toast('Đã chuyển vào Thùng rác');
     }finally{
       setBusy(false);
     }
@@ -1744,8 +1599,7 @@ document.addEventListener('DOMContentLoaded', init);
     if(!confirm('Phê duyệt tài khoản: ' + (p.email || uid) + '?')) return;
     setBusy(true, 'Đang phê duyệt...');
     try{
-      const r = await client.from('profiles').update({ approved: true }).eq('id', uid);
-      if(r.error) return alert('Lỗi: ' + r.error.message);
+      if(!await adminAction('approve_user_registration', { target_user_id: uid })) return;
       await logAction('approve_user', 'profiles', uid, { email: p.email });
       p.approved = true;
       renderApprovals();
@@ -1760,8 +1614,7 @@ document.addEventListener('DOMContentLoaded', init);
     if(!confirm('Từ chối và XÓA tài khoản: ' + (p.email || uid) + '?\n\nUser sẽ phải đăng ký lại.')) return;
     setBusy(true, 'Đang xử lý...');
     try{
-      const r = await client.from('profiles').delete().eq('id', uid);
-      if(r.error) return alert('Lỗi: ' + r.error.message);
+      if(!await adminAction('reject_user_registration', { target_user_id: uid })) return;
       await logAction('reject_user', 'profiles', uid, { email: p.email });
       cache.profiles = cache.profiles.filter(x => x.id !== uid);
       renderApprovals();
@@ -1777,8 +1630,7 @@ document.addEventListener('DOMContentLoaded', init);
     if(!confirm('Thu hồi quyền truy cập của: ' + (p.email || uid) + '?\n\nUser sẽ cần được phê duyệt lại.')) return;
     setBusy(true, 'Đang thu hồi...');
     try{
-      const r = await client.from('profiles').update({ approved: false }).eq('id', uid);
-      if(r.error) return alert('Lỗi: ' + r.error.message);
+      if(!await adminAction('revoke_user_approval', { target_user_id: uid })) return;
       await logAction('revoke_approval', 'profiles', uid, { email: p.email });
       p.approved = false;
       renderApprovals();
@@ -1792,11 +1644,10 @@ document.addEventListener('DOMContentLoaded', init);
   window.loadRegistrationMode = loadRegistrationMode;
   async function loadRegistrationMode(){
     try{
-      const {data} = await client.from('site_settings').select('value').eq('key','registration_mode').maybeSingle();
-      if(data && data.value){
-        var v = typeof data.value === 'string' ? data.value : String(data.value);
-        registrationMode = v.replace(/"/g,'').trim() || 'approval';
-      }
+      const res = await fetch('/api/settings', { cache: 'no-store' });
+      const out = await res.json().catch(() => ({}));
+      if(!res.ok || out.error) throw new Error(out.error || ('HTTP ' + res.status));
+      registrationMode = String(out.registration_mode || 'approval').replace(/"/g,'').trim() || 'approval';
     }catch(e){
       console.warn('Load reg mode error:', e);
       var status = document.getElementById('registrationGateStatus');
@@ -1826,13 +1677,9 @@ document.addEventListener('DOMContentLoaded', init);
     if(!confirm('Chuyển cổng đăng ký sang: ' + ({open:'MỞ — ai cũng vào được', approval:'CẦN DUYỆT — user mới phải chờ', closed:'ĐÓNG — chặn đăng ký mới'}[mode] || mode) + '?')) return;
     setBusy(true, 'Đang cập nhật...');
     try{
-      const {error} = await client.from('site_settings').upsert({
-        key: 'registration_mode',
-        value: mode,
-        updated_at: new Date().toISOString(),
-        updated_by: user?.id
-      });
-      if(error) return alert('Lỗi: ' + error.message);
+      const res = await fetch('/api/admin-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ user_id: user?.id, action: 'set_registration_mode', payload: { mode } }) });
+      const out = await res.json().catch(() => ({}));
+      if(!res.ok || out.error) return alert('Lỗi: ' + (out.error || res.status));
       registrationMode = mode;
       updateRegistrationGateUI();
       await logAction('set_registration_mode', 'site_settings', 'registration_mode', { mode });
@@ -2152,13 +1999,12 @@ Bắt đầu ngay từ câu 1.`;
           error_risk_reason: reason || null
         };
 
-        const r = await client.from('questions').insert(payload);
-        if(r.error){
-          console.warn('Import lỗi câu ' + num + ':', r.error.message);
-          errors++;
-        } else {
-          success++;
-        }
+        try{
+          const res = await fetch('/api/admin-action', { method:'POST', headers:{'Content-Type':'application/json'}, cache:'no-store', body: JSON.stringify({ user_id: user?.id, action:'add_question', payload:{ question_data: payload } }) });
+          const out = await res.json().catch(()=>({}));
+          if(!res.ok || out.error){ console.warn('Import lỗi câu ' + num + ':', out.error || res.status); errors++; }
+          else success++;
+        }catch(e){ console.warn('Import lỗi câu ' + num + ':', e.message || e); errors++; }
       }
 
       await logAction('ai_import_questions', 'questions', subject, {
@@ -2223,13 +2069,10 @@ Bắt đầu ngay từ câu 1.`;
     let subjectData = null;
     let questionsCount = 0;
     try {
-      const resSub = await client.from('subjects').select('*').eq('code', code).maybeSingle();
-      if(resSub.error) throw new Error(resSub.error.message);
-      subjectData = resSub.data;
+      // Lấy từ cache Turso (đã nạp ở loadAll), không gọi Supabase.
+      subjectData = (cache.subjects || []).find(s => String(s.code || '').toUpperCase() === String(code).toUpperCase());
       if(!subjectData) throw new Error('Không tìm thấy môn ' + code);
-      
-      const { count, error } = await client.from('questions').select('*', { count: 'exact', head: true }).eq('subject_code', code);
-      if(!error) questionsCount = count || 0;
+      questionsCount = (cache.questions || []).filter(q => String(q.subject_code || '').toUpperCase() === String(code).toUpperCase()).length;
     } catch(err) {
       setBusy(false);
       return alert('Lỗi tải thông tin môn học: ' + err.message);
@@ -2414,80 +2257,11 @@ Bắt đầu ngay từ câu 1.`;
 
     setBusy(true, 'Đang duyệt...');
     try{
-      const {data:existing} = await client.from('subjects').select('code').eq('code', r.code).maybeSingle();
-      if(existing){
-        alert('Mã môn '+r.code+' đã tồn tại. Hãy từ chối yêu cầu hoặc xóa môn cũ trước.');
-        return;
-      }
-
-      const maxOrder = await client.from('subjects').select('sort_order').order('sort_order',{ascending:false}).limit(1);
-      const nextOrder = ((maxOrder.data?.[0]?.sort_order)||0)+1;
-
-      const {error:subError} = await client.from('subjects').insert({
-        code: r.code, name: r.name, description: r.description || null,
-        is_active: true, sort_order: nextOrder
-      });
-      if(subError){ alert('Lỗi tạo môn: '+subError.message); return; }
-
-      if(Array.isArray(r.questions_data) && r.questions_data.length){
-        let success=0, errors=0;
-        const total = r.questions_data.length;
-        for(let i=0; i<total; i++){
-          const q = r.questions_data[i];
-          showProgress('Đang nhập câu hỏi cho môn mới...', i + 1, total, `Đang xử lý câu ${q.num || i+1}: ${q.question ? q.question.substring(0, 50) + '...' : ''}`);
-          const list = q.images || [];
-          const localHasImg = !!(list.length || q.has_image);
-          const text = (q.question || '') + ' ' + Object.values(q.options || {}).join(' ');
-          const needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(text);
-          const hasPlaceholder = list.some(im => {
-            const src = typeof im === 'string' ? im : (im.src || im.url || '');
-            return !src || src.includes('URL_') || src.includes('MÔ_TẢ') || src.includes('PLACEHOLDER');
-          });
-          
-          let risk = q.error_risk || '';
-          let reason = q.error_risk_reason || '';
-          if(!risk){
-            if((localHasImg && hasPlaceholder) || (needsImg && list.length === 0)){
-              risk = 'high';
-              reason = 'Cần hình vẽ/ảnh minh họa nhưng chưa có ảnh thực tế';
-            } else if((q.answer || '').length > 1){
-              risk = 'medium';
-              reason = 'Câu chọn nhiều đáp án đúng, cần rà soát kỹ';
-            } else {
-              risk = 'low';
-            }
-          }
-
-          const payload = {
-            subject_code: r.code,
-            num: q.num || (i+1),
-            question: q.question || '',
-            options: q.options || {},
-            answer: (q.answer || '').toUpperCase(),
-            answer_text: q.answer_text || '',
-            images: q.images || [],
-            is_active: true,
-            updated_at: new Date().toISOString(),
-            has_image: localHasImg || needsImg,
-            error_risk: risk,
-            error_risk_reason: reason || null
-          };
-          const res = await client.from('questions').insert(payload);
-          if(res.error) errors++; else success++;
-        }
-        toast('Đã thêm '+success+' câu hỏi'+(errors?' ('+errors+' lỗi)':''));
-      }
-
-      await client.from('subject_requests').update({
-        status: 'approved',
-        reviewed_at: new Date().toISOString(),
-        reviewed_by: user?.id
-      }).eq('id', id);
-
+      // Server (Turso) tạo môn + nhập toàn bộ câu hỏi (kèm ảnh) + cập nhật trạng thái request.
+      if(!await adminAction('approve_subject_request', { request_id: id })) return;
       await logAction('approve_subject_request', 'subject_requests', id, {
         code: r.code, name: r.name, questions: (r.questions_data||[]).length
       });
-
       await loadAll();
       await loadSubjectRequests();
       toast('Đã duyệt môn '+r.code);
@@ -2509,13 +2283,7 @@ Bắt đầu ngay từ câu 1.`;
 
     setBusy(true, 'Đang từ chối...');
     try{
-      await client.from('subject_requests').update({
-        status: 'rejected',
-        admin_note: note || '',
-        reviewed_at: new Date().toISOString(),
-        reviewed_by: user?.id
-      }).eq('id', id);
-
+      if(!await adminAction('reject_subject_request', { request_id: id, admin_note: note || '' })) return;
       await logAction('reject_subject_request', 'subject_requests', id, {
         code: r.code, reason: note
       });
@@ -2680,14 +2448,6 @@ Bắt đầu ngay từ câu 1.`;
   let subjectEditCache = [];
   const $id = id => document.getElementById(id);
 
-  function cleanPayload(obj){
-    const out = {};
-    Object.entries(obj || {}).forEach(([k,v]) => {
-      if(v !== undefined) out[k] = v;
-    });
-    return out;
-  }
-
   function currentSearchText(){
     return String($id('search')?.value || '').trim().toLowerCase();
   }
@@ -2842,35 +2602,12 @@ Bắt đầu ngay từ câu 1.`;
     try{
       if(newCode === oldCode){
         if(!subject.id) return alert('Không tìm thấy ID môn học. Bấm Tải lại rồi thử lại.');
-        const {error} = await client.from('subjects').update({
-          name,
-          description: description || '',
-          cover: subject.cover || '',
-          sort_order: subject.sort_order || 0
-        }).eq('id', subject.id);
-        if(error) return alert('Không lưu được môn: ' + error.message);
+        if(!await adminAction('edit_subject', { id: subject.id, name, description: description || '', cover: subject.cover || '', sort_order: subject.sort_order || 0 })) return;
         subject.name = name;
         subject.description = description || '';
       } else {
-        const check = await client.from('subjects').select('code').eq('code', newCode).maybeSingle();
-        if(check.error) return alert('Không kiểm tra được mã môn mới: ' + check.error.message);
-        if(check.data) return alert('Mã môn '+newCode+' đã tồn tại.');
-
-        const insertPayload = cleanPayload({
-          code: newCode,
-          name,
-          description: description || null,
-          is_active: subject.is_active !== false,
-          sort_order: subject.sort_order
-        });
-        const ins = await client.from('subjects').insert(insertPayload);
-        if(ins.error) return alert('Không tạo được mã môn mới: ' + ins.error.message);
-
-        const qUp = await client.from('questions').update({subject_code:newCode}).eq('subject_code', oldCode);
-        if(qUp.error) return alert('Đã tạo môn mới nhưng chưa chuyển được câu hỏi: ' + qUp.error.message);
-
-        const del = await client.from('subjects').delete().eq('code', oldCode);
-        if(del.error) alert('Đã đổi mã và chuyển câu hỏi, nhưng chưa xóa được mã cũ: ' + del.error.message);
+        // Đổi mã môn + chuyển toàn bộ câu hỏi sang mã mới (xử lý trên Turso).
+        if(!await adminAction('rename_subject_code', { old_code: oldCode, new_code: newCode, name, description: description || '' })) return;
       }
 
       await logAction('edit_subject', 'subjects', oldCode, {
@@ -3148,14 +2885,10 @@ Bắt đầu ngay từ câu 1.`;
     const cnt = document.getElementById('trashCount');
     if(el) el.innerHTML = '<p class="muted">Đang tải thùng rác...</p>';
     try{
-      const [resQuestions, resSubjects] = await Promise.all([
-        client.from('deleted_questions').select('*').order('deleted_at',{ascending:false}),
-        client.from('deleted_subjects').select('*').order('deleted_at',{ascending:false})
-      ]);
-      if(resQuestions.error) throw resQuestions.error;
-      if(resSubjects.error) throw resSubjects.error;
-      deletedQuestionsCache = resQuestions.data || [];
-      deletedSubjectsCache = resSubjects.data || [];
+      // Lấy từ cache Turso (loadAll đã nạp + parse original_data). Nếu trống thì tải lại dashboard.
+      if(!cache.deleted_questions || !cache.deleted_subjects){ await loadAll(); }
+      deletedQuestionsCache = cache.deleted_questions || [];
+      deletedSubjectsCache = cache.deleted_subjects || [];
 
       let questions = deletedQuestionsCache;
       let subjects = deletedSubjectsCache;
@@ -3190,11 +2923,8 @@ Bắt đầu ngay từ câu 1.`;
     if(!confirm('Khôi phục câu hỏi này?')) return;
     setBusy(true,'Đang khôi phục...');
     try{
-      const q = t.original_data;
-      const ins = await client.from('questions').upsert(q, {onConflict: 'subject_code,num'});
-      if(ins.error) return alert('Không khôi phục được: '+ins.error.message);
-      const del = await deleteRowById('deleted_questions', id);
-      if(del.error) return alert('Đã khôi phục câu hỏi nhưng chưa xóa được bản trong thùng rác: '+del.error.message);
+      const q = t.original_data || {};
+      if(!await adminAction('restore_question', { question_id: q.id || id })) return;
       await logAction('restore_question','questions',q.id,{subject_code:q.subject_code,num:q.num});
       await loadAll();
       await loadTrash();
@@ -3209,10 +2939,9 @@ Bắt đầu ngay từ câu 1.`;
     if(!confirm('Xóa VĨNH VIỄN câu '+String(q.num || q.id || '?')+'?\n\nKhông thể khôi phục sau thao tác này!')) return;
     setBusy(true,'Đang xóa vĩnh viễn...');
     try{
-      const r = await deleteRowById('deleted_questions', id);
-      if(r.error) return alert('Lỗi xóa vĩnh viễn: '+r.error.message);
-      if(!(r.data || []).length) return alert('Không tìm thấy dòng để xóa. Bấm Tải lại, nếu vẫn còn thì kiểm tra quyền xóa bảng deleted_questions.');
+      if(!await adminAction('permanent_delete_question', { question_id: id })) return;
       await logAction('permanent_delete','deleted_questions',id,{subject_code:q.subject_code,num:q.num});
+      await loadAll();
       await loadTrash();
       toast('Đã xóa vĩnh viễn');
     }finally{ setBusy(false); }
@@ -3226,36 +2955,12 @@ Bắt đầu ngay từ câu 1.`;
     setBusy(true,'Đang khôi phục...');
     try{
       const backup = t.original_data || {};
-      if(backup.subject){
-        const sub = backup.subject;
-        const insSub = await client.from('subjects').upsert({
-          code: sub.code,
-          name: sub.name,
-          description: sub.description || '',
-          is_active: sub.is_active !== false,
-          sort_order: sub.sort_order || 0,
-          cover: sub.cover || '',
-          created_at: sub.created_at || new Date().toISOString()
-        }, {onConflict: 'code'});
-        if(insSub.error) return alert('Không khôi phục được môn: '+insSub.error.message);
-      }
-      let qFail = 0;
-      if(Array.isArray(backup.questions)){
-        const total = backup.questions.length;
-        for(let idx=0; idx<total; idx++){
-          const q = backup.questions[idx];
-          showProgress('Đang khôi phục các câu hỏi...', idx + 1, total, `Đang xử lý câu ${q.num || idx+1}: ${q.question ? q.question.substring(0, 50) + '...' : ''}`);
-          const r = await client.from('questions').upsert(q, {onConflict: 'subject_code,num'});
-          if(r.error) qFail++;
-        }
-      }
-      const del = await deleteRowById('deleted_subjects', id);
-      if(del.error) return alert('Đã khôi phục nhưng chưa xóa được bản trong thùng rác: '+del.error.message);
-      await logAction('restore_subject','subjects',backup.subject?.code,{questions: backup.questions?.length, failed: qFail});
+      // Server (Turso) khôi phục môn + toàn bộ câu hỏi từ bản backup.
+      if(!await adminAction('restore_subject', { subject_id: id, code: backup.subject?.code })) return;
+      await logAction('restore_subject','subjects',backup.subject?.code,{questions: backup.questions?.length});
       await loadAll();
       await loadTrash();
-      const qMsg = qFail ? ` (${qFail} câu hỏi không khôi phục được)` : '';
-      toast('Đã khôi phục môn '+(backup.subject?.code || '')+qMsg);
+      toast('Đã khôi phục môn '+(backup.subject?.code || ''));
     }finally{
       setBusy(false);
       hideProgress();
@@ -3573,8 +3278,7 @@ async function sendLoginToDiscord(email, role) {
 
     setBusy(true, 'Đang thu hồi...');
     try{
-      const r = await client.from('profiles').update({ approved:false }).eq('id', uid);
-      if(r.error) return alert('Lỗi: ' + r.error.message);
+      if(!await adminAction('revoke_user_approval', { target_user_id: uid })) return;
       await logAction('revoke_approval', 'profiles', uid, { email:p.email });
 
       p.approved = false;
@@ -3797,62 +3501,51 @@ async function sendLoginToDiscord(email, role) {
   };
   window.saveQuestionDirect = async function(id){
     if(!isEditor()) return alert('Admin hoặc Editor mới được sửa.');
+    if(!user) return alert('Chưa đăng nhập.');
     const oldQ=await getFullQuestion(id); if(!oldQ) return;
     const ops={}; document.querySelectorAll('[data-dq-opt]').forEach(t=>{const v=(t.value||'').trim(); if(v) ops[t.dataset.dqOpt]=v;});
     const question=($('dqQuestion')?.value||'').trim(); const answer=($('dqAnswer')?.value||'').trim().toUpperCase();
     if(!question) return alert('Câu hỏi không được để trống.'); if(!answer) return alert('Đáp án đúng không được để trống.');
-    const list = directEditDraftImages || [];
+    let list = Array.isArray(directEditDraftImages) ? directEditDraftImages : [];
+    list = list.map(im=>{
+      if(typeof im==='string') return {src:im,url:im,secure_url:im,source:im.includes('cloudinary.com')?'cloudinary':'url'};
+      const src=im.src||im.url||im.secure_url||im.publicUrl||im.public_url||'';
+      return {...im,src,url:im.url||src,secure_url:im.secure_url||src};
+    }).filter(im=>im && im.src && !String(im.src).startsWith('data:image/'));
     const localHasImg = list.length > 0;
-    const text = question + ' ' + Object.values(ops).join(' ');
-    const needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(text);
-    const hasPlaceholder = list.some(im => {
-      const src = typeof im === 'string' ? im : (im.src || im.url || im.secure_url || '');
-      return !src || src.includes('URL_') || src.includes('MÔ_TẢ') || src.includes('PLACEHOLDER');
-    });
-    
-    let risk = '';
-    let reason = '';
-    if((localHasImg && hasPlaceholder) || (needsImg && list.length === 0)){
-      risk = 'high';
-      reason = 'Cần hình vẽ/ảnh minh họa nhưng chưa có ảnh thực tế';
-    } else if(answer.length > 1){
-      risk = 'medium';
-      reason = 'Câu chọn nhiều đáp án đúng, cần rà soát kỹ';
-    } else {
-      risk = 'low';
-    }
-
+    const contentText = question + ' ' + Object.values(ops).join(' ');
+    const needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(contentText);
     const payload={
+      id,
+      subject_code: oldQ.subject_code || null,
+      num: oldQ.num || null,
       question,
       options:ops,
       answer,
       answer_text:Object.entries(ops).filter(([k])=>answer.includes(k)).map(([k,v])=>`${k}. ${v}`).join('; '),
-      images:directEditDraftImages||[],
+      images:list,
       updated_at:new Date().toISOString(),
       has_image: localHasImg || needsImg,
-      error_risk: risk,
-      error_risk_reason: reason || null
+      error_risk: answer.length > 1 ? 'medium' : 'low',
+      error_risk_reason: answer.length > 1 ? 'Câu chọn nhiều đáp án đúng, cần rà soát kỹ' : null
     };
     setBusy(true,'Đang lưu...');
     try{
-      const res=await client.from('questions').update(payload).eq('id',id).select('id,num,subject_code,question,options,answer,is_active,updated_at,has_image,error_risk,error_risk_reason').maybeSingle();
-      if(res.error) return alert(res.error.message);
-      if (typeof window.clearLearningHubQuestionCache === 'function') {
-        window.clearLearningHubQuestionCache();
-      }
-      const idx=(cache.questions||[]).findIndex(x=>String(x.id)===String(id)); if(idx>=0) cache.questions[idx]={...cache.questions[idx],...(res.data||payload),images:payload.images};
-      try{ await client.from('question_history').insert({question_id:id,question_num:oldQ.num||null,subject_code:oldQ.subject_code||null,request_id:null,previous_data:{question:oldQ.question,options:oldQ.options||{},answer:oldQ.answer,answer_text:oldQ.answer_text,images:oldQ.images||[]},new_data:payload,changed_by:user.id,approved_by:user.id}); }catch(e){}
-      await logAction('direct_edit_question','questions',id,{subject_code:oldQ.subject_code,num:oldQ.num});
-      closeModal(); renderQuestions(); toast('Đã sửa trực tiếp');
+      const res = await fetch('/api/admin-action', {method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',body:JSON.stringify({user_id:user.id,action:'save_question_direct',payload:{question_id:id,new_data:payload,old_data:oldQ}})});
+      const out = await res.json().catch(()=>({}));
+      if(!res.ok || out.error) return alert(out.error || 'Không lưu được vào Turso');
+      if (typeof window.clearLearningHubQuestionCache === 'function') window.clearLearningHubQuestionCache();
+      const idx=(cache.questions||[]).findIndex(x=>String(x.id)===String(id)); if(idx>=0) cache.questions[idx]={...cache.questions[idx],...payload};
+      closeModal(); renderQuestions(); toast('Đã sửa trực tiếp'); await loadAll();
     }finally{ setBusy(false); }
   };
 })();
 
 
 // ===== COPILOT_ADMIN_QUESTION_PAGE_FINAL_OVERRIDE_20260627 =====
-// Chỉ tải 50 câu/trang, không tải cột images trong danh sách admin.
+// Chỉ tải 50 câu/trang, CÓ tải cột images để tránh lưu đè làm mất ảnh.
 (function(){
-  const QUESTION_COLS='id,num,subject_code,question,options,answer,is_active,updated_at,created_at,has_image,error_risk,error_risk_reason';
+  const QUESTION_COLS='id,num,subject_code,question,options,answer,images,is_active,updated_at,created_at,has_image,error_risk,error_risk_reason';
   const STATE=window.__ADMIN_PAGE_STATE__=window.__ADMIN_PAGE_STATE__||{page:1,size:50,total:0,subject:localStorage.getItem('admin_question_subject_filter_v1')||'all',subjects:[]};
   function search(){return String($('search')?.value||'').trim();}
   async function safeQ(p){try{const r=await p;return r.error?[]:(r.data||[])}catch(e){return[]}}
@@ -3900,7 +3593,7 @@ async function sendLoginToDiscord(email, role) {
     $('questionList').innerHTML=`<div class="questionToolbar"><div>${tabs}</div><button class="act ok addQuestionBtn" onclick="openAddQuestionAdmin()">+ Thêm câu hỏi</button></div><div class="questionResultNote">Đang hiển thị ${cache.questions.length}/${STATE.total} câu. Không tải ảnh ở danh sách.</div>`+pager+html+pager;
   };
   window.viewQuestion=async function(id){const r=await client.from('questions').select('*').eq('id',id).maybeSingle();if(r.error)return alert(r.error.message);const q=r.data;if(!q)return;openModal(`Câu ${q.num||q.id}`,`<pre class=raw>${esc(safe(q))}</pre>`)};
-  let rt=null;window.startAdminRealtime=function(){if(rt||!client||!user||!profile||!isEditor())return;rt=client.channel('admin-lite-final').on('postgres_changes',{event:'*',schema:'public',table:'questions'},p=>{const row=p.new||p.old||{};const i=(cache.questions||[]).findIndex(x=>String(x.id)===String(row.id));if(p.eventType==='DELETE'&&i>=0)cache.questions.splice(i,1);else if(p.eventType==='UPDATE'&&i>=0)cache.questions[i]={...cache.questions[i],...row,images:undefined};else if(p.eventType==='INSERT')STATE.total++;renderQuestions();}).subscribe();};
+  let rt=null;window.startAdminRealtime=function(){if(rt||!client||!user||!profile||!isEditor())return;rt=client.channel('admin-lite-final').on('postgres_changes',{event:'*',schema:'public',table:'questions'},p=>{const row=p.new||p.old||{};const i=(cache.questions||[]).findIndex(x=>String(x.id)===String(row.id));if(p.eventType==='DELETE'&&i>=0)cache.questions.splice(i,1);else if(p.eventType==='UPDATE'&&i>=0)cache.questions[i]={...cache.questions[i],...row};else if(p.eventType==='INSERT')STATE.total++;renderQuestions();}).subscribe();};
   const inp=$('search');if(inp&&!inp.__adminFinalSearch){inp.__adminFinalSearch=true;let t;inp.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{STATE.page=1;loadQuestionPage().then(render)},350)},{passive:true});}
   const btn=$('refreshBtn');if(btn)btn.onclick=loadAll;
 })();
@@ -3909,7 +3602,7 @@ async function sendLoginToDiscord(email, role) {
 // ===== FINAL_FIX_REQUESTS_AND_SUBJECT_REQUESTS_20260627 =====
 // Fix: tab Yêu cầu sửa và Yêu cầu thêm môn không hiện data do bản tối ưu trước đó load thiếu cột/không gọi load subject_requests.
 (function(){
-  const QUESTION_COLS = 'id,num,subject_code,question,options,answer,is_active,updated_at,created_at,has_image,error_risk,error_risk_reason';
+  const QUESTION_COLS='id,num,subject_code,question,options,answer,images,is_active,updated_at,created_at,has_image,error_risk,error_risk_reason';
   const STATE = window.__ADMIN_PAGE_STATE__ || (window.__ADMIN_PAGE_STATE__ = {
     page:1, size:50, total:0,
     subject: localStorage.getItem('admin_question_subject_filter_v1') || 'all',
@@ -4007,10 +3700,14 @@ async function sendLoginToDiscord(email, role) {
     if(!isEditor()) return;
     const el = $('subjectRequestList');
     if(el) el.innerHTML = '<p class="muted">Đang tải yêu cầu thêm môn...</p>';
-    const r = await safeQuery('subject_requests', client.from('subject_requests').select('*').order('created_at', {ascending:false}).limit(500));
-    subjectReqCache = r.data || [];
-    if(r.error){
-      if(el) el.innerHTML = `<p class="muted">Không tải được subject_requests: ${esc(r.error.message || r.error)}</p>`;
+    try{
+      const res = await fetch('/api/admin-dashboard', { cache: 'no-store' });
+      const dash = await res.json().catch(() => ({}));
+      if(!res.ok || dash.error) throw new Error(dash.error || ('HTTP ' + res.status));
+      subjectReqCache = (dash.subject_requests || []).map(s => ({ ...s, questions_data: (typeof s.questions_data === 'string' ? (() => { try { return JSON.parse(s.questions_data); } catch(e){ return []; } })() : s.questions_data) || [] }));
+      cache.subject_requests = subjectReqCache;
+    }catch(e){
+      if(el) el.innerHTML = `<p class="muted">Không tải được subject_requests: ${esc(e.message || e)}</p>`;
       return;
     }
     renderSubjectRequestsFixed(subjectReqFilter);
@@ -4130,14 +3827,11 @@ ${E(val)}</pre>`;
     }).join('') + '</div>';
   };
   window.viewReq = viewReq = async function(id){
-    let r = (cache.requests || []).find(x => String(x.id) === String(id));
-    try{ const full = await client.from('edit_requests').select('*').eq('id', id).maybeSingle(); if(!full.error && full.data) r = full.data; }catch(e){}
+    const r = (cache.requests || []).find(x => String(x.id) === String(id));
     if(!r) return alert('Không tìm thấy yêu cầu sửa.');
-    let q = null;
-    try{
-      if(r.question_id){ const got = await client.from('questions').select('id,num,subject_code,question,options,answer,answer_text,images').eq('id', r.question_id).maybeSingle(); if(!got.error) q = got.data; }
-      if(!q && r.question_num){ const got = await client.from('questions').select('id,num,subject_code,question,options,answer,answer_text,images').eq('num', r.question_num).maybeSingle(); if(!got.error) q = got.data; }
-    }catch(e){}
+    // Lấy câu hỏi gốc từ cache Turso (đã nạp ở loadAll), không gọi Supabase nữa.
+    let q = (cache.questions || []).find(x => String(x.id) === String(r.question_id))
+      || (cache.questions || []).find(x => String(x.num) === String(r.question_num));
     const oldData = Object.assign({}, q || {}, r.old_data || {});
     if(q && !Object.prototype.hasOwnProperty.call(oldData,'images')) oldData.images = q.images || [];
     const newData = Object.assign({}, r.new_data || {});
@@ -4258,14 +3952,7 @@ ${E(val)}</pre>`;
 
   // Vì list lịch sử đã tải bản nhẹ, khi bấm Trước/sau thì lấy full đúng 1 dòng.
   window.viewHistory = async function (id) {
-    let h = (window.cache?.history || cache?.history || []).find(x => String(x.id || '') === String(id || ''));
-    try {
-      if (window.client && id) {
-        const r = await window.client.from('question_history').select('*').eq('id', id).maybeSingle();
-        if (!r.error && r.data) h = r.data;
-      }
-    } catch (e) {}
-
+    const h = (window.cache?.history || cache?.history || []).find(x => String(x.id || '') === String(id || ''));
     if (!h) return alert('Không tìm thấy lịch sử.');
     if (typeof openModal === 'function' && typeof compareHTML === 'function') {
       openModal('Lịch sử', compareHTML(h.previous_data || {}, h.new_data || {}));
@@ -4279,9 +3966,8 @@ ${E(val)}</pre>`;
 (function(){
   function reqIdArg(v){ return JSON.stringify(String(v ?? '')); }
   async function findSubjectRequestForDelete(id){
-    const r = await client.from('subject_requests').select('*').eq('id', id).maybeSingle();
-    if(!r.error && r.data) return r.data;
-    return null;
+    // Tìm trong cache Turso (đã nạp từ /api/admin-dashboard).
+    return (cache.subject_requests || []).find(x => String(x.id) === String(id)) || null;
   }
 
   const oldLoadSubjectRequestsDeleteBad = window.loadSubjectRequests;
@@ -4317,37 +4003,8 @@ ${E(val)}</pre>`;
     if(!confirm('Xóa yêu cầu thêm môn bị lỗi này?\n\n' + label + '\n\nNếu database không cho xóa hẳn, hệ thống sẽ ẩn yêu cầu này khỏi danh sách chờ duyệt.')) return;
     setBusy(true, 'Đang xóa yêu cầu lỗi...');
     try{
-      // Thử xóa theo id trước.
-      let ok = false;
-      let lastError = null;
-      let del = await client.from('subject_requests').delete().eq('id', id).select('id');
-      if(del.error) lastError = del.error;
-      if((del.data || []).length) ok = true;
-
-      // Nếu id bị lệch kiểu dữ liệu/cache, thử xóa theo thông tin dòng đang thấy trên màn hình.
-      if(!ok && r.code){
-        let q = client.from('subject_requests').delete().eq('code', r.code).eq('status', r.status || 'pending');
-        if(r.user_email) q = q.eq('user_email', r.user_email);
-        if(r.created_at) q = q.eq('created_at', r.created_at);
-        del = await q.select('id');
-        if(del.error) lastError = del.error;
-        if((del.data || []).length) ok = true;
-      }
-
-      // Nếu quyền xóa bị chặn, chuyển trạng thái thành rejected để biến khỏi tab Chờ duyệt.
-      if(!ok){
-        const upd = await client.from('subject_requests').update({
-          status: 'rejected',
-          admin_note: 'Đã ẩn yêu cầu lỗi',
-          reviewed_at: new Date().toISOString(),
-          reviewed_by: user?.id || null
-        }).eq('id', id).select('id');
-        if(upd.error){
-          return alert('Không xóa/ẩn được yêu cầu: ' + (lastError?.message || upd.error.message));
-        }
-        ok = true;
-      }
-
+      // Ẩn yêu cầu lỗi bằng cách chuyển trạng thái rejected trong Turso.
+      if(!await adminAction('reject_subject_request', { request_id: id, admin_note: 'Đã ẩn yêu cầu lỗi' })) return;
       await logAction('delete_bad_subject_request', 'subject_requests', id, {code:r.code, name:r.name});
       await window.loadSubjectRequests?.();
       toast('Đã xóa/ẩn yêu cầu lỗi');
@@ -4672,29 +4329,6 @@ ${E(val)}</pre>`;
     return !(q?.is_active === false || q?.is_active === 0 || q?.is_active === '0');
   }
 
-  async function loadQuestionCountsForSubjects(){
-    let rows = [];
-    try{
-      if(typeof fetchAllRows === 'function'){
-        rows = await fetchAllRows('questions', 'subject_code,is_active');
-      }else{
-        const res = await client.from('questions').select('subject_code,is_active');
-        if(res.error) throw res.error;
-        rows = res.data || [];
-      }
-    }catch(e){
-      console.warn('Không tải đủ số câu theo môn, dùng cache tạm:', e);
-      rows = cache.questions || [];
-    }
-    const counts = {};
-    (rows || []).forEach(q => {
-      if(!isActiveQuestionRow(q)) return;
-      const code = String(q.subject_code || 'HOD102');
-      counts[code] = (counts[code] || 0) + 1;
-    });
-    return counts;
-  }
-
   function getSubjectQuestionCount(s){
     const code = String(s?.code || '');
     return Number(s?.__question_count || s?.question_count || s?.questions_count || (code ? 0 : 0)) || 0;
@@ -4716,11 +4350,11 @@ ${E(val)}</pre>`;
         .filter(s => s && s.id)
         .map((s,i) => ({ id: s.id, sort_order: i + 1 }));
 
-      let savedByApi = false;
       if(payloadSubjects.length){
         const res = await fetch('/api/admin-action', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
           body: JSON.stringify({
             user_id: user?.id,
             action: 'reorder_subjects',
@@ -4728,20 +4362,8 @@ ${E(val)}</pre>`;
           })
         });
         const data = await res.json().catch(() => ({}));
-        if(res.ok && data && data.ok) savedByApi = true;
-        else if(data && data.error) throw new Error(data.error);
+        if(!res.ok || data.error) throw new Error(data.error || ('HTTP ' + res.status));
       }
-
-      if(!savedByApi){
-        for(let i=0;i<dragSubjectCache.length;i++){
-          const s = dragSubjectCache[i];
-          const newOrder = i + 1;
-          const r = await client.from('subjects').update({ sort_order: newOrder }).eq('id', s.id);
-          if(r.error) throw new Error(r.error.message || r.error);
-        }
-      }
-
-      if(client.clearCache) client.clearCache();
       toast('Đã lưu thứ tự môn');
     }catch(e){
       alert('Không lưu được thứ tự môn: ' + (e.message || e));
@@ -4815,14 +4437,15 @@ ${E(val)}</pre>`;
     if(list) list.innerHTML = '<p class="muted">Đang tải môn học...</p>';
     setBusy(true, 'Đang tải môn...');
     try{
-      const [subjectRes, questionCounts] = await Promise.all([
-        client.from('subjects').select('*').order('sort_order',{ascending:true}).order('code',{ascending:true}),
-        loadQuestionCountsForSubjects()
-      ]);
-      if(subjectRes.error) return alert('Không tải được danh sách môn: ' + subjectRes.error.message);
-      dragSubjectCache = (subjectRes.data || [])
+      // Nguồn Turso: nếu cache trống thì nạp dashboard. Đếm câu hỏi từ cache.questions.
+      if(!cache.subjects || !cache.subjects.length || !cache.questions) await loadAll();
+      const counts = {};
+      (cache.questions || []).forEach(q => { const c = String(q.subject_code || '').toUpperCase(); counts[c] = (counts[c] || 0) + 1; });
+      dragSubjectCache = (cache.subjects || [])
+        .slice()
+        .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || String(a.code).localeCompare(String(b.code)))
         .filter(isActiveSubjectRow)
-        .map(s => ({...s, __question_count: questionCounts[String(s.code || '')] || 0}));
+        .map(s => ({...s, __question_count: counts[String(s.code || '').toUpperCase()] || 0}));
       renderSubjectAdminList();
     }finally{
       setBusy(false);
@@ -4866,12 +4489,12 @@ ${E(val)}</pre>`;
 
   window.openEditSubjectAdmin = async function(code){
     if(!isEditor()) return alert('Admin hoặc Editor mới được sửa môn học.');
-    const res = await client.from('subjects').select('*').eq('code', code).maybeSingle();
-    if(res.error || !res.data) {
+    if(!cache.subjects || !cache.subjects.length) await loadAll();
+    const s = (cache.subjects || []).find(x => String(x.code || '').toUpperCase() === String(code).toUpperCase());
+    if(!s) {
       if(typeof oldOpenEditSubjectAdmin === 'function') return oldOpenEditSubjectAdmin.apply(this, arguments);
       return alert('Không tìm thấy môn học.');
     }
-    const s = res.data;
     currentSubjectForNewBadge = s;
     openModal('Sửa môn học', `
       <div class="editSubjectForm">
@@ -4983,8 +4606,8 @@ ${E(val)}</pre>`;
 
   async function fetchSubjectsForCards(){
     try{
-      const res = await client.from('subjects').select('*').order('sort_order',{ascending:true}).order('code',{ascending:true});
-      if(!res.error) cardSubjectCache = res.data || [];
+      if(!cache.subjects || !cache.subjects.length) await loadAll();
+      cardSubjectCache = (cache.subjects || []).slice().sort((a,b) => (a.sort_order||0)-(b.sort_order||0) || String(a.code).localeCompare(String(b.code)));
     }catch(e){ console.warn('Không tải được trạng thái NEW:', e); }
   }
 
@@ -5053,21 +4676,10 @@ ${E(val)}</pre>`;
     const btn = Array.from(document.querySelectorAll('.subjectNewToggle')).find(b => (b.getAttribute('onclick') || '').includes("'" + code + "'"));
     if(btn) btn.classList.add('isBusy');
     try{
-      let subject = cardSubjectCache.find(s => String(s.code) === String(code));
-      if(!subject){
-        const res = await client.from('subjects').select('*').eq('code', code).maybeSingle();
-        if(res.error || !res.data) return alert('Không tìm thấy môn học.');
-        subject = res.data;
-      }
+      let subject = cardSubjectCache.find(s => String(s.code) === String(code)) || (cache.subjects || []).find(s => String(s.code) === String(code));
+      if(!subject) return alert('Không tìm thấy môn học.');
       const next = !hasNewBadge(subject);
-      const r = await client.from('subjects').update({
-        name: subject.name || subject.code || '',
-        description: subject.description || '',
-        cover: makeCover(subject.cover || '', next),
-        sort_order: subject.sort_order || 0
-      }).eq('id', subject.id);
-      if(r.error) return alert('Không lưu được NEW: ' + r.error.message);
-      if(client.clearCache) client.clearCache();
+      if(!await adminAction('set_subject_new_badge', { id: subject.id, enabled: next })) return;
       subject.cover = makeCover(subject.cover || '', next);
       cardSubjectCache = cardSubjectCache.map(s => String(s.code) === String(code) ? {...s, cover: subject.cover} : s);
       toast(next ? 'Đã bật NEW' : 'Đã tắt NEW');
@@ -5093,20 +4705,9 @@ ${E(val)}</pre>`;
     if(!name) return alert('Tên môn học không được để trống.');
     setBusy(true, 'Đang lưu môn...');
     try{
-      let subject = cardSubjectCache.find(s => String(s.code) === String(code));
-      if(!subject){
-        const res = await client.from('subjects').select('*').eq('code', code).maybeSingle();
-        if(res.error || !res.data) return alert('Không tìm thấy môn học.');
-        subject = res.data;
-      }
-      const r = await client.from('subjects').update({
-        name,
-        description: description || '',
-        cover: subject.cover || '',
-        sort_order: subject.sort_order || 0
-      }).eq('id', subject.id);
-      if(r.error) return alert('Không lưu được môn: ' + r.error.message);
-      if(client.clearCache) client.clearCache();
+      let subject = cardSubjectCache.find(s => String(s.code) === String(code)) || (cache.subjects || []).find(s => String(s.code) === String(code));
+      if(!subject) return alert('Không tìm thấy môn học.');
+      if(!await adminAction('edit_subject', { id: subject.id, name, description: description || '', cover: subject.cover || '', sort_order: subject.sort_order || 0 })) return;
       closeModal();
       await window.loadSubjectsAdmin?.();
       toast('Đã lưu môn học');
@@ -5158,13 +4759,20 @@ ${E(val)}</pre>`;
     showLoadingNumbers();
     setBusy(true, 'Đang tải...');
     try{
-      cache.profiles = await safeLoad('profiles', client.from('profiles').select('*').order('created_at', { ascending: false }));
-      cache.questions = await safeLoad('questions', client.from('questions').select('id,num,subject_code,question,options,answer,is_active,updated_at,created_at,has_image,error_risk,error_risk_reason').order('num', { ascending: true }));
-      cache.requests = await safeLoad('edit_requests', client.from('edit_requests').select('*').order('created_at', { ascending: false }));
-      cache.history = await safeLoad('question_history', client.from('question_history').select('*').order('created_at', { ascending: false }).limit(500));
-      cache.logs = isAdmin()
-        ? await safeLoad('admin_logs', client.from('admin_logs').select('*').order('created_at', { ascending: false }).limit(500))
-        : [];
+      // Nguồn dữ liệu duy nhất: Turso qua /api/admin-dashboard. Supabase chỉ còn dùng cho Auth.
+      const pj = (v, d) => { if (v == null) return d; if (typeof v !== 'string') return v; try { return JSON.parse(v); } catch (e) { return d; } };
+      const res = await fetch('/api/admin-dashboard', { cache: 'no-store' });
+      const dash = await res.json().catch(() => ({}));
+      if (!res.ok || dash.error) throw new Error(dash.error || ('HTTP ' + res.status));
+      cache.profiles = dash.profiles || [];
+      cache.questions = (dash.questions || []).map(q => ({ ...q, options: pj(q.options, {}), images: pj(q.images, []) }));
+      cache.requests = (dash.requests || []).map(r => ({ ...r, old_data: pj(r.old_data, {}), new_data: pj(r.new_data, {}) }));
+      cache.history = (dash.history || []).map(h => ({ ...h, previous_data: pj(h.previous_data, {}), new_data: pj(h.new_data, {}) }));
+      cache.logs = isAdmin() ? (dash.logs || []).map(l => ({ ...l, details: pj(l.details, {}) })) : [];
+      cache.subjects = dash.subjects || [];
+      cache.subject_requests = (dash.subject_requests || []).map(s => ({ ...s, questions_data: pj(s.questions_data, []) }));
+      cache.deleted_questions = (dash.deleted_questions || []).map(d => ({ ...d, original_data: pj(d.original_data, {}) }));
+      cache.deleted_subjects = (dash.deleted_subjects || []).map(d => ({ ...d, original_data: pj(d.original_data, {}) }));
       render();
       if(typeof loadSubjectRequests === 'function') await loadSubjectRequests();
       if(typeof loadRegistrationMode === 'function') await loadRegistrationMode();
@@ -5911,14 +5519,10 @@ ${E(val)}</pre>`;
 
   window.loadRegistrationMode = async function(){
     try{
-      if(!client) return;
-      // Select thêm updated_at để tránh trùng URL cache cũ select=value.
-      const res = await client.from('site_settings')
-        .select('key,value,updated_at')
-        .eq('key','registration_mode')
-        .maybeSingle();
-      if(res.error) throw res.error;
-      const mode = normalizeMode(res.data?.value || localStorage.getItem(MODE_KEY) || 'approval');
+      const res = await fetch('/api/settings', { cache: 'no-store' });
+      const out = await res.json().catch(() => ({}));
+      if(!res.ok || out.error) throw new Error(out.error || 'HTTP ' + res.status);
+      const mode = normalizeMode(out.registration_mode || localStorage.getItem(MODE_KEY) || 'approval');
       localStorage.setItem(MODE_KEY, mode);
       paintRegistrationMode(mode);
       return mode;
@@ -5938,13 +5542,7 @@ ${E(val)}</pre>`;
     setBusy(true, 'Đang cập nhật...');
     try{
       clearSoftCache('site_settings');
-      const res = await client.from('site_settings').upsert({
-        key: 'registration_mode',
-        value: mode,
-        updated_at: new Date().toISOString(),
-        updated_by: user?.id || null
-      }, { onConflict: 'key' }).select('key,value,updated_at').single();
-      if(res.error) return alert('Lỗi: ' + res.error.message);
+      if(!await adminAction('set_registration_mode', { mode })) return;
       localStorage.setItem(MODE_KEY, mode);
       clearSoftCache('site_settings');
       paintRegistrationMode(mode);
@@ -6006,3 +5604,98 @@ ${E(val)}</pre>`;
   });
 })();
 // ===== END COPILOT_ADMIN_REG_MODE_AND_PAGE_RESTORE_FIX_20260630 =====
+
+
+// ===== COPILOT_ADMIN_IMAGE_PERSIST_TURSO_20260630 =====
+// Chống mất ảnh khi admin duyệt/sửa: luôn đi qua /api/admin-action và danh sách câu hỏi có cột images.
+(function(){
+if(window.__COPILOT_ADMIN_IMAGE_PERSIST_TURSO_20260630) return;
+window.__COPILOT_ADMIN_IMAGE_PERSIST_TURSO_20260630 = true;
+window.approve = async function(id){
+  const r = (cache.requests || []).find(x => Number(x.id) === Number(id));
+  if(!r || r.status !== 'pending') return;
+  if(!user) return alert('Chưa đăng nhập.');
+  if(!confirm('Duyệt thay đổi cho câu ' + questionLabel(r) + '?')) return;
+  setBusy(true, 'Đang duyệt...');
+  try{
+    const res = await fetch('/api/admin-action', {method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',body:JSON.stringify({user_id:user.id,action:'approve_request',payload:{request_id:id}})});
+    const out = await res.json().catch(()=>({}));
+    if(!res.ok || out.error) return alert(out.error || 'Không duyệt được');
+    toast('Đã duyệt');
+    await loadAll();
+  } finally { setBusy(false); }
+};
+})();
+// ===== END COPILOT_ADMIN_IMAGE_PERSIST_TURSO_20260630 =====
+
+
+// ===== COPILOT_ADMIN_IMAGE_CACHE_REALTIME_FINAL_20260630 =====
+// Chống mất ảnh sau reset trang: tải cột images, xóa cache cũ, realtime không xóa mảng images.
+(function(){
+if(window.__COPILOT_ADMIN_IMAGE_CACHE_REALTIME_FINAL_20260630) return;
+window.__COPILOT_ADMIN_IMAGE_CACHE_REALTIME_FINAL_20260630 = true;
+
+function clearAdminImageCaches(){
+  try{
+    Object.keys(sessionStorage).forEach(function(k){
+      if(k.startsWith('admin_f5_micro_cache:') || k.startsWith('lh_f5_cache:')) sessionStorage.removeItem(k);
+    });
+  }catch(e){}
+}
+window.clearAdminImageCaches = clearAdminImageCaches;
+
+function mergeQuestionKeepImages(oldRow, newRow){
+  const merged = Object.assign({}, oldRow || {}, newRow || {});
+  if((!newRow || !Object.prototype.hasOwnProperty.call(newRow, 'images')) && oldRow && Object.prototype.hasOwnProperty.call(oldRow, 'images')){
+    merged.images = oldRow.images;
+  }
+  return merged;
+}
+window.__mergeQuestionKeepImages = mergeQuestionKeepImages;
+
+function patchLoadAll(){
+  if(typeof window.loadAll !== 'function' || window.loadAll.__imageCacheFinalPatched) return;
+  const oldLoadAll = window.loadAll;
+  window.loadAll = async function(){
+    clearAdminImageCaches();
+    return oldLoadAll.apply(this, arguments);
+  };
+  window.loadAll.__imageCacheFinalPatched = true;
+  try { loadAll = window.loadAll; } catch(e) {}
+}
+
+function patchRealtime(){
+  if(typeof window.startAdminRealtime !== 'function' || window.startAdminRealtime.__imageRealtimeFinalPatched) return;
+  const oldStart = window.startAdminRealtime;
+  window.startAdminRealtime = function(){
+    clearAdminImageCaches();
+    const out = oldStart.apply(this, arguments);
+    try{
+      if(!client || typeof client.getChannels !== 'function') return out;
+      client.getChannels().forEach(function(ch){
+        if(ch.__imageKeepPatched) return;
+        ch.__imageKeepPatched = true;
+      });
+    }catch(e){}
+    return out;
+  };
+  window.startAdminRealtime.__imageRealtimeFinalPatched = true;
+  try { startAdminRealtime = window.startAdminRealtime; } catch(e) {}
+}
+
+function patchRefreshButton(){
+  const btn = document.getElementById('refreshBtn');
+  if(!btn || btn.__imageCacheClearBound) return;
+  btn.__imageCacheClearBound = true;
+  btn.addEventListener('click', clearAdminImageCaches, true);
+}
+
+clearAdminImageCaches();
+patchLoadAll();
+patchRealtime();
+patchRefreshButton();
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ clearAdminImageCaches(); patchLoadAll(); patchRealtime(); patchRefreshButton(); });
+else setTimeout(function(){ clearAdminImageCaches(); patchLoadAll(); patchRealtime(); patchRefreshButton(); }, 0);
+setTimeout(function(){ patchLoadAll(); patchRealtime(); patchRefreshButton(); }, 500);
+})();
+// ===== END COPILOT_ADMIN_IMAGE_CACHE_REALTIME_FINAL_20260630 =====
