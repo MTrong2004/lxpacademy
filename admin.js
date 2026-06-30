@@ -4709,27 +4709,42 @@ ${E(val)}</pre>`;
 
   async function saveSubjectOrder(){
     if(!isAdmin()) return toast('Chỉ admin được đổi thứ tự môn.');
-    setBusy(true, 'Đang lưu thứ tự môn...');
     try{
-      for(let i=0;i<dragSubjectCache.length;i++){
-        const s = dragSubjectCache[i];
-        const newOrder = i + 1;
-        s.sort_order = newOrder;
-        const r = await client.from('subjects').update({
-          name: s.name || s.code || '',
-          description: s.description || '',
-          cover: s.cover || '',
-          sort_order: newOrder
-        }).eq('id', s.id);
-        if(r.error) throw new Error(r.error.message || r.error);
+      // Giữ thứ tự mới ngay trên màn hình, KHÔNG tải lại danh sách môn sau khi kéo.
+      dragSubjectCache.forEach((s,i) => { s.sort_order = i + 1; });
+      const payloadSubjects = dragSubjectCache
+        .filter(s => s && s.id)
+        .map((s,i) => ({ id: s.id, sort_order: i + 1 }));
+
+      let savedByApi = false;
+      if(payloadSubjects.length){
+        const res = await fetch('/api/admin-action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: user?.id,
+            action: 'reorder_subjects',
+            payload: { subjects: payloadSubjects }
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if(res.ok && data && data.ok) savedByApi = true;
+        else if(data && data.error) throw new Error(data.error);
       }
+
+      if(!savedByApi){
+        for(let i=0;i<dragSubjectCache.length;i++){
+          const s = dragSubjectCache[i];
+          const newOrder = i + 1;
+          const r = await client.from('subjects').update({ sort_order: newOrder }).eq('id', s.id);
+          if(r.error) throw new Error(r.error.message || r.error);
+        }
+      }
+
       if(client.clearCache) client.clearCache();
       toast('Đã lưu thứ tự môn');
-      if(typeof loadAll === 'function') loadAll();
     }catch(e){
       alert('Không lưu được thứ tự môn: ' + (e.message || e));
-    }finally{
-      setBusy(false);
     }
   }
 
@@ -4787,7 +4802,7 @@ ${E(val)}</pre>`;
         dragSubjectCache.splice(toIndex, 0, moved);
         dragSubjectCache.forEach((s,i) => s.sort_order = i + 1);
         renderSubjectAdminList();
-        await saveSubjectOrder();
+        saveSubjectOrder();
       });
     });
   }

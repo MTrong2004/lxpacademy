@@ -904,6 +904,7 @@ async function getSubjects() {
       if (!res.ok || json.error) throw new Error(json.error || 'Không tải được subjects từ Turso');
       const rows = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
       if (!rows.length) return fallbackSubjects();
+      rows.sort((a,b) => (Number(a.sort_order)||0) - (Number(b.sort_order)||0) || String(a.code||'').localeCompare(String(b.code||'')));
       return await addQuestionCounts(rows);
     } catch (e) {
       console.warn('[Turso subjects]', e);
@@ -921,7 +922,14 @@ async function getSubjects() {
     const countText = Number.isFinite(rawCount) ? `${rawCount} câu` : '— câu';
     const status = s.is_active === false ? 'Tạm ẩn' : countText;
     const chosen = pickedCode === s.code;
-    return `<button class="subjectCard ${chosen ? 'active' : ''}" data-code="${esc2(rawCode)}" type="button" title="${code} - ${name} - ${countText}">
+    let coverMeta = {};
+    try {
+      coverMeta = typeof s.cover === 'string' ? JSON.parse(s.cover || '{}') : (s.cover || {});
+    } catch(e) { coverMeta = {}; }
+    const isNew = !!(s.new_badge || s.newBadge || s.is_new || s.isNew || coverMeta.new_badge || coverMeta.newBadge || coverMeta.is_new);
+    const newBadge = isNew ? '<span class="subjectNewBadge">NEW</span>' : '';
+    return `<button class="subjectCard ${chosen ? 'active' : ''} ${isNew ? 'hasNewBadge' : ''}" data-code="${esc2(rawCode)}" type="button" title="${code} - ${name} - ${countText}">
+      ${newBadge}
       <span class="subjectCardCode"><span>${code}</span></span>
       <span class="subjectCardTitle">${name}</span>
       <span class="subjectCardDesc">${desc}</span>
@@ -7218,3 +7226,84 @@ window.APP_CONFIG = window.APP_CONFIG || {};
 window.APP_CONFIG.USE_TURSO_API = true;
 // Supabase chỉ dùng Auth; dữ liệu/profile/subjects/questions tải qua /api Turso.
 // ===== END TURSO_ONLY_DATA_SOURCE_20260630 =====
+
+
+// ===== TURSO_SUBJECT_COUNTS_FALLBACK_20260630 =====
+// Fix: user mới chưa có cache thì thẻ môn không bị hiện 0 câu; nếu /api/subjects thiếu count sẽ tự đếm từ /api/questions một lần.
+(function(){
+  if(window.__TURSO_SUBJECT_COUNTS_FALLBACK_20260630) return;
+  window.__TURSO_SUBJECT_COUNTS_FALLBACK_20260630 = true;
+
+  const STORE = 'learninghub_subject_counts_cache_v3';
+  let loading = false;
+
+  function readStore(){
+    try { return JSON.parse(localStorage.getItem(STORE) || '{}') || {}; }
+    catch(e){ return {}; }
+  }
+  function writeCounts(counts){
+    try { localStorage.setItem(STORE, JSON.stringify({ counts: counts || {}, confirmed: counts || {}, at: Date.now() })); }
+    catch(e){}
+  }
+  function norm(code){ return String(code || '').trim().toUpperCase(); }
+
+  async function fetchCounts(){
+    if(loading) return null;
+    loading = true;
+    try{
+      const res = await fetch('/api/questions?count_only=1&ts=' + Date.now(), { cache:'no-store' });
+      const json = await res.json().catch(() => ({}));
+      const rows = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
+      const counts = {};
+      rows.forEach(q => {
+        const code = norm(q.subject_code);
+        if(code) counts[code] = (counts[code] || 0) + 1;
+      });
+      writeCounts(counts);
+      return counts;
+    }catch(e){
+      console.warn('[Turso counts fallback]', e);
+      return null;
+    }finally{
+      loading = false;
+    }
+  }
+
+  function applyCountsToCards(counts){
+    if(!counts) return;
+    document.querySelectorAll('.subjectCard').forEach(card => {
+      const code = norm(card.dataset.code || card.getAttribute('data-code'));
+      if(!code || counts[code] == null) return;
+      const meta = card.querySelector('.subjectMeta span');
+      if(meta) meta.textContent = Number(counts[code] || 0) + ' câu';
+    });
+  }
+
+  async function refreshZeroCounts(){
+    const cards = Array.from(document.querySelectorAll('.subjectCard'));
+    if(!cards.length) return;
+    const hasZero = cards.some(card => /(^|\s)0\s*câu/i.test(card.textContent || ''));
+    if(!hasZero) return;
+    const store = readStore();
+    if(store.counts) applyCountsToCards(store.counts);
+    const counts = await fetchCounts();
+    applyCountsToCards(counts);
+  }
+
+  const oldRenderSubjects = typeof renderSubjects === 'function' ? renderSubjects : null;
+  if(oldRenderSubjects && !oldRenderSubjects.__tursoCountsFallback){
+    const fn = function(){
+      const out = oldRenderSubjects.apply(this, arguments);
+      setTimeout(refreshZeroCounts, 80);
+      return out;
+    };
+    fn.__tursoCountsFallback = true;
+    window.renderSubjects = renderSubjects = fn;
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    setTimeout(refreshZeroCounts, 600);
+    setTimeout(refreshZeroCounts, 1800);
+  });
+})();
+// ===== END TURSO_SUBJECT_COUNTS_FALLBACK_20260630 =====

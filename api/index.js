@@ -58,6 +58,16 @@ function safeParse(str, fallback) {
   try { return JSON.parse(str); } catch(e) { return fallback; }
 }
 
+
+function normalizeProfile(row) {
+  if (!row) return row;
+  return {
+    ...row,
+    approved: row.approved === 1 || row.approved === true || row.approved === '1',
+    blocked: row.blocked === 1 || row.blocked === true || row.blocked === '1'
+  };
+}
+
 function subjectCoverWithNewBadge(cover, enabled) {
   let meta = {};
   if (cover) {
@@ -85,11 +95,11 @@ export default async function handler(req) {
                      coalesce(q.question_count, 0) as question_count
               from subjects s
               left join (
-                select subject_code, count(*) as question_count
+                select upper(trim(subject_code)) as subject_code, count(*) as question_count
                 from questions
                 where coalesce(is_active, 1) = 1
-                group by subject_code
-              ) q on q.subject_code = s.code
+                group by upper(trim(subject_code))
+              ) q on q.subject_code = upper(trim(s.code))
               where coalesce(s.is_active, 1) = 1
               order by s.sort_order asc, s.code asc`
       });
@@ -181,7 +191,7 @@ export default async function handler(req) {
           sql: 'select * from profiles where id = ?',
           args: [id]
         });
-        return json({ data: updated.rows[0] });
+        return json({ data: normalizeProfile(updated.rows[0]) });
       } else {
         let regMode = 'approval';
         try {
@@ -214,7 +224,7 @@ export default async function handler(req) {
           sql: 'select * from profiles where id = ?',
           args: [id]
         });
-        return json({ data: created.rows[0] });
+        return json({ data: normalizeProfile(created.rows[0]) });
       }
     }
 
@@ -570,15 +580,69 @@ export default async function handler(req) {
         }
 
         case 'edit_subject': {
-          const { id, name, description, cover, sort_order } = payload;
+          const { id, name, description, cover, sort_order, new_badge } = payload;
+          const oldRes = await db.execute({ sql: 'select * from subjects where id = ?', args: [id] });
+          const oldSub = oldRes.rows?.[0];
+          if (!oldSub) return json({ error: 'Subject not found' }, 404);
+          const finalCover = (new_badge === true || new_badge === false)
+            ? subjectCoverWithNewBadge(cover !== undefined ? cover : oldSub.cover, new_badge)
+            : (cover !== undefined ? cover : oldSub.cover || '');
           await db.execute({
             sql: `update subjects
                   set name = ?, description = ?, cover = ?, sort_order = ?
                   where id = ?`,
-            args: [name, description || '', cover || '', sort_order || 0, id]
+            args: [name, description || '', finalCover, Number(sort_order || 0), id]
           });
+          await logAdminAction('edit_subject', 'subjects', id, { new_badge, sort_order });
+          return json({ ok: true });
+        }
 
-          await logAdminAction('edit_subject', 'subjects', id);
+        case 'reorder_subjects': {
+          const items = Array.isArray(payload?.subjects) ? payload.subjects : [];
+          if (!items.length) return json({ error: 'Missing subjects' }, 400);
+
+          for (const item of items) {
+            const sid = item?.id;
+            const order = Number(item?.sort_order);
+            if (!sid || !Number.isFinite(order) || order < 1) continue;
+            await db.execute({
+              sql: 'update subjects set sort_order = ? where id = ?',
+              args: [order, sid]
+            });
+          }
+
+          await logAdminAction('reorder_subjects', 'subjects', 'bulk', { count: items.length });
+          return json({ ok: true, count: items.length });
+        }
+        case 'set_subject_new_badge': {
+          const { id, enabled } = payload;
+          const subRes = await db.execute({ sql: 'select * from subjects where id = ?', args: [id] });
+          const sub = subRes.rows?.[0];
+          if (!sub) return json({ error: 'Subject not found' }, 404);
+          await db.execute({
+            sql: 'update subjects set cover = ? where id = ?',
+            args: [subjectCoverWithNewBadge(sub.cover, !!enabled), id]
+          });
+          await logAdminAction('set_subject_new_badge', 'subjects', id, { enabled: !!enabled });
+          return json({ ok: true });
+        }
+
+        case 'move_subject': {
+          const { id, direction } = payload;
+          const all = await db.execute({
+            sql: 'select id, sort_order, code from subjects where coalesce(is_active, 1) = 1 order by sort_order asc, code asc'
+          });
+          const rows = all.rows || [];
+          const idx = rows.findIndex(x => String(x.id) === String(id));
+          if (idx < 0) return json({ error: 'Subject not found' }, 404);
+          const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+          if (swapIdx < 0 || swapIdx >= rows.length) return json({ ok: true, unchanged: true });
+          const a = rows[idx], b = rows[swapIdx];
+          const aOrder = Number(a.sort_order || idx + 1);
+          const bOrder = Number(b.sort_order || swapIdx + 1);
+          await db.execute({ sql: 'update subjects set sort_order = ? where id = ?', args: [bOrder, a.id] });
+          await db.execute({ sql: 'update subjects set sort_order = ? where id = ?', args: [aOrder, b.id] });
+          await logAdminAction('move_subject', 'subjects', id, { direction });
           return json({ ok: true });
         }
 

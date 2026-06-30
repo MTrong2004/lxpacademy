@@ -2333,3 +2333,9 @@ body:not(.hod-is-admin-final) #adminOpenBtn,body:not(.hod-is-admin-final) #hodFl
 #subjectEnter:after{content:" →" !important;font-weight:950 !important}
 @media (max-width:760px){.subjectGateFooter{grid-template-columns:1fr !important;gap:12px !important;padding:12px !important;border-radius:18px !important;margin-top:14px !important}.subjectSelectedBox{padding-left:42px !important}.subjectSelectedBox::before{width:30px !important;height:30px !important;border-radius:11px !important}.subjectSelectedBox b,.subjectSelectedBox strong,#subjectInlineText{font-size:1rem !important}.subjectSelectedBox span{font-size:.66rem !important}#subjectEnter{width:100% !important;height:52px !important;min-height:52px !important;border-radius:16px !important}}
 /* END_FIX_SUBJECT_SELECTED_FOOTER_PREMIUM_20260630 */
+
+
+/* ===== COPILOT_SHOW_SUBJECT_NEW_BADGE_20260630 ===== */
+.subjectCard.hasNewBadge{position:relative!important;overflow:visible!important;}
+.subjectCard .subjectNewBadge{display:inline-flex!important;position:absolute!important;top:-8px!important;right:10px!important;z-index:50!important;align-items:center!important;justify-content:center!important;min-width:42px!important;height:23px!important;padding:0 8px!important;border-radius:999px!important;background:linear-gradient(135deg,#fff07a,#ffd35a 58%,#fff3bb)!important;color:#211304!important;border:1px solid rgba(255,235,170,.72)!important;font-size:.54rem!important;font-weight:950!important;letter-spacing:.04em!important;line-height:1!important;text-transform:uppercase!important;box-shadow:0 4px 12px rgba(0,0,0,.30),0 0 11px rgba(255,224,92,.34)!important;pointer-events:none!important;}
+/* ===== END COPILOT_SHOW_SUBJECT_NEW_BADGE_20260630 ===== */
