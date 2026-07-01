@@ -511,6 +511,10 @@ window.HODSupabase = (() => {
   const configured = () => CONFIG.SUPABASE_URL.startsWith('https://') && !CONFIG.SUPABASE_ANON_KEY.startsWith('PASTE_');
   const isReady = () => !!client && !!currentUser;
   const isAdmin = () => currentProfile?.role === 'admin';
+  // MỞ RỘNG 20260702: editor cũng được thấy/mở nút Dashboard giống admin.
+  // Lưu ý: chỉ dùng cho việc hiện nút & mở admin.html; các thao tác duyệt/từ chối
+  // yêu cầu (approve_request/reject_request) vẫn dùng isAdmin() nguyên bản, không đổi.
+  const canOpenDashboard = () => ['admin', 'editor'].includes(currentProfile?.role);
   const $id = id => document.getElementById(id);
 
   function safeJson(obj) {
@@ -559,7 +563,7 @@ window.HODSupabase = (() => {
 
   function openAuth() { $id('authModal')?.classList.remove('hidden'); }
   function closeAuth() { $id('authModal')?.classList.add('hidden'); }
-  function openAdmin() { if (!isAdmin()) { alert('Tài khoản Google này chưa có quyền admin.'); return; } window.open('admin.html', '_blank'); }
+  function openAdmin() { if (!canOpenDashboard()) { alert('Tài khoản Google này chưa có quyền admin.'); return; } window.open('admin.html', '_blank'); }
   function closeAdmin() { $id('adminModal')?.classList.add('hidden'); }
 
   function setupHeaderAuthUI() {
@@ -601,7 +605,7 @@ window.HODSupabase = (() => {
     if (currentUser) {
       authBtn.textContent = currentProfile?.email || currentUser.email || 'User';
       authBtn.classList.add('userChip');
-      const admin = isAdmin();
+      const admin = canOpenDashboard();
       adminBtn?.classList.toggle('hidden', !admin);
       if (adminBtn) adminBtn.style.display = admin ? '' : 'none';
       const floatAdmin = $id('hodFloatAdmin');
@@ -918,7 +922,7 @@ window.HODSupabase = (() => {
 
   document.addEventListener('DOMContentLoaded', init);
 
-  return { init, isReady, isAdmin, submitEditRequest, loadQuestionsFromSupabase, openAuth, openAdmin, signOut, signInGoogle, getUser: () => currentUser, getProfile: () => currentProfile, get __client() { return client; } };
+  return { init, isReady, isAdmin, canOpenDashboard, submitEditRequest, loadQuestionsFromSupabase, openAuth, openAdmin, signOut, signInGoogle, getUser: () => currentUser, getProfile: () => currentProfile, get __client() { return client; } };
 })();
 
 // ===== HOD Login + Admin UI (added) =====
@@ -926,7 +930,7 @@ window.HODSupabase = (() => {
   function $(id) { return document.getElementById(id); }
   function hideLanding() { $('hodLoginScreen')?.classList.add('hidden'); }
   function openLogin() { hideLanding(); if (window.HODSupabase?.openAuth) window.HODSupabase.openAuth(); else alert('Supabase UI chưa sẵn sàng, hãy tải lại trang.'); }
-  function openAdmin() { hideLanding(); if (window.HODSupabase?.isAdmin?.()) window.HODSupabase.openAdmin(); else { if (window.HODSupabase?.openAuth) window.HODSupabase.openAuth(); setTimeout(() => alert('Đăng nhập tài khoản admin trước. Sau đó bấm nút Admin lại.'), 80); } }
+  function openAdmin() { hideLanding(); if (window.HODSupabase?.canOpenDashboard?.()) window.HODSupabase.openAdmin(); else { if (window.HODSupabase?.openAuth) window.HODSupabase.openAuth(); setTimeout(() => alert('Đăng nhập tài khoản admin trước. Sau đó bấm nút Admin lại.'), 80); } }
   function bind() {
     $('hodGuestEnter')?.addEventListener('click', hideLanding);
     $('hodOpenLogin')?.addEventListener('click', openLogin);
@@ -948,7 +952,7 @@ window.HODSupabase = (() => {
 // ===== Admin visibility hard fix =====
 (function () {
   function applyAdminGuard() {
-    const isAdmin = !!window.HODSupabase?.isAdmin?.();
+    const isAdmin = !!window.HODSupabase?.canOpenDashboard?.();
     document.body?.classList.toggle('hod-is-admin', isAdmin);
     ['adminOpenBtn', 'hodFloatAdmin'].forEach(id => {
       const el = document.getElementById(id);
@@ -963,7 +967,7 @@ window.HODSupabase = (() => {
     if (!window.HODSupabase || window.HODSupabase.__adminGuardPatched) return;
     const oldOpen = window.HODSupabase.openAdmin;
     window.HODSupabase.openAdmin = function () {
-      if (!window.HODSupabase.isAdmin?.()) {
+      if (!window.HODSupabase.canOpenDashboard?.()) {
         document.getElementById('adminModal')?.classList.add('hidden');
         alert('Tài khoản Google này chưa có quyền admin.');
         applyAdminGuard();
@@ -983,7 +987,7 @@ window.HODSupabase = (() => {
   function $(id) { return document.getElementById(id) }
   function user() { return window.HODSupabase?.getUser?.() || null }
   function profile() { return window.HODSupabase?.getProfile?.() || null }
-  function isAdmin() { return !!window.HODSupabase?.isAdmin?.() }
+  function isAdmin() { return !!window.HODSupabase?.canOpenDashboard?.() }
   function email() { return profile()?.email || user()?.email || '' }
   function meta() { return user()?.user_metadata || {} }
   function avatarHTML() { const u = meta().avatar_url || meta().picture || ''; const e = email(); const l = (e || 'U').trim().charAt(0).toUpperCase(); return u ? '<img src="' + esc(u) + '" alt="avatar">' : l }
@@ -994,9 +998,9 @@ window.HODSupabase = (() => {
   function login() { const api = window.HODSupabase; if (!api) { alert('Supabase chưa sẵn sàng, hãy tải lại trang.'); return } if (api.signInGoogle) { api.signInGoogle(); return } api.openAuth?.() }
   async function logout() { await window.HODSupabase?.signOut?.(); showLogin(); updateAll() }
   function openDash() { if (isAdmin()) window.open('admin.html', '_blank'); else alert('Tài khoản này không có quyền admin.') }
-  function updateMenu() { const admin = isAdmin(); const mail = $('hodAccountEmail'); if (mail) mail.textContent = email() || 'Chưa đăng nhập'; const role = $('hodAccountRole'); if (role) role.textContent = admin ? 'Admin' : 'Người học'; const av = $('hodAccountAvatarBig'); if (av) { const __avb = avatarHTML(); if (av.dataset.av !== __avb) { av.innerHTML = __avb; av.dataset.av = __avb; } } $('hodAccountDashboard')?.classList.toggle('hidden', !admin) }
+  function updateMenu() { const admin = isAdmin(); const rawRole = String(profile()?.role || '').toLowerCase(); const mail = $('hodAccountEmail'); if (mail) mail.textContent = email() || 'Chưa đăng nhập'; const role = $('hodAccountRole'); if (role) role.textContent = rawRole === 'admin' ? 'Admin' : (rawRole === 'editor' ? 'Editor' : 'Người học'); const av = $('hodAccountAvatarBig'); if (av) { const __avb = avatarHTML(); if (av.dataset.av !== __avb) { av.innerHTML = __avb; av.dataset.av = __avb; } } $('hodAccountDashboard')?.classList.toggle('hidden', !admin) }
   function updateAll() { ensureAvatar(); const u = user(); const p = profile(); const admin = isAdmin(); const pending = u && p && p.approved === false; document.body?.classList.toggle('hod-is-admin-final', admin); if (pending) { $('hodLoginGate')?.classList.add('hidden'); $('hodPendingApproval')?.classList.remove('hidden'); document.body?.classList.add('hod-locked'); const emailEl = $('hodPendingEmail'); if (emailEl) emailEl.textContent = p.email || u.email || ''; } else if (u) { hideLogin(); $('hodPendingApproval')?.classList.add('hidden'); } else { showLogin(); } const top = $('hodTopAvatar'); if (top) { const __ah = avatarHTML(); if (top.dataset.av !== __ah) { top.innerHTML = __ah; top.dataset.av = __ah; } top.style.display = (u && !pending) ? 'grid' : 'none' } const headerAdmin = $('adminOpenBtn'); if (headerAdmin) { headerAdmin.remove(); } if (!admin) $('adminModal')?.classList.add('hidden'); updateMenu() }
-  function patchAdmin() { if (!window.HODSupabase || window.HODSupabase.__avatarCleanPatch) return; const old = window.HODSupabase.openAdmin; window.HODSupabase.openAdmin = function () { if (!window.HODSupabase.isAdmin?.()) { $('adminModal')?.classList.add('hidden'); alert('Tài khoản này không có quyền admin.'); return } return old?.apply(this, arguments) }; window.HODSupabase.__avatarCleanPatch = true }
+  function patchAdmin() { if (!window.HODSupabase || window.HODSupabase.__avatarCleanPatch) return; const old = window.HODSupabase.openAdmin; window.HODSupabase.openAdmin = function () { if (!window.HODSupabase.canOpenDashboard?.()) { $('adminModal')?.classList.add('hidden'); alert('Tài khoản này không có quyền admin.'); return } return old?.apply(this, arguments) }; window.HODSupabase.__avatarCleanPatch = true }
   function bind() { $('hodGateLoginBtn')?.addEventListener('click', login); $('hodLogoutBtn')?.addEventListener('click', logout); $('hodAccountDashboard')?.addEventListener('click', openDash); document.addEventListener('click', e => { const m = $('hodAccountMenu'), a = $('hodTopAvatar'); if (m && !m.contains(e.target) && a && !a.contains(e.target)) m.classList.add('hidden') }); setInterval(() => { patchAdmin(); updateAll() }, 500); setTimeout(() => { patchAdmin(); updateAll() }, 250) }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind); else bind();
 })();
@@ -4441,7 +4445,7 @@ return true;
       arr.slice(0, Math.max(0, arr.length - 1)).forEach(function (el) { el.remove(); });
     });
     // Không cho nút admin cũ/float hiện với user thường.
-    if (!window.HODSupabase?.isAdmin?.()) {
+    if (!window.HODSupabase?.canOpenDashboard?.()) {
       document.querySelectorAll('#adminOpenBtn,#hodFloatAdmin').forEach(function (el) { el.remove(); });
       document.getElementById('adminModal')?.classList.add('hidden');
     }
