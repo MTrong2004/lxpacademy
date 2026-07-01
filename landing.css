@@ -685,6 +685,36 @@ body.lhIntroDone .hodLoginGate{
 }
 /* ===== LANDING_PERFORMANCE_ACCESSIBILITY_FIX_20260630_END ===== */
 
+/* ===== MOBILE_PERF_CASCADE_FIX_20260701 =====
+   Fix: LANDING_PERFORMANCE_ACCESSIBILITY_FIX_20260630 ở trên đặt lại
+   #landingParticles{opacity:.38} và ::before{animation:...16s} KHÔNG bọc trong
+   media query, nên các giá trị nhẹ hơn cho mobile trong FIX_MOBILE_LANDING_20260629
+   (opacity .28, animation-duration 14s) bị ghi đè mất hiệu lực trên điện thoại.
+   Block này đặt SAU để thắng cascade, khôi phục đúng ý định giảm tải cho mobile.
+*/
+@media(max-width:860px){
+  .hodLoginGate::before,
+  .hodLoginGate:before{
+    animation-duration:14s!important;
+  }
+  #landingParticles{
+    opacity:.28!important;
+    mix-blend-mode:normal!important;
+  }
+}
+@media(max-width:480px){
+  #landingParticles{
+    opacity:.20!important;
+  }
+}
+@media(max-width:860px) and (prefers-reduced-motion:reduce){
+  .hodLoginGate::before,
+  .hodLoginGate:before{
+    animation:none!important;
+  }
+}
+/* ===== MOBILE_PERF_CASCADE_FIX_20260701_END ===== */
+
 
 /* ===== INTRO_PREBOOT_FLASH_FIX_20260630 ===== */
 html.lhIntroBooting .hodLoginGate{filter:brightness(.82)!important;}

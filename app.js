@@ -1988,16 +1988,42 @@ window.loadCurrentSubjectOnly = loadSubjectOnly;
 // ===== FINAL_FLOATING_PARTICLES_CANVAS_20260613 =====
 if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const raw = String(c?.answer_text ?? '').trim(); const ans = String(c?.answer ?? '').trim().toUpperCase(); if (!raw || raw.toUpperCase() === ans || /^[A-E]+$/i.test(raw)) return answerText(c); return raw; } }
 (function () {
-  let canvas, ctx, w = 0, h = 0, dpr = 1, parts = [], raf = 0;
+  let canvas, ctx, w = 0, h = 0, dpr = 1, parts = [], raf = 0, uxInterval = 0, resizeT = 0, running = false;
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function gateActive() { const gate = document.getElementById('hodLoginGate'); return !!gate && !gate.classList.contains('hidden') && getComputedStyle(gate).display !== 'none'; }
   function ensureCanvas() { const gate = document.getElementById('hodLoginGate'); if (!gate || reduce) return null; canvas = document.getElementById('landingParticles'); if (!canvas) { canvas = document.createElement('canvas'); canvas.id = 'landingParticles'; gate.prepend(canvas); } ctx = canvas.getContext('2d'); return gate; }
   function resize() { if (!canvas || !ctx) return; dpr = Math.min(window.devicePixelRatio || 1, 2); w = window.innerWidth; h = window.innerHeight; canvas.width = Math.floor(w * dpr); canvas.height = Math.floor(h * dpr); canvas.style.width = w + 'px'; canvas.style.height = h + 'px'; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); init(); }
-  function init() { const count = Math.min(140, Math.max(55, Math.floor(w * h / 14000))); parts = Array.from({ length: count }, () => ({ x: Math.random() * w, y: Math.random() * h, r: .7 + Math.random() * 2.4, vx: (Math.random() - .5) * .22, vy: -.10 - Math.random() * .42, a: .18 + Math.random() * .55, p: Math.random() * Math.PI * 2, hue: Math.random() < .55 ? '255,255,255' : (Math.random() < .5 ? '255,226,170' : '135,225,255') })); }
-  function draw() { if (!ctx || document.hidden) { raf = requestAnimationFrame(draw); return; } ctx.clearRect(0, 0, w, h); ctx.globalCompositeOperation = 'lighter'; for (const p of parts) { p.p += .012; p.x += p.vx + Math.sin(p.p) * .10; p.y += p.vy; if (p.y < -20) { p.y = h + 20; p.x = Math.random() * w } if (p.x < -30) p.x = w + 30; if (p.x > w + 30) p.x = -30; const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 7); glow.addColorStop(0, `rgba(${p.hue},${p.a})`); glow.addColorStop(.45, `rgba(${p.hue},${p.a * .22})`); glow.addColorStop(1, `rgba(${p.hue},0)`); ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 7, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = `rgba(${p.hue},${Math.min(1, p.a + .15)})`; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); } raf = requestAnimationFrame(draw); }
-  function ux() { const b = document.getElementById('subjectEnter'); if (b) b.textContent = 'Bắt đầu'; const i = document.getElementById('subjectSearch'); if (i) i.placeholder = 'Tìm môn học...'; const l = document.getElementById('subjectLoading'), r = document.getElementById('subjectRefresh'); if (l && r) { const on = !l.classList.contains('hidden'); r.classList.toggle('is-loading', on); r.setAttribute('aria-busy', on ? 'true' : 'false') } }
+  function resizeDebounced() { clearTimeout(resizeT); resizeT = setTimeout(resize, 150); }
+  function init() {
+    // Giảm số hạt tối thiểu trên màn nhỏ (điện thoại) thay vì luôn ép sàn 55 hạt.
+    const floorCount = w <= 480 ? 26 : (w <= 860 ? 40 : 55);
+    const count = Math.min(140, Math.max(floorCount, Math.floor(w * h / 14000)));
+    parts = Array.from({ length: count }, () => ({ x: Math.random() * w, y: Math.random() * h, r: .7 + Math.random() * 2.4, vx: (Math.random() - .5) * .22, vy: -.10 - Math.random() * .42, a: .18 + Math.random() * .55, p: Math.random() * Math.PI * 2, hue: Math.random() < .55 ? '255,255,255' : (Math.random() < .5 ? '255,226,170' : '135,225,255') }));
+  }
+  function stop() { running = false; cancelAnimationFrame(raf); raf = 0; if (uxInterval) { clearInterval(uxInterval); uxInterval = 0; } }
+  function draw() {
+    if (!running) return;
+    // Dừng hẳn (không chỉ tạm nghỉ) khi landing gate đã bị ẩn/đóng sau đăng nhập, tránh vòng lặp chạy nền vô thời hạn.
+    if (!gateActive()) { stop(); return; }
+    if (!ctx || document.hidden) { raf = requestAnimationFrame(draw); return; }
+    ctx.clearRect(0, 0, w, h); ctx.globalCompositeOperation = 'lighter';
+    for (const p of parts) { p.p += .012; p.x += p.vx + Math.sin(p.p) * .10; p.y += p.vy; if (p.y < -20) { p.y = h + 20; p.x = Math.random() * w } if (p.x < -30) p.x = w + 30; if (p.x > w + 30) p.x = -30; const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 7); glow.addColorStop(0, `rgba(${p.hue},${p.a})`); glow.addColorStop(.45, `rgba(${p.hue},${p.a * .22})`); glow.addColorStop(1, `rgba(${p.hue},0)`); ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 7, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = `rgba(${p.hue},${Math.min(1, p.a + .15)})`; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); }
+    raf = requestAnimationFrame(draw);
+  }
+  function ux() {
+    if (!gateActive()) { stop(); return; }
+    const b = document.getElementById('subjectEnter'); if (b) b.textContent = 'Bắt đầu'; const i = document.getElementById('subjectSearch'); if (i) i.placeholder = 'Tìm môn học...'; const l = document.getElementById('subjectLoading'), r = document.getElementById('subjectRefresh'); if (l && r) { const on = !l.classList.contains('hidden'); r.classList.toggle('is-loading', on); r.setAttribute('aria-busy', on ? 'true' : 'false') }
+  }
   function parallax() { const g = document.getElementById('hodLoginGate'); if (!g || g.__particles3d) return; g.__particles3d = true; g.addEventListener('pointermove', e => { const r = g.getBoundingClientRect(); const x = Math.max(0, Math.min(100, ((e.clientX - r.left) / r.width) * 100)); const y = Math.max(0, Math.min(100, ((e.clientY - r.top) / r.height) * 100)); g.style.setProperty('--mx', x.toFixed(1) + '%'); g.style.setProperty('--my', y.toFixed(1) + '%') }, { passive: true }); }
-  function boot() { ux(); parallax(); if (ensureCanvas()) { resize(); cancelAnimationFrame(raf); draw(); } }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot(); window.addEventListener('resize', resize, { passive: true }); setInterval(ux, 150);
+  function boot() {
+    ux(); parallax();
+    if (ensureCanvas()) {
+      resize(); cancelAnimationFrame(raf); running = true; draw();
+      if (!uxInterval) uxInterval = setInterval(ux, 150);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  window.addEventListener('resize', resizeDebounced, { passive: true });
 })();
 (function () {
   const $ = id => document.getElementById(id); function prof() { return window.HODSupabase?.getProfile?.() || null } function can() { const p = prof(); return !!p && ['admin', 'editor'].includes(p.role) && !(p.blocked || p.is_blocked || p.status === 'blocked') } function cli() { return window.HODSupabase?.__client || null } function sc() { return localStorage.getItem('learninghub_subject_code_merged_v1') || '' } function build() { editDraft.question = ($('editQuestion')?.value || '').trim(); editDraft.answer = ($('editAnswer')?.value || '').trim().toUpperCase(); const ops = {}; document.querySelectorAll('[data-opt]').forEach(t => { if ((t.value || '').trim()) ops[t.dataset.opt] = t.value.trim() }); editDraft.options = ops; editDraft.answer_text = typeof answerText === 'function' ? answerText(editDraft) : ''; editDraft.subject_code = sc() || editDraft.subject_code || ''; editDraft.images = editDraft.images || []; return editDraft } async function qid(oldQ, draft) { if (oldQ?.id) return oldQ.id; const c = cli(); if (!c) return null; const code = oldQ?.subject_code || draft?.subject_code || sc(), num = oldQ?.num || draft?.num; if (!code || !num) return null; const { data, error } = await c.from('questions').select('id').eq('subject_code', code).eq('num', num).maybeSingle(); return (error || !data) ? null : data.id } async function direct() {
@@ -2508,7 +2534,7 @@ return true;
 // ===== FINAL_LANDING_BG_MOVER_SLIGHT_PLUS_20260614 =====
 // Tăng biên độ nền landing lên nhẹ một chút, vẫn chậm và mềm.
 (function () {
-  let raf = 0;
+  let raf = 0, running = false, bootT = 0;
 
   function injectStyle() {
     let st = document.getElementById('landingBgMoverRuntimeStyle');
@@ -2585,8 +2611,13 @@ return true;
   }
 
   function frame(t) {
+    if (!running) return;
+    const gateOn = isVisible();
+    // Dừng hẳn vòng lặp (không chỉ ngừng vẽ) khi landing gate đã đóng sau đăng nhập,
+    // tránh getComputedStyle/rAF chạy vô thời hạn trong nền suốt phiên dùng app.
+    if (!gateOn) { running = false; cancelAnimationFrame(raf); raf = 0; return; }
     const bg = ensureLayer();
-    if (bg && isVisible()) {
+    if (bg) {
       const x = Math.sin(t / 4200) * 12;
       const y = Math.cos(t / 5200) * 8;
       const r = Math.sin(t / 6800) * 0.08;
@@ -2598,15 +2629,19 @@ return true;
   }
 
   function boot() {
+    if (!isVisible()) return; // không khởi động lại loop nếu landing gate không còn hiển thị
     cancelAnimationFrame(raf);
     ensureLayer();
+    running = true;
     raf = requestAnimationFrame(frame);
   }
 
+  function bootDebounced() { clearTimeout(bootT); bootT = setTimeout(boot, 150); }
+
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
-  window.addEventListener('focus', boot);
-  window.addEventListener('resize', boot, { passive: true });
+  window.addEventListener('focus', bootDebounced);
+  window.addEventListener('resize', bootDebounced, { passive: true });
 })();
 
 // ===== FINAL_SMART_SEARCH_STOPWORDS_RELEVANCE_20260614 =====
