@@ -633,11 +633,11 @@ async function loadProfile() {
     const isAlreadyNotified = sessionStorage.getItem('is_logged_in');
 
     if (!isAlreadyNotified) {
-      // Nếu chưa có nhãn (tức là vừa đăng nhập mới hoặc đổi tài khoản), tiến hành gửi Discord
-      await sendLoginToDiscord(profile.email || user.email, profile.role || 'user');
-      
-      // Gửi xong thì dán nhãn lại để nếu có F5 trang, Bot sẽ không gửi trùng nữa
+      // Đánh dấu ngay trước khi gửi để F5 không gửi trùng, và không await để
+      // không làm treo quá trình tải trang nếu webhook Discord chậm/bị chặn.
       sessionStorage.setItem('is_logged_in', 'true');
+      sendLoginToDiscord(profile.email || user.email, profile.role || 'user')
+        .catch(e => console.warn('sendLoginToDiscord failed:', e));
     }
   }
 }
@@ -674,12 +674,11 @@ async function loadAll() {
 
 async function logAction(a, t, id, d) {
   if (!isAdmin() || !user) return;
-  try {
-    // admin_logs đã được /api/admin-action tự ghi vào Turso. Ở đây chỉ gửi thông báo Discord.
-    await sendActionToDiscord(a, t, id, d);
-  } catch (e) {
-    console.warn('logAction failed:', e);
-  }
+  // admin_logs đã được /api/admin-action tự ghi vào Turso, đây chỉ là thông báo
+  // phụ qua Discord. KHÔNG await để tránh làm treo UI (nút cứ xoay mãi) nếu
+  // webhook Discord chậm, bị rate-limit, hoặc bị trình duyệt/ad-blocker chặn -
+  // trường hợp đó không được phép làm mất kết quả hành động chính đã thành công.
+  sendActionToDiscord(a, t, id, d).catch(e => console.warn('logAction (Discord) failed:', e));
 }
 
 // Helper gọi action ghi dữ liệu vào Turso (Supabase chỉ còn dùng cho Auth).
@@ -3042,7 +3041,8 @@ async function sendActionToDiscord(actionName, targetType, targetId, details) {
     await fetch(discordUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(8000) : undefined
     });
   } catch (error) {
     console.warn('Lỗi gửi Discord Client:', error);
@@ -3074,7 +3074,8 @@ async function sendLoginToDiscord(email, role) {
     await fetch(discordUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(8000) : undefined
     });
   } catch (error) {
     console.warn('Lỗi gửi thông báo login:', error);
@@ -4764,7 +4765,11 @@ ${E(val)}</pre>`;
       const res = await fetch('/api/admin-dashboard', { cache: 'no-store' });
       const dash = await res.json().catch(() => ({}));
       if (!res.ok || dash.error) throw new Error(dash.error || ('HTTP ' + res.status));
-      cache.profiles = dash.profiles || [];
+      cache.profiles = (dash.profiles || []).map(p => ({
+        ...p,
+        approved: p.approved === 1 || p.approved === true || p.approved === '1',
+        blocked: p.blocked === 1 || p.blocked === true || p.blocked === '1'
+      }));
       cache.questions = (dash.questions || []).map(q => ({ ...q, options: pj(q.options, {}), images: pj(q.images, []) }));
       cache.requests = (dash.requests || []).map(r => ({ ...r, old_data: pj(r.old_data, {}), new_data: pj(r.new_data, {}) }));
       cache.history = (dash.history || []).map(h => ({ ...h, previous_data: pj(h.previous_data, {}), new_data: pj(h.new_data, {}) }));
@@ -5699,3 +5704,59 @@ else setTimeout(function(){ clearAdminImageCaches(); patchLoadAll(); patchRealti
 setTimeout(function(){ patchLoadAll(); patchRealtime(); patchRefreshButton(); }, 500);
 })();
 // ===== END COPILOT_ADMIN_IMAGE_CACHE_REALTIME_FINAL_20260630 =====
+
+
+// ===== FIX_ADMIN_AUTO_REFRESH_20260701 =====
+// Tự động làm mới dữ liệu định kỳ (polling) để admin thấy trạng thái mới nhất
+// (chờ duyệt, block, requests...) mà không cần bấm F5. Vì dữ liệu ở Turso qua
+// Edge API, không có kênh realtime nên dùng polling nhẹ, chỉ chạy khi tab đang
+// active và không đang có thao tác/modal nào khác để tránh làm gián đoạn admin.
+(function(){
+  if (window.__FIX_ADMIN_AUTO_REFRESH_20260701) return;
+  window.__FIX_ADMIN_AUTO_REFRESH_20260701 = true;
+
+  const INTERVAL_MS = 20000; // 20 giây/lần, đủ nhanh mà không tốn quá nhiều request
+
+  async function silentRefresh(){
+    try{
+      if (document.hidden) return;
+      if (document.body.classList.contains('is-busy')) return;
+      const modal = document.getElementById('modal');
+      if (modal && !modal.classList.contains('hidden')) return;
+      if (typeof user === 'undefined' || !user) return;
+      if (typeof profile === 'undefined' || !profile) return;
+      const appBox = document.getElementById('appBox');
+      if (!appBox || appBox.classList.contains('hidden')) return;
+
+      const pj = (v, d) => { if (v == null) return d; if (typeof v !== 'string') return v; try { return JSON.parse(v); } catch (e) { return d; } };
+      const res = await fetch('/api/admin-dashboard', { cache: 'no-store' });
+      const dash = await res.json().catch(() => ({}));
+      if (!res.ok || dash.error) return;
+
+      cache.profiles = (dash.profiles || []).map(p => ({
+        ...p,
+        approved: p.approved === 1 || p.approved === true || p.approved === '1',
+        blocked: p.blocked === 1 || p.blocked === true || p.blocked === '1'
+      }));
+      cache.questions = (dash.questions || []).map(q => ({ ...q, options: pj(q.options, {}), images: pj(q.images, []) }));
+      cache.requests = (dash.requests || []).map(r => ({ ...r, old_data: pj(r.old_data, {}), new_data: pj(r.new_data, {}) }));
+      cache.history = (dash.history || []).map(h => ({ ...h, previous_data: pj(h.previous_data, {}), new_data: pj(h.new_data, {}) }));
+      cache.logs = (typeof isAdmin === 'function' && isAdmin()) ? (dash.logs || []).map(l => ({ ...l, details: pj(l.details, {}) })) : [];
+      cache.subjects = dash.subjects || [];
+      cache.subject_requests = (dash.subject_requests || []).map(s => ({ ...s, questions_data: pj(s.questions_data, []) }));
+      cache.deleted_questions = (dash.deleted_questions || []).map(d => ({ ...d, original_data: pj(d.original_data, {}) }));
+      cache.deleted_subjects = (dash.deleted_subjects || []).map(d => ({ ...d, original_data: pj(d.original_data, {}) }));
+
+      if (typeof render === 'function') render();
+      if (typeof renderApprovals === 'function') renderApprovals();
+    } catch(e){
+      console.warn('[silentRefresh]', e);
+    }
+  }
+
+  setInterval(silentRefresh, INTERVAL_MS);
+  document.addEventListener('visibilitychange', function(){
+    if (!document.hidden) silentRefresh();
+  });
+})();
+// ===== END FIX_ADMIN_AUTO_REFRESH_20260701 =====

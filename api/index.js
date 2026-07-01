@@ -225,13 +225,34 @@ export default async function handler(req) {
 
       const now = new Date().toISOString();
 
+      // Đọc registration_mode một lần, dùng chung cho cả user cũ lẫn user mới.
+      let regMode = 'approval';
+      try {
+        const setting = await db.execute({
+          sql: "select value from site_settings where key = 'registration_mode'",
+          args: []
+        });
+        if (setting.rows && setting.rows[0]) {
+          const val = setting.rows[0].value;
+          regMode = typeof val === 'string' ? val.replace(/"/g, '') : String(val);
+        }
+      } catch (e) {
+        console.warn('Cannot read registration_mode setting, default to approval:', e);
+      }
+
       if (existing.rows && existing.rows.length > 0) {
         let role = existing.rows[0].role || 'user';
         let approved = existing.rows[0].approved;
         if (approved === null || approved === undefined) approved = 0;
+        const wasApproved = approved === 1 || approved === true || approved === '1';
 
         if (isAdminUser) {
           role = 'admin';
+          approved = 1;
+        } else if (regMode === 'open' && !wasApproved) {
+          // Cổng đăng ký đang mở: không ai cần chờ duyệt, kể cả người trước đó
+          // đã bị admin thu hồi quyền (approved=0). 'blocked' vẫn giữ nguyên,
+          // không bị ảnh hưởng bởi cổng đăng ký.
           approved = 1;
         }
 
@@ -251,20 +272,6 @@ export default async function handler(req) {
         });
         return json({ data: normalizeProfile(updated.rows[0]) });
       } else {
-        let regMode = 'approval';
-        try {
-          const setting = await db.execute({
-            sql: "select value from site_settings where key = 'registration_mode'",
-            args: []
-          });
-          if (setting.rows && setting.rows[0]) {
-            const val = setting.rows[0].value;
-            regMode = typeof val === 'string' ? val.replace(/"/g, '') : String(val);
-          }
-        } catch (e) {
-          console.warn('Cannot read registration_mode setting, default to approval:', e);
-        }
-
         if (regMode === 'closed' && !isAdminUser) {
           return json({ error: 'Registration is currently closed' }, 403);
         }
@@ -371,13 +378,48 @@ export default async function handler(req) {
       const isBlocked = userProfile?.blocked === 1 || userProfile?.blocked === true;
       const isApproved = userProfile?.approved === 1 || userProfile?.approved === true;
       const isEditorOrAdmin = ['admin', 'editor'].includes(userProfile?.role);
+      const isAdminRole = userProfile?.role === 'admin';
+
+      // Các action quản lý tài khoản/hệ thống chỉ dành cho admin (không cho editor),
+      // vì editor chỉ nên có quyền thao tác nội dung câu hỏi/môn học.
+      const ADMIN_ONLY_ACTIONS = new Set([
+        'toggle_user_block',
+        'set_user_role',
+        'approve_user_registration',
+        'reject_user_registration',
+        'revoke_user_approval',
+        'set_registration_mode',
+        'approve_subject_request',
+        'reject_subject_request',
+        'permanent_delete_question'
+      ]);
 
       const isAllowedAction = action === 'add_subject_request'
         ? (!isBlocked && isApproved)
-        : (isConfiguredAdmin || (!isBlocked && isApproved && isEditorOrAdmin));
+        : ADMIN_ONLY_ACTIONS.has(action)
+          ? (isConfiguredAdmin || (!isBlocked && isApproved && isAdminRole))
+          : (isConfiguredAdmin || (!isBlocked && isApproved && isEditorOrAdmin));
 
       if (!isAllowedAction) {
         return json({ error: 'Unauthorized.' }, 403);
+      }
+
+      // Chặn thao tác nhắm vào chính tài khoản admin cấu hình (ADMIN_EMAIL) từ người khác,
+      // tránh việc admin bị block/đổi role/thu hồi quyền bởi một tài khoản admin khác hoặc lỗi client.
+      if (['toggle_user_block', 'set_user_role', 'revoke_user_approval', 'reject_user_registration'].includes(action)) {
+        const targetId = payload?.target_user_id;
+        if (targetId && String(targetId) !== String(user_id)) {
+          const targetRes = await db.execute({
+            sql: 'select email, role from profiles where id = ?',
+            args: [targetId]
+          });
+          const targetProfile = targetRes.rows?.[0];
+          const targetIsConfiguredAdmin = adminEmail && targetProfile?.email &&
+            String(targetProfile.email).toLowerCase().trim() === adminEmail;
+          if (targetIsConfiguredAdmin) {
+            return json({ error: 'Không thể thao tác trên tài khoản admin gốc.' }, 403);
+          }
+        }
       }
 
       const adminEmailStr = userProfile?.email || 'N/A';
