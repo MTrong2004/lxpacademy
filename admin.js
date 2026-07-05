@@ -12,7 +12,7 @@ NHÓM CHÍNH TRONG admin.js
 - Dùng cho: đăng nhập Google, khởi động admin, đổi tab, nhớ tab đang mở.
 
 3) Load dữ liệu
-- Tìm: loadAll, safeLoad, loadLightTables, loadQuestionPage, loadSubjects
+- Tìm: loadAll (bản active ở COPILOT_ADMIN_RELOAD_FIX_20260630), __fetchAdminDashboardJSON, __adminSyncQuestionPage, loadQuestionPage, loadSubjects
 - Dùng cho: tải profiles, questions, edit_requests, history, logs, phân trang câu hỏi.
 
 4) Render tổng quan
@@ -80,8 +80,10 @@ GỢI Ý AI
 - NOTE_CLEANUP_20260630: Đã rà soát dọn dẹp — admin.js không còn dead code/console.log debug. Các comment "(... removed — superseded by ...)" được giữ lại có chủ đích để đánh dấu hàm cũ đã bị thay thế, tránh AI sau thêm lại.
 - QUY_ƯỚC_CẤU_TRÚC: File là chuỗi bản vá theo ngày, bọc bởi marker "// ===== TÊN_NGÀY =====". KHÔNG xóa marker (là điểm neo tìm kiếm theo nhóm ở trên). Khi sửa, tìm marker liên quan và sửa trong block đó, ưu tiên hợp nhất thay vì vá chồng.
 - KIẾN_TRÚC_20260701 (QUAN TRỌNG): Supabase CHỈ dùng Auth. Mọi dữ liệu admin đọc qua GET /api/admin-dashboard (trả profiles/questions/requests/history/logs/subjects/subject_requests/trash — nhớ parse JSON các cột text), ghi qua helper adminAction(action,payload) → POST /api/admin-action. KHÔNG dùng client.from(...) để đọc/ghi nữa.
-- NHIỀU HÀM BỊ OVERRIDE (định nghĩa sau thắng): khi tìm hàm active, lấy bản window.X = ... CUỐI CÙNG trong file (vd loadAll, approve, saveSubjectAdmin, loadSubjectsAdmin, viewReq, revokeApproval...). CODE CHẾT còn sót dùng client.from(...) nằm trong các bản CŨ đã bị đè (loadAll #1 ~636, approve ~907, setRegistrationMode cũ, saveSubjectAdmin ~4737) + helper deleteRowById/fetchAllRows chỉ phục vụ code cũ — KHÔNG dựa vào, KHÔNG hồi sinh.
+- NHIỀU HÀM BỊ OVERRIDE (định nghĩa sau thắng): khi tìm hàm active, lấy bản window.X = ... CUỐI CÙNG trong file. CLEANUP_20260705: đã XÓA các bản chết bị đè (loadAll cũ x3, approve/viewReq/viewHistory/viewQuestion/compareHTML gốc, renderUsers cũ x3, renderApprovals/renderQuestions cũ, loadRegistrationMode/setRegistrationMode/revokeApproval cũ, loadSubjectRequests cũ, mobile-lite loadAll, MANUAL_ADMIN_RELOAD_ONLY, safeLoad/fetchAllRows/loadLightTables) — mỗi chỗ có comment "removed — superseded by <MARKER>" trỏ tới bản active. Chuỗi saveSubjectAdmin/openEditSubjectAdmin/loadSubjectsAdmin CÒN SỐNG dạng delegation (bản sau gọi bản trước cho case đổi mã môn) — KHÔNG xóa các bản cũ của nhóm môn học. QUY TẮC: gọi hàm chéo block phải qua window.X, không gọi thẳng hàm local của block cũ.
 - compareHTML/viewReq render ẢNH THẬT từ cache Turso. logAction chỉ còn gửi Discord (admin_logs do API tự ghi). Xem thêm [[lxpacademy-data-source-split]] trong memory.
+- NOTE_20260705: GET /api/admin-dashboard đã gộp qua window.__fetchAdminDashboardJSON (single-flight + TTL 4s, POST /api/admin-action tự xóa cache) — F5 chỉ còn 1 request thay vì 5. Tab Phê duyệt: block ACCESS_APPROVAL_ADMIN phải gọi window.renderApprovals (bản FINAL có avatar), không gọi hàm local. renderRequests cập nhật countAll/countPending/countApproved/countRejected.
+- NOTE_20260705b: Polling 20s (FIX_ADMIN_AUTO_REFRESH) chỉ re-render khi JSON dashboard đổi (so sánh __adminDashRenderedText). Tab Câu hỏi: loadQuestionPage ghi vào STATE.pageRows (KHÔNG đè cache.questions), loadAll gọi __adminSyncQuestionPage để nạp STATE.subjects + trang hiện tại; Turso mock đã hỗ trợ range/count/ilike/multi-order. approveSubjectRequest/rejectSubjectRequest đọc cache.subject_requests (mảng subjectRequests local cũ không còn ai đổ dữ liệu → từng luôn báo "Không tìm thấy yêu cầu").
 AI_ADMIN_JS_MAP_END */
 
 const CONFIG = {
@@ -177,6 +179,59 @@ function hideProgress() {
   if(el) el.classList.add('hidden');
 }
 
+// ===== FIX_ADMIN_DASHBOARD_DEDUP_20260705 =====
+// Gộp các lần gọi GET /api/admin-dashboard trùng nhau (trước đây lúc F5 bị gọi ~5 lần:
+// init loadAll + loadSubjectRequests tự fetch + fallback 900ms + timer 1200ms).
+// Single-flight + cache 4 giây. POST /api/admin-action xong sẽ tự xóa cache
+// để dữ liệu sau khi duyệt/sửa luôn mới.
+(function(){
+  if (window.__FIX_ADMIN_DASHBOARD_DEDUP_20260705) return;
+  window.__FIX_ADMIN_DASHBOARD_DEDUP_20260705 = true;
+
+  const TTL_MS = 4000;
+  let inflight = null, lastResult = null, lastAt = 0;
+
+  window.__adminDashboardBusy = function(){ return !!inflight; };
+  window.__adminDashboardLoadedOnce = false;
+  window.__invalidateAdminDashboardCache = function(){ lastResult = null; lastAt = 0; };
+
+  window.__fetchAdminDashboardJSON = async function(force){
+    if (!force && lastResult && (Date.now() - lastAt) < TTL_MS) return lastResult;
+    if (inflight) return inflight;
+    inflight = (async () => {
+      try {
+        const res = await fetch('/api/admin-dashboard', { cache: 'no-store' });
+        const text = await res.text().catch(() => '');
+        let dash = {};
+        try { dash = JSON.parse(text) || {}; } catch (e) {}
+        // text dùng để so sánh "dữ liệu có đổi không" (polling bỏ qua re-render khi không đổi).
+        const out = { ok: res.ok, status: res.status, dash, text };
+        if (res.ok && !dash.error) {
+          lastResult = out;
+          lastAt = Date.now();
+          window.__adminDashboardLoadedOnce = true;
+        }
+        return out;
+      } finally { inflight = null; }
+    })();
+    return inflight;
+  };
+
+  const origFetch = window.fetch.bind(window);
+  window.fetch = function(input, init){
+    const p = origFetch(input, init);
+    try {
+      const u = typeof input === 'string' ? input : (input && input.url) || '';
+      const m = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+      if (m === 'POST' && u.indexOf('/api/admin-action') !== -1) {
+        p.then(function(){ window.__invalidateAdminDashboardCache(); }, function(){});
+      }
+    } catch (e) {}
+    return p;
+  };
+})();
+// ===== END FIX_ADMIN_DASHBOARD_DEDUP_20260705 =====
+
 function createTursoClientMock(supaClient) {
   let localCache = null;
   let cachePromise = null;
@@ -185,9 +240,9 @@ function createTursoClientMock(supaClient) {
     if (cachePromise) return cachePromise;
     cachePromise = (async () => {
       try {
-        const res = await fetch('/api/admin-dashboard?t=' + Date.now(), { cache: 'no-store' });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
+        const r = await window.__fetchAdminDashboardJSON();
+        const data = r.dash || {};
+        if (!r.ok || data.error) throw new Error(data.error || ('HTTP ' + r.status));
         normalizeDashboardData(data);
         localCache = data;
         return data;
@@ -248,9 +303,11 @@ function createTursoClientMock(supaClient) {
     let selectCols = '';
     let filters = [];
     let payload = null;
-    let orderCol = '';
-    let orderOpts = {};
+    let orderCols = [];
     let limitVal = null;
+    let rangeFrom = null;
+    let rangeTo = null;
+    let lastCount = null;
     let singleMode = false;
     let maybeSingleMode = false;
 
@@ -260,6 +317,11 @@ function createTursoClientMock(supaClient) {
           queryType = 'select';
         }
         selectCols = cols || '*';
+        return chain;
+      },
+      range: (from, to) => {
+        rangeFrom = Number(from) || 0;
+        rangeTo = Number(to);
         return chain;
       },
       eq: (col, val) => {
@@ -279,8 +341,7 @@ function createTursoClientMock(supaClient) {
         return chain;
       },
       order: (col, opts) => {
-        orderCol = col;
-        orderOpts = opts || {};
+        orderCols.push({ col, opts: opts || {} });
         return chain;
       },
       limit: (val) => {
@@ -317,7 +378,7 @@ function createTursoClientMock(supaClient) {
       then: async (onfulfilled, onrejected) => {
         try {
           const resData = await executeQuery();
-          return onfulfilled({ data: resData, error: null });
+          return onfulfilled({ data: resData, count: lastCount, error: null });
         } catch (err) {
           console.error('[Mock Execution Error]', err);
           if (onrejected) return onrejected({ data: null, error: err });
@@ -356,11 +417,11 @@ function createTursoClientMock(supaClient) {
                 const parts = exp.split('.');
                 const colName = parts[0];
                 const op = parts[1];
-                const target = parts[2];
+                const target = parts.slice(2).join('.');
                 if (op === 'eq') return String(x[colName] || '').toUpperCase() === String(target || '').toUpperCase();
-                if (op === 'like') {
+                if (op === 'like' || op === 'ilike') {
                   const pattern = String(target || '').replace(/%/g, '').toUpperCase();
-                  return String(x[colName] || '').toUpperCase().startsWith(pattern);
+                  return String(x[colName] || '').toUpperCase().includes(pattern);
                 }
                 return false;
               });
@@ -370,18 +431,26 @@ function createTursoClientMock(supaClient) {
           }
         }
 
-        if (orderCol) {
-          const asc = orderOpts.ascending !== false;
+        if (orderCols.length) {
           filtered.sort((a, b) => {
-            const va = a[orderCol], vb = b[orderCol];
-            if (va < vb) return asc ? -1 : 1;
-            if (va > vb) return asc ? 1 : -1;
+            for (const o of orderCols) {
+              const asc = o.opts.ascending !== false;
+              const va = a[o.col], vb = b[o.col];
+              if (va < vb) return asc ? -1 : 1;
+              if (va > vb) return asc ? 1 : -1;
+            }
             return 0;
           });
         }
 
+        // Tổng số dòng SAU khi lọc, TRƯỚC khi cắt trang — cho select(..., {count:'exact'}).
+        lastCount = filtered.length;
+
         if (limitVal) {
           filtered = filtered.slice(0, limitVal);
+        }
+        if (rangeFrom !== null) {
+          filtered = filtered.slice(rangeFrom, Number.isFinite(rangeTo) ? rangeTo + 1 : undefined);
         }
 
         if (tableName === 'site_settings') {
@@ -564,7 +633,7 @@ function bind() {
   $('logoutBtn').onclick = logout;
   $('denyLogout').onclick = logout;
   $('openStudy').onclick = () => open('index.html', '_blank');
-  $('refreshBtn').onclick = loadAll;
+  $('refreshBtn').onclick = () => window.loadAll?.();
   $('exportBtn').onclick = exportAll;
   $('search').oninput = function(){ render(); if(typeof renderApprovals === 'function' && document.getElementById('approvals')?.classList.contains('active')) renderApprovals(); };
   $('closeModal').onclick = closeModal;
@@ -642,35 +711,8 @@ async function loadProfile() {
   }
 }
 
-async function safeLoad(name, promise, silent = false) {
-  const r = await promise;
-  if (r.error) {
-    if (!silent) err('Lỗi bảng ' + name + ': ' + (r.error.message || 'Unknown error'));
-    return [];
-  }
-  return r.data || [];
-}
-
-async function loadAll() {
-  clearErr();
-  setBusy(true);
-  if (client.clearCache) client.clearCache();
-  try {
-    cache.profiles = await safeLoad('profiles', client.from('profiles').select('*').order('created_at', { ascending: false }));
-    cache.questions = await safeLoad('questions', client.from('questions').select('id,num,subject_code,question,options,answer,images,is_active,updated_at,created_at,has_image,error_risk,error_risk_reason').order('num', { ascending: true }));
-    cache.requests = await safeLoad('edit_requests', client.from('edit_requests').select('*').order('created_at', { ascending: false }));
-    cache.history = await safeLoad('question_history', client.from('question_history').select('*').order('created_at', { ascending: false }).limit(500));
-    cache.logs = isAdmin()
-      ? await safeLoad('admin_logs', client.from('admin_logs').select('*').order('created_at', { ascending: false }).limit(500))
-      : [];
-    render();
-    if(typeof loadSubjectRequests === 'function') loadSubjectRequests();
-    if(typeof loadRegistrationMode === 'function') loadRegistrationMode();
-    toast('Đã tải');
-  } finally {
-    setBusy(false);
-  }
-}
+// (safeLoad + loadAll bản gốc client.from removed — bản active duy nhất của loadAll nằm ở
+//  COPILOT_ADMIN_RELOAD_FIX_20260630, được bọc thêm bởi các wrapper giữ-tab/ẩn-menu/xóa-cache-ảnh phía sau.)
 
 async function logAction(a, t, id, d) {
   if (!isAdmin() || !user) return;
@@ -794,35 +836,23 @@ function labelField(f) {
 }
 
 function renderRequests() {
-  const arr = cache.requests.filter(r => (activeStatus === 'all' || r.status === activeStatus) && match(safe(r)));
+  // Cập nhật số đếm trên các nút lọc (trước đây countAll/countPending/... không được nối, đứng im ở 0).
+  const all = cache.requests || [];
+  const cnt = { pending: 0, approved: 0, rejected: 0 };
+  all.forEach(r => { if (cnt[r.status] !== undefined) cnt[r.status]++; });
+  const setCount = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+  setCount('countAll', all.length);
+  setCount('countPending', cnt.pending);
+  setCount('countApproved', cnt.approved);
+  setCount('countRejected', cnt.rejected);
+
+  const arr = all.filter(r => (activeStatus === 'all' || r.status === activeStatus) && match(safe(r)));
   $('requestList').innerHTML = arr.map(reqHTML).join('') || '<p class=muted>Không có.</p>';
 }
 
-function renderUsers() {
-  const arr = cache.profiles.filter(p => match(`${p.email || ''} ${p.role || ''} ${p.id}`));
-  $('userList').innerHTML = '<div class="userRow muted tableHead"><b>Email</b><b>Role</b><b>TT</b><b>Login</b><b>Hành động</b></div>' + arr.map(p => {
-    const acts = isAdmin()
-      ? `<button class="act" onclick="viewUserEdits('${p.id}')">Lịch sử</button>
-        <button class="act ${isBlocked(p) ? 'ok' : 'bad'}" onclick="toggleBlock('${p.id}',${!isBlocked(p)})">${isBlocked(p) ? 'Unblock' : 'Block'}</button>
-        <button class="act warn" onclick="setRole('${p.id}','${p.role === 'editor' ? 'user' : 'editor'}')">${p.role === 'editor' ? 'Gỡ editor' : 'Cho editor'}</button>
-        <button class="act warn" onclick="setRole('${p.id}','${p.role === 'admin' ? 'user' : 'admin'}')">${p.role === 'admin' ? 'Gỡ admin' : 'Cho admin'}</button>`
-      : `<button class="act" onclick="viewUserEdits('${p.id}')">Lịch sử</button>`;
-    return `<div class=userRow>
-      <div><div class=mail>${esc(p.email || p.id)}</div><div class=uid>${esc(p.id)}</div></div>
-      <div>${badge(p.role || 'user')}</div>
-      <div>${isBlocked(p) ? badge('blocked') : badge('active')}</div>
-      <div>${esc(date(lastLogin(p)))}</div>
-      <div class=actions>${acts}</div>
-    </div>`;
-  }).join('');
-}
-
-function renderHistory() {
-  $('historyList').innerHTML = cache.history.filter(h => match(safe(h))).map(h => `<div class=item>
-    <div class=head><b>Câu ${esc(h.question_id)}</b><span class=muted>${esc(date(h.created_at))}</span></div>
-    <div class=actions><button class=act onclick="viewHistory(${h.id || 0})">Trước/sau</button></div>
-  </div>`).join('') || '<p class=muted>Chưa có.</p>';
-}
+// (renderUsers bản gốc removed — bản active ở FINAL_APPROVAL_UI_AND_REMOVE_USER_NOTE_20260625,
+//  bọc bởi COPILOT_HIDE_USERS_FROM_EDITOR_20260630. renderHistory bản gốc removed — bản active ở
+//  FINAL_ADMIN_HISTORY_SHOW_EDITOR_EMAIL_20260613.)
 
 function logHTML(l) {
   return `<div class=item><div class=head><b>${esc(l.action)}</b><span class=muted>${esc(date(l.created_at))}</span></div><p class=muted>${esc(l.admin_email || '')} · ${esc(l.target_type || '')} ${esc(l.target_id || '')}</p></div>`;
@@ -834,14 +864,7 @@ function renderLogs() {
     : '<p class=muted>Editor không có quyền xem admin logs.</p>';
 }
 
-function renderQuestions() {
-  $('questionList').innerHTML = cache.questions.filter(q => match(`${q.num || ''} ${q.question || ''} ${q.answer || ''}`)).slice(0, 100).map(q => `<div class=item>
-    <div class=head><b>Câu ${esc(q.num || q.id)}</b>${q.is_active === false ? badge('hidden') : badge('active')}</div>
-    <p>${esc(q.question)}</p>
-    <p class=muted>Đáp án: ${esc(q.answer)}</p>
-    <div class=actions><button class=act onclick="viewQuestion(${q.id})">Xem</button><button class="act warn" onclick="toggleQuestion(${q.id},${q.is_active === false})">${q.is_active === false ? 'Hiện' : 'Ẩn'}</button></div>
-  </div>`).join('') || '<p class=muted>Không có.</p>';
-}
+// (renderQuestions bản gốc removed — bản active ở COPILOT_ADMIN_QUESTION_PAGE_FINAL_OVERRIDE_20260627)
 
 function openModal(t, b) {
   $('modalTitle').textContent = t;
@@ -859,62 +882,10 @@ function formatValue(v) {
   return String(v ?? '');
 }
 
-function compareHTML(oldData, newData) {
-  const fields = ['question', 'options', 'answer', 'images'].filter(f => shouldShowAdminDiffField(f, oldData || {}, newData || {}));
-  if (!fields.length) {
-    return `<div class="diffList compactDiffList"><p class="muted compactNoDiff">Không có nội dung cần hiển thị.</p></div>`;
-  }
-  const imgSrc = im => typeof im === 'string' ? im : (im && (im.secure_url || im.src || im.url || im.public_url || im.image_url)) || '';
-  const imgsHTML = v => {
-    let arr = v;
-    if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch (e) { arr = arr ? [arr] : []; } }
-    if (!Array.isArray(arr)) arr = arr ? [arr] : [];
-    const srcs = arr.map(imgSrc).filter(s => /^https?:\/\//i.test(s));
-    if (!srcs.length) return '<span class="muted">Không có ảnh</span>';
-    return `<div style="display:flex;flex-wrap:wrap;gap:8px">${srcs.map(s => `<a href="${esc(s)}" target="_blank" rel="noopener"><img src="${esc(s)}" style="max-width:120px;max-height:120px;border-radius:8px;border:1px solid rgba(200,169,110,.3)"></a>`).join('')}</div>`;
-  };
-  return `<div class="diffList compactDiffList">${fields.map(f => {
-    const isImg = f === 'images';
-    const before = isImg ? imgsHTML(oldData?.[f]) : formatValue(oldData?.[f]);
-    const after = isImg ? imgsHTML(newData?.[f]) : formatValue(newData?.[f]);
-    const changed = isImg ? (formatValue(oldData?.[f]) !== formatValue(newData?.[f])) : (before !== after);
-    if (isImg) {
-      return `<section class="diffBlock ${changed ? 'changed' : ''} compactDiffBlock">
-        <h3>${esc(labelField(f))}<span>${changed ? 'Đã đổi' : 'Không đổi'}</span></h3>
-        <div class="compare compactCompare">
-          <div class="oldValue"><b>Trước</b><br>${before}</div>
-          <div class="newValue ${changed ? 'changedValue' : ''}"><b>Sau</b><br>${after}</div>
-        </div>
-      </section>`;
-    }
-    return `<section class="diffBlock ${changed ? 'changed' : ''} compactDiffBlock">
-      <h3>${esc(labelField(f))}<span>${changed ? 'Đã đổi' : 'Không đổi'}</span></h3>
-      <div class="compare compactCompare">
-        <pre class="oldValue"><b>Trước</b>
-${esc(before)}</pre>
-        <pre class="newValue ${changed ? 'changedValue' : ''}"><b>Sau</b>
-${esc(after)}</pre>
-      </div>
-    </section>`;
-  }).join('')}</div>`;
-}
+// (compareHTML bản gốc removed — bản active ở FIX_ADMIN_REQUEST_IMAGES_FORCE_20260628, render ảnh thật từ cache Turso.)
 
-function viewReq(id) {
-  const r = cache.requests.find(x => x.id === id);
-  if (!r) return;
-  const oldData = r.old_data || getQuestionByReq(r) || {};
-  openModal(`Yêu cầu sửa câu ${questionLabel(r)}`, compareHTML(oldData, r.new_data || {}));
-}
-
-function viewHistory(id) {
-  const h = cache.history.find(x => (x.id || 0) === id) || cache.history[0];
-  if (h) openModal('Lịch sử', compareHTML(h.previous_data || {}, h.new_data || {}));
-}
-
-function viewQuestion(id) {
-  const q = cache.questions.find(x => x.id === id);
-  if (q) openModal(`Câu ${q.num || q.id}`, `<pre class=raw>${esc(safe(q))}</pre>`);
-}
+// (viewReq/viewHistory/viewQuestion bản gốc removed — bản active: viewReq ở FIX_ADMIN_REQUEST_IMAGES_FORCE_20260628,
+//  viewHistory ở COPILOT_ADMIN_RELOAD_DATA_GUARD_20260628, viewQuestion ở COPILOT_ADMIN_QUESTION_PAGE_FINAL_OVERRIDE_20260627.)
 
 function viewUserEdits(uid) {
   const req = cache.requests.filter(r => r.user_id === uid);
@@ -922,47 +893,7 @@ function viewUserEdits(uid) {
   openModal('Lịch sử sửa user', (req.map(reqHTML).join('') || '<p class=muted>Chưa có yêu cầu.</p>') + '<h3>Đã duyệt</h3>' + (his.map(h => `<div class=item>Câu ${esc(h.question_id)} - ${esc(date(h.created_at))}</div>`).join('') || '<p class=muted>Chưa có.</p>'));
 }
 
-async function approve(id) {
-  const r = cache.requests.find(x => x.id === id);
-  if (!r || r.status !== 'pending') return;
-  if (!user) return alert('Chưa đăng nhập.');
-  if (!confirm(`Duyệt thay đổi cho câu ${questionLabel(r)}?`)) return;
-
-  const q = r.new_data || {};
-  setBusy(true, 'Đang duyệt...');
-  try {
-    const u = await client.from('questions').update({
-      question: q.question,
-      options: q.options || {},
-      answer: q.answer,
-      answer_text: q.answer_text,
-      images: q.images || []
-    }).eq('id', r.question_id);
-    if (u.error) return alert(u.error.message);
-
-    const reqUpdate = await client.from('edit_requests').update({
-      status: 'approved',
-      reviewed_at: new Date().toISOString(),
-      reviewed_by: user.id
-    }).eq('id', id);
-    if (reqUpdate.error) console.warn('Không cập nhật được request:', reqUpdate.error);
-
-    const histInsert = await client.from('question_history').insert({
-      question_id: r.question_id,
-      request_id: r.id,
-      previous_data: r.old_data,
-      new_data: r.new_data,
-      changed_by: r.user_id,
-      approved_by: user.id
-    });
-    if (histInsert.error) console.warn('Không lưu được lịch sử:', histInsert.error);
-
-    await logAction('approve_request', 'edit_requests', id, {});
-    await loadAll();
-  } finally {
-    setBusy(false);
-  }
-}
+// (approve bản gốc client.from removed — bản active ở COPILOT_ADMIN_IMAGE_PERSIST_TURSO_20260630, gọi thẳng /api/admin-action.)
 
 async function rejectReq(id) {
   const r = cache.requests.find(x => x.id === id);
@@ -1074,23 +1005,7 @@ function safeFilePart(s) {
   return String(s || 'all').replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '') || 'all';
 }
 
-async function fetchAllRows(table, select = '*', applyQuery) {
-  const pageSize = 1000;
-  let from = 0;
-  let rows = [];
-  while (true) {
-    let q = client.from(table).select(select);
-    if (typeof applyQuery === 'function') q = applyQuery(q);
-    q = q.range(from, from + pageSize - 1);
-    const { data, error } = await q;
-    if (error) throw error;
-    const batch = data || [];
-    rows = rows.concat(batch);
-    if (batch.length < pageSize) break;
-    from += pageSize;
-  }
-  return rows;
-}
+// (fetchAllRows removed — chỉ phục vụ code export cũ; export hiện dùng fetchQuestionsForExport/fetchProfilesForExport.)
 
 async function fetchQuestionsForExport(subjectCode) {
   // Nguồn Turso: GET /api/questions (options/images đã parse, đúng schema import lại được).
@@ -1178,7 +1093,8 @@ async function downloadExportFile(type, subjectCode = 'all') {
 }
 
 
-Object.assign(window, { approve, rejectReq, toggleBlock, setRole, toggleQuestion, viewReq, viewHistory, viewQuestion, viewUserEdits });
+// (approve/viewReq/viewHistory/viewQuestion không còn export ở đây — các bản active tự gán window.X trong block của chúng.)
+Object.assign(window, { rejectReq, toggleBlock, setRole, toggleQuestion, viewUserEdits });
 
 
 // ===== F5_SUPABASE_MICRO_CACHE_20260629 =====
@@ -1477,33 +1393,8 @@ document.addEventListener('DOMContentLoaded', init);
     }
   };
 
-  window.setQuestionSubjectFilter = function(code){
-    activeQuestionSubject = code || 'all';
-    localStorage.setItem('admin_question_subject_filter_v1', activeQuestionSubject);
-    renderQuestions();
-  };
-
-  window.renderQuestions = renderQuestions = function(){
-    const subjects = subjectsFromQuestions();
-    if(activeQuestionSubject !== 'all' && !subjects.includes(activeQuestionSubject)) activeQuestionSubject = 'all';
-    const tabs = `<div class="questionSubjectTabs">
-      <button class="subjectTab ${activeQuestionSubject==='all'?'active':''}" onclick="setQuestionSubjectFilter('all')">Tất cả <b>${subjectCount('all')}</b></button>
-      ${subjects.map(s => `<button class="subjectTab ${activeQuestionSubject===s?'active':''}" onclick="setQuestionSubjectFilter('${esc(s)}')">${esc(s)} <b>${subjectCount(s)}</b></button>`).join('')}
-    </div>`;
-    const toolbar = `<div class="questionToolbar">
-      <div>${tabs}</div>
-      <button class="act ok addQuestionBtn" onclick="openAddQuestionAdmin()">+ Thêm câu hỏi</button>
-    </div>`;
-    const visibleSubjectSet = new Set(subjectsFromQuestions());
-    const arr = (cache.questions || [])
-      .filter(q => visibleSubjectSet.has(q.subject_code || 'HOD102'))
-      .filter(q => activeQuestionSubject === 'all' || (q.subject_code || 'HOD102') === activeQuestionSubject)
-      .filter(q => match(`${q.subject_code || ''} ${q.num || ''} ${q.question || ''} ${q.answer || ''}`))
-      .sort((a,b) => String(a.subject_code || '').localeCompare(String(b.subject_code || '')) || (Number(a.num)||0) - (Number(b.num)||0))
-      .slice(0, 300);
-
-    $('questionList').innerHTML = toolbar + `<div class="questionResultNote">Đang hiển thị ${arr.length} câu${activeQuestionSubject !== 'all' ? ' của môn ' + esc(activeQuestionSubject) : ''}.</div>` + html;
-  };
+  // (setQuestionSubjectFilter/renderQuestions bản cũ removed — bản active ở COPILOT_ADMIN_QUESTION_PAGE_FINAL_OVERRIDE_20260627.
+  //  Block này chỉ còn giữ phần Thêm câu hỏi + Xóa câu hỏi đang dùng.)
 })();
 
 
@@ -1544,52 +1435,20 @@ document.addEventListener('DOMContentLoaded', init);
     if(eall) eall.textContent = all;
   }
 
+  // LƯU Ý: bản renderApprovals CÓ AVATAR nằm ở block FINAL_APPROVAL_UI (định nghĩa sau, thắng).
+  // Mọi chỗ trong block này phải gọi qua window.renderApprovals, nếu gọi thẳng hàm local
+  // (bản cũ không avatar) sẽ đè mất giao diện mới — đây từng là lỗi mất ảnh đại diện tab Phê duyệt.
+  function callRenderApprovals(){ window.renderApprovals?.(); }
+
   window.filterApprovals = function(f){
     approvalFilter = f;
     document.querySelectorAll('.approvalFilter').forEach(b => {
       b.classList.toggle('active', b.dataset.af === f);
     });
-    renderApprovals();
+    callRenderApprovals();
   };
 
-  window.renderApprovals = renderApprovals;
-  function renderApprovals(){
-    renderApprovalCounts();
-    updateApprovalBadge();
-
-    const el = document.getElementById('approvalList');
-    if(!el) return;
-
-    let arr = cache.profiles || [];
-    if(approvalFilter === 'pending') arr = arr.filter(p => p.approved === false);
-    else if(approvalFilter === 'approved') arr = arr.filter(p => p.approved !== false);
-
-    const k = (document.getElementById('search')?.value || '').trim().toLowerCase();
-    if(k) arr = arr.filter(p => `${p.email || ''} ${p.id || ''}`.toLowerCase().includes(k));
-
-    if(!arr.length){
-      el.innerHTML = '<p class="muted">' + (approvalFilter === 'pending' ? 'Không có tài khoản nào đang chờ duyệt.' : 'Không có.') + '</p>';
-      return;
-    }
-
-    el.innerHTML = arr.map(p => {
-      const isPending = p.approved === false;
-      const roleBadge = `<span class="badge ${esc(p.role || 'user')}">${esc(p.role || 'user')}</span>`;
-      const statusBadge = isPending
-        ? '<span class="badge rejected">Chờ duyệt</span>'
-        : '<span class="badge approved">Đã duyệt</span>';
-      const actions = isPending
-        ? `<button class="act ok" onclick="approveUser('${esc(p.id)}')">Phê duyệt</button><button class="act bad" onclick="rejectUser('${esc(p.id)}')">Từ chối & xóa</button>`
-        : `<button class="act warn" onclick="revokeApproval('${esc(p.id)}')">Thu hồi quyền</button>`;
-      return `<div class="approvalCard ${isPending ? 'isPending' : ''}">
-        <div class="approvalCardInfo">
-          <div class="mail">${esc(p.email || p.id)}</div>
-          <div class="meta">${roleBadge} ${statusBadge} · Đăng ký: ${esc(date(p.created_at))} · Login: ${esc(date(p.last_login || p.created_at))}</div>
-        </div>
-        <div class="approvalCardActions">${isAdmin() ? actions : '<span class="muted">Chỉ admin</span>'}</div>
-      </div>`;
-    }).join('');
-  }
+  // (renderApprovals bản cũ không avatar removed — bản active ở FINAL_APPROVAL_UI_AND_REMOVE_USER_NOTE_20260625.)
 
   window.approveUser = async function(uid){
     if(!isAdmin()) return alert('Chỉ admin.');
@@ -1601,7 +1460,7 @@ document.addEventListener('DOMContentLoaded', init);
       if(!await adminAction('approve_user_registration', { target_user_id: uid })) return;
       await logAction('approve_user', 'profiles', uid, { email: p.email });
       p.approved = true;
-      renderApprovals();
+      callRenderApprovals();
       toast('Đã phê duyệt ' + (p.email || uid));
     }finally{ setBusy(false); }
   };
@@ -1616,75 +1475,13 @@ document.addEventListener('DOMContentLoaded', init);
       if(!await adminAction('reject_user_registration', { target_user_id: uid })) return;
       await logAction('reject_user', 'profiles', uid, { email: p.email });
       cache.profiles = cache.profiles.filter(x => x.id !== uid);
-      renderApprovals();
+      callRenderApprovals();
       toast('Đã từ chối ' + (p.email || uid));
     }finally{ setBusy(false); }
   };
 
-  window.revokeApproval = async function(uid){
-    if(!isAdmin()) return alert('Chỉ admin.');
-    const p = (cache.profiles || []).find(x => x.id === uid);
-    if(!p) return alert('Không tìm thấy user.');
-    if(p.role === 'admin') return alert('Không thể thu hồi quyền truy cập của admin.');
-    if(!confirm('Thu hồi quyền truy cập của: ' + (p.email || uid) + '?\n\nUser sẽ cần được phê duyệt lại.')) return;
-    setBusy(true, 'Đang thu hồi...');
-    try{
-      if(!await adminAction('revoke_user_approval', { target_user_id: uid })) return;
-      await logAction('revoke_approval', 'profiles', uid, { email: p.email });
-      p.approved = false;
-      renderApprovals();
-      toast('Đã thu hồi quyền ' + (p.email || uid));
-    }finally{ setBusy(false); }
-  };
-
-  // === Registration Gate Toggle ===
-  let registrationMode = 'approval';
-
-  window.loadRegistrationMode = loadRegistrationMode;
-  async function loadRegistrationMode(){
-    try{
-      const res = await fetch('/api/settings', { cache: 'no-store' });
-      const out = await res.json().catch(() => ({}));
-      if(!res.ok || out.error) throw new Error(out.error || ('HTTP ' + res.status));
-      registrationMode = String(out.registration_mode || 'approval').replace(/"/g,'').trim() || 'approval';
-    }catch(e){
-      console.warn('Load reg mode error:', e);
-      var status = document.getElementById('registrationGateStatus');
-      if(status) status.innerHTML = '<span style="color:#ef5350">Lỗi tải trạng thái cổng đăng ký</span>';
-      return;
-    }
-    updateRegistrationGateUI();
-  }
-
-  function updateRegistrationGateUI(){
-    const status = document.getElementById('registrationGateStatus');
-    const openBtn = document.getElementById('regGateOpen');
-    const approvalBtn = document.getElementById('regGateApproval');
-    const closedBtn = document.getElementById('regGateClosed');
-    if(status){
-      if(registrationMode === 'open') status.innerHTML = '<span style="color:#66bb6a;font-weight:900">MỞ</span> — Ai đăng ký cũng vào được ngay, không cần duyệt';
-      else if(registrationMode === 'closed') status.innerHTML = '<span style="color:#ef5350;font-weight:900">ĐÓNG</span> — Không ai đăng ký mới được';
-      else status.innerHTML = '<span style="color:#ffc107;font-weight:900">CẦN DUYỆT</span> — User mới phải chờ admin phê duyệt';
-    }
-    if(openBtn) openBtn.classList.toggle('active', registrationMode === 'open');
-    if(approvalBtn) approvalBtn.classList.toggle('active', registrationMode === 'approval');
-    if(closedBtn) closedBtn.classList.toggle('active', registrationMode === 'closed');
-  }
-
-  window.setRegistrationMode = async function(mode){
-    if(!isAdmin()) return alert('Chỉ admin.');
-    if(!confirm('Chuyển cổng đăng ký sang: ' + ({open:'MỞ — ai cũng vào được', approval:'CẦN DUYỆT — user mới phải chờ', closed:'ĐÓNG — chặn đăng ký mới'}[mode] || mode) + '?')) return;
-    setBusy(true, 'Đang cập nhật...');
-    try{
-      const res = await fetch('/api/admin-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ user_id: user?.id, action: 'set_registration_mode', payload: { mode } }) });
-      const out = await res.json().catch(() => ({}));
-      if(!res.ok || out.error) return alert('Lỗi: ' + (out.error || res.status));
-      registrationMode = mode;
-      updateRegistrationGateUI();
-      await logAction('set_registration_mode', 'site_settings', 'registration_mode', { mode });
-      toast('Đã chuyển cổng đăng ký: ' + mode);
-    }finally{ setBusy(false); }
-  };
+  // (revokeApproval bản cũ removed — bản active ở REVOKE_MOVES_USER_TO_APPROVAL_AND_APPROVED_USERS_UI_20260625.
+  //  loadRegistrationMode/setRegistrationMode bản cũ removed — bản active ở COPILOT_ADMIN_REG_MODE_AND_PAGE_RESTORE_FIX_20260630.)
 
   const _origRenderStats = renderStats;
   renderStats = function(){
@@ -1697,17 +1494,17 @@ document.addEventListener('DOMContentLoaded', init);
 
   document.querySelectorAll('.nav').forEach(b => {
     if(b.dataset.page === 'approvals'){
-      b.addEventListener('click', () => { setTimeout(renderApprovals, 50); loadRegistrationMode(); });
+      b.addEventListener('click', () => { setTimeout(callRenderApprovals, 50); window.loadRegistrationMode?.(); });
     }
   });
 
   const _origSetPage = setPage;
   setPage = function(id, n){
     _origSetPage(id, n);
-    if(id === 'approvals'){ renderApprovals(); loadRegistrationMode(); }
+    if(id === 'approvals'){ callRenderApprovals(); window.loadRegistrationMode?.(); }
   };
 
-  setTimeout(loadRegistrationMode, 500);
+  setTimeout(() => window.loadRegistrationMode?.(), 500);
 })();
 
 
@@ -2162,95 +1959,17 @@ Bắt đầu ngay từ câu 1.`;
   };
 
   // --- Subject request approval (phê duyệt yêu cầu thêm môn từ user) ---
-  let subjectRequests = [];
-
-  window.loadSubjectRequests = async function(){
-    if(!isEditor()) return;
-    const {data, error} = await client.from('subject_requests').select('*').order('created_at',{ascending:false});
-    if(error){ console.warn('Load subject requests error:', error); return; }
-    subjectRequests = data || [];
-    renderSubjectRequests();
-    updateSubjectRequestBadge();
-  };
-
-  function updateSubjectRequestBadge(){
-    const badge = $('subjectRequestBadge');
-    const pending = subjectRequests.filter(r => r.status === 'pending').length;
-    if(badge){
-      badge.textContent = pending;
-      badge.classList.toggle('hidden', !pending);
-    }
+  // (loadSubjectRequests/filterSubjectRequests/renderSubjectRequests/previewSubjectRequestQuestions bản cũ removed —
+  //  bản active ở FINAL_FIX_REQUESTS_AND_SUBJECT_REQUESTS_20260627, dữ liệu nằm ở cache.subject_requests.
+  //  FIX 20260705: approve/reject trước đây đọc mảng local `subjectRequests` không còn ai đổ dữ liệu
+  //  (bản load cũ đã bị override) nên luôn báo "Không tìm thấy yêu cầu" — giờ đọc cache.subject_requests.)
+  function findSubjectRequest(id){
+    return (cache.subject_requests || []).find(x => String(x.id) === String(id));
   }
-
-  window.filterSubjectRequests = function(status){
-    document.querySelectorAll('.subjectReqFilter').forEach(b => b.classList.toggle('active', b.dataset.srf === status));
-    renderSubjectRequests(status);
-  };
-
-  function renderSubjectRequests(filter){
-    filter = filter || 'pending';
-    const el = $('subjectRequestList');
-    if(!el) return;
-
-    const filtered = filter === 'all' ? subjectRequests : subjectRequests.filter(r => r.status === filter);
-    const pendingCount = subjectRequests.filter(r => r.status === 'pending').length;
-    const approvedCount = subjectRequests.filter(r => r.status === 'approved').length;
-    const rejectedCount = subjectRequests.filter(r => r.status === 'rejected').length;
-
-    if($('srfPending')) $('srfPending').textContent = pendingCount;
-    if($('srfApproved')) $('srfApproved').textContent = approvedCount;
-    if($('srfRejected')) $('srfRejected').textContent = rejectedCount;
-    if($('srfAll')) $('srfAll').textContent = subjectRequests.length;
-
-    if(!filtered.length){
-      el.innerHTML = '<p class="muted">Không có yêu cầu nào.</p>';
-      return;
-    }
-
-    el.innerHTML = filtered.map(r => {
-      const questionsCount = Array.isArray(r.questions_data) ? r.questions_data.length : 0;
-      const statusBadge = r.status === 'pending' ? '<span class="badge pending">Chờ duyệt</span>' :
-                          r.status === 'approved' ? '<span class="badge approved">Đã duyệt</span>' :
-                          '<span class="badge rejected">Từ chối</span>';
-      return `<div class="item subjectRequestItem">
-        <div class="head">
-          <div>
-            <b>${esc(r.code)}</b> - ${esc(r.name)} ${statusBadge}
-            <br><span class="muted">${esc(r.user_email || '?')} · ${new Date(r.created_at).toLocaleString('vi-VN')}</span>
-            ${r.description ? '<br><span class="muted">Mô tả: '+esc(r.description)+'</span>' : ''}
-            <br><span class="muted">${questionsCount} câu hỏi đính kèm</span>
-            ${r.admin_note ? '<br><span class="muted">Ghi chú: '+esc(r.admin_note)+'</span>' : ''}
-          </div>
-        </div>
-        <div class="actions">
-          ${questionsCount ? `<button class="act" onclick="previewSubjectRequestQuestions(${r.id})">Xem câu hỏi</button>` : ''}
-          ${r.status === 'pending' ? `
-            <button class="act ok" onclick="approveSubjectRequest(${r.id})">Duyệt</button>
-            <button class="act bad" onclick="rejectSubjectRequest(${r.id})">Từ chối</button>
-          ` : ''}
-        </div>
-      </div>`;
-    }).join('');
-  }
-
-  window.previewSubjectRequestQuestions = function(id){
-    const r = subjectRequests.find(x => x.id === id);
-    if(!r || !r.questions_data) return;
-    const qs = r.questions_data;
-    const html = qs.slice(0, 20).map((q, i) => {
-      const hasImg = q.images && q.images.length;
-      return `<div class="item">
-        <b>Câu ${q.num||(i+1)}</b>: ${esc((q.question||'').substring(0,150))}
-        <br><span class="muted">Đáp án: ${esc(q.answer||'?')} ${hasImg ? '🖼 có hình ảnh' : ''}</span>
-      </div>`;
-    }).join('');
-    const more = qs.length > 20 ? '<p class="muted">...và '+(qs.length-20)+' câu khác</p>' : '';
-    openModal('Xem trước câu hỏi - '+esc(r.code), '<div>'+html+more+'</div>');
-  };
 
   window.approveSubjectRequest = async function(id){
     if(!isEditor()) return alert('Chỉ Admin/Editor mới duyệt được.');
-    const r = subjectRequests.find(x => x.id === id);
+    const r = findSubjectRequest(id);
     if(!r) return alert('Không tìm thấy yêu cầu.');
     if(!confirm('Duyệt yêu cầu thêm môn "'+r.code+'" từ '+r.user_email+'?')) return;
 
@@ -2275,7 +1994,7 @@ Bắt đầu ngay từ câu 1.`;
 
   window.rejectSubjectRequest = async function(id){
     if(!isEditor()) return alert('Chỉ Admin/Editor mới từ chối được.');
-    const r = subjectRequests.find(x => x.id === id);
+    const r = findSubjectRequest(id);
     if(!r) return alert('Không tìm thấy yêu cầu.');
     const note = prompt('Lý do từ chối (có thể bỏ trống):');
     if(note === null) return;
@@ -2423,20 +2142,8 @@ Bắt đầu ngay từ câu 1.`;
 
   // 2. (loadTrash removed — superseded by FINAL_TRASH_COMPACT_ROBUST_DELETE_20260625)
 
-  // 3. Khắc phục lỗi dấu nháy thông minh ở chuỗi thông báo kết quả tìm kiếm câu hỏi
-  const originalRenderQuestions = window.renderQuestions;
-  if (typeof originalRenderQuestions === 'function') {
-    window.renderQuestions = function() {
-      originalRenderQuestions.apply(this, arguments);
-      // Sửa lỗi chuỗi HTML chứa nháy thông minh nếu có sinh ra từ render gốc
-      const noteEl = document.querySelector('.questionResultNote');
-      if (noteEl) {
-        injectAdminStyles();
-      }
-    };
-  }
-
-  // Khởi chạy ngay lập tức
+  // (wrapper renderQuestions cũ removed — nó bọc bản renderQuestions đã bị override nên không còn tác dụng;
+  //  CSS vẫn được tiêm 1 lần ngay dưới đây.)
   injectAdminStyles();
 })();
 
@@ -3056,29 +2763,7 @@ async function sendLoginToDiscord(email, role) {
 (function(){
   function avatarUrl(p){ return p?.avatar_url || p?.avatar || p?.picture || p?.photo_url || p?.image_url || ''; }
   function avatarLetter(p){ return String(p?.email || p?.id || '?').trim().slice(0,1).toUpperCase() || '?'; }
-  function avatarButton(p){
-    const src = avatarUrl(p);
-    const title = esc(p?.email || 'Avatar');
-    if(src){
-      return `<button class="lhUserAvatar" type="button" title="Phóng to avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><img src="${esc(src)}" alt="${title}" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.classList.add('isBroken');this.remove();"></button>`;
-    }
-    return `<button class="lhUserAvatar avatarNoImage" type="button" title="Chưa có avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><span>${esc(avatarLetter(p))}</span></button>`;
-  }
-  function roleBadgeFinal(role){
-    const r = role || 'user';
-    return `<span class="badge lhRoleBadge lhRole-${esc(r)}">${esc(r)}</span>`;
-  }
-  function actTime(p){ return p?.last_activity || p?.last_login || p?.updated_at || p?.created_at || ''; }
-  function actMs(p){ const n = new Date(actTime(p)).getTime(); return Number.isFinite(n) ? n : 0; }
-  function actText(p){
-    const t = actTime(p);
-    if(!t) return 'Chưa có';
-    const diff = Date.now() - new Date(t).getTime();
-    if(!Number.isFinite(diff)) return date(t);
-    if(diff < 2 * 60 * 1000) return 'Đang hoạt động';
-    if(diff < 60 * 60 * 1000) return Math.max(1, Math.floor(diff / 60000)) + ' phút trước';
-    return date(t);
-  }
+  // (avatarButton/roleBadgeFinal/actTime... cũ removed — chỉ phục vụ renderUsers bản cũ đã bị override.)
 
   window.closeUserActionMenuFinal = function(){
     document.getElementById('lhActionBackdrop')?.remove();
@@ -3131,26 +2816,7 @@ async function sendLoginToDiscord(email, role) {
     else openModal('Avatar - ' + name, `<div class="lhAvatarPreview lhAvatarPreviewEmpty"><div>${esc(avatarLetter(p))}</div><p class="muted">Tài khoản này chưa có avatar trong database.</p><p class="muted">${esc(name)}</p></div>`);
   };
 
-  window.renderUsers = renderUsers = function(){
-    closeUserActionMenuFinal();
-    const arr = (cache.profiles || [])
-      .filter(p => match(`${p.email || ''} ${p.role || ''} ${p.id || ''} ${p.last_activity || ''}`))
-      .sort((a,b) => actMs(b) - actMs(a));
-    $('userList').innerHTML = `<div class="userRow muted tableHead lhUserRowFinal">
-      <b>Avatar</b><b>Email</b><b>Role</b><b>TT</b><b>Hoạt động gần nhất</b><b>Hành động</b>
-    </div>` + arr.map(p => {
-      const activeText = actText(p);
-      const activeClass = activeText === 'Đang hoạt động' ? 'activityNow' : '';
-      return `<div class="userRow activitySortedRow lhUserRowFinal ${activeClass}">
-        <div class="lhAvatarCell">${avatarButton(p)}</div>
-        <div><div class="mail">${esc(p.email || p.id)}</div><div class="uid">${esc(p.id)}</div></div>
-        <div>${roleBadgeFinal(p.role)}</div>
-        <div>${isBlocked(p) ? badge('blocked') : badge('active')}</div>
-        <div><b class="lastActivity ${activeClass}">${esc(activeText)}</b><div class="uid">${esc(date(actTime(p)))}</div></div>
-        <div class="actions lhActionsCell"><button class="lhDotsBtn" type="button" title="Thao tác" onclick="openUserActionMenuFinal(event,'${esc(p.id)}')">...</button></div>
-      </div>`;
-    }).join('');
-  };
+  // (renderUsers bản cũ removed — bản active ở FINAL_APPROVAL_UI_AND_REMOVE_USER_NOTE_20260625.)
 
   document.addEventListener('click', e => {
     if(e.target.closest('#lhActionMenuFloat') || e.target.closest('.lhDotsBtn')) return;
@@ -3213,30 +2879,7 @@ async function sendLoginToDiscord(email, role) {
 
 // ===== REVOKE_MOVES_USER_TO_APPROVAL_AND_APPROVED_USERS_UI_20260625 =====
 (function(){
-  function avUrl(p){ return p?.avatar_url || p?.avatar || p?.picture || p?.photo_url || p?.image_url || ''; }
-  function avLetter(p){ return String(p?.email || p?.id || '?').trim().slice(0,1).toUpperCase() || '?'; }
-  function avatarButton(p){
-    const src = avUrl(p);
-    if(src){
-      return `<button class="lhUserAvatar" type="button" title="Phóng to avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><img src="${esc(src)}" alt="Avatar" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.classList.add('isBroken');this.remove();"></button>`;
-    }
-    return `<button class="lhUserAvatar avatarNoImage" type="button" title="Chưa có avatar" onclick="openUserAvatarFinal('${esc(p.id)}')"><span>${esc(avLetter(p))}</span></button>`;
-  }
-  function roleBadgeFinal(role){
-    const r = role || 'user';
-    return `<span class="badge lhRoleBadge lhRole-${esc(r)}">${esc(r)}</span>`;
-  }
-  function actTime(p){ return p?.last_activity || p?.last_login || p?.updated_at || p?.created_at || ''; }
-  function actMs(p){ const n = new Date(actTime(p)).getTime(); return Number.isFinite(n) ? n : 0; }
-  function actText(p){
-    const t = actTime(p);
-    if(!t) return 'Chưa có';
-    const diff = Date.now() - new Date(t).getTime();
-    if(!Number.isFinite(diff)) return date(t);
-    if(diff < 2 * 60 * 1000) return 'Đang hoạt động';
-    if(diff < 60 * 60 * 1000) return Math.max(1, Math.floor(diff / 60000)) + ' phút trước';
-    return date(t);
-  }
+  // (các helper avatar/roleBadge/actTime cũ removed — chỉ phục vụ renderUsers bản cũ đã bị override.)
 
   // Thu hồi quyền = đưa user ra khỏi tab Người dùng và chuyển về tab Phê duyệt.
   window.revokeApproval = async function(uid){
@@ -3260,32 +2903,8 @@ async function sendLoginToDiscord(email, role) {
     }
   };
 
-  // Tab Người dùng chỉ hiện user đã duyệt. User bị thu hồi sẽ biến mất khỏi đây.
-  window.renderUsers = renderUsers = function(){
-    if(typeof closeUserActionMenuFinal === 'function') closeUserActionMenuFinal();
-    const arr = (cache.profiles || [])
-      .filter(p => p.approved !== false)
-      .filter(p => match(`${p.email || ''} ${p.role || ''} ${p.id || ''} ${p.last_activity || ''}`))
-      .sort((a,b) => actMs(b) - actMs(a));
-
-    $('userList').innerHTML = `<div class="approvedUsersNote">Đang hiển thị người dùng đã duyệt. Muốn đưa user về phê duyệt lại thì bấm dấu <b>...</b> → <b>Thu hồi quyền</b>.</div>
-    <div class="userRow muted tableHead lhUserRowFinal approvedUsersHead">
-      <b>Avatar</b><b>Email</b><b>Role</b><b>TT</b><b>Hoạt động gần nhất</b><b>Hành động</b>
-    </div>` + (arr.map(p => {
-      const activeText = actText(p);
-      const activeClass = activeText === 'Đang hoạt động' ? 'activityNow' : '';
-      return `<div class="userRow activitySortedRow lhUserRowFinal approvedUserRow ${activeClass}">
-        <div class="lhAvatarCell">${avatarButton(p)}</div>
-        <div><div class="mail">${esc(p.email || p.id)}</div><div class="uid">${esc(p.id)}</div></div>
-        <div>${roleBadgeFinal(p.role)}</div>
-        <div>${isBlocked(p) ? badge('blocked') : '<span class="badge approved userApprovedBadge">Đã duyệt</span>'}</div>
-        <div><b class="lastActivity ${activeClass}">${esc(activeText)}</b><div class="uid">${esc(date(actTime(p)))}</div></div>
-        <div class="actions lhActionsCell"><button class="lhDotsBtn" type="button" title="Thao tác" onclick="openUserActionMenuFinal(event,'${esc(p.id)}')">...</button></div>
-      </div>`;
-    }).join('') || '<p class="muted">Không có người dùng đã duyệt.</p>');
-  };
-
-  setTimeout(() => { try{ renderUsers(); if(typeof renderApprovals === 'function') renderApprovals(); }catch(e){} }, 300);
+  // (renderUsers bản cũ removed — bản active ở FINAL_APPROVAL_UI_AND_REMOVE_USER_NOTE_20260625.)
+  setTimeout(() => { try{ window.renderUsers?.(); window.renderApprovals?.(); }catch(e){} }, 300);
 })();
 
 
@@ -3536,134 +3155,47 @@ async function sendLoginToDiscord(email, role) {
     }
   }
   async function loadQuestionPage(){
+    // FIX_20260705: kết quả trang lưu vào STATE.pageRows, KHÔNG đè cache.questions —
+    // cache.questions phải giữ nguyên danh sách đầy đủ cho đếm câu/sửa trực tiếp/so sánh yêu cầu.
     const from=(STATE.page-1)*STATE.size,to=from+STATE.size-1;
     let q=client.from('questions').select(QUESTION_COLS,{count:'exact'}).order('subject_code',{ascending:true}).order('num',{ascending:true}).range(from,to);
     if(STATE.subject!=='all')q=q.eq('subject_code',STATE.subject);
     const s=search(); if(s){ if(/^\d+$/.test(s))q=q.or(`num.eq.${Number(s)},id.eq.${Number(s)}`); else q=q.or(`question.ilike.%${s.replaceAll('%','')}%,answer.ilike.%${s.replaceAll('%','')}%`); }
-    const r=await q; if(r.error){err('Lỗi tải câu hỏi: '+r.error.message);cache.questions=[];STATE.total=0;return}
-    cache.questions=r.data||[]; STATE.total=r.count||0;
+    const r=await q; if(r.error){err('Lỗi tải câu hỏi: '+r.error.message);STATE.pageRows=[];STATE.total=0;return}
+    STATE.pageRows=r.data||[]; STATE.total=r.count||(r.data||[]).length;
   }
-  async function loadLightTables(){
-    const a=await Promise.all([
-      safeQ(client.from('profiles').select('*').order('last_activity',{ascending:false,nullsFirst:false})),
-      safeQ(client.from('edit_requests').select('id,status,created_at,user_email,email,user_id,question_id,question_num,admin_note,reviewed_at,reviewed_by').order('created_at',{ascending:false}).limit(300)),
-      safeQ(client.from('question_history').select('id,question_id,question_num,subject_code,created_at,changed_by,changed_by_email,user_email,admin_email,approved_by,request_id').order('created_at',{ascending:false}).limit(300)),
-      isAdmin()?safeQ(client.from('admin_logs').select('*').order('created_at',{ascending:false}).limit(200)):Promise.resolve([])
-    ]);
-    cache.profiles=a[0];cache.requests=a[1];cache.history=a[2];cache.logs=a[3];
-  }
-  window.loadAll=loadAll=async function(){clearErr();setBusy(true,'Đang tải trang hiện tại...');try{await Promise.all([loadLightTables(),loadSubjects()]);await loadQuestionPage();render();toast(`Đã tải ${cache.questions.length}/${STATE.total} câu`);if(typeof startAdminRealtime==='function')startAdminRealtime();}finally{setBusy(false)}};
+  // FIX_20260705: loadAll bản active (COPILOT_ADMIN_RELOAD_FIX_20260630) gọi hàm này để đồng bộ
+  // tab môn + phân trang tab Câu hỏi. Trước đây STATE.subjects không được ai nạp nên tab môn biến mất.
+  window.__adminSyncQuestionPage = async function(){
+    try{ await loadSubjects(); await loadQuestionPage(); }
+    catch(e){ console.warn('[question page sync]', e); }
+  };
+  // (loadLightTables + loadAll bản "admin-lite" + startAdminRealtime bản subscribe cũ removed —
+  //  loadAll active ở COPILOT_ADMIN_RELOAD_FIX_20260630, realtime đã tắt hẳn ở COPILOT_DISABLE_ALL_ADMIN_REALTIME_FINAL_20260629.)
   window.setQuestionSubjectFilter=function(code){STATE.subject=code||'all';STATE.page=1;localStorage.setItem('admin_question_subject_filter_v1',STATE.subject);loadQuestionPage().then(renderQuestions)};
   window.adminQuestionPage=function(d){const max=Math.max(1,Math.ceil((STATE.total||0)/STATE.size));STATE.page=Math.min(max,Math.max(1,STATE.page+d));loadQuestionPage().then(renderQuestions)};
   window.renderQuestions=renderQuestions=function(){
+    const rows=STATE.pageRows||cache.questions||[];
     const max=Math.max(1,Math.ceil((STATE.total||0)/STATE.size));
     const tabs=`<div class="questionSubjectTabs"><button class="subjectTab ${STATE.subject==='all'?'active':''}" onclick="setQuestionSubjectFilter('all')">Tất cả</button>${STATE.subjects.map(s=>`<button class="subjectTab ${STATE.subject===s?'active':''}" onclick="setQuestionSubjectFilter('${esc(s)}')">${esc(s)}</button>`).join('')}</div>`;
     const pager=`<div class="questionPager actions"><button class="act" onclick="adminQuestionPage(-1)" ${STATE.page<=1?'disabled':''}>‹ Trang trước</button><b>Trang ${STATE.page}/${max}</b><button class="act" onclick="adminQuestionPage(1)" ${STATE.page>=max?'disabled':''}>Trang sau ›</button></div>`;
-    const html=(cache.questions||[]).map(q=>`<div class="item questionAdminItem"><div class="head"><div><div class="questionSubjectCode">${esc(q.subject_code||'HOD102')}</div><b>Câu ${esc(q.num||q.id)}</b></div>${q.is_active===false?badge('hidden'):badge('active')}</div><p>${esc(q.question||'')}</p><p class="muted">Đáp án: ${esc(q.answer||'')}</p><div class="actions"><button class="act" onclick="viewQuestion(${q.id})">Xem</button><button class="act warn" onclick="editQuestionDirect(${q.id})">Sửa trực tiếp</button><button class="act warn" onclick="toggleQuestion(${q.id},${q.is_active===false})">${q.is_active===false?'Hiện':'Ẩn'}</button>${isAdmin()?`<button class="act bad" onclick="deleteQuestionAdmin(${q.id})">Xóa</button>`:''}</div></div>`).join('')||'<p class=muted>Không có câu hỏi.</p>';
-    $('questionList').innerHTML=`<div class="questionToolbar"><div>${tabs}</div><button class="act ok addQuestionBtn" onclick="openAddQuestionAdmin()">+ Thêm câu hỏi</button></div><div class="questionResultNote">Đang hiển thị ${cache.questions.length}/${STATE.total} câu. Không tải ảnh ở danh sách.</div>`+pager+html+pager;
+    const html=rows.map(q=>`<div class="item questionAdminItem"><div class="head"><div><div class="questionSubjectCode">${esc(q.subject_code||'HOD102')}</div><b>Câu ${esc(q.num||q.id)}</b></div>${q.is_active===false?badge('hidden'):badge('active')}</div><p>${esc(q.question||'')}</p><p class="muted">Đáp án: ${esc(q.answer||'')}</p><div class="actions"><button class="act" onclick="viewQuestion(${q.id})">Xem</button><button class="act warn" onclick="editQuestionDirect(${q.id})">Sửa trực tiếp</button><button class="act warn" onclick="toggleQuestion(${q.id},${q.is_active===false})">${q.is_active===false?'Hiện':'Ẩn'}</button>${isAdmin()?`<button class="act bad" onclick="deleteQuestionAdmin(${q.id})">Xóa</button>`:''}</div></div>`).join('')||'<p class=muted>Không có câu hỏi.</p>';
+    $('questionList').innerHTML=`<div class="questionToolbar"><div>${tabs}</div><button class="act ok addQuestionBtn" onclick="openAddQuestionAdmin()">+ Thêm câu hỏi</button></div><div class="questionResultNote">Đang hiển thị ${rows.length}/${STATE.total} câu. Không tải ảnh ở danh sách.</div>`+pager+html+pager;
   };
   window.viewQuestion=async function(id){const r=await client.from('questions').select('*').eq('id',id).maybeSingle();if(r.error)return alert(r.error.message);const q=r.data;if(!q)return;openModal(`Câu ${q.num||q.id}`,`<pre class=raw>${esc(safe(q))}</pre>`)};
-  let rt=null;window.startAdminRealtime=function(){if(rt||!client||!user||!profile||!isEditor())return;rt=client.channel('admin-lite-final').on('postgres_changes',{event:'*',schema:'public',table:'questions'},p=>{const row=p.new||p.old||{};const i=(cache.questions||[]).findIndex(x=>String(x.id)===String(row.id));if(p.eventType==='DELETE'&&i>=0)cache.questions.splice(i,1);else if(p.eventType==='UPDATE'&&i>=0)cache.questions[i]={...cache.questions[i],...row};else if(p.eventType==='INSERT')STATE.total++;renderQuestions();}).subscribe();};
   const inp=$('search');if(inp&&!inp.__adminFinalSearch){inp.__adminFinalSearch=true;let t;inp.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{STATE.page=1;loadQuestionPage().then(render)},350)},{passive:true});}
-  const btn=$('refreshBtn');if(btn)btn.onclick=loadAll;
 })();
 
 
 // ===== FINAL_FIX_REQUESTS_AND_SUBJECT_REQUESTS_20260627 =====
 // Fix: tab Yêu cầu sửa và Yêu cầu thêm môn không hiện data do bản tối ưu trước đó load thiếu cột/không gọi load subject_requests.
 (function(){
-  const QUESTION_COLS='id,num,subject_code,question,options,answer,images,is_active,updated_at,created_at,has_image,error_risk,error_risk_reason';
-  const STATE = window.__ADMIN_PAGE_STATE__ || (window.__ADMIN_PAGE_STATE__ = {
-    page:1, size:50, total:0,
-    subject: localStorage.getItem('admin_question_subject_filter_v1') || 'all',
-    subjects:[]
-  });
   let subjectReqCache = [];
   let subjectReqFilter = 'pending';
 
-  function searchVal(){ return String($('search')?.value || '').trim(); }
-  async function safeQuery(name, query){
-    try{
-      const r = await query;
-      if(r.error){ console.warn('[ADMIN FIX]', name, r.error); return {data:[], error:r.error}; }
-      return {data:r.data || [], count:r.count || 0, error:null};
-    }catch(e){ console.warn('[ADMIN FIX]', name, e); return {data:[], error:e}; }
-  }
-  async function loadSubjectsLite(){
-    // FIX: danh sách tab môn lấy từ bảng subjects.
-    // Không lấy từ questions, vì môn đã xóa vẫn có thể còn trong câu hỏi/cache nên bị hiện lại.
-    const sres = await safeQuery('subjects', client.from('subjects').select('code,is_active').order('sort_order', {ascending:true}).order('code', {ascending:true}));
-    let set = new Set((sres.data || []).filter(s => s && s.code && s.is_active !== false).map(s => s.code));
-    if(!set.size){
-      const r = await safeQuery('subjects fallback from questions', client.from('questions').select('subject_code').limit(10000));
-      set = new Set((r.data||[]).map(x => x.subject_code || 'HOD102').filter(Boolean));
-    }
-    if(!set.size){ set.add('HOD102'); set.add('MLN111'); }
-    STATE.subjects = Array.from(set).sort((a,b)=>String(a).localeCompare(String(b)));
-    if(STATE.subject !== 'all' && !STATE.subjects.includes(STATE.subject)){
-      STATE.subject = 'all';
-      localStorage.setItem('admin_question_subject_filter_v1', 'all');
-    }
-  }
-  async function loadQuestionPageLite(){
-    const from = (STATE.page - 1) * STATE.size;
-    const to = from + STATE.size - 1;
-    let q = client.from('questions')
-      .select(QUESTION_COLS, {count:'exact'})
-      .order('subject_code', {ascending:true})
-      .order('num', {ascending:true})
-      .range(from, to);
-    if(STATE.subject !== 'all') q = q.eq('subject_code', STATE.subject);
-    const s = searchVal();
-    if(s){
-      if(/^\d+$/.test(s)) q = q.or(`num.eq.${Number(s)},id.eq.${Number(s)}`);
-      else q = q.or(`question.ilike.%${s.replaceAll('%','')}%,answer.ilike.%${s.replaceAll('%','')}%`);
-    }
-    const r = await q;
-    if(r.error){ err('Lỗi tải câu hỏi: ' + r.error.message); cache.questions=[]; STATE.total=0; return; }
-    cache.questions = r.data || [];
-    STATE.total = r.count || 0;
-  }
-
-  async function loadCoreTablesFixed(){
-    const [profiles, edits, history, logs] = await Promise.all([
-      safeQuery('profiles', client.from('profiles').select('*').order('last_activity', {ascending:false, nullsFirst:false})),
-      // QUAN TRỌNG: phải select('*') để có old_data/new_data. Bản trước load thiếu nên tab Yêu cầu sửa nhìn như mất data.
-      safeQuery('edit_requests', client.from('edit_requests').select('*').order('created_at', {ascending:false}).limit(500)),
-      safeQuery('question_history', client.from('question_history').select('*').order('created_at', {ascending:false}).limit(500)),
-      isAdmin() ? safeQuery('admin_logs', client.from('admin_logs').select('*').order('created_at', {ascending:false}).limit(300)) : Promise.resolve({data:[]})
-    ]);
-    cache.profiles = profiles.data || [];
-    cache.requests = edits.data || [];
-    cache.history = history.data || [];
-    cache.logs = logs.data || [];
-  }
-
-  window.loadAll = loadAll = async function(){
-    clearErr();
-    setBusy(true, 'Đang tải dữ liệu...');
-    try{
-      await Promise.all([loadCoreTablesFixed(), loadSubjectsLite()]);
-      await loadQuestionPageLite();
-      render();
-      await window.loadSubjectRequests?.();
-      if(typeof loadRegistrationMode === 'function') loadRegistrationMode();
-      if(typeof startAdminRealtime === 'function') startAdminRealtime();
-      toast(`Đã tải: ${cache.requests.length} yêu cầu sửa, ${subjectReqCache.length} yêu cầu thêm môn`);
-    }finally{ setBusy(false); }
-  };
-
-  // Fix click So sánh: luôn fetch full row để chắc chắn có old_data/new_data.
-  window.viewReq = async function(id){
-    let r = (cache.requests || []).find(x => String(x.id) === String(id));
-    try{
-      const full = await client.from('edit_requests').select('*').eq('id', id).maybeSingle();
-      if(!full.error && full.data) r = full.data;
-    }catch(e){}
-    if(!r) return alert('Không tìm thấy yêu cầu sửa.');
-    const oldData = r.old_data || getQuestionByReq(r) || {};
-    openModal(`Yêu cầu sửa câu ${questionLabel(r)}`, compareHTML(oldData, r.new_data || {}));
-  };
+  // (loadCoreTablesFixed/loadSubjectsLite/loadQuestionPageLite + loadAll + viewReq bản cũ removed —
+  //  loadAll active ở COPILOT_ADMIN_RELOAD_FIX_20260630, viewReq active ở FIX_ADMIN_REQUEST_IMAGES_FORCE_20260628,
+  //  tab môn/phân trang do __adminSyncQuestionPage ở COPILOT_ADMIN_QUESTION_PAGE_FINAL_OVERRIDE_20260627 lo.)
 
   // Load + render Yêu cầu thêm môn độc lập, không phụ thuộc render() cũ.
   window.loadSubjectRequests = async function(){
@@ -3671,9 +3203,9 @@ async function sendLoginToDiscord(email, role) {
     const el = $('subjectRequestList');
     if(el) el.innerHTML = '<p class="muted">Đang tải yêu cầu thêm môn...</p>';
     try{
-      const res = await fetch('/api/admin-dashboard', { cache: 'no-store' });
-      const dash = await res.json().catch(() => ({}));
-      if(!res.ok || dash.error) throw new Error(dash.error || ('HTTP ' + res.status));
+      const r0 = await window.__fetchAdminDashboardJSON();
+      const dash = r0.dash || {};
+      if(!r0.ok || dash.error) throw new Error(dash.error || ('HTTP ' + r0.status));
       subjectReqCache = (dash.subject_requests || []).map(s => ({ ...s, questions_data: (typeof s.questions_data === 'string' ? (() => { try { return JSON.parse(s.questions_data); } catch(e){ return []; } })() : s.questions_data) || [] }));
       cache.subject_requests = subjectReqCache;
     }catch(e){
@@ -3742,7 +3274,8 @@ async function sendLoginToDiscord(email, role) {
   };
 
   document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(()=>window.loadSubjectRequests?.(), 1200);
+    // Chỉ tải khi loadAll chưa kịp nạp subject_requests, tránh gọi dashboard trùng lúc khởi động.
+    setTimeout(()=>{ if(!cache.subject_requests) window.loadSubjectRequests?.(); }, 1200);
   });
 })();
 
@@ -3995,41 +3528,8 @@ ${E(val)}</pre>`;
 
 
 // ===== MANUAL_ADMIN_RELOAD_ONLY_20260629 =====
-// Tắt realtime tự cập nhật để giảm gọi Supabase.
-// Admin cần bấm nút "Tải lại" để cập nhật danh sách user/trạng thái hoạt động.
-(function(){
-  if(window.__MANUAL_ADMIN_RELOAD_ONLY_20260629) return;
-  window.__MANUAL_ADMIN_RELOAD_ONLY_20260629 = true;
-
-  function setManualChip(){
-    try{
-      const chip = document.getElementById('adminAutoCheckChip');
-      if(!chip) return;
-      chip.classList.remove('is-live','is-checking','is-error','is-idle');
-      chip.classList.add('is-manual');
-      const text = chip.querySelector('.autoText');
-      if(text) text.textContent = 'Thủ công';
-      const dot = chip.querySelector('.autoDot');
-      if(dot) dot.style.background = 'var(--gold2)';
-    }catch(e){}
-  }
-
-  window.startAdminRealtime = function(){
-    setManualChip();
-    return null;
-  };
-  window.stopAdminRealtime = function(){
-    setManualChip();
-    return null;
-  };
-
-  document.addEventListener('DOMContentLoaded', function(){
-    setManualChip();
-    setTimeout(setManualChip, 500);
-    setTimeout(setManualChip, 1500);
-  });
-  setInterval(setManualChip, 3000);
-})();
+// (removed — trùng hoàn toàn với COPILOT_DISABLE_ALL_ADMIN_REALTIME_FINAL_20260629 ngay bên dưới,
+//  block đó cũng đặt chip "Thủ công" + tắt realtime; bỏ block này để giảm 1 setInterval thừa.)
 // ===== END MANUAL_ADMIN_RELOAD_ONLY_20260629 =====
 
 // ===== COPILOT_DISABLE_ALL_ADMIN_REALTIME_FINAL_20260629 =====
@@ -4092,7 +3592,9 @@ ${E(val)}</pre>`;
   });
 
   setTimeout(function(){ removeAdminRealtimeChannels(); setManualChip(); }, 300);
-  setInterval(function(){ removeAdminRealtimeChannels(); setManualChip(); }, 10000);
+  // CLEANUP_20260705: bỏ setInterval 10s. Realtime đã tắt hẳn (startAdminRealtime là no-op, không ai
+  // tạo kênh mới), chip "Thủ công" là tĩnh — nên vòng lặp dọn kênh mỗi 10s chạy mãi mà không có việc gì.
+  // Nếu sau này bật lại realtime thì tự dọn trong startAdminRealtime, không cần polling ở đây.
 })();
 // ===== END COPILOT_DISABLE_ALL_ADMIN_REALTIME_FINAL_20260629 =====
 
@@ -4125,30 +3627,8 @@ ${E(val)}</pre>`;
     }, 80);
   }
 
-  // Giảm tải Supabase trên điện thoại: chỉ tải profiles để duyệt user.
-  // Desktop vẫn dùng loadAll gốc đầy đủ.
-  var originalLoadAll = typeof loadAll === 'function' ? loadAll : null;
-  if(originalLoadAll){
-    loadAll = async function(){
-      if(!isMobile()) return originalLoadAll.apply(this, arguments);
-      clearErr();
-      setBusy(true, 'Đang tải duyệt user...');
-      try{
-        cache.profiles = await safeLoad('profiles', client.from('profiles').select('*').order('created_at', { ascending:false }));
-        cache.questions = [];
-        cache.requests = [];
-        cache.history = [];
-        cache.logs = [];
-        if(typeof renderApprovals === 'function') renderApprovals();
-        if(typeof renderStats === 'function') renderStats();
-        if(typeof loadRegistrationMode === 'function') loadRegistrationMode();
-        openApprovalsOnMobile(true);
-        toast('Đã tải duyệt user');
-      } finally {
-        setBusy(false);
-      }
-    };
-  }
+  // (wrapper loadAll bản mobile-lite removed — đã bị COPILOT_ADMIN_RELOAD_FIX_20260630 đè hoàn toàn,
+  //  mobile giờ dùng chung loadAll đầy đủ; block này chỉ còn phần class mobile + auto mở tab Phê duyệt.)
 
   function install(){
     applyMobileClass();
@@ -4722,7 +4202,7 @@ ${E(val)}</pre>`;
     if(rl) rl.innerHTML = '<p class="muted">Đang tải dữ liệu...</p>';
   }
 
-  const oldLoadAll = window.loadAll || loadAll;
+  // (không giữ tham chiếu loadAll cũ — các bản trước đã bị xóa trong CLEANUP_20260705, đây là bản gốc duy nhất.)
   window.loadAll = loadAll = async function(force){
     clearErr();
     clearAdminClientCache();
@@ -4731,9 +4211,9 @@ ${E(val)}</pre>`;
     try{
       // Nguồn dữ liệu duy nhất: Turso qua /api/admin-dashboard. Supabase chỉ còn dùng cho Auth.
       const pj = (v, d) => { if (v == null) return d; if (typeof v !== 'string') return v; try { return JSON.parse(v); } catch (e) { return d; } };
-      const res = await fetch('/api/admin-dashboard', { cache: 'no-store' });
-      const dash = await res.json().catch(() => ({}));
-      if (!res.ok || dash.error) throw new Error(dash.error || ('HTTP ' + res.status));
+      const r0 = await window.__fetchAdminDashboardJSON(force);
+      const dash = r0.dash || {};
+      if (!r0.ok || dash.error) throw new Error(dash.error || ('HTTP ' + r0.status));
       cache.profiles = (dash.profiles || []).map(p => ({
         ...p,
         approved: p.approved === 1 || p.approved === true || p.approved === '1',
@@ -4747,7 +4227,11 @@ ${E(val)}</pre>`;
       cache.subject_requests = (dash.subject_requests || []).map(s => ({ ...s, questions_data: pj(s.questions_data, []) }));
       cache.deleted_questions = (dash.deleted_questions || []).map(d => ({ ...d, original_data: pj(d.original_data, {}) }));
       cache.deleted_subjects = (dash.deleted_subjects || []).map(d => ({ ...d, original_data: pj(d.original_data, {}) }));
+      // FIX_20260705: đồng bộ tab môn + trang hiện tại của tab Câu hỏi (trước đây STATE.subjects
+      // không được nạp nên tab Câu hỏi mất tabs môn và mất phân trang).
+      if(typeof window.__adminSyncQuestionPage === 'function') await window.__adminSyncQuestionPage();
       render();
+      window.__adminDashRenderedText = r0.text || '';
       if(typeof loadSubjectRequests === 'function') await loadSubjectRequests();
       if(typeof loadRegistrationMode === 'function') await loadRegistrationMode();
       toast('Đã tải mới');
@@ -4780,7 +4264,9 @@ ${E(val)}</pre>`;
       bindReloadButton();
       const isApp = !document.getElementById('appBox') || !document.getElementById('appBox').classList.contains('hidden');
       const looksEmpty = Number(document.getElementById('statUsers')?.textContent || 0) === 0 && (!cache.profiles || !cache.profiles.length);
-      if(isApp && looksEmpty) window.loadAll(true);
+      // Chỉ là lưới an toàn: không gọi lại khi init loadAll đã chạy xong hoặc đang chạy (tránh load dashboard trùng).
+      const alreadyLoading = window.__adminDashboardLoadedOnce || (typeof window.__adminDashboardBusy === 'function' && window.__adminDashboardBusy());
+      if(isApp && looksEmpty && !alreadyLoading) window.loadAll(true);
     }, 900);
   });
 })();
@@ -4821,7 +4307,7 @@ ${E(val)}</pre>`;
     return res;
   };
 
-  const oldRenderUsersHideEditor = window.renderUsers || renderUsers;
+  const oldRenderUsersHideEditor = window.renderUsers;
   renderUsers = window.renderUsers = function(){
     if(!(typeof isAdmin === 'function' && isAdmin())){
       const el = document.getElementById('userList');
@@ -5698,9 +5184,14 @@ setTimeout(function(){ patchLoadAll(); patchRealtime(); patchRefreshButton(); },
       if (!appBox || appBox.classList.contains('hidden')) return;
 
       const pj = (v, d) => { if (v == null) return d; if (typeof v !== 'string') return v; try { return JSON.parse(v); } catch (e) { return d; } };
-      const res = await fetch('/api/admin-dashboard', { cache: 'no-store' });
-      const dash = await res.json().catch(() => ({}));
-      if (!res.ok || dash.error) return;
+      const r0 = await window.__fetchAdminDashboardJSON();
+      const dash = r0.dash || {};
+      if (!r0.ok || dash.error) return;
+
+      // FIX_20260705: dữ liệu không đổi so với lần render trước thì thôi,
+      // không re-render (đỡ giật danh sách đang xem mỗi 20 giây).
+      if (r0.text && r0.text === window.__adminDashRenderedText) return;
+      window.__adminDashRenderedText = r0.text || '';
 
       cache.profiles = (dash.profiles || []).map(p => ({
         ...p,
@@ -5716,6 +5207,7 @@ setTimeout(function(){ patchLoadAll(); patchRealtime(); patchRefreshButton(); },
       cache.deleted_questions = (dash.deleted_questions || []).map(d => ({ ...d, original_data: pj(d.original_data, {}) }));
       cache.deleted_subjects = (dash.deleted_subjects || []).map(d => ({ ...d, original_data: pj(d.original_data, {}) }));
 
+      if (typeof window.__adminSyncQuestionPage === 'function') await window.__adminSyncQuestionPage();
       if (typeof render === 'function') render();
       if (typeof renderApprovals === 'function') renderApprovals();
     } catch(e){
@@ -5729,3 +5221,65 @@ setTimeout(function(){ patchLoadAll(); patchRealtime(); patchRefreshButton(); },
   });
 })();
 // ===== END FIX_ADMIN_AUTO_REFRESH_20260701 =====
+
+
+// ===== LH_AUTH_FETCH_20260705 =====
+// Tự đính Authorization: Bearer <supabase access_token> cho MỌI request tới /api/ cùng origin.
+// Server (api/index.js, AUTH_20260705) verify token này để lấy danh tính thật. Đặt cuối file để là
+// lớp fetch NGOÀI CÙNG: chạy trước các wrapper cache/dedupe khác nên header luôn được gắn trước.
+// Token đọc trực tiếp từ localStorage phiên Supabase (key sb-<ref>-auth-token) để lấy đồng bộ, không await.
+(function(){
+  if (window.__LH_AUTH_FETCH_20260705) return;
+  window.__LH_AUTH_FETCH_20260705 = true;
+  var prevFetch = window.fetch ? window.fetch.bind(window) : null;
+  if (!prevFetch) return;
+
+  function lhToken(){
+    try{
+      for (var i = 0; i < localStorage.length; i++){
+        var k = localStorage.key(i);
+        if (k && k.slice(0,3) === 'sb-' && k.slice(-11) === '-auth-token'){
+          var raw = localStorage.getItem(k);
+          if (!raw) continue;
+          var v = JSON.parse(raw);
+          var tok = v && (v.access_token || (v.currentSession && v.currentSession.access_token) || (Array.isArray(v) && v[0]));
+          if (tok) return tok;
+        }
+      }
+    }catch(e){}
+    return '';
+  }
+  window.__lhAccessToken = lhToken;
+
+  function lhIsApi(u){
+    try{
+      var url = new URL(u, location.href);
+      return url.origin === location.origin && url.pathname.indexOf('/api/') === 0;
+    }catch(e){ return false; }
+  }
+
+  window.fetch = function(input, init){
+    try{
+      var url = typeof input === 'string' ? input : (input && input.url) || '';
+      if (lhIsApi(url)){
+        var tok = lhToken();
+        if (tok){
+          if (input instanceof Request){
+            if (!input.headers.has('Authorization')){
+              var h = new Headers(input.headers);
+              h.set('Authorization', 'Bearer ' + tok);
+              input = new Request(input, { headers: h });
+            }
+          } else {
+            init = init || {};
+            var hh = new Headers(init.headers || {});
+            if (!hh.has('Authorization')) hh.set('Authorization', 'Bearer ' + tok);
+            init.headers = hh;
+          }
+        }
+      }
+    }catch(e){}
+    return prevFetch(input, init);
+  };
+})();
+// ===== END LH_AUTH_FETCH_20260705 =====

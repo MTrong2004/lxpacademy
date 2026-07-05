@@ -95,6 +95,10 @@ GỢI Ý AI
 - QUY_ƯỚC_CẤU_TRÚC: File này là chuỗi bản vá theo ngày, mỗi block bọc bởi marker "// ===== TÊN_NGÀY =====" ... "// ===== END TÊN_NGÀY =====". KHÔNG xóa marker (chúng là điểm neo tìm kiếm theo nhóm ở trên). Khi sửa, tìm marker liên quan và sửa trong block đó, ưu tiên hợp nhất thay vì thêm vá chồng mới.
 - KIẾN_TRÚC_20260701 (QUAN TRỌNG): Supabase CHỈ dùng để Auth (đăng nhập Google). MỌI dữ liệu (questions/subjects/profiles/edit_requests/...) đọc-ghi qua API Turso nội bộ: GET /api/questions, /api/subjects, /api/settings; POST /api/profile, /api/edit-requests, /api/admin-action (action: add_question, save_question_direct, delete_question, add_subject, add_subject_request, approve_request...). TUYỆT ĐỐI không thêm code ghi dữ liệu bằng client.from(...) của Supabase nữa.
 - CODE_CHẾT (đừng tưởng đang chạy): còn vài chỗ client.from('questions').select cũ là FALLBACK đã bị đường /api thay thế, không xóa vì sợ vỡ thứ tự nhưng không nên dựa vào. Khi cần loader câu hỏi, dùng fetchTursoQuestions/loadSubjectLight (/api/questions). Số câu mỗi môn lấy từ /api/subjects; mã môn hiển thị đầy đủ hậu tố (displayCode trả nguyên).
+- NOTE_20260705b (đổi môn reset bài kiểm tra): loadBySubject() gọi window.__examResetForSubjectChange()
+  (định nghĩa trong FINAL_EXAM_ONLY_QUIZ_UI) để xóa qSet/qSel/qDone/examSubmitted trong bộ nhớ, tránh tab
+  Kiểm tra hiện lại đề của môn trước. KHÔNG xóa EXAM_STORE (đã gắn subject) → quay lại môn cũ vẫn resume được.
+- NOTE_20260705 (tab Kiểm tra / gộp môn): danh sách môn của tab Kiểm tra KHÔNG được phụ thuộc getSubjectsCache() — cache đó chỉ được nạp khi user mở bảng chọn môn (xem comment "Danh sách môn chỉ tải khi người dùng mở bảng chọn môn" ~dòng 1230). FINAL_EXAM_ONLY_QUIZ_UI đã có ensureExamSubjects() tự tải /api/subjects (TTL 60s) rồi vẽ lại setup() để chip "Gộp thêm môn" (HOD102 ↔ HOD102_1) hiện ngay khi vào tab. Key localStorage 'learninghub_subjects_cache_v1' là KEY CHẾT (chỉ bị remove, không ai ghi) — đừng đọc/ghi nó.
 AI_JS_MAP_END */
 
 // ===== FIX_OAUTH_SESSION_FINAL_20260628 =====
@@ -1195,6 +1199,8 @@ async function getSubjects() {
       if ($('idx')) $('idx').textContent = pool.length ? String(ci + 1) : '0';
       if ($('total')) $('total').textContent = String(pool.length);
       updateBrand(code); syncSubjectTexts();
+      // FIX_20260705: xóa trạng thái bài kiểm tra của môn trước để tab Kiểm tra không hiện đề cũ.
+      try { if (typeof window.__examResetForSubjectChange === 'function') window.__examResetForSubjectChange(); } catch (e) {}
       try { renderCard(); } catch (e) {}
       try { renderQuiz(); } catch (e) {}
       try { renderStudy(); } catch (e) {}
@@ -4568,14 +4574,33 @@ return true;
   function markTab() { document.querySelectorAll('.tab').forEach(t => { if (t.dataset?.tab === 'quiz') t.textContent = 'Kiểm tra' }); }
   function removeOldQuizUI() { document.querySelectorAll('#quiz .modeRow,#quiz .cntGrid:not(.examOnlyCountGrid),#practiceMode,#examMode').forEach(x => x.remove()) }
 
+  // FIX_20260705: tab Kiểm tra phải TỰ tải danh sách môn từ /api/subjects khi cache trống.
+  // Trước đây chỉ đọc getSubjectsCache() (chỉ được nạp khi mở bảng chọn môn) + localStorage
+  // 'learninghub_subjects_cache_v1' (key CHẾT — không ai ghi), nên phần "Gộp thêm môn"
+  // không thấy môn cùng mã (vd HOD102 không thấy HOD102_1) cho tới khi user mở Môn học rồi quay lại.
+  let examSubjectsData = [];
+  let examSubjectsFetchedAt = 0;
+  async function ensureExamSubjects() {
+    if (ensureExamSubjects.__busy) return;
+    if (examSubjectsData.length && Date.now() - examSubjectsFetchedAt < 60000) return;
+    ensureExamSubjects.__busy = true;
+    try {
+      const res = await fetch('/api/subjects?ts=' + Date.now(), { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      const rows = Array.isArray(json.data) ? json.data : [];
+      if (res.ok && rows.length) {
+        examSubjectsData = rows.filter(s => s && s.is_active !== false);
+        examSubjectsFetchedAt = Date.now();
+        // Đang đứng ở màn cài đặt kiểm tra thì vẽ lại để chip "Gộp thêm môn" hiện ra ngay.
+        if (document.querySelector('#quiz .setup .examOnlyStart')) setup();
+      }
+    } catch (e) { console.warn('[exam subjects]', e); }
+    finally { ensureExamSubjects.__busy = false; }
+  }
   function cachedSubjects() {
     let subjects = typeof window.getSubjectsCache === 'function' ? (window.getSubjectsCache() || []) : [];
-    try {
-      if (!subjects.length) {
-        const cached = JSON.parse(localStorage.getItem('learninghub_subjects_cache_v1') || '[]');
-        if (Array.isArray(cached)) subjects = cached;
-      }
-    } catch (e) { }
+    if (!subjects.length) subjects = examSubjectsData;
+    if (!subjects.length || Date.now() - examSubjectsFetchedAt > 60000) ensureExamSubjects();
     return subjects;
   }
 
@@ -4961,6 +4986,19 @@ return true;
   }
 
   try { renderQuiz = function () { setup(); draw(); } } catch (e) { window.renderQuiz = function () { setup(); draw(); } }
+
+  // FIX_20260705: đổi môn phải RESET trạng thái bài kiểm tra đang giữ trong bộ nhớ (qSet/qSel/...),
+  // nếu không tab Kiểm tra của môn mới sẽ hiện lại đề của môn cũ. KHÔNG xóa EXAM_STORE (đã gắn subject),
+  // để khi quay lại đúng môn cũ thì restoreExam() vẫn resume được bài đang dở.
+  window.__examResetForSubjectChange = function () {
+    try { stopTimer(); } catch (e) {}
+    qSet = []; qSel = {}; qDone = {};
+    examSubmitted = false; examOnlyReview = false; examOnlyIndex = 0;
+    examElapsed = '00:00';
+    examSelectedCodes = [];
+    quizMode = 'exam';
+  };
+
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(bind, 120)); else setTimeout(bind, 120);
   setTimeout(bind, 900);
 })();
@@ -7904,3 +7942,65 @@ try {
 })();
 // ===== END FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701 =====
 
+
+
+// ===== LH_AUTH_FETCH_20260705 =====
+// Tự đính Authorization: Bearer <supabase access_token> cho MỌI request tới /api/ cùng origin.
+// Server (api/index.js, AUTH_20260705) verify token này để lấy danh tính thật. Đặt cuối file để là
+// lớp fetch NGOÀI CÙNG: chạy trước các wrapper cache/dedupe khác nên header luôn được gắn trước.
+// Token đọc trực tiếp từ localStorage phiên Supabase (key sb-<ref>-auth-token) để lấy đồng bộ, không await.
+(function(){
+  if (window.__LH_AUTH_FETCH_20260705) return;
+  window.__LH_AUTH_FETCH_20260705 = true;
+  var prevFetch = window.fetch ? window.fetch.bind(window) : null;
+  if (!prevFetch) return;
+
+  function lhToken(){
+    try{
+      for (var i = 0; i < localStorage.length; i++){
+        var k = localStorage.key(i);
+        if (k && k.slice(0,3) === 'sb-' && k.slice(-11) === '-auth-token'){
+          var raw = localStorage.getItem(k);
+          if (!raw) continue;
+          var v = JSON.parse(raw);
+          var tok = v && (v.access_token || (v.currentSession && v.currentSession.access_token) || (Array.isArray(v) && v[0]));
+          if (tok) return tok;
+        }
+      }
+    }catch(e){}
+    return '';
+  }
+  window.__lhAccessToken = lhToken;
+
+  function lhIsApi(u){
+    try{
+      var url = new URL(u, location.href);
+      return url.origin === location.origin && url.pathname.indexOf('/api/') === 0;
+    }catch(e){ return false; }
+  }
+
+  window.fetch = function(input, init){
+    try{
+      var url = typeof input === 'string' ? input : (input && input.url) || '';
+      if (lhIsApi(url)){
+        var tok = lhToken();
+        if (tok){
+          if (input instanceof Request){
+            if (!input.headers.has('Authorization')){
+              var h = new Headers(input.headers);
+              h.set('Authorization', 'Bearer ' + tok);
+              input = new Request(input, { headers: h });
+            }
+          } else {
+            init = init || {};
+            var hh = new Headers(init.headers || {});
+            if (!hh.has('Authorization')) hh.set('Authorization', 'Bearer ' + tok);
+            init.headers = hh;
+          }
+        }
+      }
+    }catch(e){}
+    return prevFetch(input, init);
+  };
+})();
+// ===== END LH_AUTH_FETCH_20260705 =====

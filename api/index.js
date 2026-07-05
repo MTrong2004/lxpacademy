@@ -21,6 +21,12 @@ Lưu ý quyền:
   KHÔNG được đưa xuống client. Luôn xác thực user_id+email khớp profile trong DB trước khi gửi.
 Lưu ý khi sửa:
 - Nếu sửa lưu ảnh mất sau refresh/reset, kiểm tra cả app.js và action save_question_direct trong file này.
+BẢO MẬT (AUTH_20260705): mọi endpoint TRỪ /api/settings đòi header Authorization: Bearer <supabase access_token>.
+  Server verify qua {SUPABASE_URL}/auth/v1/user → authUser {id,email} là DANH TÍNH THẬT. TUYỆT ĐỐI không
+  tin user_id/email trong body nữa: profile/edit-requests/notify/admin-action đều lấy id từ authUser.
+  Quyền: subjects/questions/edit-requests cần isApprovedOrStaff; admin-dashboard cần isStaff; admin-action
+  giữ nguyên check role trong DB nhưng user_id nay là token. Client (app.js/admin.js) tự đính token qua
+  wrapper fetch cuối file (LH_AUTH_FETCH_20260705). SUPABASE_URL/ANON là khóa công khai, có fallback hardcode.
 AI_INDEX_JS_MAP_END */
 
 import { createClient } from '@libsql/client/web';
@@ -70,6 +76,67 @@ function json(res, status = 200) {
 function getAdminEmail() {
   return clean(process.env.ADMIN_EMAIL).toLowerCase().trim();
 }
+
+// ===== AUTH_20260705 =====
+// Xác thực THẬT: mọi endpoint nhạy cảm phải kèm header Authorization: Bearer <access_token>
+// (token phiên đăng nhập Supabase). Server hỏi lại Supabase GoTrue để lấy user id/email THẬT,
+// KHÔNG tin user_id/email do client tự khai trong body nữa (chống mạo danh admin).
+// SUPABASE_URL/ANON là khóa CÔNG KHAI (đã lộ ở config.js client) nên hardcode fallback an toàn.
+const SUPABASE_URL = clean(process.env.SUPABASE_URL) || 'https://kxyukiwhhorvxgxxxmfq.supabase.co';
+const SUPABASE_ANON_KEY = clean(process.env.SUPABASE_ANON_KEY) || 'sb_publishable_yOIciG2SCPyu8mP5KWE5RQ_qIgCd4-f';
+
+async function verifyUser(req) {
+  try {
+    const auth = req.headers.get('authorization') || req.headers.get('Authorization') || '';
+    const m = /^Bearer\s+(.+)$/i.exec(auth);
+    if (!m) return null;
+    const token = m[1].trim();
+    if (!token) return null;
+    const res = await fetch(SUPABASE_URL.replace(/\/+$/, '') + '/auth/v1/user', {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + token }
+    });
+    if (!res.ok) return null;
+    const u = await res.json().catch(() => null);
+    if (!u || !u.id) return null;
+    return { id: u.id, email: String(u.email || '').toLowerCase().trim() };
+  } catch (e) {
+    console.warn('verifyUser failed:', e);
+    return null;
+  }
+}
+
+async function loadProfileRow(id) {
+  try {
+    const r = await db.execute({ sql: 'select * from profiles where id = ?', args: [id] });
+    return r.rows?.[0] || null;
+  } catch (e) { return null; }
+}
+
+// Cho phép đọc dữ liệu học tập (questions/subjects/edit-requests): phải là admin cấu hình,
+// hoặc profile không bị block VÀ (đã duyệt HOẶC là admin/editor).
+async function isApprovedOrStaff(authUser) {
+  const adminEmail = getAdminEmail();
+  if (adminEmail && authUser.email === adminEmail) return true;
+  const p = await loadProfileRow(authUser.id);
+  if (!p) return false;
+  const blocked = p.blocked === 1 || p.blocked === true;
+  if (blocked) return false;
+  const approved = p.approved === 1 || p.approved === true;
+  const staff = ['admin', 'editor'].includes(p.role);
+  return approved || staff;
+}
+
+// Cho phép xem trang quản trị (admin-dashboard): chỉ admin/editor (hoặc admin cấu hình), không bị block.
+async function isStaff(authUser) {
+  const adminEmail = getAdminEmail();
+  if (adminEmail && authUser.email === adminEmail) return true;
+  const p = await loadProfileRow(authUser.id);
+  if (!p) return false;
+  const blocked = p.blocked === 1 || p.blocked === true;
+  if (blocked) return false;
+  return ['admin', 'editor'].includes(p.role);
+}
+// ===== END AUTH_20260705 =====
 
 function roleColor(role) {
   if (role === 'admin') return 10038562;
@@ -149,8 +216,21 @@ export default async function handler(req) {
   const path = parsedUrl.pathname.replace('/api/', '').split('/')[0];
 
   try {
+    // ===== AUTH GATE 20260705 =====
+    // Mọi endpoint dưới đây đòi phiên đăng nhập hợp lệ. authUser lấy từ token đã verify,
+    // dùng làm danh tính THẬT thay cho user_id/email client tự khai. ('settings' để công khai:
+    // chỉ trả về chế độ đăng ký dạng enum, cần đọc được trước khi đăng nhập.)
+    const NEEDS_AUTH = new Set(['subjects', 'questions', 'profile', 'edit-requests', 'admin-dashboard', 'admin-action', 'notify']);
+    let authUser = null;
+    if (NEEDS_AUTH.has(path)) {
+      authUser = await verifyUser(req);
+      if (!authUser) return json({ error: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+    }
+    // ===== END AUTH GATE 20260705 =====
+
     if (path === 'subjects') {
       if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      if (!await isApprovedOrStaff(authUser)) return json({ error: 'Tài khoản chưa được duyệt.' }, 403);
       
       const r = await db.execute({
         sql: `select s.id, s.code, s.name, s.description, s.cover, s.sort_order, s.is_active, s.created_at,
@@ -182,6 +262,7 @@ export default async function handler(req) {
 
     if (path === 'questions') {
       if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      if (!await isApprovedOrStaff(authUser)) return json({ error: 'Tài khoản chưa được duyệt.' }, 403);
 
       const countOnly = parsedUrl.searchParams.get('count_only') === '1';
       if (countOnly) {
@@ -230,7 +311,11 @@ export default async function handler(req) {
       if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
       
       const body = await req.json();
-      const { id, email, full_name, avatar_url } = body;
+      // DANH TÍNH LẤY TỪ TOKEN, không tin body → user chỉ tạo/sửa được profile CỦA CHÍNH MÌNH.
+      // Chỉ full_name/avatar_url là nhận từ body (thông tin hiển thị, không nhạy cảm).
+      const { full_name, avatar_url } = body;
+      const id = authUser.id;
+      const email = authUser.email || String(body.email || '').toLowerCase().trim();
       if (!id || !email) {
         return json({ error: 'Missing id or email' }, 400);
       }
@@ -316,7 +401,8 @@ export default async function handler(req) {
 
     if (path === 'edit-requests') {
       if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
-      
+      if (!await isApprovedOrStaff(authUser)) return json({ error: 'Tài khoản chưa được duyệt.' }, 403);
+
       const body = await req.json();
       await db.execute({
         sql: `insert into edit_requests
@@ -326,8 +412,8 @@ export default async function handler(req) {
           body.question_id || null,
           body.question_num || null,
           body.subject_code || body.old_data?.subject_code || body.new_data?.subject_code || '',
-          body.user_id || null,
-          body.user_email || '',
+          authUser.id,          // user_id lấy từ token, không tin body (chống gán nhầm/mạo danh)
+          authUser.email || '', // user_email lấy từ token
           JSON.stringify(body.old_data || {}),
           JSON.stringify(body.new_data || {}),
           body.reason || ''
@@ -353,7 +439,10 @@ export default async function handler(req) {
       if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
       const body = await req.json();
-      const { kind, user_id, email } = body;
+      const { kind } = body;
+      // Danh tính từ token, không tin body → không ai gửi thông báo mạo danh người khác được.
+      const user_id = authUser.id;
+      const email = authUser.email;
       if (!user_id || !email) return json({ error: 'Missing user_id or email' }, 400);
 
       const userRes = await db.execute({ sql: 'select * from profiles where id = ?', args: [user_id] });
@@ -406,7 +495,8 @@ export default async function handler(req) {
 
     if (path === 'admin-dashboard') {
       if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
-      
+      if (!await isStaff(authUser)) return json({ error: 'Chỉ admin/editor được xem.' }, 403);
+
       const [profiles, questions, requests, history, logs, subjects, subject_requests, deleted_questions, deleted_subjects] = await Promise.all([
         db.execute('select * from profiles order by created_at desc'),
         db.execute('select * from questions order by subject_code asc, num asc'),
@@ -436,7 +526,9 @@ export default async function handler(req) {
       if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
       
       const body = await req.json();
-      const { user_id, action, payload } = body;
+      const { action, payload } = body;
+      // user_id LẤY TỪ TOKEN đã verify, KHÔNG tin body → không mạo danh admin bằng UUID người khác.
+      const user_id = authUser.id;
 
       if (!user_id || !action) {
         return json({ error: 'Missing user_id or action' }, 400);
