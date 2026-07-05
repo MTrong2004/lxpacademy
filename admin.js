@@ -5236,6 +5236,19 @@ setTimeout(function(){ patchLoadAll(); patchRealtime(); patchRefreshButton(); },
 
   function lhToken(){
     try{
+      var url = window.APP_CONFIG?.SUPABASE_URL || '';
+      var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
+      var ref = m ? m[1] : '';
+      if (ref) {
+        var key = 'sb-' + ref + '-auth-token';
+        var raw = localStorage.getItem(key);
+        if (raw) {
+          var v = JSON.parse(raw);
+          var tok = v && (v.access_token || (v.currentSession && v.currentSession.access_token) || (Array.isArray(v) && v[0]));
+          if (tok) return tok;
+        }
+      }
+      // Fallback
       for (var i = 0; i < localStorage.length; i++){
         var k = localStorage.key(i);
         if (k && k.slice(0,3) === 'sb-' && k.slice(-11) === '-auth-token'){
