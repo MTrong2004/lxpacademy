@@ -89,18 +89,32 @@ async function verifyUser(req) {
   try {
     const auth = req.headers.get('authorization') || req.headers.get('Authorization') || '';
     const m = /^Bearer\s+(.+)$/i.exec(auth);
-    if (!m) return null;
+    if (!m) {
+      console.warn('verifyUser: Authorization header is missing or invalid format. Header:', auth ? 'Present (truncated)' : 'Missing');
+      return null;
+    }
     const token = m[1].trim();
-    if (!token) return null;
-    const res = await fetch(SUPABASE_URL.replace(/\/+$/, '') + '/auth/v1/user', {
+    if (!token) {
+      console.warn('verifyUser: Token is empty');
+      return null;
+    }
+    const fetchUrl = SUPABASE_URL.replace(/\/+$/, '') + '/auth/v1/user';
+    const res = await fetch(fetchUrl, {
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + token }
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.warn('verifyUser: Supabase responded with non-OK status:', res.status, 'Body:', errText, 'URL:', fetchUrl);
+      return null;
+    }
     const u = await res.json().catch(() => null);
-    if (!u || !u.id) return null;
+    if (!u || !u.id) {
+      console.warn('verifyUser: Failed to parse user from Supabase response');
+      return null;
+    }
     return { id: u.id, email: String(u.email || '').toLowerCase().trim() };
   } catch (e) {
-    console.warn('verifyUser failed:', e);
+    console.warn('verifyUser exception failed:', e);
     return null;
   }
 }
