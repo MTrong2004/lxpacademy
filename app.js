@@ -927,12 +927,24 @@ window.HODSupabase = (() => {
     await applyOAuthHashSession(client);
     const { data } = await client.auth.getSession();
     currentUser = data.session?.user || null;
-    if (currentUser) { const prof = await loadProfile(); if (prof) await loadQuestionsFromTurso(); }
+    if (currentUser) {
+      const prof = await loadProfile();
+      if (prof) {
+        await loadQuestionsFromTurso();
+        if (typeof window.__LHTriggerSubjectCheck === 'function') window.__LHTriggerSubjectCheck();
+      }
+    }
     else updateAuthUI();
 
     client.auth.onAuthStateChange(async (_event, session) => {
       currentUser = session?.user || null;
-      if (currentUser) { const prof = await loadProfile(); if (prof) await loadQuestionsFromTurso(); }
+      if (currentUser) {
+        const prof = await loadProfile();
+        if (prof) {
+          await loadQuestionsFromTurso();
+          if (typeof window.__LHTriggerSubjectCheck === 'function') window.__LHTriggerSubjectCheck();
+        }
+      }
       else { currentProfile = null; updateAuthUI(); }
     });
   }
@@ -1244,6 +1256,7 @@ async function getSubjects() {
       else openGate();
     };
 
+    window.__LHTriggerSubjectCheck = runSubjectCheckOnce;
     runSubjectCheckOnce();
     setTimeout(runSubjectCheckOnce, 800);
   }
@@ -4582,6 +4595,9 @@ return true;
   let examSubjectsFetchedAt = 0;
   async function ensureExamSubjects() {
     if (ensureExamSubjects.__busy) return;
+    if (!window.HODSupabase?.getUser?.()) return;
+    const prof = window.HODSupabase?.getProfile?.();
+    if (prof && (prof.approved === false || prof.approved === 0 || prof.approved === '0')) return;
     if (examSubjectsData.length && Date.now() - examSubjectsFetchedAt < 60000) return;
     ensureExamSubjects.__busy = true;
     try {
@@ -6785,6 +6801,7 @@ window.clearLearningHubQuestionCache = function () {
     }
   }
   function start(){
+    return; // Supabase Realtime disabled as internal database uses Turso APIs.
     if(document.hidden) return;
     if(channel) return;
     const c = getClient();
@@ -6941,6 +6958,8 @@ window.clearLearningHubQuestionCache = function () {
   }
   async function refresh(force=false){
     if(!user()) return;
+    const prof = window.HODSupabase?.getProfile?.() || null;
+    if(prof && (prof.approved === false || prof.approved === 0 || prof.approved === '0')) return;
     const cards = [...document.querySelectorAll('.subjectCard[data-code]')];
     if(!cards.length) return;
     const store = ensureStore();
@@ -7600,6 +7619,9 @@ window.APP_CONFIG.USE_TURSO_API = true;
 
   async function fetchCounts(){
     if(loading) return null;
+    if(!window.HODSupabase?.getUser?.()) return null;
+    const prof = window.HODSupabase?.getProfile?.();
+    if(prof && (prof.approved === false || prof.approved === 0 || prof.approved === '0')) return null;
     loading = true;
     try{
       const res = await fetch('/api/questions?count_only=1&ts=' + Date.now(), { cache:'no-store' });
@@ -7966,7 +7988,11 @@ try {
         if (raw) {
           var v = JSON.parse(raw);
           var tok = v && (v.access_token || (v.currentSession && v.currentSession.access_token) || (Array.isArray(v) && v[0]));
-          if (tok) return tok;
+          var exp = v && (v.expires_at || (v.currentSession && v.currentSession.expires_at));
+          if (tok) {
+            if (exp && (Date.now() / 1000) > (exp - 10)) return '';
+            return tok;
+          }
         }
       }
       // Fallback
@@ -7977,7 +8003,11 @@ try {
           if (!raw) continue;
           var v = JSON.parse(raw);
           var tok = v && (v.access_token || (v.currentSession && v.currentSession.access_token) || (Array.isArray(v) && v[0]));
-          if (tok) return tok;
+          var exp = v && (v.expires_at || (v.currentSession && v.currentSession.expires_at));
+          if (tok) {
+            if (exp && (Date.now() / 1000) > (exp - 10)) return '';
+            return tok;
+          }
         }
       }
     }catch(e){}
