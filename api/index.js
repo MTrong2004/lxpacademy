@@ -153,9 +153,9 @@ async function isStaff(authUser) {
 // ===== END AUTH_20260705 =====
 
 function roleColor(role) {
-  if (role === 'admin') return 10038562;
-  if (role === 'editor') return 3066993;
-  return 3447003;
+  if (role === 'admin') return 15158332;    // 🔴 Đỏ cho admin
+  if (role === 'editor') return 3447003;    // 🔵 Xanh cho editor
+  return 3066897;                           // 🟢 Xanh lá cho user
 }
 
 async function postDiscordEmbed(embed) {
@@ -170,6 +170,58 @@ async function postDiscordEmbed(embed) {
   } catch (e) {
     console.warn('Discord notify failed:', e);
   }
+}
+
+function discordText(value, fallback = 'N/A', maxLength = 1000) {
+  const text = String(value ?? '').trim();
+  if (!text) return fallback;
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+// Admin không cần nhận thông báo về chính thao tác của họ. So sánh cả role
+// lẫn ADMIN_EMAIL để vẫn đúng trong trường hợp profile chưa kịp đồng bộ role.
+function shouldNotifyQuestionChange(profile, authUser) {
+  const role = String(profile?.role || '').toLowerCase();
+  const configuredAdmin = String(getAdminEmail() || '').toLowerCase().trim();
+  const email = String(authUser?.email || profile?.email || '').toLowerCase().trim();
+  return role !== 'admin' && (!configuredAdmin || email !== configuredAdmin);
+}
+
+function questionAnswerText(data) {
+  if (!data) return '';
+  const answerText = String(data.answer_text || '').trim();
+  if (answerText) return answerText;
+  const answer = String(data.answer || '').trim();
+  const options = parseJson(data.options, data.options || {});
+  const optionText = options && typeof options === 'object' ? String(options[answer] || '').trim() : '';
+  return optionText ? `${answer}. ${optionText}` : answer;
+}
+
+async function notifyQuestionChange({ profile, authUser, title, questionNum, subjectCode, questionText, oldData, newData, reason }) {
+  if (!shouldNotifyQuestionChange(profile, authUser)) return;
+  const role = String(profile?.role || 'user').toLowerCase();
+  const oldAnswer = questionAnswerText(oldData);
+  const newAnswer = questionAnswerText(newData);
+  const roleIcon = role === 'admin' ? '👑' : role === 'editor' ? '✏️' : '👤';
+  await postDiscordEmbed({
+    title: `${roleIcon} ${title || 'Yêu cầu sửa câu hỏi'}`,
+    color: roleColor(role),
+    description: `**Cần kiểm tra** từ ${discordText(profile?.full_name || authUser?.email)}\nVai trò: \`${role}\``,
+    fields: [
+    { name: 'Người gửi', value: discordText(profile?.full_name || authUser?.email), inline: true },
+      { name: 'Vai trò', value: `\`${role}\``, inline: true },
+      { name: 'Môn học', value: `\`${discordText(subjectCode, 'Chưa rõ', 50)}\``, inline: true },
+      { name: 'Câu hỏi', value: `Câu ${discordText(questionNum, 'N/A', 10)}`, inline: true },
+      { name: 'Nội dung đề xuất', value: discordText(questionText, '*(Không có nội dung)*', 950), inline: false },
+      ...(oldData || newData ? [
+        { name: 'Đáp án hiện tại', value: discordText(oldAnswer, '*(Chưa có đáp án)*', 950), inline: false },
+        { name: 'Đáp án đề xuất', value: discordText(newAnswer, '*(Chưa có đáp án)*', 950), inline: false }
+      ] : []),
+      ...(reason ? [{ name: 'Ghi chú', value: discordText(reason, '*(Không ghi chú)*', 900), inline: false }] : [])
+    ],
+    footer: { text: `Learning Hub · Yêu cầu chỉnh sửa · ${new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}` },
+    timestamp: new Date().toISOString()
+  });
 }
 
 function parseJson(v, fallback) {
@@ -234,7 +286,7 @@ export default async function handler(req) {
     // Mọi endpoint dưới đây đòi phiên đăng nhập hợp lệ. authUser lấy từ token đã verify,
     // dùng làm danh tính THẬT thay cho user_id/email client tự khai. ('settings' để công khai:
     // chỉ trả về chế độ đăng ký dạng enum, cần đọc được trước khi đăng nhập.)
-    const NEEDS_AUTH = new Set(['subjects', 'questions', 'profile', 'edit-requests', 'admin-dashboard', 'admin-action', 'notify']);
+    const NEEDS_AUTH = new Set(['subjects', 'questions', 'profile', 'edit-requests', 'my-edit-requests', 'staff-edit-requests', 'admin-dashboard', 'admin-action', 'notify']);
     let authUser = null;
     if (NEEDS_AUTH.has(path)) {
       authUser = await verifyUser(req);
@@ -418,22 +470,82 @@ export default async function handler(req) {
       if (!await isApprovedOrStaff(authUser)) return json({ error: 'Tài khoản chưa được duyệt.' }, 403);
 
       const body = await req.json();
-      await db.execute({
-        sql: `insert into edit_requests
-              (question_id, question_num, subject_code, user_id, user_email, old_data, new_data, reason, status, created_at)
-              values (?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))`,
-        args: [
-          body.question_id || null,
-          body.question_num || null,
-          body.subject_code || body.old_data?.subject_code || body.new_data?.subject_code || '',
-          authUser.id,          // user_id lấy từ token, không tin body (chống gán nhầm/mạo danh)
-          authUser.email || '', // user_email lấy từ token
-          JSON.stringify(body.old_data || {}),
-          JSON.stringify(body.new_data || {}),
-          body.reason || ''
-        ]
+      const profile = await loadProfileRow(authUser.id);
+      const questionId = body.question_id || null;
+      const questionNum = body.question_num || null;
+      const subjectCode = body.subject_code || body.old_data?.subject_code || body.new_data?.subject_code || '';
+      // Một câu chỉ có một yêu cầu đang chờ của cùng người dùng. Gửi lại sẽ thay
+      // nội dung cũ bằng lần gửi gần nhất, tránh admin duyệt nhầm bản cũ.
+      const pending = await db.execute({
+        sql: `select id from edit_requests
+              where user_id = ? and question_id is ? and subject_code = ? and status = 'pending'
+              order by id desc limit 1`,
+        args: [authUser.id, questionId, subjectCode]
       });
-      return json({ ok: true });
+      const existingId = pending.rows?.[0]?.id;
+      if (existingId) {
+        await db.execute({
+          sql: `update edit_requests
+                set question_num = ?, user_email = ?, old_data = ?, new_data = ?, reason = ?, created_at = datetime('now')
+                where id = ?`,
+          args: [questionNum, authUser.email || '', JSON.stringify(body.old_data || {}), JSON.stringify(body.new_data || {}), body.reason || '', existingId]
+        });
+        // Dọn các bản chờ cũ (nếu đã được tạo từ trước khi có cơ chế gộp),
+        // để admin chỉ nhìn thấy đúng một bản mới nhất của người dùng này.
+        await db.execute({
+          sql: `delete from edit_requests
+                where user_id = ? and question_id is ? and subject_code = ? and status = 'pending' and id <> ?`,
+          args: [authUser.id, questionId, subjectCode, existingId]
+        });
+      } else {
+        await db.execute({
+          sql: `insert into edit_requests
+                (question_id, question_num, subject_code, user_id, user_email, old_data, new_data, reason, status, created_at)
+                values (?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))`,
+          args: [questionId, questionNum, subjectCode, authUser.id, authUser.email || '', JSON.stringify(body.old_data || {}), JSON.stringify(body.new_data || {}), body.reason || '']
+        });
+      }
+      await notifyQuestionChange({
+        profile,
+        authUser,
+        title: existingId ? 'Yêu cầu sửa câu hỏi đã cập nhật' : 'Yêu cầu sửa câu hỏi mới',
+        questionNum: questionNum || body.old_data?.num || body.new_data?.num,
+        subjectCode,
+        questionText: body.new_data?.question || body.old_data?.question,
+        oldData: body.old_data,
+        newData: body.new_data,
+        reason: body.reason
+      });
+      return json({ ok: true, id: existingId || null, updated_existing: !!existingId });
+    }
+
+    if (path === 'my-edit-requests') {
+      if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      if (!await isApprovedOrStaff(authUser)) return json({ error: 'Tài khoản chưa được duyệt.' }, 403);
+      // Chỉ trả yêu cầu mới nhất của mỗi câu cho chính chủ tài khoản.
+      const r = await db.execute({
+        sql: `select e.id, e.question_id, e.question_num, e.subject_code, e.new_data, e.reason,
+                     e.status, e.admin_note, e.created_at, e.reviewed_at
+              from edit_requests e
+              where e.user_id = ? and e.id in (
+                select max(id) from edit_requests where user_id = ? group by question_id, subject_code
+              )
+              order by coalesce(e.reviewed_at, e.created_at) desc, e.id desc
+              limit 100`,
+        args: [authUser.id, authUser.id]
+      });
+      return json({ data: (r.rows || []).map(row => ({ ...row, new_data: parseJson(row.new_data, {}) })) });
+    }
+
+    if (path === 'staff-edit-requests') {
+      if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      if (!await isStaff(authUser)) return json({ error: 'Chỉ admin/editor được xem.' }, 403);
+      const r = await db.execute({
+        sql: `select id, question_id, question_num, subject_code, user_email, old_data, new_data, reason, status, created_at
+              from edit_requests where status = 'pending' order by created_at desc, id desc limit 100`,
+        args: []
+      });
+      return json({ data: (r.rows || []).map(row => ({ ...row, old_data: parseJson(row.old_data, {}), new_data: parseJson(row.new_data, {}) })) });
     }
 
     if (path === 'settings') {
@@ -467,15 +579,19 @@ export default async function handler(req) {
       const role = profile.role || 'user';
 
       if (kind === 'login') {
+        const roleIcon = role === 'admin' ? '👑' : role === 'editor' ? '✏️' : '👤';
         await postDiscordEmbed({
-          title: '🔑 NGƯỜI DÙNG ĐĂNG NHẬP',
+          title: `${roleIcon} ĐĂNG NHẬP | ${role.toUpperCase()}`,
           color: roleColor(role),
+          description: `Email: **${email}**`,
           fields: [
-            { name: '👤 Gmail', value: email, inline: true },
-            { name: '🎭 Vai trò', value: role, inline: true },
-            { name: '🌐 Nguồn', value: body.source === 'admin' ? 'Admin panel' : 'Web học', inline: true },
-            { name: '⏰ Thời điểm', value: new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }), inline: false }
-          ]
+            { name: 'Tài khoản', value: email, inline: true },
+            { name: 'Vai trò', value: `\`${role}\``, inline: true },
+            { name: 'Từ', value: body.source === 'admin' ? 'Admin' : 'Web học', inline: true },
+            { name: 'Thời gian', value: new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }), inline: false }
+          ],
+          footer: { text: 'Learning Hub · Đăng nhập hệ thống' },
+          timestamp: new Date().toISOString()
         });
         return json({ ok: true });
       }
@@ -491,15 +607,18 @@ export default async function handler(req) {
         }
 
         const { action_name, target_type, target_id } = body;
+        const roleIcon = role === 'admin' ? '👑' : role === 'editor' ? '✏️' : '👤';
         await postDiscordEmbed({
-          title: `⚙️ HÀNH ĐỘNG HỆ THỐNG: ${String(action_name || '').toUpperCase()}`,
+          title: `${roleIcon} HÀNH ĐỘNG: ${String(action_name || '').toUpperCase()}`,
           color: roleColor(role),
+          description: `Người thực hiện: **${email}** | Vai trò: \`${role}\``,
           fields: [
-            { name: '👤 Tài khoản', value: email, inline: true },
-            { name: '🎭 Vai trò', value: role, inline: true },
-            { name: '🔢 Đối tượng', value: `${target_type || 'N/A'} (ID: ${target_id || 'N/A'})`, inline: false },
-            { name: '⏰ Thời điểm', value: new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }), inline: false }
-          ]
+            { name: 'Loại đối tượng', value: `\`${target_type || 'N/A'}\``, inline: true },
+            { name: 'ID', value: `\`${target_id || 'N/A'}\``, inline: true },
+            { name: 'Thời gian', value: new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }), inline: false }
+          ],
+          footer: { text: 'Learning Hub · Hệ thống hành động' },
+          timestamp: new Date().toISOString()
         });
         return json({ ok: true });
       }
@@ -722,6 +841,16 @@ export default async function handler(req) {
           });
 
           await logAdminAction('save_question_direct', 'questions', question_id);
+          await notifyQuestionChange({
+            profile: userProfile,
+            authUser,
+            title: 'Câu hỏi đã được chỉnh sửa',
+            questionNum: new_data?.num || old_data?.num,
+            subjectCode: new_data?.subject_code || old_data?.subject_code,
+            questionText: new_data?.question || old_data?.question,
+            oldData: old_data,
+            newData: new_data
+          });
           return json({ ok: true });
         }
 

@@ -1,4 +1,4 @@
-<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>Learning Hub</title><link rel="stylesheet" href="app.css?v=20260701f">
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>Learning Hub</title><link rel="stylesheet" href="app.css?v=20260719b">
 <link rel="stylesheet" href="landing.css"></head><body>
 
 <div id="hodLoginGate" class="hodLoginGate">
@@ -42,10 +42,14 @@
     <span>Môn hiện tại</span>
     <b id="hodAccountSubjectText">Chưa chọn môn</b>
   </div>
-  <button id="hodChangeSubjectBtn" type="button">Đổi môn học</button>
+  <div class="hodAccountQuickActions">
+    <button id="hodChangeSubjectBtn" type="button">Đổi môn học</button>
+    <button id="hodEditRequestBell" class="hodEditRequestBell" type="button" aria-label="Thông báo yêu cầu sửa câu hỏi" title="Thông báo yêu cầu sửa câu hỏi"><svg class="hodBellIcon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path><path d="M10 21h4"></path></svg><span id="hodEditRequestBadge" class="hodEditRequestBadge hidden">0</span></button>
+  </div>
   <button id="hodAccountDashboard" class="hidden" type="button">Mở Dashboard</button>
   <button id="hodLogoutBtn" type="button">Đăng xuất</button>
 </div>
+<div id="hodEditRequestModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="hodEditRequestTitle"><div class="box hodEditRequestBox"><h2 id="hodEditRequestTitle">Thông báo yêu cầu sửa</h2><p class="authHelp">Trạng thái mới nhất của các câu hỏi bạn đã gửi sửa.</p><div id="hodEditRequestList" class="hodEditRequestList"></div><div class="row"><button id="hodEditRequestClose" class="primary" type="button">Đóng</button></div></div></div>
 <div id="subjectGate" class="subjectGate hidden" aria-hidden="true">
   <div class="subjectGateBackdrop"></div>
   <section class="subjectGatePanel polishedSubjectPanel">
@@ -89,5 +93,5 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
 <script src="landing.js"></script>
-<script src="app.js?v=20260701f"></script>
+<script src="app.js?v=20260719b"></script>
 </body></html>

@@ -717,6 +717,8 @@ window.HODSupabase = (() => {
         }
         hidePendingApproval();
         updateAuthUI();
+        // Start notification loading only after the authenticated profile is ready.
+        window.dispatchEvent(new CustomEvent('lh:profile-ready'));
         return currentProfile;
       } catch (e) {
         console.error('[Turso profile]', e);
@@ -8047,3 +8049,170 @@ try {
   };
 })();
 // ===== END LH_AUTH_FETCH_20260705 =====
+
+// ===== USER_EDIT_REQUEST_BELL_20260719 =====
+// Chuông trong menu tài khoản: người học chỉ xem các yêu cầu sửa của chính họ.
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+  let requests = [];
+  let loading = null;
+  let statusSnapshot = new Map();
+  let hasFirstSnapshot = false;
+  let recentResultKeys = new Set();
+
+  function currentUserId() { return window.HODSupabase?.getUser?.()?.id || ''; }
+  function isStaff() { return ['admin', 'editor'].includes(String(window.HODSupabase?.getProfile?.()?.role || '').toLowerCase()); }
+  function storageKey() { return `learninghub_edit_request_seen_v1_${isStaff() ? 'staff' : 'user'}_${currentUserId()}`; }
+  function seenMap() { try { return JSON.parse(localStorage.getItem(storageKey()) || '{}') || {}; } catch { return {}; } }
+  function saveSeen(value) { try { localStorage.setItem(storageKey(), JSON.stringify(value)); } catch {} }
+  function statusText(status) { return ({ pending: 'Đang chờ duyệt', approved: 'Đã được chấp nhận', rejected: 'Đã bị từ chối' }[status] || status || 'Không rõ'); }
+  function questionText(row) {
+    const text = String(row?.new_data?.question || '').trim();
+    return text.length > 115 ? `${text.slice(0, 114)}…` : (text || 'Không có nội dung câu hỏi');
+  }
+  function formatDate(value) {
+    if (!value) return '';
+    const date = new Date(String(value).replace(' ', 'T') + (String(value).includes('Z') ? '' : 'Z'));
+    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+  }
+  function refreshBadge() {
+    const badge = $('hodEditRequestBadge');
+    if (!badge) return;
+    const seen = seenMap();
+    const count = isStaff()
+      ? requests.filter(row => !seen[`${row.id}:pending`]).length
+      // Người gửi không cần nhận "tin mới" cho request đang tự tạo/chờ duyệt.
+      // Chỉ báo khi quản trị viên đã đưa ra kết quả mới.
+      : requests.filter(row => {
+        const key = `${row.id}:${row.status}`;
+        return ['approved', 'rejected'].includes(row.status) && (!seen[key] || recentResultKeys.has(key));
+      }).length;
+    badge.textContent = count > 99 ? '99+' : String(count);
+    badge.classList.toggle('hidden', count === 0);
+    $('hodEditRequestBell')?.classList.toggle('hasNewRequest', count > 0);
+  }
+  function announceNewResult(rows) {
+    const next = new Map(rows.map(row => [String(row.id), String(row.status || '')]));
+    if (hasFirstSnapshot && !isStaff()) {
+      const hasNewResult = rows.some(row => {
+        const status = String(row.status || '');
+        return ['approved', 'rejected'].includes(status) && statusSnapshot.get(String(row.id)) !== status;
+      });
+      if (hasNewResult) {
+        rows.forEach(row => {
+          const status = String(row.status || '');
+          const key = `${row.id}:${status}`;
+          if (['approved', 'rejected'].includes(status) && statusSnapshot.get(String(row.id)) !== status) recentResultKeys.add(key);
+        });
+        const message = rows.some(row => String(row.status) === 'approved' && statusSnapshot.get(String(row.id)) !== 'approved')
+          ? 'Yêu cầu sửa câu hỏi của bạn đã được duyệt.'
+          : 'Yêu cầu sửa câu hỏi của bạn đã được phản hồi.';
+        if (typeof notifyUX === 'function') notifyUX(message);
+        else if (typeof notify === 'function') notify(message);
+      }
+    }
+    statusSnapshot = next;
+    hasFirstSnapshot = true;
+  }
+  function render() {
+    const list = $('hodEditRequestList');
+    if (!list) return;
+    if (!requests.length) {
+      list.innerHTML = `<p class="muted">${isStaff() ? 'Không có yêu cầu sửa nào đang chờ duyệt.' : 'Bạn chưa gửi yêu cầu sửa câu hỏi nào.'}</p>`;
+      return;
+    }
+    const seen = seenMap();
+    const displayRows = [...requests].sort((a, b) => {
+      const aNew = ['approved', 'rejected'].includes(a.status) && (!seen[`${a.id}:${a.status}`] || recentResultKeys.has(`${a.id}:${a.status}`));
+      const bNew = ['approved', 'rejected'].includes(b.status) && (!seen[`${b.id}:${b.status}`] || recentResultKeys.has(`${b.id}:${b.status}`));
+      if (aNew !== bNew) return aNew ? -1 : 1;
+      return String(b.reviewed_at || b.created_at || '').localeCompare(String(a.reviewed_at || a.created_at || ''));
+    });
+    list.innerHTML = displayRows.map(row => {
+      const code = row.subject_code || row.new_data?.subject_code || 'Chưa rõ môn';
+      const num = row.question_num || row.new_data?.num || row.question_id || '?';
+      const note = row.status === 'rejected' && row.admin_note ? `<p class="hodEditRequestNote">Lý do: ${esc(row.admin_note)}</p>` : '';
+      const when = row.reviewed_at || row.created_at;
+      const action = isStaff() ? '<button class="primary hodEditRequestReview" type="button" data-review-edit-request>Đi tới trang duyệt yêu cầu</button>' : '';
+      const isNew = ['approved', 'rejected'].includes(row.status) && (!seen[`${row.id}:${row.status}`] || recentResultKeys.has(`${row.id}:${row.status}`));
+      return `<article class="hodEditRequestItem ${isNew ? 'is-new' : ''}"><div class="hodEditRequestHead"><b>${esc(code)} · Câu ${esc(num)}</b><span class="hodEditRequestStatus ${esc(row.status || '')}">${esc(statusText(row.status))}</span></div>${isNew ? '<span class="hodEditRequestNew">Mới</span>' : ''}<p class="hodEditRequestMeta">${esc(questionText(row))}</p><p class="hodEditRequestMeta">${row.reviewed_at ? 'Cập nhật' : 'Gửi'}: ${esc(formatDate(when))}</p>${note}${action}</article>`;
+    }).join('');
+    list.querySelectorAll('[data-review-edit-request]').forEach(btn => btn.onclick = () => { window.location.href = 'admin.html?tab=requests'; });
+  }
+  async function load(force = false) {
+    if (!currentUserId()) { requests = []; refreshBadge(); return []; }
+    if (loading) return loading;
+    loading = (async () => {
+      try {
+        const endpoint = isStaff() ? '/api/staff-edit-requests' : '/api/my-edit-requests';
+        // Timestamp prevents an intermediary cache from serving an old status.
+        const res = await fetch(`${endpoint}?ts=${Date.now()}`, { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+        requests = Array.isArray(data.data) ? data.data : [];
+        announceNewResult(requests);
+        render(); refreshBadge();
+        return requests;
+      } catch (error) {
+        if ($('hodEditRequestModal') && !$('hodEditRequestModal').classList.contains('hidden')) $('hodEditRequestList').innerHTML = `<p class="muted">Không tải được thông báo: ${esc(error.message)}</p>`;
+        return [];
+      } finally { loading = null; }
+    })();
+    return loading;
+  }
+  async function open() {
+    const modal = $('hodEditRequestModal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    $('hodEditRequestTitle').textContent = isStaff() ? 'Yêu cầu sửa đang chờ duyệt' : 'Thông báo yêu cầu sửa';
+    $('hodEditRequestList').innerHTML = '<p class="muted">Đang tải thông báo...</p>';
+    await load(true);
+    const seen = seenMap();
+    requests.filter(row => isStaff() || ['approved', 'rejected'].includes(row.status)).forEach(row => { seen[`${row.id}:${row.status}`] = Date.now(); });
+    recentResultKeys.clear();
+    saveSeen(seen); refreshBadge();
+  }
+  function close() { $('hodEditRequestModal')?.classList.add('hidden'); }
+  function bind() {
+    $('hodEditRequestBell')?.addEventListener('click', open);
+    $('hodEditRequestClose')?.addEventListener('click', close);
+    $('hodEditRequestModal')?.addEventListener('click', event => { if (event.target === $('hodEditRequestModal')) close(); });
+    document.addEventListener('click', event => { if (event.target.closest('#hodTopAvatar')) setTimeout(() => load(true), 80); });
+    window.addEventListener('focus', () => load());
+    // Load immediately after login, then refresh sparingly while the tab is visible.
+    window.addEventListener('lh:profile-ready', () => load(true));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+    // Endpoint này chỉ đọc trạng thái yêu cầu của chính user; kiểm tra mỗi 3s
+    // khi tab hiển thị để chuông phản hồi gần như thời gian thực.
+    setInterval(() => { if (!document.hidden) load(); }, 3 * 1000);
+    // Trường hợp profile đã hoàn tất trước khi block chuông được gắn listener.
+    if (currentUserId()) load(true);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind, { once: true }); else bind();
+})();
+// ===== END USER_EDIT_REQUEST_BELL_20260719 =====
+
+// ===== MOVE_EDIT_REQUEST_BELL_TO_TOPBAR_20260719 =====
+// Giữ chuông cạnh nút Đổi môn trên thanh điều hướng, trước nút cài đặt.
+(function () {
+  function placeBell() {
+    const bell = document.getElementById('hodEditRequestBell');
+    const actions = document.querySelector('.globalTop .actions') || document.querySelector('#fc .actions') || document.querySelector('.actions');
+    const subject = document.getElementById('subjectTopChip');
+    const settings = document.getElementById('openSettings');
+    if (!bell || !actions) return;
+    if (settings?.parentNode === actions) {
+      actions.insertBefore(bell, settings);
+    } else if (subject?.parentNode === actions) {
+      actions.insertBefore(bell, subject.nextSibling);
+    } else if (!actions.contains(bell)) {
+      actions.appendChild(bell);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', placeBell, { once: true });
+  else placeBell();
+  setTimeout(placeBell, 350);
+  setTimeout(placeBell, 1200);
+})();
+// ===== END MOVE_EDIT_REQUEST_BELL_TO_TOPBAR_20260719 =====

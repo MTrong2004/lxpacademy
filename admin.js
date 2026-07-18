@@ -751,6 +751,13 @@ function questionLabel(r) {
   return r.question_num || r.question_id || r.num || r.id || '?';
 }
 
+function subjectLabel(row) {
+  const code = row?.subject_code || row?.old_data?.subject_code || row?.new_data?.subject_code || '';
+  if (!code) return 'Chưa rõ môn';
+  const subject = (cache.subjects || []).find(s => String(s.code || '').toUpperCase() === String(code).toUpperCase());
+  return subject?.name ? `${code} — ${subject.name}` : String(code);
+}
+
 function getQuestionByReq(r) {
   return cache.questions.find(q => q.id === r.question_id || q.num === r.question_num);
 }
@@ -815,10 +822,11 @@ function renderStats() {
 function reqHTML(r) {
   const fields = changedFields(r);
   const userText = r.user_email || r.email || r.user_id || 'Không rõ user';
+  const subject = subjectLabel(r);
   return `<div class="item reqItem ${esc(r.status || '')}">
     <div class="head">
       <div>
-        <b>Câu ${esc(questionLabel(r))}</b>
+        <b>${esc(subject)} · Câu ${esc(questionLabel(r))}</b>
         <p class="muted">${esc(date(r.created_at))} · ${esc(userText)}</p>
       </div>
       ${badge(r.status)}
@@ -1255,6 +1263,18 @@ document.addEventListener('DOMContentLoaded', init);
         <div class="actions"><button class="act" onclick="viewHistoryFixed('${esc(h.id || h.question_id || '')}')">Trước/sau</button></div>
       </div>`;
     }).join('') || '<p class=muted>Chưa có lịch sử chỉnh sửa.</p>';
+  };
+
+  // Nút trong danh sách gọi hàm này. Dữ liệu đầy đủ đã có trong dashboard,
+  // nên mở trực tiếp so sánh Trước/Sau thay vì gọi một endpoint Supabase cũ.
+  window.viewHistoryFixed = function(id){
+    const h = (cache.history || []).find(x => String(x.id || '') === String(id || ''));
+    if(!h) return alert('Không tìm thấy lịch sử chỉnh sửa. Hãy tải lại trang rồi thử lại.');
+    const subject = realSubjectCode(h);
+    const number = realQuestionNum(h);
+    const before = h.previous_data || {};
+    const after = h.new_data || {};
+    openModal(`${subject ? subject + ' · ' : ''}Lịch sử câu ${number}`, compareHTML(before, after));
   };
 })();
 
@@ -3339,7 +3359,8 @@ ${E(val)}</pre>`;
     if(q && !Object.prototype.hasOwnProperty.call(oldData,'images')) oldData.images = q.images || [];
     const newData = Object.assign({}, r.new_data || {});
     if(!Object.prototype.hasOwnProperty.call(newData,'images') && r.new_data && Object.keys(r.new_data).length) newData.images = [];
-    openModal(`Yêu cầu sửa câu ${typeof questionLabel==='function'?questionLabel(r):(r.question_num||r.id)}`, compareHTML(oldData, newData));
+    const subject = typeof subjectLabel === 'function' ? subjectLabel(r) : (r.subject_code || oldData.subject_code || newData.subject_code || 'Chưa rõ môn');
+    openModal(`${subject} · Yêu cầu sửa câu ${typeof questionLabel==='function'?questionLabel(r):(r.question_num||r.id)}`, compareHTML(oldData, newData));
   };
 })();
 // ===== END FIX_ADMIN_REQUEST_IMAGES_FORCE_20260628 =====
@@ -5170,7 +5191,9 @@ setTimeout(function(){ patchLoadAll(); patchRealtime(); patchRefreshButton(); },
   if (window.__FIX_ADMIN_AUTO_REFRESH_20260701) return;
   window.__FIX_ADMIN_AUTO_REFRESH_20260701 = true;
 
-  const INTERVAL_MS = 20000; // 20 giây/lần, đủ nhanh mà không tốn quá nhiều request
+  // admin-dashboard reads every question and several tables; polling it every
+  // 20 seconds creates millions of Turso read units with an open admin tab.
+  const INTERVAL_MS = 15 * 60 * 1000;
 
   async function silentRefresh(){
     try{
@@ -5296,3 +5319,12 @@ setTimeout(function(){ patchLoadAll(); patchRealtime(); patchRefreshButton(); },
   };
 })();
 // ===== END LH_AUTH_FETCH_20260705 =====
+
+// ===== OPEN_ADMIN_REQUESTS_FROM_LEARNING_BELL_20260719 =====
+(function(){
+  if(new URLSearchParams(location.search).get('tab') !== 'requests') return;
+  document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => window.setPage?.('requests', 'Yêu cầu sửa'), 250);
+  });
+})();
+// ===== END_OPEN_ADMIN_REQUESTS_FROM_LEARNING_BELL_20260719 =====
