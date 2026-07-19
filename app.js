@@ -6734,7 +6734,17 @@ window.clearLearningHubQuestionCache = function () {
       updated_at: new Date().toISOString()
     };
     const u = window.HODSupabase?.getUser?.();
-    const res = await fetch('/api/admin-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ user_id: u?.id, action: 'save_question_direct', payload: { question_id: id, new_data: Object.assign({ id, subject_code: d.subject_code, num: d.num }, payload), old_data: {} } }) });
+    const oldQ = (RAW || []).find(x => String(x.id) === String(id) || Number(x.num) === Number(d.num))
+                 || (pool || []).find(x => String(x.id) === String(id) || Number(x.num) === Number(d.num))
+                 || d;
+    const old_data = {
+      question: oldQ.question || '',
+      options: oldQ.options || {},
+      answer: oldQ.answer || '',
+      answer_text: oldQ.answer_text || '',
+      images: cleanImgs(oldQ.images || [])
+    };
+    const res = await fetch('/api/admin-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ user_id: u?.id, action: 'save_question_direct', payload: { question_id: id, new_data: Object.assign({ id, subject_code: d.subject_code, num: d.num }, payload), old_data } }) });
     const out = await res.json().catch(() => ({}));
     if(!res.ok || out.error) { alert('Lưu trực tiếp thất bại: ' + (out.error || res.status)); return true; }
     if (typeof window.clearLearningHubQuestionCache === 'function') {

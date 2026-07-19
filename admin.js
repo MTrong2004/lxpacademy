@@ -427,7 +427,10 @@ function createTursoClientMock(supaClient) {
               });
             });
           } else {
-            filtered = filtered.filter(x => x[f.col] === f.val);
+            filtered = filtered.filter(x => {
+              if (f.col === 'id') return String(x[f.col]) === String(f.val);
+              return x[f.col] === f.val;
+            });
           }
         }
 
@@ -494,7 +497,8 @@ function createTursoClientMock(supaClient) {
             apiPayload = { question_id: idVal };
           } else {
             apiAction = 'save_question_direct';
-            apiPayload = { question_id: idVal, new_data: payload, old_data: {} };
+            const oldQ = (localCache && localCache.questions || []).find(x => String(x.id) === String(idVal)) || {};
+            apiPayload = { question_id: idVal, new_data: payload, old_data: oldQ };
           }
         } else if (tableName === 'profiles') {
           if (payload.blocked !== undefined) {
