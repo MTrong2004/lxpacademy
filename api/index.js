@@ -197,21 +197,45 @@ function questionAnswerText(data) {
   return optionText ? `${answer}. ${optionText}` : answer;
 }
 
+function getFirstImageUrl(data) {
+  if (!data) return null;
+  const imgs = parseJson(data.images, data.images);
+  if (!Array.isArray(imgs) || imgs.length === 0) return null;
+  const im = imgs[0];
+  if (typeof im === 'string') return im;
+  return im?.src || im?.url || im?.secure_url || null;
+}
+
 async function notifyQuestionChange({ profile, authUser, title, questionNum, subjectCode, questionText, oldData, newData, reason }) {
   if (!shouldNotifyQuestionChange(profile, authUser)) return;
   const role = String(profile?.role || 'user').toLowerCase();
   const oldAnswer = questionAnswerText(oldData);
   const newAnswer = questionAnswerText(newData);
   const roleIcon = role === 'admin' ? '👑' : role === 'editor' ? '✏️' : '👤';
+  const oldImgUrl = getFirstImageUrl(oldData);
+  const newImgUrl = getFirstImageUrl(newData);
+
+  let imgStatus = '';
+  if (!oldImgUrl && newImgUrl) {
+    imgStatus = '🟢 Thêm mới';
+  } else if (oldImgUrl && !newImgUrl) {
+    imgStatus = '🔴 Xóa bỏ';
+  } else if (oldImgUrl && newImgUrl && oldImgUrl !== newImgUrl) {
+    imgStatus = '🟡 Thay đổi';
+  }
+
   await postDiscordEmbed({
     title: `${roleIcon} ${title || 'Yêu cầu sửa câu hỏi'}`,
     color: roleColor(role),
     description: `**Cần kiểm tra** từ ${discordText(profile?.full_name || authUser?.email)}\nVai trò: \`${role}\``,
     fields: [
-    { name: 'Người gửi', value: discordText(profile?.full_name || authUser?.email), inline: true },
+      { name: 'Người gửi', value: discordText(profile?.full_name || authUser?.email), inline: true },
       { name: 'Vai trò', value: `\`${role}\``, inline: true },
       { name: 'Môn học', value: `\`${discordText(subjectCode, 'Chưa rõ', 50)}\``, inline: true },
       { name: 'Câu hỏi', value: `Câu ${discordText(questionNum, 'N/A', 10)}`, inline: true },
+      ...(imgStatus ? [{ name: 'Trạng thái ảnh', value: imgStatus, inline: true }] : []),
+      ...(oldImgUrl ? [{ name: 'Ảnh hiện tại', value: `[Xem ảnh](${oldImgUrl})`, inline: true }] : []),
+      ...(newImgUrl ? [{ name: 'Ảnh đề xuất', value: `[Xem ảnh](${newImgUrl})`, inline: true }] : []),
       { name: 'Nội dung đề xuất', value: discordText(questionText, '*(Không có nội dung)*', 950), inline: false },
       ...(oldData || newData ? [
         { name: 'Đáp án hiện tại', value: discordText(oldAnswer, '*(Chưa có đáp án)*', 950), inline: false },
@@ -219,6 +243,7 @@ async function notifyQuestionChange({ profile, authUser, title, questionNum, sub
       ] : []),
       ...(reason ? [{ name: 'Ghi chú', value: discordText(reason, '*(Không ghi chú)*', 900), inline: false }] : [])
     ],
+    image: newImgUrl ? { url: newImgUrl } : undefined,
     footer: { text: `Learning Hub · Yêu cầu chỉnh sửa · ${new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}` },
     timestamp: new Date().toISOString()
   });
