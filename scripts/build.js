@@ -1,4 +1,4 @@
-import { transform } from 'esbuild';
+import { transform, build } from 'esbuild';
 import { mkdir, readFile, writeFile, copyFile, rm } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -9,9 +9,6 @@ const dist = path.join(root, 'dist');
 
 const HTML_FILES = ['index.html', 'admin.html'];
 const CSS_FILES = ['app.css', 'admin.css', 'landing.css'];
-// Không mangle tên biến/hàm: admin.js/app.js có hàng chục onclick="tenHam(...)"
-// tham chiếu hàm global qua string, đổi tên sẽ làm vỡ các nút bấm đó.
-const JS_FILES = ['config.js', 'landing.js', 'app.js', 'admin.js'];
 
 async function main() {
   await rm(dist, { recursive: true, force: true });
@@ -20,7 +17,9 @@ async function main() {
   for (const f of HTML_FILES) {
     await copyFile(path.join(root, f), path.join(dist, f));
   }
-  await copyFile(path.join(root, 'public', 'background.webp'), path.join(dist, 'background.webp'));
+  try {
+    await copyFile(path.join(root, 'public', 'background.webp'), path.join(dist, 'background.webp'));
+  } catch (e) {}
 
   for (const f of CSS_FILES) {
     const src = await readFile(path.join(root, f), 'utf8');
@@ -28,7 +27,7 @@ async function main() {
     await writeFile(path.join(dist, f), out.code);
   }
 
-  for (const f of JS_FILES) {
+  for (const f of ['config.js', 'landing.js']) {
     const src = await readFile(path.join(root, f), 'utf8');
     const out = await transform(src, {
       loader: 'js',
@@ -39,7 +38,29 @@ async function main() {
     await writeFile(path.join(dist, f), out.code);
   }
 
-  console.log('Build xong -> dist/');
+  // Bundle Student App from src/student/main.js -> app.js and dist/app.js
+  console.log('📦 Bundling Student App from src/student/main.js...');
+  await build({
+    entryPoints: [path.join(root, 'src', 'student', 'main.js')],
+    bundle: true,
+    outfile: path.join(root, 'app.js'),
+    target: 'es2020',
+    minifyIdentifiers: false
+  });
+  await copyFile(path.join(root, 'app.js'), path.join(dist, 'app.js'));
+
+  // Bundle Admin App from src/admin/main.js -> admin.js and dist/admin.js
+  console.log('📦 Bundling Admin App from src/admin/main.js...');
+  await build({
+    entryPoints: [path.join(root, 'src', 'admin', 'main.js')],
+    bundle: true,
+    outfile: path.join(root, 'admin.js'),
+    target: 'es2020',
+    minifyIdentifiers: false
+  });
+  await copyFile(path.join(root, 'admin.js'), path.join(dist, 'admin.js'));
+
+  console.log('🎉 Build xong -> dist/!');
 }
 
 main().catch(e => {
