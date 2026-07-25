@@ -8193,9 +8193,10 @@ try {
     // Load immediately after login, then refresh sparingly while the tab is visible.
     window.addEventListener('lh:profile-ready', () => load(true));
     document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
-    // Endpoint này chỉ đọc trạng thái yêu cầu của chính user; kiểm tra mỗi 3s
-    // khi tab hiển thị để chuông phản hồi gần như thời gian thực.
-    setInterval(() => { if (!document.hidden) load(); }, 3 * 1000);
+    // Endpoint này chỉ đọc trạng thái yêu cầu của chính user.
+    // Tối ưu tiêu thụ Turso DB Row Reads: kiểm tra định kỳ mỗi 5 phút (300s) thay vì 3s.
+    // Chuông vẫn tự động cập nhật ngay khi bấm vào chuông, chuyển tab (focus/visibilitychange) hoặc sau đăng nhập.
+    setInterval(() => { if (!document.hidden) load(); }, 5 * 60 * 1000);
     // Trường hợp profile đã hoàn tất trước khi block chuông được gắn listener.
     if (currentUserId()) load(true);
   }
