@@ -267,6 +267,37 @@ function safeParse(str, fallback) {
 }
 
 
+function detectDeviceInfo(req, bodyDevice) {
+  if (bodyDevice && typeof bodyDevice === 'string' && bodyDevice.trim()) {
+    return bodyDevice.trim();
+  }
+  const ua = req.headers.get('user-agent') || req.headers.get('User-Agent') || '';
+  if (!ua) return 'Chưa rõ';
+
+  let os = 'Máy tính';
+  if (/iPhone|iPad|iPod/i.test(ua)) os = '📱 iOS';
+  else if (/Android/i.test(ua)) os = '📱 Android';
+  else if (/Macintosh|Mac OS X/i.test(ua)) os = '💻 Mac';
+  else if (/Windows/i.test(ua)) os = '💻 Windows';
+  else if (/Linux/i.test(ua)) os = '💻 Linux';
+
+  let browser = '';
+  if (/Chrome|CriOS/i.test(ua) && !/Edge|Edg/i.test(ua)) browser = 'Chrome';
+  else if (/Safari/i.test(ua) && !/Chrome|CriOS/i.test(ua)) browser = 'Safari';
+  else if (/Firefox|FxMo/i.test(ua)) browser = 'Firefox';
+  else if (/Edge|Edg/i.test(ua)) browser = 'Edge';
+
+  return browser ? `${os} · ${browser}` : os;
+}
+
+let profileSchemaMigrated = false;
+async function ensureProfileColumns() {
+  if (profileSchemaMigrated) return;
+  profileSchemaMigrated = true;
+  try { await db.execute("ALTER TABLE profiles ADD COLUMN current_subject text;"); } catch(e){}
+  try { await db.execute("ALTER TABLE profiles ADD COLUMN device_info text;"); } catch(e){}
+}
+
 function normalizeProfile(row) {
   if (!row) return row;
   return {
@@ -403,8 +434,8 @@ export default async function handler(req) {
       
       const body = await req.json();
       // DANH TÍNH LẤY TỪ TOKEN, không tin body → user chỉ tạo/sửa được profile CỦA CHÍNH MÌNH.
-      // Chỉ full_name/avatar_url là nhận từ body (thông tin hiển thị, không nhạy cảm).
-      const { full_name, avatar_url } = body;
+      // Nhận thông tin môn học hiện tại và thông tin thiết bị.
+      const { full_name, avatar_url, current_subject, device_info } = body;
       const id = authUser.id;
       const email = authUser.email || String(body.email || '').toLowerCase().trim();
       if (!id || !email) {
@@ -414,6 +445,11 @@ export default async function handler(req) {
       const trimmedEmail = email.toLowerCase().trim();
       const adminEmail = String(getAdminEmail() || '').toLowerCase().trim();
       const isAdminUser = !!adminEmail && trimmedEmail === adminEmail;
+      
+      const device = detectDeviceInfo(req, device_info);
+      const subject = (current_subject || '').trim().toUpperCase() || null;
+
+      await ensureProfileColumns();
 
       const existing = await db.execute({
         sql: 'select * from profiles where id = ?',
@@ -447,9 +483,6 @@ export default async function handler(req) {
           role = 'admin';
           approved = 1;
         } else if (regMode === 'open' && !wasApproved) {
-          // Cổng đăng ký đang mở: không ai cần chờ duyệt, kể cả người trước đó
-          // đã bị admin thu hồi quyền (approved=0). 'blocked' vẫn giữ nguyên,
-          // không bị ảnh hưởng bởi cổng đăng ký.
           approved = 1;
         }
 
@@ -458,9 +491,11 @@ export default async function handler(req) {
                 set email = ?,
                     full_name = coalesce(?, full_name),
                     avatar_url = coalesce(?, avatar_url),
-                    role = ?, approved = ?, last_login = ?, last_activity = ?
+                    role = ?, approved = ?, last_login = ?, last_activity = ?,
+                    current_subject = coalesce(?, current_subject),
+                    device_info = coalesce(?, device_info)
                 where id = ?`,
-          args: [trimmedEmail, full_name || null, avatar_url || null, role, approved, now, now, id]
+          args: [trimmedEmail, full_name || null, avatar_url || null, role, approved, now, now, subject, device, id]
         });
 
         const updated = await db.execute({
@@ -477,9 +512,9 @@ export default async function handler(req) {
         const approved = (isAdminUser || regMode === 'open') ? 1 : 0;
 
         await db.execute({
-          sql: `insert into profiles (id, email, full_name, avatar_url, role, approved, blocked, last_login, last_activity, created_at)
-                values (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
-          args: [id, trimmedEmail, full_name || null, avatar_url || null, role, approved, now, now, now]
+          sql: `insert into profiles (id, email, full_name, avatar_url, role, approved, blocked, last_login, last_activity, current_subject, device_info, created_at)
+                values (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+          args: [id, trimmedEmail, full_name || null, avatar_url || null, role, approved, now, now, subject, device, now]
         });
 
         const created = await db.execute({

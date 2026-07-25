@@ -10,6 +10,8 @@ create table if not exists profiles (
   blocked integer default 0,
   last_login text,
   last_activity text,
+  current_subject text,
+  device_info text,
   created_at text default (datetime('now'))
 );
 
