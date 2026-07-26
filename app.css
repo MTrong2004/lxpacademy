@@ -3714,11 +3714,15 @@ body:not(.kizspy-active) #kizspyExamPortal {
   opacity: 0.9 !important;
 }
 
+.globalTop .counter,
+.globalTop .counter * {
+  color: #f5d496 !important;
+}
+
 .globalTop .counter {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
   font-size: 0.95rem !important;
   font-weight: 600 !important;
-  color: #f5d496 !important;
   display: inline-flex !important;
   align-items: center !important;
   gap: 4px !important;
@@ -3738,6 +3742,7 @@ body:not(.kizspy-active) #kizspyExamPortal {
 .globalTop .counter b {
   font-family: inherit !important;
   font-style: normal !important;
+  color: #f5d496 !important;
 }
 
 .globalTop .counter b#idx {
@@ -3746,7 +3751,8 @@ body:not(.kizspy-active) #kizspyExamPortal {
   font-size: 1.05rem !important;
 }
 
-.globalTop .counter b#total {
+.globalTop .counter b#total,
+.globalTop .counter b#subjectTotalCount {
   color: #f5d496 !important;
   font-weight: 700 !important;
 }

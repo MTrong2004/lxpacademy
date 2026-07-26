@@ -652,6 +652,7 @@
       renderQuiz();
     } catch (e) {
     }
+    if (typeof window.fixCounter === "function") window.fixCounter();
   }
   function sample(a, n) {
     a = [...a];
@@ -1906,11 +1907,7 @@
       actions.prepend(b);
     }
     function updateBrand(code) {
-      const b = document.querySelector(".brand");
-      if (!b) return;
-      const m = meta(code) || { code: code || "LEARN", name: code ? "" : "Hub" };
-      const dc = displayCode(m.code || "LEARN");
-      b.innerHTML = `${esc2(dc)}<span>${esc2(m.name ? " / " + m.name : " Hub")}</span>`;
+      if (typeof fixBrand === "function") fixBrand();
     }
     function closeAccountMenu() {
       $2("hodAccountMenu")?.classList.add("hidden");
@@ -3813,14 +3810,14 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         const total = $2("total")?.textContent || rawLen;
         html = 'C\xE2u <b id="idx">' + idx + '</b> / <b id="total">' + total + "</b>";
       } else {
-        html = '<b id="total">' + rawLen + "</b> c\xE2u";
+        html = '<b id="subjectTotalCount">' + rawLen + "</b> c\xE2u";
       }
       if (_lastCounterHTML !== html) {
         counter.innerHTML = html;
         _lastCounterHTML = html;
       }
     }
-    function fixBrand() {
+    function fixBrand2() {
       const brand = document.querySelector(".globalTop .brand") || document.querySelector("#fc .top .brand") || document.querySelector(".brand");
       if (!brand) return;
       const code = currentCode();
@@ -3830,12 +3827,17 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         _lastBrandHTML = html;
       }
     }
+    window.fixCounter = fixCounter;
+    window.fixBrand = fixBrand2;
     function run() {
       fixCounter();
-      fixBrand();
+      fixBrand2();
     }
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);
     else run();
+    document.addEventListener("click", (e) => {
+      if (e.target.closest(".tab")) setTimeout(run, 0);
+    });
     setTimeout(run, 50);
     setTimeout(run, 300);
     setInterval(run, 500);
