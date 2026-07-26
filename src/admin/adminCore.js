@@ -217,18 +217,7 @@ function hideProgress() {
     return inflight;
   };
 
-  const origFetch = window.fetch.bind(window);
-  window.fetch = function (input, init) {
-    const p = origFetch(input, init);
-    try {
-      const u = typeof input === 'string' ? input : (input && input.url) || '';
-      const m = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
-      if (m === 'POST' && u.indexOf('/api/admin-action') !== -1) {
-        p.then(function () { window.__invalidateAdminDashboardCache(); }, function () { });
-      }
-    } catch (e) { }
-    return p;
-  };
+  // (window.fetch override 1 removed — superseded by LH_AUTH_FETCH_20260705 unified interceptor)
 })();
 // ===== END FIX_ADMIN_DASHBOARD_DEDUP_20260705 =====
 
@@ -608,7 +597,13 @@ async function init() {
   if (!user) return show('login');
 
   await loadProfile();
-  if (!isEditor()) return show('deny');
+  // loadProfile() đặt profile = null khi bị từ chối / không kiểm tra được và đã
+  // tự hiện gate tương ứng; không được rơi tiếp vào nhánh 'deny' chung.
+  if (!profile) return;
+  if (!isEditor()) {
+    __lhSetDenyMessage('Không có quyền', 'Tài khoản này không phải admin/editor.');
+    return show('deny');
+  }
 
   show('app');
   await loadAll();
@@ -670,6 +665,63 @@ function show(x) {
   $('appBox').classList.toggle('hidden', x !== 'app');
 }
 
+/*
+  VI + VII cho trang admin. Interceptor duy nhất
+  (LH_UNIFIED_SINGLE_FETCH_INTERCEPTOR_20260726) gọi window.handleAccessRevoked
+  khi API trả 401/403 — nhưng trước đây KHÔNG AI định nghĩa hàm này trong
+  adminCore, nên admin/editor bị khóa giữa chừng vẫn ngồi nguyên trong dashboard
+  (mọi request lỗi lặng lẽ). Nay:
+    BLOCKED / UNAUTHORIZED -> xóa dữ liệu trong RAM, đăng xuất Supabase, hiện gate.
+    PENDING_APPROVAL / INSUFFICIENT_ROLE -> hiện gate, GIỮ phiên để chờ duyệt lại.
+*/
+function __lhSetDenyMessage(title, message) {
+  const box = document.getElementById('denyBox');
+  if (!box) return;
+  const h = box.querySelector('h2');
+  const p = box.querySelector('p');
+  if (h) h.textContent = title;
+  if (p) p.textContent = message;
+}
+
+window.__lhShowAccessError = function (message) {
+  __lhSetDenyMessage('Không thể kiểm tra quyền', message || 'Không thể kiểm tra quyền, vui lòng thử lại.');
+  show('deny');
+};
+
+window.handleAccessRevoked = function (reason, code) {
+  if (window.__LH_ADMIN_REVOKING) return;
+  window.__LH_ADMIN_REVOKING = true;
+  console.warn('[Admin] Thu hồi quyền:', reason, '| code:', code);
+
+  // Xóa dữ liệu quản trị đang giữ trong RAM.
+  try {
+    if (typeof cache === 'object' && cache) {
+      Object.keys(cache).forEach(k => { if (Array.isArray(cache[k])) cache[k] = []; });
+    }
+  } catch (e) { }
+  try { window.__adminDashRenderedText = ''; } catch (e) { }
+  try { if (typeof window.clearAdminImageCaches === 'function') window.clearAdminImageCaches(); } catch (e) { }
+
+  if (code === 'BLOCKED') {
+    __lhSetDenyMessage('Tài khoản bị khóa', 'Tài khoản của bạn đã bị quản trị viên khóa. Bạn đã được đăng xuất.');
+  } else if (code === 'UNAUTHORIZED') {
+    __lhSetDenyMessage('Phiên đăng nhập đã hết hạn', 'Vui lòng đăng nhập lại.');
+  } else if (code === 'PENDING_APPROVAL') {
+    __lhSetDenyMessage('Chờ phê duyệt', 'Tài khoản của bạn chưa được phê duyệt hoặc vừa bị thu hồi quyền.');
+  } else {
+    __lhSetDenyMessage('Không có quyền', reason || 'Bạn không có quyền truy cập trang quản trị.');
+  }
+
+  show('deny');
+
+  if (code === 'BLOCKED' || code === 'UNAUTHORIZED') {
+    try { sessionStorage.removeItem('is_logged_in'); } catch (e) { }
+    try { client?.auth?.signOut?.(); } catch (e) { }
+  }
+
+  setTimeout(() => { window.__LH_ADMIN_REVOKING = false; }, 3000);
+};
+
 function cleanPageName(n) {
   // Bỏ icon/ký tự đầu và số badge cuối khi tên lấy từ textContent của nav (vd "✓ Phê duyệt 0" -> "Phê duyệt").
   return String(n || '').replace(/^[^\p{L}\p{N}]+/u, '').replace(/\s*\d+\s*$/, '').replace(/\s+/g, ' ').trim();
@@ -684,6 +736,13 @@ function setPage(id, n) {
   render();
 }
 
+/*
+  ADMIN_ACCESS_GATE_20260726
+  Trang admin cũng phải fail-closed như web học. Bản cũ nuốt mọi lỗi
+  (`profile = {role:'user'}`) nên 403 BLOCKED, 403 PENDING_APPROVAL và 500 đều
+  ra cùng một màn hình "Không có quyền" — admin không phân biệt được mình bị
+  khóa hay hệ thống đang lỗi, và lỗi tạm thời cũng đá họ ra ngoài.
+*/
 async function loadProfile() {
   // Lấy/đồng bộ profile (role/approved/blocked) từ Turso. Supabase chỉ dùng cho Auth.
   try {
@@ -693,9 +752,22 @@ async function loadProfile() {
       body: JSON.stringify({ id: user.id, email: user.email, full_name: md.full_name || md.name || '', avatar_url: md.avatar_url || md.picture || '' })
     });
     const out = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        window.handleAccessRevoked(out.error, out.code || (res.status === 401 ? 'UNAUTHORIZED' : 'PENDING_APPROVAL'));
+      } else {
+        // 500 / lỗi mạng: KHÔNG kết luận là mất quyền, chỉ báo không kiểm tra được.
+        window.__lhShowAccessError('Không thể kiểm tra quyền, vui lòng thử lại.');
+      }
+      profile = null;
+      return;
+    }
     profile = out.data || { id: user.id, email: user.email, role: 'user' };
   } catch (e) {
-    profile = { id: user.id, email: user.email, role: 'user' };
+    console.warn('[admin loadProfile]', e);
+    window.__lhShowAccessError('Không thể kiểm tra quyền, vui lòng thử lại.');
+    profile = null;
+    return;
   }
   $('adminChip').textContent = `${profile.email || user.email} · ${profile.role}`;
   document.body.classList.toggle('role-admin', isAdmin());
@@ -847,11 +919,28 @@ function labelField(f) {
   return { question: 'Câu hỏi', answer: 'Đáp án', answer_text: 'Giải thích', options: 'Lựa chọn', images: 'Ảnh' }[f] || f;
 }
 
+/*
+  REQUEST_NAV_BADGE_20260726
+  Trước đây nav "Yêu cầu sửa" KHÔNG có phần tử badge nào trong admin.html (khác với
+  "Phê duyệt" có #approvalBadge và "YC thêm môn" có #subjectRequestBadge), nên yêu cầu
+  sửa mới không bao giờ hiện thông báo. Đã thêm #requestBadge vào admin.html và nối số
+  đếm ở đây.
+*/
+function updateRequestBadge() {
+  const pending = (cache.requests || []).filter(r => r.status === 'pending').length;
+  const el = document.getElementById('requestBadge');
+  if (!el) return;
+  el.textContent = pending;
+  el.classList.toggle('hidden', pending === 0);
+}
+window.updateRequestBadge = updateRequestBadge;
+
 function renderRequests() {
   // Cập nhật số đếm trên các nút lọc (trước đây countAll/countPending/... không được nối, đứng im ở 0).
   const all = cache.requests || [];
   const cnt = { pending: 0, approved: 0, rejected: 0 };
   all.forEach(r => { if (cnt[r.status] !== undefined) cnt[r.status]++; });
+  updateRequestBadge();
   const setCount = (id, v) => { const el = $(id); if (el) el.textContent = v; };
   setCount('countAll', all.length);
   setCount('countPending', cnt.pending);
@@ -1208,37 +1297,7 @@ Object.assign(window, { rejectReq, toggleBlock, setRole, toggleQuestion, viewUse
     } catch (e) { }
   }
 
-  window.fetch = async function (input, init) {
-    let url;
-    try { url = new URL(typeof input === 'string' ? input : input.url, location.href); } catch (e) { return nativeFetch(input, init); }
-    if (!isGet(init) || !isSupabaseRest(url) || !isSafePath(url.pathname)) return nativeFetch(input, init);
-
-    const ttl = ttlFor(url);
-    if (!ttl) return nativeFetch(input, init);
-    const key = keyOf(url, init);
-
-    const mem = MEM.get(key);
-    if (mem && Date.now() <= mem.exp) return makeResponse(mem);
-    const ss = readSession(key);
-    if (ss) { MEM.set(key, ss); return makeResponse(ss); }
-
-    if (PENDING.has(key)) {
-      try {
-        const entry = await PENDING.get(key);
-        if (entry) return makeResponse(entry);
-      } catch (e) { }
-    }
-
-    const p = nativeFetch(input, init).then(async res => {
-      if (res && res.ok) await storeResponse(key, ttl, res);
-      return MEM.get(key) || null;
-    }).finally(() => PENDING.delete(key));
-    PENDING.set(key, p);
-
-    const res = await nativeFetch(input, init);
-    if (res && res.ok) await storeResponse(key, ttl, res);
-    return res;
-  };
+  // (window.fetch override 2 removed — superseded by LH_AUTH_FETCH_20260705 unified interceptor)
 })();
 // ===== END F5_SUPABASE_MICRO_CACHE_20260629 =====
 
@@ -1476,6 +1535,7 @@ document.addEventListener('DOMContentLoaded', init);
       const reqPending = (cache.requests || []).filter(x => x.status === 'pending').length;
       statPending.textContent = reqPending;
     }
+    updateRequestBadge();
   }
 
   function renderApprovalCounts() {
@@ -3532,47 +3592,7 @@ ${E(val)}</pre>`;
     });
   }
 
-  window.fetch = async function (input, init) {
-    let url;
-    try {
-      const raw = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-      url = new URL(raw, location.href);
-    } catch (e) {
-      return nativeFetch(input, init);
-    }
-
-    const method = methodOf(init);
-    url = slimAdminUrl(url, method);
-
-    let nextInput = input;
-    if (typeof input === 'string') nextInput = url.toString();
-    else if (input && input.url && input.url !== url.toString()) nextInput = new Request(url.toString(), input);
-
-    const ttl = ttlFor(url, method);
-    if (!ttl) return nativeFetch(nextInput, init);
-
-    const k = key(method, url);
-    const now = Date.now();
-    const hit = cache.get(k);
-    if (hit && now - hit.t < ttl) return unpack(hit.pack);
-
-    if (pending.has(k)) return unpack(await pending.get(k));
-
-    const job = nativeFetch(nextInput, init)
-      .then(packResponse)
-      .then(pack => {
-        cache.set(k, { t: Date.now(), pack });
-        pending.delete(k);
-        return pack;
-      })
-      .catch(err => {
-        pending.delete(k);
-        throw err;
-      });
-
-    pending.set(k, job);
-    return unpack(await job);
-  };
+  // (window.fetch override 3 removed — superseded by LH_AUTH_FETCH_20260705 unified interceptor)
 
   // Vì list lịch sử đã tải bản nhẹ, khi bấm Trước/sau thì lấy full đúng 1 dòng.
   window.viewHistory = async function (id) {
@@ -3802,15 +3822,7 @@ ${E(val)}</pre>`;
     lastMap.set(key, now);
     return false;
   }
-  window.fetch = function (input, init) {
-    let url;
-    try { url = new URL(typeof input === 'string' ? input : input.url, location.href); }
-    catch (e) { return nativeFetch(input, init); }
-    if (shouldSkip(url, init)) {
-      return Promise.resolve(new Response(null, { status: 204, statusText: 'No Content', headers: { 'x-learninghub-skip': 'admin-profile-patch-duplicate' } }));
-    }
-    return nativeFetch(input, init);
-  };
+  // (window.fetch override 4 removed — superseded by LH_AUTH_FETCH_20260705 unified interceptor)
 })();
 // ===== END ADMIN_PROFILE_PATCH_DEDUPE_20260629 =====
 
@@ -5098,17 +5110,52 @@ ${E(val)}</pre>`;
     if (closedBtn) closedBtn.classList.toggle('active', mode === 'closed');
   }
 
+  /*
+    REG_MODE_PLAIN_FETCH_20260726
+    Đây là bản DUY NHẤT của loadRegistrationMode. Không có bản vá nào khác được phép
+    gán đè window.loadRegistrationMode ở cuối file.
+
+    Frontend chỉ được gọi HTTP và đọc JSON. Tuyệt đối không:
+      - fetch mã nguồn của API rồi eval/import,
+      - đổi mã nguồn sang Base64 / Blob / data: URL,
+      - dynamic import module server (api/lib/db.js, api/lib/auth.js, @libsql/client/web).
+    Turso + process.env chỉ chạy trong Vercel Server Function.
+  */
+  async function fetchSiteSettings() {
+    const headers = new Headers({ Accept: 'application/json' });
+
+    // Chỉ gắn Authorization khi token thực sự tồn tại và là chuỗi hợp lệ.
+    let accessToken = '';
+    try {
+      const raw = typeof window.lhToken === 'function' ? window.lhToken() : '';
+      if (typeof raw === 'string' && raw.trim() && !/[\r\n]/.test(raw)) accessToken = raw.trim();
+    } catch (e) {}
+    if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
+
+    const response = await fetch('/api/settings', {
+      method: 'GET',
+      headers,
+      cache: 'no-store'
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data?.error || `HTTP ${response.status}`);
+    }
+
+    return data;
+  }
+
   window.loadRegistrationMode = async function () {
     try {
-      const res = await fetch('/api/settings', { cache: 'no-store' });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok || out.error) throw new Error(out.error || 'HTTP ' + res.status);
-      const mode = normalizeMode(out.registration_mode || localStorage.getItem(MODE_KEY) || 'approval');
+      const data = await fetchSiteSettings();
+      const mode = normalizeMode(data.registration_mode || localStorage.getItem(MODE_KEY) || 'approval');
       localStorage.setItem(MODE_KEY, mode);
       paintRegistrationMode(mode);
       return mode;
     } catch (e) {
-      console.warn('[registration_mode reload fix]', e);
+      console.warn('[loadRegistrationMode] /api/settings lỗi:', e?.message || e);
       const mode = normalizeMode(localStorage.getItem(MODE_KEY) || 'approval');
       paintRegistrationMode(mode);
       return mode;
@@ -5215,6 +5262,135 @@ ${E(val)}</pre>`;
 (function () {
   if (window.__COPILOT_ADMIN_IMAGE_CACHE_REALTIME_FINAL_20260630) return;
   window.__COPILOT_ADMIN_IMAGE_CACHE_REALTIME_FINAL_20260630 = true;
+// ===== LH_UNIFIED_SINGLE_FETCH_INTERCEPTOR_20260726 =====
+(function () {
+  if (window.__LH_UNIFIED_FETCH_INSTALLED) return;
+  window.__LH_UNIFIED_FETCH_INSTALLED = true;
+
+  var nativeFetch = window.fetch.bind(window);
+
+  function lhToken() {
+    try {
+      if (window.HODSupabase && typeof window.HODSupabase.getAccessToken === 'function') {
+        var t1 = window.HODSupabase.getAccessToken();
+        if (t1 && typeof t1 === 'string' && t1.trim().length > 0 && !/[\r\n]/.test(t1)) return t1.trim();
+      }
+      if (window.HODSupabase && typeof window.HODSupabase.getSession === 'function') {
+        var s = window.HODSupabase.getSession();
+        if (s && s.access_token && typeof s.access_token === 'string' && !/[\r\n]/.test(s.access_token)) {
+          return s.access_token.trim();
+        }
+      }
+      var url = window.APP_CONFIG?.SUPABASE_URL || '';
+      var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
+      var ref = m ? m[1] : '';
+      if (ref) {
+        var key = 'sb-' + ref + '-auth-token';
+        var raw = localStorage.getItem(key);
+        if (raw) {
+          var v = JSON.parse(raw);
+          var tok = v && (v.access_token || (v.currentSession && v.currentSession.access_token) || (Array.isArray(v) && v[0]));
+          if (tok && typeof tok === 'string' && tok.trim().length > 0 && !/[\r\n]/.test(tok)) return tok.trim();
+        }
+      }
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.slice(0, 3) === 'sb-' && k.slice(-11) === '-auth-token') {
+          var raw = localStorage.getItem(k);
+          if (!raw) continue;
+          var v = JSON.parse(raw);
+          var tok = v && (v.access_token || (v.currentSession && v.currentSession.access_token) || (Array.isArray(v) && v[0]));
+          if (tok && typeof tok === 'string' && tok.trim().length > 0 && !/[\r\n]/.test(tok)) return tok.trim();
+        }
+      }
+    } catch (e) { }
+    return '';
+  }
+  window.lhToken = lhToken;
+  window.__lhAccessToken = lhToken;
+
+  function lhIsApi(u) {
+    try {
+      var url = new URL(u, location.href);
+      return url.origin === location.origin && url.pathname.indexOf('/api/') === 0;
+    } catch (e) { return false; }
+  }
+
+  window.fetch = function (input, init) {
+    var urlStr = '';
+    var method = 'GET';
+    try {
+      if (typeof input === 'string') {
+        urlStr = input;
+      } else if (input && typeof input === 'object' && input.url) {
+        urlStr = input.url;
+        method = input.method || 'GET';
+      }
+      if (init && init.method) method = init.method;
+    } catch (e) {}
+
+    var isApi = lhIsApi(urlStr);
+
+    if (isApi) {
+      var tok = lhToken();
+      if (tok) {
+        try {
+          if (input instanceof Request) {
+            if (!input.headers.has('Authorization')) {
+              var h = new Headers(input.headers);
+              h.set('Authorization', 'Bearer ' + tok);
+              input = new Request(input, { headers: h });
+            }
+          } else {
+            init = init ? Object.assign({}, init) : {};
+            var hh = new Headers(init.headers || {});
+            if (!hh.has('Authorization')) hh.set('Authorization', 'Bearer ' + tok);
+            init.headers = hh;
+          }
+        } catch (e) {
+          console.warn('[LH Unified Fetch] Header injection warning:', e);
+        }
+      }
+    }
+
+    var promise = nativeFetch(input, init);
+
+    if (isApi && String(method).toUpperCase() === 'POST' && urlStr.indexOf('/api/admin-action') !== -1) {
+      promise.then(function () {
+        if (typeof window.__invalidateAdminDashboardCache === 'function') {
+          window.__invalidateAdminDashboardCache();
+        }
+      }, function () {});
+    }
+
+    /*
+      VIII: chỉ 401 UNAUTHORIZED / 403 BLOCKED / 403 PENDING_APPROVAL mới kích
+      hoạt luồng thu hồi quyền. Lỗi mạng và 5xx thì KHÔNG (promise.catch bên
+      dưới nuốt lỗi mạng có chủ đích).
+      INSUFFICIENT_ROLE và PROTECTED_ROOT_ADMIN không đá admin ra ngoài — đó là
+      "thao tác này bạn không được phép", không phải "bạn mất quyền" (vd editor
+      bấm nhầm nút chỉ dành cho admin, hoặc thao tác lên Root Admin).
+      Response được clone() trước khi đọc JSON nên hàm gọi phía sau vẫn dùng được.
+    */
+    if (isApi && urlStr.indexOf('/api/version.json') === -1) {
+      promise.then(function (res) {
+        if (res.status !== 401 && res.status !== 403) return;
+        res.clone().json().then(function (json) {
+          var code = json && json.code;
+          if (code === 'BLOCKED' || code === 'PENDING_APPROVAL' || code === 'UNAUTHORIZED') {
+            window.handleAccessRevoked(json.error, code);
+          } else if (code === 'INSUFFICIENT_ROLE' || code === 'PROTECTED_ROOT_ADMIN') {
+            if (typeof toast === 'function') toast(json.error || 'Bạn không có quyền thực hiện thao tác này');
+            else console.warn('[Admin]', json.error);
+          }
+        }).catch(function () {});
+      }).catch(function () {});
+    }
+
+    return promise;
+  };
+})();
+// ===== END LH_UNIFIED_SINGLE_FETCH_INTERCEPTOR_20260726 =====
 
   function clearAdminImageCaches() {
     try {
@@ -5346,79 +5522,7 @@ ${E(val)}</pre>`;
 // ===== END FIX_ADMIN_AUTO_REFRESH_20260701 =====
 
 
-// ===== LH_AUTH_FETCH_20260705 =====
-// Tự đính Authorization: Bearer <supabase access_token> cho MỌI request tới /api/ cùng origin.
-// Server (api/index.js, AUTH_20260705) verify token này để lấy danh tính thật. Đặt cuối file để là
-// lớp fetch NGOÀI CÙNG: chạy trước các wrapper cache/dedupe khác nên header luôn được gắn trước.
-// Token đọc trực tiếp từ localStorage phiên Supabase (key sb-<ref>-auth-token) để lấy đồng bộ, không await.
-(function () {
-  if (window.__LH_AUTH_FETCH_20260705) return;
-  window.__LH_AUTH_FETCH_20260705 = true;
-  var prevFetch = window.fetch ? window.fetch.bind(window) : null;
-  if (!prevFetch) return;
-
-  function lhToken() {
-    try {
-      var url = window.APP_CONFIG?.SUPABASE_URL || '';
-      var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
-      var ref = m ? m[1] : '';
-      if (ref) {
-        var key = 'sb-' + ref + '-auth-token';
-        var raw = localStorage.getItem(key);
-        if (raw) {
-          var v = JSON.parse(raw);
-          var tok = v && (v.access_token || (v.currentSession && v.currentSession.access_token) || (Array.isArray(v) && v[0]));
-          if (tok) return tok;
-        }
-      }
-      // Fallback
-      for (var i = 0; i < localStorage.length; i++) {
-        var k = localStorage.key(i);
-        if (k && k.slice(0, 3) === 'sb-' && k.slice(-11) === '-auth-token') {
-          var raw = localStorage.getItem(k);
-          if (!raw) continue;
-          var v = JSON.parse(raw);
-          var tok = v && (v.access_token || (v.currentSession && v.currentSession.access_token) || (Array.isArray(v) && v[0]));
-          if (tok) return tok;
-        }
-      }
-    } catch (e) { }
-    return '';
-  }
-  window.__lhAccessToken = lhToken;
-
-  function lhIsApi(u) {
-    try {
-      var url = new URL(u, location.href);
-      return url.origin === location.origin && url.pathname.indexOf('/api/') === 0;
-    } catch (e) { return false; }
-  }
-
-  window.fetch = function (input, init) {
-    try {
-      var url = typeof input === 'string' ? input : (input && input.url) || '';
-      if (lhIsApi(url)) {
-        var tok = lhToken();
-        if (tok) {
-          if (input instanceof Request) {
-            if (!input.headers.has('Authorization')) {
-              var h = new Headers(input.headers);
-              h.set('Authorization', 'Bearer ' + tok);
-              input = new Request(input, { headers: h });
-            }
-          } else {
-            init = init || {};
-            var hh = new Headers(init.headers || {});
-            if (!hh.has('Authorization')) hh.set('Authorization', 'Bearer ' + tok);
-            init.headers = hh;
-          }
-        }
-      }
-    } catch (e) { }
-    return prevFetch(input, init);
-  };
-})();
-// ===== END LH_AUTH_FETCH_20260705 =====
+// ===== END LH_AUTH_FETCH_20260705 (superseded by LH_UNIFIED_SINGLE_FETCH_INTERCEPTOR_20260726) =====
 
 // ===== OPEN_ADMIN_REQUESTS_FROM_LEARNING_BELL_20260719 =====
 (function () {

@@ -9,7 +9,7 @@
     "migrate": "node scripts/migrate.js"
   },
   "dependencies": {
-    "@libsql/client": "latest"
+    "@libsql/client": "^0.17.4"
   },
   "devDependencies": {
     "esbuild": "^0.24.0"

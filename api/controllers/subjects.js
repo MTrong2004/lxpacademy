@@ -1,5 +1,5 @@
 import { db, json } from '../lib/db.js';
-import { isApprovedOrStaff } from '../lib/auth.js';
+import { checkUserAccess } from '../lib/auth.js';
 
 // OPTIM_TURSO_READS_20260726: Cache subjects query server-side.
 // Query này JOIN questions (full table scan) nên rất tốn reads.
@@ -14,8 +14,9 @@ export function clearSubjectsCache() {
 }
 
 export async function handleSubjects(req, authUser) {
-  if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
-  if (!await isApprovedOrStaff(authUser)) return json({ error: 'Tài khoản chưa được duyệt.' }, 403);
+  if (req.method !== 'GET') return json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, 405);
+  const access = await checkUserAccess(authUser);
+  if (!access.ok) return json({ error: access.error, code: access.code }, access.status);
 
   if (_subjectsCache && Date.now() - _subjectsCacheAt < _SUBJECTS_CACHE_TTL) {
     return json(_subjectsCache);

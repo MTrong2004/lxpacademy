@@ -1,6 +1,6 @@
 (() => {
   // src/core/device.js
-  function getDeviceTypeString() {
+  function getDeviceTypeString2() {
     const ua = typeof navigator !== "undefined" && navigator.userAgent || "";
     let os = "M\xE1y t\xEDnh";
     if (/iPhone|iPad|iPod/i.test(ua)) os = "\u{1F4F1} iOS";
@@ -21,20 +21,21 @@
   function getSubjectCode() {
     return localStorage.getItem(SUBJECT_STORE) || "";
   }
-  function syncUserSubjectToProfile(code, supabaseUser) {
-    if (!supabaseUser) return;
+  function syncUserSubjectToProfile2(code, supabaseUser) {
+    const u = supabaseUser || window.HODSupabase?.getUser?.();
+    if (!u) return;
     try {
-      const md = supabaseUser.user_metadata || {};
+      const md = u.user_metadata || {};
       fetch("/api/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: supabaseUser.id,
-          email: supabaseUser.email,
+          id: u.id,
+          email: u.email,
           full_name: md.full_name || md.name || "",
           avatar_url: md.avatar_url || md.picture || "",
           current_subject: code || getSubjectCode() || "",
-          device_info: getDeviceTypeString()
+          device_info: getDeviceTypeString2()
         })
       }).catch((e) => console.warn("syncUserSubjectToProfile failed:", e));
     } catch (e) {
@@ -46,7 +47,7 @@
     } else {
       localStorage.removeItem(SUBJECT_STORE);
     }
-    syncUserSubjectToProfile(code, supabaseUser);
+    syncUserSubjectToProfile2(code, supabaseUser);
   }
 
   // src/student/api.js
@@ -132,6 +133,223 @@
     };
   }
 
+  // src/core/versionChecker.js
+  var currentVersion = true ? "eb96894" : null;
+  var updateDetected = false;
+  var lastCheckTime = 0;
+  var CHECK_INTERVAL_MS = 60 * 1e3;
+  var MIN_CHECK_GAP_MS = 15 * 1e3;
+  async function fetchVersion() {
+    try {
+      const res = await fetch("/version.json?_t=" + Date.now(), {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-store, no-cache"
+        }
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data && data.version ? String(data.version) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  async function checkForUpdates() {
+    if (updateDetected) return;
+    const now = Date.now();
+    if (now - lastCheckTime < MIN_CHECK_GAP_MS) return;
+    lastCheckTime = now;
+    const remoteVersion = await fetchVersion();
+    if (!remoteVersion) return;
+    if (!currentVersion) {
+      currentVersion = remoteVersion;
+      return;
+    }
+    if (remoteVersion !== currentVersion) {
+      updateDetected = true;
+      showUpdateNotification(remoteVersion);
+    }
+  }
+  function showUpdateNotification(newVersion) {
+    if (document.getElementById("lhUpdateBanner")) return;
+    const styleId = "lhUpdateBannerStyles";
+    if (!document.getElementById(styleId)) {
+      const styleEl = document.createElement("style");
+      styleEl.id = styleId;
+      styleEl.textContent = `
+      .lh-update-banner {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 2147483647;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 14px 20px;
+        background: rgba(18, 24, 38, 0.95);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-left: 4px solid #3b82f6;
+        border-radius: 16px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 24px rgba(59, 130, 246, 0.25);
+        backdrop-filter: blur(18px);
+        color: #f8fafc;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 14px;
+        animation: lhBannerSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      @keyframes lhBannerSlideIn {
+        from { opacity: 0; transform: translateY(24px) scale(0.94); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      .lh-update-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
+      }
+      .lh-update-icon svg {
+        width: 20px;
+        height: 20px;
+        fill: none;
+        stroke: #ffffff;
+        stroke-width: 2.2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .lh-update-content {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .lh-update-title {
+        font-weight: 700;
+        font-size: 14px;
+        color: #ffffff;
+        letter-spacing: -0.01em;
+      }
+      .lh-update-sub {
+        font-size: 12px;
+        color: #94a3b8;
+      }
+      .lh-update-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: 6px;
+      }
+      .lh-update-btn {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: #ffffff;
+        border: none;
+        border-radius: 10px;
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+        white-space: nowrap;
+      }
+      .lh-update-btn:hover {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        transform: translateY(-1px);
+        box-shadow: 0 6px 18px rgba(59, 130, 246, 0.5);
+      }
+      .lh-update-btn:active {
+        transform: translateY(0);
+      }
+      .lh-update-close {
+        background: transparent;
+        border: none;
+        color: #64748b;
+        cursor: pointer;
+        padding: 6px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+      }
+      .lh-update-close:hover {
+        color: #f1f5f9;
+        background: rgba(255, 255, 255, 0.1);
+      }
+      @media (max-width: 640px) {
+        .lh-update-banner {
+          left: 12px;
+          right: 12px;
+          bottom: 16px;
+          padding: 12px 14px;
+          gap: 10px;
+        }
+        .lh-update-sub {
+          display: none;
+        }
+      }
+    `;
+      document.head.appendChild(styleEl);
+    }
+    const banner = document.createElement("div");
+    banner.id = "lhUpdateBanner";
+    banner.className = "lh-update-banner";
+    banner.setAttribute("role", "alert");
+    banner.setAttribute("aria-live", "assertive");
+    banner.innerHTML = `
+    <div class="lh-update-icon">
+      <svg viewBox="0 0 24 24">
+        <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+        <path d="M3 3v5h5"></path>
+        <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+        <path d="M16 16h5v5"></path>
+      </svg>
+    </div>
+    <div class="lh-update-content">
+      <span class="lh-update-title">C\xF3 phi\xEAn b\u1EA3n m\u1EDBi</span>
+      <span class="lh-update-sub">C\u1EADp nh\u1EADt \u0111\u1EC3 t\u1EA3i giao di\u1EC7n v\xE0 d\u1EEF li\u1EC7u m\u1EDBi nh\u1EA5t</span>
+    </div>
+    <div class="lh-update-actions">
+      <button id="lhUpdateReloadBtn" class="lh-update-btn" type="button">C\u1EADp nh\u1EADt ngay</button>
+      <button id="lhUpdateCloseBtn" class="lh-update-close" type="button" aria-label="\u0110\xF3ng th\xF4ng b\xE1o">
+        <svg style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2" viewBox="0 0 24 24">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+  `;
+    document.body.appendChild(banner);
+    document.getElementById("lhUpdateReloadBtn")?.addEventListener("click", () => {
+      window.location.reload();
+    });
+    document.getElementById("lhUpdateCloseBtn")?.addEventListener("click", () => {
+      banner.remove();
+    });
+  }
+  function initVersionChecker() {
+    if (typeof window === "undefined") return;
+    if (!currentVersion) {
+      fetchVersion().then((v) => {
+        if (v) currentVersion = v;
+      });
+    }
+    setInterval(() => {
+      checkForUpdates();
+    }, CHECK_INTERVAL_MS);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        checkForUpdates();
+      }
+    });
+    window.addEventListener("focus", () => {
+      checkForUpdates();
+    });
+  }
+
   // src/student/appCore.js
   if (location.hash && location.hash.includes("&amp;")) {
     history.replaceState(null, "", location.href.replace(/&amp;/g, "&"));
@@ -182,80 +400,6 @@
       return nativeRemove.call(this, key);
     };
   })();
-  (function() {
-    if (window.__APP_API_DEDUPE_QUESTIONS_PROFILE_20260630) return;
-    window.__APP_API_DEDUPE_QUESTIONS_PROFILE_20260630 = true;
-    const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
-    if (!nativeFetch) return;
-    const pending = /* @__PURE__ */ new Map();
-    const shortCache = /* @__PURE__ */ new Map();
-    const QUESTION_TTL = 6e4;
-    const PROFILE_TTL = 3e4;
-    function methodOf(init2) {
-      return String(init2 && init2.method ? init2.method : "GET").toUpperCase();
-    }
-    function makeKey(input, init2) {
-      let url;
-      try {
-        url = new URL(typeof input === "string" ? input : input.url, location.href);
-      } catch (e) {
-        return null;
-      }
-      const method = methodOf(init2);
-      const path = url.pathname;
-      if (path === "/api/questions" && method === "GET") {
-        const subject = url.searchParams.get("subject_code") || "";
-        if (!subject) return null;
-        return { key: "GET:/api/questions:" + subject, ttl: QUESTION_TTL };
-      }
-      if (path === "/api/profile" && method === "POST") {
-        let uid = "";
-        try {
-          uid = JSON.parse(String(init2 && init2.body || "{}")).id || "";
-        } catch (e) {
-        }
-        return { key: "POST:/api/profile:" + uid, ttl: PROFILE_TTL };
-      }
-      return null;
-    }
-    async function packResponse(res) {
-      const body = await res.clone().text();
-      return {
-        body,
-        status: res.status,
-        statusText: res.statusText,
-        headers: Array.from(res.headers.entries()),
-        exp: Date.now()
-      };
-    }
-    function unpack(pack) {
-      return new Response(pack.body, {
-        status: pack.status,
-        statusText: pack.statusText,
-        headers: new Headers(pack.headers)
-      });
-    }
-    window.fetch = async function(input, init2) {
-      const info = makeKey(input, init2);
-      if (!info) return nativeFetch(input, init2);
-      const cached = shortCache.get(info.key);
-      if (cached && Date.now() - cached.exp < info.ttl) {
-        return unpack(cached);
-      }
-      if (pending.has(info.key)) {
-        const pack2 = await pending.get(info.key);
-        return unpack(pack2);
-      }
-      const job = nativeFetch(input, init2).then(async (res) => {
-        const pack2 = await packResponse(res);
-        shortCache.set(info.key, pack2);
-        return pack2;
-      }).finally(() => pending.delete(info.key));
-      pending.set(info.key, job);
-      const pack = await job;
-      return unpack(pack);
-    };
-  })();
   window.HOD_DATA = [];
   (function() {
     var s = document.createElement("script");
@@ -278,150 +422,6 @@
       }
     });
   }
-  (function() {
-    if (window.__APP_F5_SUPABASE_CACHE_20260629) return;
-    window.__APP_F5_SUPABASE_CACHE_20260629 = true;
-    const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
-    if (!nativeFetch) return;
-    const PREFIX = "lh_f5_cache:";
-    const mem = /* @__PURE__ */ new Map();
-    const pending = /* @__PURE__ */ new Map();
-    const MAX_BODY = 900 * 1024;
-    const profilePatchLast = /* @__PURE__ */ new Map();
-    function methodOf(init2) {
-      return String(init2 && init2.method ? init2.method : "GET").toUpperCase();
-    }
-    function isSupabaseRest(url) {
-      return /\/rest\/v1\//.test(url.pathname);
-    }
-    function isCacheablePath(path) {
-      return /\/(questions|subjects|profiles|site_settings)\b/.test(path);
-    }
-    function ttlFor(url) {
-      const p = url.pathname;
-      const q = url.search || "";
-      if (/\/questions\b/.test(p)) return 10 * 60 * 1e3;
-      if (/\/subjects\b/.test(p)) return 10 * 60 * 1e3;
-      if (/\/profiles\b/.test(p) && /id=eq\./.test(q)) return 10 * 60 * 1e3;
-      if (/\/site_settings\b/.test(p)) return 10 * 60 * 1e3;
-      return 0;
-    }
-    function keyOf(url) {
-      return url.origin + url.pathname + url.search;
-    }
-    function headersObj(headers) {
-      const o = { "x-learninghub-cache": "1" };
-      try {
-        headers.forEach((v, k) => {
-          if (k.toLowerCase() !== "content-length") o[k] = v;
-        });
-      } catch (e) {
-      }
-      return o;
-    }
-    function makeResponse(entry) {
-      return new Response(entry.body, { status: entry.status || 200, statusText: entry.statusText || "OK", headers: entry.headers || { "x-learninghub-cache": "1" } });
-    }
-    function readStore(key) {
-      try {
-        const raw = sessionStorage.getItem(PREFIX + key);
-        if (!raw) return null;
-        const e = JSON.parse(raw);
-        if (!e || !e.exp || Date.now() > e.exp) return null;
-        return e;
-      } catch (err) {
-        return null;
-      }
-    }
-    function writeStore(key, entry) {
-      try {
-        sessionStorage.setItem(PREFIX + key, JSON.stringify(entry));
-      } catch (err) {
-      }
-    }
-    async function saveFromResponse(key, ttl, res) {
-      try {
-        const txt = await res.clone().text();
-        if (txt.length > MAX_BODY) return;
-        const entry = { body: txt, status: res.status, statusText: res.statusText, headers: headersObj(res.headers), exp: Date.now() + ttl };
-        mem.set(key, entry);
-        writeStore(key, entry);
-      } catch (err) {
-      }
-    }
-    function matchKind(text, kind) {
-      if (!kind || kind === "all") return true;
-      if (kind === "questions") return text.includes("/questions");
-      if (kind === "subjects") return text.includes("/subjects");
-      if (kind === "profiles") return text.includes("/profiles");
-      return text.includes("/" + kind);
-    }
-    function clearCache(kind) {
-      try {
-        Object.keys(sessionStorage).forEach((k) => {
-          if (k.startsWith(PREFIX) && matchKind(k, kind)) sessionStorage.removeItem(k);
-        });
-        Array.from(mem.keys()).forEach((k) => {
-          if (matchKind(k, kind)) mem.delete(k);
-        });
-        Array.from(pending.keys()).forEach((k) => {
-          if (matchKind(k, kind)) pending.delete(k);
-        });
-        window.__LH_LAST_CACHE_CLEAR = { kind: kind || "all", at: Date.now() };
-      } catch (e) {
-      }
-    }
-    function shouldSkipProfilePatch(url, init2) {
-      const method = methodOf(init2);
-      if (method !== "PATCH" && method !== "PUT") return false;
-      if (!/\/profiles\b/.test(url.pathname)) return false;
-      const body = String(init2 && init2.body ? init2.body : "");
-      if (!/last_activity|last_login|avatar_url|email/.test(body)) return false;
-      if (/last_login/.test(body)) return false;
-      if (/role|approved|blocked|is_blocked|status/.test(body)) return false;
-      const key = keyOf(url) + "|" + body.replace(/"last_activity"\s*:\s*"[^"]+"/g, '"last_activity":"TIME"');
-      const last = profilePatchLast.get(key) || 0;
-      if (Date.now() - last < 5 * 60 * 1e3) return true;
-      profilePatchLast.set(key, Date.now());
-      return false;
-    }
-    window.clearLearningHubQuestionCache = function() {
-      clearCache("questions");
-    };
-    window.clearLearningHubSupabaseCache = clearCache;
-    window.fetch = async function(input, init2) {
-      let url;
-      try {
-        url = new URL(typeof input === "string" ? input : input.url, location.href);
-      } catch (e) {
-        return nativeFetch(input, init2);
-      }
-      if (isSupabaseRest(url) && shouldSkipProfilePatch(url, init2)) {
-        return new Response(null, { status: 204, statusText: "No Content", headers: { "x-learninghub-skip": "profile-patch-duplicate" } });
-      }
-      if (methodOf(init2) !== "GET" || !isSupabaseRest(url) || !isCacheablePath(url.pathname)) return nativeFetch(input, init2);
-      const ttl = ttlFor(url);
-      if (!ttl) return nativeFetch(input, init2);
-      const key = keyOf(url);
-      const m = mem.get(key);
-      if (m && Date.now() <= m.exp) return makeResponse(m);
-      const s = readStore(key);
-      if (s) {
-        mem.set(key, s);
-        return makeResponse(s);
-      }
-      if (pending.has(key)) {
-        const entry = await pending.get(key).catch(() => null);
-        if (entry) return makeResponse(entry);
-      }
-      const network = nativeFetch(input, init2).then(async (res) => {
-        if (res && res.ok) await saveFromResponse(key, ttl, res);
-        return res;
-      }).finally(() => pending.delete(key));
-      pending.set(key, network.then(() => mem.get(key) || null));
-      return network;
-    };
-  })();
   var dataEl = document.getElementById("data");
   var BASE = [];
   var STORE = "hod102_user_edits_v1";
@@ -565,6 +565,7 @@
     hideOptions = false;
     applyCardFontSize();
     updateCardTools();
+    if (typeof window.updateBookmarkBtn === "function") window.updateBookmarkBtn();
     $("ansLetter").textContent = (c.answer || "").split("").join(", ");
     $("ansText").innerHTML = esc(c.answer_text || answerText(c)).replace(/; /g, "<br>");
     $("card").classList.remove("dir-horizontal", "dir-up", "dir-down");
@@ -800,12 +801,12 @@
       root.style.setProperty(k, v);
       if (fc) fc.style.setProperty(k, v);
     };
-    let base = 1.35 * n;
-    set("--card-qfs", (1.08 * base).toFixed(3) + "rem");
-    set("--card-ofs", (0.92 * base).toFixed(3) + "rem");
-    set("--card-afs", (1 * base).toFixed(3) + "rem");
-    set("--card-letter", (25 * Math.min(1.35, base)).toFixed(0) + "px");
-    set("--card-letterfs", (0.76 * base).toFixed(3) + "rem");
+    let base = 1.08 * n;
+    set("--card-qfs", (1.05 * base).toFixed(3) + "rem");
+    set("--card-ofs", (0.88 * base).toFixed(3) + "rem");
+    set("--card-afs", (0.95 * base).toFixed(3) + "rem");
+    set("--card-letter", (24 * Math.min(1.2, base)).toFixed(0) + "px");
+    set("--card-letterfs", (0.72 * base).toFixed(3) + "rem");
     localStorage.setItem("hod102_card_font_size_v3", String(n));
     if ($("stCardFont")) $("stCardFont").value = Math.round(n * 100);
     if ($("stCardFontState")) $("stCardFontState").textContent = Math.round(n * 100) + "%";
@@ -1103,8 +1104,8 @@
     let currentProfile = null;
     const configured = () => CONFIG.SUPABASE_URL.startsWith("https://") && !CONFIG.SUPABASE_ANON_KEY.startsWith("PASTE_");
     const isReady = () => !!client && !!currentUser;
-    const isAdmin = () => currentProfile?.role === "admin" || currentUser?.email === "trongbm2004@gmail.com";
-    const canOpenDashboard = () => ["admin", "editor"].includes(currentProfile?.role) || currentUser?.email === "trongbm2004@gmail.com";
+    const isAdmin = () => currentProfile?.role === "admin";
+    const canOpenDashboard = () => ["admin", "editor"].includes(currentProfile?.role);
     const $id = (id) => document.getElementById(id);
     function safeJson(obj) {
       try {
@@ -1220,17 +1221,46 @@
         $id("adminModal")?.classList.add("hidden");
       }
     }
-    function showPendingApproval() {
+    const PENDING_DEFAULT_TITLE = "Ch\u1EDD ph\xEA duy\u1EC7t";
+    const PENDING_DEFAULT_MESSAGE = "T\xE0i kho\u1EA3n c\u1EE7a b\u1EA1n \u0111ang ch\u1EDD admin ph\xEA duy\u1EC7t.<br>B\u1EA1n s\u1EBD c\xF3 th\u1EC3 s\u1EED d\u1EE5ng Learning Hub sau khi \u0111\u01B0\u1EE3c duy\u1EC7t.";
+    const BLOCKED_TITLE = "T\xE0i kho\u1EA3n b\u1ECB kh\xF3a";
+    const BLOCKED_MESSAGE = "T\xE0i kho\u1EA3n c\u1EE7a b\u1EA1n \u0111\xE3 b\u1ECB qu\u1EA3n tr\u1ECB vi\xEAn kh\xF3a.<br>B\u1EA1n \u0111\xE3 \u0111\u01B0\u1EE3c \u0111\u0103ng xu\u1EA5t kh\u1ECFi h\u1EC7 th\u1ED1ng.";
+    function truthyFlag(v) {
+      return v === 1 || v === true || v === "1";
+    }
+    function hasFullAccess(profile) {
+      if (!profile || typeof profile !== "object") return false;
+      if (truthyFlag(profile.blocked) || truthyFlag(profile.is_blocked) || profile.status === "blocked") return false;
+      return truthyFlag(profile.approved);
+    }
+    window.lhHasFullAccess = hasFullAccess;
+    function showPendingApproval(opts) {
       const el = $id("hodPendingApproval");
       if (el) el.classList.remove("hidden");
+      const titleEl = $id("hodPendingTitle");
+      if (titleEl) titleEl.textContent = opts?.title || PENDING_DEFAULT_TITLE;
+      const msgEl = $id("hodPendingMessage");
+      if (msgEl) msgEl.innerHTML = opts?.message || PENDING_DEFAULT_MESSAGE;
       const emailEl = $id("hodPendingEmail");
       if (emailEl) emailEl.textContent = currentUser?.email || "";
       $id("hodLoginGate")?.classList.add("hidden");
       document.body?.classList.add("hod-locked");
+      window.__LH_ACCESS_OK = false;
+      window.__LH_GATE_LOCKED = true;
     }
+    window.showPendingApproval = showPendingApproval;
+    function showAccessCheckError() {
+      showPendingApproval({
+        title: "Kh\xF4ng th\u1EC3 ki\u1EC3m tra quy\u1EC1n",
+        message: "Kh\xF4ng th\u1EC3 ki\u1EC3m tra quy\u1EC1n, vui l\xF2ng th\u1EED l\u1EA1i."
+      });
+    }
+    window.showAccessCheckError = showAccessCheckError;
     function hidePendingApproval() {
       const el = $id("hodPendingApproval");
       if (el) el.classList.add("hidden");
+      document.body?.classList.remove("hod-locked");
+      window.__LH_GATE_LOCKED = false;
     }
     async function sendLoginToDiscord(email, role) {
       try {
@@ -1251,8 +1281,164 @@
       await sendLoginToDiscord(currentProfile?.email || currentUser.email, currentProfile?.role || "user");
       sessionStorage.setItem(key, "true");
     }
+    let lhApiAbortController = typeof AbortController !== "undefined" ? new AbortController() : null;
+    function getLhApiSignal() {
+      return lhApiAbortController ? lhApiAbortController.signal : void 0;
+    }
+    window.getLhApiSignal = getLhApiSignal;
+    function purgeOfflineQuestionCache() {
+      try {
+        RAW = [];
+        pool = [];
+        ci = 0;
+        flipped = false;
+        const q = $("question");
+        if (q) q.textContent = "T\xE0i kho\u1EA3n ch\u01B0a \u0111\u01B0\u1EE3c duy\u1EC7t ho\u1EB7c \u0111\xE3 b\u1ECB kh\xF3a.";
+        const opts = $("options");
+        if (opts) opts.innerHTML = "";
+        const imgs = $("images");
+        if (imgs) imgs.innerHTML = "";
+        const total = $("total");
+        if (total) total.textContent = "0";
+        const idx = $("idx");
+        if (idx) idx.textContent = "0";
+        if (typeof renderQuiz === "function") renderQuiz();
+        if (typeof renderStudy === "function") renderStudy();
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k && (k.startsWith("lh_question_") || k.startsWith("lh_raw_") || k.startsWith("lh_starred_") || k.startsWith("learninghub_questions_"))) {
+            localStorage.removeItem(k);
+          }
+        }
+        for (let i = sessionStorage.length - 1; i >= 0; i--) {
+          const k = sessionStorage.key(i);
+          if (k && (k.startsWith("lh_") || k.startsWith("learninghub_"))) {
+            sessionStorage.removeItem(k);
+          }
+        }
+        if (typeof caches !== "undefined" && caches.keys) {
+          caches.keys().then((names) => {
+            names.forEach((name) => {
+              if (name.includes("questions") || name.includes("learninghub")) caches.delete(name);
+            });
+          }).catch(() => {
+          });
+        }
+        if (typeof indexedDB !== "undefined" && indexedDB.databases) {
+          indexedDB.databases().then((dbs) => {
+            dbs.forEach((dbInfo) => {
+              if (dbInfo.name && dbInfo.name.includes("learninghub")) indexedDB.deleteDatabase(dbInfo.name);
+            });
+          }).catch(() => {
+          });
+        }
+      } catch (e) {
+        console.warn("purgeOfflineQuestionCache error:", e);
+      }
+    }
+    function handleAccessRevoked(reason, code = null) {
+      if (window.__LH_REVOKING_ACCESS) return;
+      window.__LH_REVOKING_ACCESS = true;
+      console.warn("[LH Auth] Thu h\u1ED3i quy\u1EC1n:", reason, "| code:", code);
+      try {
+        if (lhApiAbortController) {
+          lhApiAbortController.abort("Access revoked");
+          lhApiAbortController = typeof AbortController !== "undefined" ? new AbortController() : null;
+        }
+      } catch (e) {
+      }
+      window.__LH_ACCESS_OK = false;
+      currentProfile = null;
+      purgeOfflineQuestionCache();
+      try {
+        if (typeof window.lhTeardownAccessWatch === "function") window.lhTeardownAccessWatch();
+      } catch (e) {
+      }
+      const mustSignOut = code === "BLOCKED" || code === "UNAUTHORIZED";
+      if (code === "BLOCKED") {
+        showPendingApproval({ title: BLOCKED_TITLE, message: BLOCKED_MESSAGE });
+      } else if (code === "UNAUTHORIZED") {
+        showPendingApproval({
+          title: "Phi\xEAn \u0111\u0103ng nh\u1EADp \u0111\xE3 h\u1EBFt h\u1EA1n",
+          message: "Vui l\xF2ng \u0111\u0103ng nh\u1EADp l\u1EA1i \u0111\u1EC3 ti\u1EBFp t\u1EE5c."
+        });
+      } else {
+        showPendingApproval({ title: PENDING_DEFAULT_TITLE, message: PENDING_DEFAULT_MESSAGE });
+      }
+      if (mustSignOut) {
+        try {
+          unsubscribeUserStatusRealtime();
+        } catch (e) {
+        }
+        if (typeof signOut === "function") signOut().catch(() => {
+        });
+      }
+      updateAuthUI();
+      setTimeout(() => {
+        window.__LH_REVOKING_ACCESS = false;
+      }, 3e3);
+    }
+    window.handleAccessRevoked = handleAccessRevoked;
+    let statusRealtimeChannel = null;
+    let lastRealtimeSignalAt = 0;
+    function unsubscribeUserStatusRealtime() {
+      if (!statusRealtimeChannel) return;
+      try {
+        statusRealtimeChannel.unsubscribe();
+      } catch (e) {
+      }
+      statusRealtimeChannel = null;
+      window.__lhRealtimeConnected = false;
+    }
+    window.lhUnsubscribeUserStatus = unsubscribeUserStatusRealtime;
+    function onRealtimeSignal(reason) {
+      const now = Date.now();
+      if (now - lastRealtimeSignalAt < 2e3) return;
+      lastRealtimeSignalAt = now;
+      if (typeof window.lhRevalidateAccess === "function") {
+        window.lhRevalidateAccess("realtime:" + (reason || "status_changed"));
+      }
+    }
+    function subscribeUserStatusRealtime(userId) {
+      if (!userId || statusRealtimeChannel) return;
+      try {
+        const supa = window.HODSupabase?.__client;
+        if (!supa || typeof supa.channel !== "function") return;
+        statusRealtimeChannel = supa.channel("user-status-" + userId);
+        statusRealtimeChannel.on("broadcast", { event: "status_changed" }, (msg) => {
+          const data = msg?.payload || {};
+          onRealtimeSignal(data.reason);
+        });
+        statusRealtimeChannel.subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            console.log("[Realtime] \u0111\xE3 theo d\xF5i tr\u1EA1ng th\xE1i t\xE0i kho\u1EA3n:", userId);
+            window.__lhRealtimeConnected = true;
+            if (typeof window.stopFallbackPolling === "function") window.stopFallbackPolling();
+            if (typeof window.lhRevalidateAccess === "function") window.lhRevalidateAccess("realtime:subscribed");
+          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            console.warn("[Realtime] m\u1EA5t k\u1EBFt n\u1ED1i:", status);
+            window.__lhRealtimeConnected = false;
+            if (document.visibilityState === "visible" && typeof window.startFallbackPolling === "function") {
+              window.startFallbackPolling();
+            }
+          }
+        });
+      } catch (e) {
+        console.warn("[Realtime] kh\xF4ng \u0111\u0103ng k\xFD \u0111\u01B0\u1EE3c k\xEAnh:", e);
+        statusRealtimeChannel = null;
+        window.__lhRealtimeConnected = false;
+        if (document.visibilityState === "visible" && typeof window.startFallbackPolling === "function") {
+          window.startFallbackPolling();
+        }
+      }
+    }
+    window.addEventListener("lh:profile-ready", () => {
+      const u = window.HODSupabase?.getUser?.();
+      if (u?.id) subscribeUserStatusRealtime(u.id);
+    });
     let activeProfilePromise = null;
-    async function loadProfile() {
+    async function loadProfile(force = false, checkOnly = false) {
+      window.loadProfile = loadProfile;
       if (!currentUser) {
         currentProfile = null;
         updateAuthUI();
@@ -1261,41 +1447,53 @@
       if (activeProfilePromise) return activeProfilePromise;
       activeProfilePromise = (async () => {
         try {
+          const activeSubjectCode = (localStorage.getItem("learninghub_subject_code_merged_v1") || "").trim();
+          const body = checkOnly ? { check_only: true } : {
+            id: currentUser.id,
+            email: currentUser.email || "",
+            full_name: currentUser.user_metadata?.full_name || "",
+            avatar_url: currentUser.user_metadata?.avatar_url || currentUser.user_metadata?.picture || "",
+            current_subject: activeSubjectCode,
+            device_info: typeof getDeviceTypeString === "function" ? getDeviceTypeString() : void 0,
+            last_login: (/* @__PURE__ */ new Date()).toISOString(),
+            last_activity: (/* @__PURE__ */ new Date()).toISOString()
+          };
           const res = await fetch("/api/profile?turso=1&ts=" + Date.now(), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             cache: "no-store",
-            body: JSON.stringify({
-              id: currentUser.id,
-              email: currentUser.email || "",
-              full_name: currentUser.user_metadata?.full_name || "",
-              avatar_url: currentUser.user_metadata?.avatar_url || currentUser.user_metadata?.picture || "",
-              last_login: (/* @__PURE__ */ new Date()).toISOString(),
-              last_activity: (/* @__PURE__ */ new Date()).toISOString()
-            })
+            body: JSON.stringify(body)
           });
           const json = await res.json().catch(() => ({}));
-          if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c profile t\u1EEB Turso");
+          if (!res.ok || json.error) {
+            currentProfile = null;
+            window.__LH_ACCESS_OK = false;
+            if (res.status === 401 || res.status === 403) {
+              handleAccessRevoked(
+                json.error || "T\xE0i kho\u1EA3n ch\u01B0a \u0111\u01B0\u1EE3c duy\u1EC7t ho\u1EB7c \u0111\xE3 b\u1ECB kh\xF3a.",
+                json.code || (res.status === 401 ? "UNAUTHORIZED" : "PENDING_APPROVAL")
+              );
+            } else {
+              showAccessCheckError();
+              updateAuthUI();
+            }
+            throw new Error(json.error || `Kh\xF4ng ki\u1EC3m tra \u0111\u01B0\u1EE3c quy\u1EC1n (HTTP ${res.status})`);
+          }
           currentProfile = json.data || json.profile || json;
-          if (currentUser?.email === "trongbm2004@gmail.com" && currentProfile) {
-            currentProfile.role = "admin";
-            currentProfile.approved = true;
-          }
           if (json.force_logout || currentProfile?.force_logout) {
-            location.reload();
+            await forceLogoutNow();
             return null;
           }
-          if (currentProfile?.blocked || currentProfile?.is_blocked || currentProfile?.status === "blocked") {
-            alert("T\xE0i kho\u1EA3n c\u1EE7a b\u1EA1n \u0111\xE3 b\u1ECB kh\xF3a.");
-            await signOut();
+          if (truthyFlag(currentProfile?.blocked)) {
+            handleAccessRevoked("T\xE0i kho\u1EA3n \u0111\xE3 b\u1ECB kh\xF3a", "BLOCKED");
             return null;
           }
-          await notifyLoginToDiscordOnce();
-          if (currentProfile?.approved === false || currentProfile?.approved === 0 || currentProfile?.approved === "0") {
-            showPendingApproval();
-            updateAuthUI();
+          if (!hasFullAccess(currentProfile)) {
+            handleAccessRevoked("T\xE0i kho\u1EA3n ch\u01B0a \u0111\u01B0\u1EE3c ph\xEA duy\u1EC7t", "PENDING_APPROVAL");
             return null;
           }
+          if (!checkOnly) await notifyLoginToDiscordOnce();
+          window.__LH_ACCESS_OK = true;
           hidePendingApproval();
           updateAuthUI();
           window.dispatchEvent(new CustomEvent("lh:profile-ready"));
@@ -1303,6 +1501,11 @@
         } catch (e) {
           console.error("[Turso profile]", e);
           currentProfile = null;
+          window.__LH_ACCESS_OK = false;
+          if (!document.getElementById("hodPendingApproval")?.classList.contains("hidden")) {
+          } else {
+            showAccessCheckError();
+          }
           updateAuthUI();
           return null;
         } finally {
@@ -1311,9 +1514,13 @@
       })();
       return activeProfilePromise;
     }
+    window.lhCheckProfileOnce = function(reason) {
+      console.debug("[LH access] x\xE1c minh l\u1EA1i quy\u1EC1n t\u1EEB Turso, ngu\u1ED3n:", reason || "unknown");
+      return loadProfile(true, true);
+    };
     async function loadQuestionsFromSupabase() {
       if (!currentUser) return false;
-      if (currentProfile && (currentProfile.approved === false || currentProfile.approved === 0 || currentProfile.approved === "0")) {
+      if (!hasFullAccess(currentProfile)) {
         showPendingApproval();
         return false;
       }
@@ -1381,12 +1588,40 @@
       if (error) return alert(error.message);
       alert("\u0110\xE3 t\u1EA1o t\xE0i kho\u1EA3n. N\u1EBFu Supabase y\xEAu c\u1EA7u x\xE1c nh\u1EADn email, h\xE3y x\xE1c nh\u1EADn r\u1ED3i \u0111\u0103ng nh\u1EADp.");
     }
+    async function forceLogoutNow(reason) {
+      if (window.__LH_FORCE_LOGGING_OUT) return;
+      window.__LH_FORCE_LOGGING_OUT = true;
+      try {
+        purgeOfflineQuestionCache();
+      } catch (e) {
+      }
+      try {
+        await signOut();
+      } catch (e) {
+        console.warn("[forceLogout] signOut failed:", e);
+      }
+      try {
+        alert(reason || "B\u1EA1n \u0111\xE3 \u0111\u01B0\u1EE3c qu\u1EA3n tr\u1ECB vi\xEAn \u0111\u0103ng xu\u1EA5t kh\u1ECFi h\u1EC7 th\u1ED1ng.");
+      } catch (e) {
+      }
+      location.reload();
+    }
+    window.lhForceLogout = forceLogoutNow;
     async function signOut() {
       if (!client) return;
+      try {
+        unsubscribeUserStatusRealtime();
+      } catch (e) {
+      }
+      try {
+        if (typeof window.lhTeardownAccessWatch === "function") window.lhTeardownAccessWatch();
+      } catch (e) {
+      }
       Object.keys(sessionStorage).filter((k) => k.startsWith("hod_web_login_discord_notified_")).forEach((k) => sessionStorage.removeItem(k));
       await client.auth.signOut();
       currentUser = null;
       currentProfile = null;
+      window.__LH_ACCESS_OK = false;
       updateAuthUI();
       notify2("\u0110\xE3 \u0111\u0103ng xu\u1EA5t");
     }
@@ -1524,7 +1759,7 @@
           btn.textContent = "\u0110ang ki\u1EC3m tra...";
         }
         await loadProfile();
-        if (currentProfile?.approved !== false) await loadQuestionsFromSupabase();
+        if (hasFullAccess(currentProfile)) await loadQuestionsFromSupabase();
         if (btn) {
           btn.disabled = false;
           btn.textContent = "Ki\u1EC3m tra l\u1EA1i";
@@ -1735,22 +1970,30 @@
       }
       $2("hodAccountDashboard")?.classList.toggle("hidden", !admin);
     }
+    function denied() {
+      const u = user();
+      if (!u) return false;
+      if (window.__LH_GATE_LOCKED === true) return true;
+      const p = profile();
+      return !!p && !(window.lhHasFullAccess?.(p) ?? true);
+    }
     function updateAll() {
       ensureAvatar();
       const u = user();
       const p = profile();
       const admin = isAdmin();
-      const pending = u && p && p.approved === false;
+      const pending = denied();
       document.body?.classList.toggle("hod-is-admin-final", admin);
       if (pending) {
         $2("hodLoginGate")?.classList.add("hidden");
         $2("hodPendingApproval")?.classList.remove("hidden");
         document.body?.classList.add("hod-locked");
         const emailEl = $2("hodPendingEmail");
-        if (emailEl) emailEl.textContent = p.email || u.email || "";
+        if (emailEl && !emailEl.textContent) emailEl.textContent = p?.email || u.email || "";
       } else if (u) {
         hideLogin();
         $2("hodPendingApproval")?.classList.add("hidden");
+      } else if (window.__LH_GATE_LOCKED === true) {
       } else {
         showLogin();
       }
@@ -1832,7 +2075,7 @@
     function subjectCode() {
       return localStorage.getItem(SUBJECT_STORE2) || "";
     }
-    function getDeviceTypeString2() {
+    function getDeviceTypeString3() {
       const ua = navigator.userAgent || "";
       let os = "M\xE1y t\xEDnh";
       if (/iPhone|iPad|iPod/i.test(ua)) os = "\u{1F4F1} iOS";
@@ -1847,11 +2090,18 @@
       else if (/Edge|Edg/i.test(ua)) browser = "Edge";
       return browser ? `${os} \xB7 ${browser}` : os;
     }
-    function syncUserSubjectToProfile2(code) {
-      const u = user();
-      if (!u) return;
+    function syncUserSubjectToProfile3(code) {
+      const u = user() || window.HODSupabase?.getUser?.();
+      if (!u) {
+        setTimeout(() => {
+          const u2 = user() || window.HODSupabase?.getUser?.();
+          if (u2) syncUserSubjectToProfile3(code);
+        }, 1e3);
+        return;
+      }
       try {
         const md = u.user_metadata || {};
+        const sub = code || subjectCode() || "";
         fetch("/api/profile", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1860,8 +2110,8 @@
             email: u.email,
             full_name: md.full_name || md.name || "",
             avatar_url: md.avatar_url || md.picture || "",
-            current_subject: code || subjectCode() || "",
-            device_info: getDeviceTypeString2()
+            current_subject: sub,
+            device_info: typeof getDeviceTypeString3 === "function" ? getDeviceTypeString3() : void 0
           })
         }).catch((e) => console.warn("syncUserSubjectToProfile failed:", e));
       } catch (e) {
@@ -1872,7 +2122,11 @@
       else localStorage.removeItem(SUBJECT_STORE2);
       pickedCode = code || "";
       syncSubjectTexts2();
-      syncUserSubjectToProfile2(code);
+      syncUserSubjectToProfile3(code);
+      try {
+        if (typeof window.__examResetForSubjectChange === "function") window.__examResetForSubjectChange();
+      } catch (e) {
+      }
     }
     function meta(code) {
       return subjectsCache.find((x) => x.code === code) || null;
@@ -1881,7 +2135,7 @@
       const m = meta(code);
       return m ? `${displayCode(m.code)} \xB7 ${m.name || ""}` : displayCode(code) || "Ch\u01B0a ch\u1ECDn m\xF4n";
     }
-    function notifyUX2(msg) {
+    function notifyUX(msg) {
       if (typeof notify === "function") notify(msg);
       else console.log(msg);
     }
@@ -2072,9 +2326,8 @@
     }
     async function loadBySubject(code) {
       if (!code) return false;
-      syncUserSubjectToProfile2(code);
-      const p = window.HODSupabase?.getProfile?.() || null;
-      if (p && (p.approved === false || p.approved === 0 || p.approved === "0")) return false;
+      syncUserSubjectToProfile3(code);
+      if (!window.lhHasFullAccess?.(window.HODSupabase?.getProfile?.() || null)) return false;
       try {
         const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(code) + "&ts=" + Date.now(), { cache: "no-store" });
         const json = await res.json().catch(() => ({}));
@@ -2105,11 +2358,11 @@
           renderStudy();
         } catch (e) {
         }
-        notifyUX2("\u0110\xE3 t\u1EA3i " + label(code));
+        notifyUX("\u0110\xE3 t\u1EA3i " + label(code));
         return true;
       } catch (e) {
         console.warn("[Turso loadBySubject]", e);
-        notifyUX2("Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c d\u1EEF li\u1EC7u m\xF4n h\u1ECDc t\u1EEB Turso.");
+        notifyUX("Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c d\u1EEF li\u1EC7u m\xF4n h\u1ECDc t\u1EEB Turso.");
         return false;
       }
     }
@@ -2132,7 +2385,7 @@
         }
       } catch (e) {
         console.error("[enterSubject]", e);
-        notifyUX2("Kh\xF4ng th\u1EC3 chuy\u1EC3n m\xF4n: " + (e.message || e));
+        notifyUX("Kh\xF4ng th\u1EC3 chuy\u1EC3n m\xF4n: " + (e.message || e));
       } finally {
         if (btn) {
           btn.disabled = false;
@@ -2240,8 +2493,7 @@
       };
     }
     function isApproved() {
-      const p = window.HODSupabase?.getProfile?.() || null;
-      return !p || p.approved !== false;
+      return !!window.lhHasFullAccess?.(window.HODSupabase?.getProfile?.() || null);
     }
     function bind() {
       ensureChip();
@@ -2261,7 +2513,7 @@
         syncSubjectTexts2();
         const isGateOpen = localStorage.getItem("learninghub_subject_gate_open_v1") === "true";
         if (subjectCode() && !isGateOpen) {
-          syncUserSubjectToProfile2(subjectCode());
+          syncUserSubjectToProfile3(subjectCode());
           loadBySubject(subjectCode());
         } else {
           openGate();
@@ -2985,10 +3237,15 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         empty("Ch\u1ECDn m\xF4n \u0111\u1EC3 t\u1EA3i d\u1EEF li\u1EC7u t\u1EEB Turso");
         return false;
       }
-      const p = window.HODSupabase?.getProfile?.() || null;
-      if (p && (p.approved === false || p.approved === 0 || p.approved === "0")) {
+      if (!window.lhHasFullAccess?.(window.HODSupabase?.getProfile?.() || null)) {
         empty("T\xE0i kho\u1EA3n \u0111ang ch\u1EDD duy\u1EC7t");
         return false;
+      }
+      if (typeof syncUserSubjectToProfile === "function") {
+        try {
+          syncUserSubjectToProfile(subject);
+        } catch (e) {
+        }
       }
       try {
         const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(subject) + "&ts=" + Date.now(), { cache: "no-store" });
@@ -3355,7 +3612,6 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
   (function() {
     const $2 = (id) => document.getElementById(id);
     const esc2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-    const supa = () => window.HODSupabase?.__client || null;
     const user = () => window.HODSupabase?.getUser?.() || null;
     function ensureReportModal() {
       if ($2("hodReportModal")) return;
@@ -3409,16 +3665,21 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     async function loadReportModalList() {
       ensureReportModal();
       const list = $2("hodReportModalList");
-      const c = supa();
       const u = user();
       if (!list) return;
-      if (!c || !u) {
+      if (!u) {
         list.innerHTML = '<div class="hodReportEmpty">\u0110\u0103ng nh\u1EADp \u0111\u1EC3 xem b\xE1o c\xE1o.</div>';
         return;
       }
       list.innerHTML = '<div class="hodReportEmpty">\u0110ang t\u1EA3i...</div>';
-      const { data, error } = await c.from("edit_requests").select("id,question_num,status,admin_note,created_at").eq("user_id", u.id).order("created_at", { ascending: false }).limit(50);
-      if (error) {
+      let data = null;
+      try {
+        const res = await fetch("/api/my-edit-requests?ts=" + Date.now(), { cache: "no-store" });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok || !Array.isArray(out?.data)) throw new Error(out?.error || res.status);
+        data = out.data;
+      } catch (e) {
+        console.warn("[reports] kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c b\xE1o c\xE1o:", e);
         list.innerHTML = '<div class="hodReportEmpty">Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c b\xE1o c\xE1o.</div>';
         return;
       }
@@ -3498,6 +3759,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       wrap.classList.remove("lhDragging");
       wrap.classList.add("lhSliding");
       wrap.style.transition = "none";
+      wrap.style.opacity = "1";
       dir === "next" ? goNext() : goPrev();
       const fromX = dir === "next" ? "100%" : "-100%";
       const toX = dir === "next" ? "-100%" : "100%";
@@ -3521,6 +3783,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         ghost.remove();
         wrap.style.transition = "";
         wrap.style.transform = "";
+        wrap.style.opacity = "";
         wrap.classList.remove("lhSliding");
         __sliding = false;
         window.__lhSuppressFlip = false;
@@ -3752,7 +4015,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         const res = await fetch("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ id: u.id, email: u.email || "", full_name: md.full_name || md.name || "", avatar_url: md.avatar_url || md.picture || "" }) });
         const json = await res.json().catch(() => ({}));
         if (json && (json.force_logout || json.data?.force_logout)) {
-          location.reload();
+          if (typeof window.lhForceLogout === "function") window.lhForceLogout();
+          else location.reload();
         }
       } catch (e) {
         console.warn("[last_activity]", e);
@@ -3781,7 +4045,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         });
         const json = await res.json().catch(() => ({}));
         if (json && (json.force_logout || json.data?.force_logout)) {
-          location.reload();
+          if (typeof window.lhForceLogout === "function") window.lhForceLogout();
+          else location.reload();
         }
       } catch (e) {
       }
@@ -6833,7 +7098,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         const st = JSON.parse(localStorage.getItem(EXAM_STORE) || "null");
         if (!st || !Array.isArray(st.nums) || !st.nums.length || !Array.isArray(RAW) || !RAW.length) return false;
-        if (st.subject && examSubject() && st.subject !== examSubject()) return false;
+        const curSub = examSubject() || "";
+        const stSub = st.subject || "";
+        if (!stSub || !curSub || stSub !== curSub) return false;
         const restored = st.nums.map((n, i) => RAW.find((c) => String(c.id || "") === String(st.ids?.[i] || "") || Number(c.num) === Number(n))).filter(Boolean);
         if (!restored.length) return false;
         qSet = restored;
@@ -7890,6 +8157,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       examSelectedCodes = [];
       quizMode = "exam";
       kizspyCheckedMap = {};
+      document.body.classList.remove("kizspy-active");
+      const portal = document.getElementById("kizspyExamPortal");
+      if (portal) portal.remove();
     };
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => setTimeout(bind, 120));
     else setTimeout(bind, 120);
@@ -7947,6 +8217,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     function pass(q) {
       if (libraryFilter === "all") return true;
       if (libraryFilter === "has_image") return hasImg(q);
+      if (libraryFilter === "starred") return typeof window.__isBookmarked === "function" ? window.__isBookmarked(q) : false;
       return risk(q) === libraryFilter;
     }
     function answerText2(q) {
@@ -7974,13 +8245,25 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         box.className = "v7Stats libraryQuestionFilters";
         list.parentNode.insertBefore(box, list);
       }
-      const s = stat(data), fs = [["all", "Th\u01B0 vi\u1EC7n"], ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"], ["high", "R\u1EE7i ro cao"], ["medium", "Trung b\xECnh"], ["low", "Th\u1EA5p"]];
+      const s = stat(data);
+      const starCnt = typeof window.__countBookmarks === "function" ? window.__countBookmarks() : 0;
+      const fs = [
+        ["all", "T\u1EA5t c\u1EA3"],
+        ["starred", `\u{1F516} \u0110\xE3 l\u01B0u (${starCnt})`],
+        ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"],
+        ["high", "R\u1EE7i ro cao"],
+        ["medium", "Trung b\xECnh"],
+        ["low", "Th\u1EA5p"]
+      ];
       box.innerHTML = `<div class="v7StatLine"><span class="v7StatItem">${s.total} c\xE2u</span><span class="v7StatItem" style="color:#3498db">${s.img} c\xF3 \u1EA3nh</span><span class="v7StatItem" style="color:#e74c3c">${s.high} r\u1EE7i ro cao</span><span class="v7StatItem" style="color:#f39c12">${s.medium} trung b\xECnh</span><span class="v7StatItem" style="color:#27ae60">${s.low} th\u1EA5p</span></div><div class="v7FilterLine">${fs.map((f) => `<button type="button" class="v7FilterBtn ${libraryFilter === f[0] ? "active" : ""}" data-library-filter="${f[0]}">${f[1]}</button>`).join("")}</div>`;
     }
-    function libraryCard(q) {
+    function libraryCard(q, idx) {
       const a = ans(q) || "?", r = risk(q);
       const opts = Object.entries(q.options || {}).map(([k, v]) => `<div class="libraryOption ${a.includes(String(k).toUpperCase()) ? "correct" : ""}"><b>${esc2(k)}</b><span>${esc2(v)}</span></div>`).join("");
-      return `<article class="v7Card libraryQuestionCard" style="border-left-color:${rColor(r)}!important"><div class="v7Row"><div class="v7Num">C\xE2u ${esc2(q.num || "")}</div><div class="v7Main"><div class="v7Question">${esc2(q.question || "")}</div><div class="v7Answer"><b>\u0110\xE1p \xE1n: ${esc2(a)}</b><span>${esc2(answerText2(q))}</span></div><div class="libraryOptions">${opts}</div></div>${miniImg(q)}<div class="v7Meta"><span class="v7RiskDot" style="background:${rColor(r)}" title="R\u1EE7i ro: ${esc2(rLabel(r))}"></span></div></div></article>`;
+      const bmBtn = typeof window.__getBookmarkBtnHTML === "function" ? window.__getBookmarkBtnHTML(q) : "";
+      const qIndex = typeof RAW !== "undefined" && Array.isArray(RAW) ? RAW.findIndex((x) => String(x.num || x.id) === String(q.num || q.id)) : idx;
+      const studyIndex = qIndex >= 0 ? qIndex : idx;
+      return `<article class="v7Card libraryQuestionCard" style="border-left-color:${rColor(r)}!important"><div class="v7Row"><div class="v7Num">C\xE2u ${esc2(q.num || idx + 1)}</div><div class="v7Main"><div class="v7Question">${esc2(q.question || "")}</div><div class="v7Answer"><b>\u0110\xE1p \xE1n: ${esc2(a)}</b><span>${esc2(answerText2(q))}</span></div><div class="libraryOptions">${opts}</div></div>${miniImg(q)}<div class="v7Meta" style="display:flex;align-items:center;gap:6px;"><button type="button" class="libraryV2Study act" style="padding:4px 10px;border-radius:6px;background:rgba(200,169,110,.12);color:var(--gold2);border:1px solid rgba(200,169,110,.25);cursor:pointer;" onclick="if(typeof window.goStudyFromLib==='function')window.goStudyFromLib(${studyIndex})">H\u1ECDc</button>${bmBtn}<button type="button" class="libraryV2Report act" style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,.05);color:var(--mist);border:1px solid rgba(200,169,110,.15);cursor:pointer;" onclick="if(typeof window.openStudyReport==='function')window.openStudyReport('${esc2(q.num)}')">!</button></div></div></article>`;
     }
     try {
       renderStudy = function() {
@@ -8136,6 +8419,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => setTimeout(apply, 0));
     else setTimeout(apply, 0);
     setTimeout(apply, 900);
+    window.goStudyFromLib = function(idx) {
+      if (typeof pool !== "undefined" && Array.isArray(pool) && pool.length > 0) {
+        if (typeof idx === "number" && idx >= 0 && idx < pool.length) ci = idx;
+      }
+      if (typeof renderCard === "function") renderCard();
+      document.querySelector('[data-tab="fc"]')?.click();
+    };
     document.addEventListener("click", (e) => {
       if (e.target.closest("[data-edit-preview-close]")) return $2("editModal")?.classList.add("hidden");
       if (e.target.closest("[data-edit-preview-save]")) return saveEditPreview();
@@ -8233,6 +8523,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const f = localStorage.getItem(FILTER_STORE) || "all";
       if (f === "all") return true;
       if (f === "has_image") return hasImg(q);
+      if (f === "starred") return typeof window.__isBookmarked === "function" ? window.__isBookmarked(q) : false;
       return risk(q) === f;
     }
     function correctText(q) {
@@ -8263,7 +8554,15 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         list.parentNode.insertBefore(box, list);
       }
       const f = localStorage.getItem(FILTER_STORE) || "all", s = stats(data);
-      const filters = [["all", "Th\u01B0 vi\u1EC7n"], ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"], ["high", "R\u1EE7i ro cao"], ["medium", "Trung b\xECnh"], ["low", "Th\u1EA5p"]];
+      const starCnt = typeof window.__countBookmarks === "function" ? window.__countBookmarks() : 0;
+      const filters = [
+        ["all", "Th\u01B0 vi\u1EC7n"],
+        ["starred", `\u{1F516} \u0110\xE3 l\u01B0u (${starCnt})`],
+        ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"],
+        ["high", "R\u1EE7i ro cao"],
+        ["medium", "Trung b\xECnh"],
+        ["low", "Th\u1EA5p"]
+      ];
       box.innerHTML = `<div class="v7StatLine"><span class="v7StatItem">${s.total} c\xE2u</span><span class="v7StatItem" style="color:#3498db">${s.img} c\xF3 \u1EA3nh</span><span class="v7StatItem" style="color:#e74c3c">${s.high} r\u1EE7i ro cao</span><span class="v7StatItem" style="color:#f39c12">${s.medium} trung b\xECnh</span><span class="v7StatItem" style="color:#27ae60">${s.low} th\u1EA5p</span></div><div class="v7FilterLine">${filters.map((x) => `<button type="button" class="v7FilterBtn ${f === x[0] ? "active" : ""}" data-library-filter="${x[0]}">${x[1]}</button>`).join("")}</div>`;
     }
     function optionList(q) {
@@ -8272,7 +8571,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }
     function card(q, i) {
       const a = ans(q) || "?", r = risk(q);
-      return `<article class="libraryV2Card libraryQuestionCard" data-library-v2-card="${i}" data-num="${esc2(q.num || "")}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">C\xE2u ${esc2(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${esc2(q.question || "")}</div><div class="libraryV2Answer"><b>\u0110\xE1p \xE1n: ${esc2(a)}</b><span>${esc2(correctText(q))}</span></div></div>${miniImages(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-library-study="${i}">H\u1ECDc</button><button type="button" class="libraryV2Report" data-library-report="${i}">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${optionList(q)}</div>${allImages(q)}</div></article>`;
+      const bmBtnHTML = typeof window.__getBookmarkBtnHTML === "function" ? window.__getBookmarkBtnHTML(q) : "";
+      return `<article class="libraryV2Card libraryQuestionCard" data-library-v2-card="${i}" data-num="${esc2(q.num || "")}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">C\xE2u ${esc2(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${esc2(q.question || "")}</div><div class="libraryV2Answer"><b>\u0110\xE1p \xE1n: ${esc2(a)}</b><span>${esc2(correctText(q))}</span></div></div>${miniImages(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-library-study="${i}">H\u1ECDc</button>${bmBtnHTML}<button type="button" class="libraryV2Report" data-library-report="${i}">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${optionList(q)}</div>${allImages(q)}</div></article>`;
     }
     function getBase() {
       const q = $2("search")?.value || $2("studySearch")?.value || "";
@@ -8515,6 +8815,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const f = filterVal();
       if (f === "all") return true;
       if (f === "has_image") return hasImg(q);
+      if (f === "starred") return typeof window.__isBookmarked === "function" ? window.__isBookmarked(q) : false;
       return risk(q) === f;
     }
     function stats(data) {
@@ -8555,7 +8856,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
               localStorage.removeItem(SEARCH_STORE);
             } catch (e) {
             }
-            renderUnified();
+            renderUnified2();
             input.focus();
           };
           input.insertAdjacentElement("afterend", b);
@@ -8565,7 +8866,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             localStorage.setItem(SEARCH_STORE, input.value || "");
           } catch (e) {
           }
-          renderUnified();
+          renderUnified2();
         };
         $2("libStableClear")?.classList.toggle("show", !!input.value.trim());
       }
@@ -8575,7 +8876,15 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const box = $2("libStableFilters");
       if (!box) return;
       const s = stats(base), f = filterVal(), v = viewVal();
-      const filters = [["all", "T\u1EA5t c\u1EA3", s.total], ["has_image", "C\xF3 \u1EA3nh", s.img], ["high", "R\u1EE7i ro cao", s.high], ["medium", "Trung b\xECnh", s.medium], ["low", "Th\u1EA5p", s.low]];
+      const starCnt = typeof window.__countBookmarks === "function" ? window.__countBookmarks() : 0;
+      const filters = [
+        ["all", "T\u1EA5t c\u1EA3", s.total],
+        ["starred", "\u{1F516} \u0110\xE3 l\u01B0u", starCnt],
+        ["has_image", "C\xF3 \u1EA3nh", s.img],
+        ["high", "R\u1EE7i ro cao", s.high],
+        ["medium", "Trung b\xECnh", s.medium],
+        ["low", "Th\u1EA5p", s.low]
+      ];
       const isAllOpen = v === "full";
       box.innerHTML = `
       <div class="libStableFilterLine" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
@@ -8639,9 +8948,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         isMatchInDetails = queryObj.tokens.every((t) => detailsText.includes(t));
       }
       const open = viewVal() === "full" || libraryOpenNums.has(String(q.num)) || isMatchInDetails || !!rawSearch;
-      return `<article class="libraryV2Card libraryQuestionCard ${open ? "open" : ""}" data-num="${esc2(q.num || "")}" data-stable-index="${i}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">C\xE2u ${esc2(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${hlt(q.question || "")}</div><div class="libraryV2Answer"><b>\u0110\xE1p \xE1n: ${esc2(a)}</b><span>${hlt(answerText2(q))}</span></div></div>${miniImg(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-stable-study="${i}" title="H\u1ECDc c\xE2u n\xE0y">H\u1ECDc</button><button type="button" class="libraryV2Report" data-stable-report="${i}" title="B\xE1o c\xE1o / s\u1EEDa c\xE2u">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${options(q)}</div>${images(q, open)}</div></article>`;
+      const bmBtnHTML = typeof window.__getBookmarkBtnHTML === "function" ? window.__getBookmarkBtnHTML(q) : "";
+      return `<article class="libraryV2Card libraryQuestionCard ${open ? "open" : ""}" data-num="${esc2(q.num || "")}" data-stable-index="${i}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">C\xE2u ${esc2(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${hlt(q.question || "")}</div><div class="libraryV2Answer"><b>\u0110\xE1p \xE1n: ${esc2(a)}</b><span>${hlt(answerText2(q))}</span></div></div>${miniImg(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-stable-study="${i}" title="H\u1ECDc c\xE2u n\xE0y">H\u1ECDc</button>${bmBtnHTML}<button type="button" class="libraryV2Report" data-stable-report="${i}" title="B\xE1o c\xE1o / s\u1EEDa c\xE2u">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${options(q)}</div>${images(q, open)}</div></article>`;
     }
-    function renderUnified() {
+    function renderUnified2() {
       ensureToolbar();
       const base = searchList();
       lastList = base.filter(passFilter);
@@ -8651,6 +8961,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       list.innerHTML = lastList.length ? lastList.map(card).join("") : '<div class="libraryStableEmpty"><b>Kh\xF4ng c\xF3 c\xE2u ph\xF9 h\u1EE3p.</b><button type="button" data-stable-clear-all>X\xF3a t\xECm ki\u1EBFm & b\u1ED9 l\u1ECDc</button></div>';
       if ($2("libStableClear")) $2("libStableClear").classList.toggle("show", !!(($2("search") || $2("studySearch"))?.value || "").trim());
     }
+    window.renderUnified = renderUnified2;
+    window.renderStudy = renderUnified2;
     function setCurrent(q) {
       let idx = (pool || []).findIndex((x) => Number(x.num) === Number(q.num));
       if (idx < 0) {
@@ -8718,14 +9030,14 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           libraryOpenNums.clear();
           saveOpenState();
         }
-        renderUnified();
+        renderUnified2();
         return;
       }
       const f = e.target.closest("[data-stable-filter]");
       if (f) {
         e.preventDefault();
         localStorage.setItem(FILTER_STORE, f.dataset.stableFilter || "all");
-        renderUnified();
+        renderUnified2();
         return;
       }
       if (e.target.closest("[data-stable-clear-all]")) {
@@ -8737,7 +9049,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         } catch (_e) {
         }
         localStorage.setItem(FILTER_STORE, "all");
-        renderUnified();
+        renderUnified2();
         return;
       }
       const h = e.target.closest("[data-stable-study]");
@@ -8779,10 +9091,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }, true);
     function apply() {
       try {
-        renderStudy = renderUnified;
-        window.renderStudy = renderUnified;
+        renderStudy = renderUnified2;
+        window.renderStudy = renderUnified2;
       } catch (e) {
-        window.renderStudy = renderUnified;
+        window.renderStudy = renderUnified2;
       }
       const s = $2("search") || $2("studySearch");
       if (s) {
@@ -8795,12 +9107,12 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             localStorage.setItem(SEARCH_STORE, s.value || "");
           } catch (e) {
           }
-          renderUnified();
+          renderUnified2();
         };
       }
-      renderUnified();
+      renderUnified2();
     }
-    window.__renderStudyUnified = renderUnified;
+    window.__renderStudyUnified = renderUnified2;
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => setTimeout(apply, 0));
     else setTimeout(apply, 0);
     setTimeout(apply, 700);
@@ -8842,6 +9154,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     async function loadSubjectLight(force = false) {
       const code = subject();
       if (!code) return false;
+      try {
+        if (typeof window.__examResetForSubjectChange === "function") window.__examResetForSubjectChange();
+      } catch (e) {
+      }
       try {
         const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(code) + "&ts=" + Date.now(), { cache: "no-store" });
         const json = await res.json().catch(() => ({}));
@@ -9119,7 +9435,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }
     const CACHE_TTL = 12 * 60 * 60 * 1e3;
     function cacheKey(code) {
-      return "learninghub_questions_cache_v1_" + code;
+      return "learninghub_questions_cache_v2_" + code;
     }
     function readQuestionCache(code) {
       try {
@@ -9139,8 +9455,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       } catch (e) {
       }
     }
-    async function fetchTursoQuestions(code) {
-      const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(code) + "&ts=" + Date.now(), { cache: "no-store" });
+    async function fetchTursoQuestions(code, fresh = false) {
+      const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(code) + (fresh ? "&fresh=1" : "") + "&ts=" + Date.now(), { cache: "no-store" });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c c\xE2u h\u1ECFi t\u1EEB Turso");
       return Array.isArray(json.data) ? json.data : [];
@@ -9178,6 +9494,39 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       } catch (e) {
       }
     }
+    let revalidating = {};
+    async function revalidateQuestions(code) {
+      if (revalidating[code]) return;
+      revalidating[code] = true;
+      try {
+        const rows = await fetchTursoQuestions(code);
+        if (!rows.length || subject() !== code) return;
+        writeQuestionCache(code, rows);
+        const byId = new Map(rows.map((r) => [String(r.id), mapTursoRow(r, code)]));
+        let changed = 0;
+        const patch = (row) => {
+          const next2 = byId.get(String(row?.id));
+          if (!next2) return row;
+          if (row.question !== next2.question || row.answer !== next2.answer || JSON.stringify(row.images || []) !== JSON.stringify(next2.images || [])) changed++;
+          return Object.assign(row, next2);
+        };
+        RAW = (RAW || []).map(patch);
+        pool = (pool || []).map(patch);
+        if (changed) {
+          console.info("[revalidateQuestions] " + code + ": c\u1EADp nh\u1EADt " + changed + " c\xE2u t\u1EEB server");
+          try {
+            renderCard();
+            renderQuiz();
+            renderStudy();
+          } catch (e) {
+          }
+        }
+      } catch (e) {
+        console.warn("[revalidateQuestions]", e);
+      } finally {
+        delete revalidating[code];
+      }
+    }
     let activeLoadPromises = {};
     async function loadSubjectLight(force = false) {
       const code = subject();
@@ -9186,13 +9535,14 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         const cached = readQuestionCache(code);
         if (cached && cached.length && cached.every((r) => Object.prototype.hasOwnProperty.call(r, "images"))) {
           applyQuestionRows(cached, code);
+          revalidateQuestions(code);
           return true;
         }
       }
       if (activeLoadPromises[code]) return activeLoadPromises[code];
       activeLoadPromises[code] = (async () => {
         try {
-          const data = await fetchTursoQuestions(code);
+          const data = await fetchTursoQuestions(code, force);
           writeQuestionCache(code, data);
           applyQuestionRows(data, code);
           return true;
@@ -9266,7 +9616,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const code = subject();
       if (!q?.id || !code) return false;
       try {
-        const rows = await fetchTursoQuestions(code);
+        const rows = await fetchTursoQuestions(code, true);
         const data = rows.find((r) => String(r.id) === String(q.id));
         if (!data) {
           if (!silent) alert("Kh\xF4ng reload \u0111\u01B0\u1EE3c c\xE2u hi\u1EC7n t\u1EA1i.");
@@ -9392,51 +9742,6 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     setTimeout(kill, 200);
     setTimeout(kill, 800);
     setInterval(kill, 500);
-  })();
-  (function() {
-    function isPrivileged(p) {
-      const role = String(p?.role || "").toLowerCase();
-      return role === "admin" || role === "editor";
-    }
-    async function approvePrivilegedProfile() {
-      try {
-        const api = window.HODSupabase;
-        const p = api?.getProfile?.();
-        const u = api?.getUser?.();
-        const c = api?.__client || null;
-        if (!p || !u || !isPrivileged(p)) return false;
-        if (p.approved === true && p.blocked === false) {
-          document.getElementById("hodPendingApproval")?.classList.add("hidden");
-          document.getElementById("hodLoginGate")?.classList.add("hidden");
-          document.body?.classList.remove("hod-locked");
-          return true;
-        }
-        p.approved = true;
-        p.blocked = false;
-        p.is_blocked = false;
-        if (p.status === "blocked") p.status = "active";
-        if (c) {
-          await c.from("profiles").update({ approved: true, blocked: false }).eq("id", u.id).in("role", ["admin", "editor"]);
-        }
-        document.getElementById("hodPendingApproval")?.classList.add("hidden");
-        document.getElementById("hodLoginGate")?.classList.add("hidden");
-        document.body?.classList.remove("hod-locked");
-        try {
-          if (typeof window.loadCurrentSubjectOnly === "function") await window.loadCurrentSubjectOnly();
-          else if (api?.loadQuestionsFromSupabase) await api.loadQuestionsFromSupabase();
-        } catch (e) {
-        }
-        return true;
-      } catch (e) {
-        console.warn("[skip approval admin/editor]", e);
-        return false;
-      }
-    }
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", approvePrivilegedProfile);
-    else approvePrivilegedProfile();
-    setTimeout(approvePrivilegedProfile, 300);
-    setTimeout(approvePrivilegedProfile, 1200);
-    setTimeout(approvePrivilegedProfile, 3e3);
   })();
   (function() {
     function currentTabId() {
@@ -9579,7 +9884,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
   window.clearLearningHubQuestionCache = function() {
     try {
       const code = localStorage.getItem("learninghub_subject_code_merged_v1") || "";
-      if (code) localStorage.removeItem("learninghub_questions_cache_v1_" + code);
+      if (code) {
+        localStorage.removeItem("learninghub_questions_cache_v1_" + code);
+        localStorage.removeItem("learninghub_questions_cache_v2_" + code);
+      }
       if (typeof window.clearLearningHubSupabaseCache === "function") window.clearLearningHubSupabaseCache("questions");
     } catch (e) {
     }
@@ -10300,113 +10608,6 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
   (function() {
     if (window.__COPILOT_CLEAN_RUNTIME_GUARD_20260628) return;
     window.__COPILOT_CLEAN_RUNTIME_GUARD_20260628 = true;
-    if (!window.fetch) return;
-    const SUBJECT_STORE2 = "learninghub_subject_code_merged_v1";
-    const nativeFetch = window.fetch.bind(window);
-    const cache = /* @__PURE__ */ new Map();
-    const pending = /* @__PURE__ */ new Map();
-    function supabaseOrigin() {
-      try {
-        return new URL(window.APP_CONFIG?.SUPABASE_URL || "").origin;
-      } catch (e) {
-        return "";
-      }
-    }
-    function methodOf(init2) {
-      return String(init2?.method || "GET").toUpperCase();
-    }
-    function urlOf(input) {
-      try {
-        const raw = typeof input === "string" ? input : input && input.url ? input.url : "";
-        return new URL(raw, location.href);
-      } catch (e) {
-        return null;
-      }
-    }
-    function isSupabase(url) {
-      const origin = supabaseOrigin();
-      return !!url && !!origin && url.origin === origin;
-    }
-    function isRest(url) {
-      return isSupabase(url) && url.pathname.includes("/rest/v1/");
-    }
-    function currentSubject() {
-      return (localStorage.getItem(SUBJECT_STORE2) || "").trim();
-    }
-    function normalizeUrlForSubject(url, method) {
-      if (!isRest(url)) return url;
-      if (method !== "GET" && method !== "HEAD") return url;
-      if (!url.pathname.includes("/rest/v1/questions")) return url;
-      const subject = currentSubject();
-      if (!subject) return url;
-      if (url.searchParams.get("is_active") === "eq.true" && !url.searchParams.has("subject_code")) {
-        url.searchParams.set("subject_code", "eq." + subject);
-      }
-      return url;
-    }
-    function ttlFor(url, method) {
-      if (!isRest(url)) return 0;
-      if (method !== "GET" && method !== "HEAD") return 0;
-      if (url.pathname.includes("/rest/v1/profiles")) return 10 * 60 * 1e3;
-      if (url.pathname.includes("/rest/v1/subjects")) return 2 * 60 * 1e3;
-      if (url.pathname.includes("/rest/v1/site_settings")) return 60 * 1e3;
-      if (url.pathname.includes("/rest/v1/questions")) {
-        const select = url.searchParams.get("select") || "";
-        if (select === "id") return 2 * 60 * 1e3;
-        if (select === "id,images,updated_at") return 2 * 60 * 1e3;
-        if (url.searchParams.get("is_active") === "eq.true") return 2 * 60 * 1e3;
-      }
-      return 0;
-    }
-    function cacheKey(method, url) {
-      const params = Array.from(url.searchParams.entries()).sort((a, b) => (a[0] + "=" + a[1]).localeCompare(b[0] + "=" + b[1]));
-      return method + " " + url.origin + url.pathname + "?" + params.map((x) => x[0] + "=" + x[1]).join("&");
-    }
-    async function packResponse(res) {
-      const body = await res.clone().arrayBuffer();
-      return {
-        body,
-        status: res.status,
-        statusText: res.statusText,
-        headers: Array.from(res.headers.entries())
-      };
-    }
-    function unpack(pack) {
-      return new Response(pack.body.slice(0), {
-        status: pack.status,
-        statusText: pack.statusText,
-        headers: new Headers(pack.headers)
-      });
-    }
-    window.fetch = async function(input, init2) {
-      let url = urlOf(input);
-      const method = methodOf(init2);
-      if (!url) return nativeFetch(input, init2);
-      url = normalizeUrlForSubject(url, method);
-      let nextInput = input;
-      if (typeof input === "string") nextInput = url.toString();
-      else if (input && input.url && input.url !== url.toString()) nextInput = new Request(url.toString(), input);
-      const ttl = ttlFor(url, method);
-      if (!ttl) return nativeFetch(nextInput, init2);
-      const key = cacheKey(method, url);
-      const hit = cache.get(key);
-      if (hit && Date.now() - hit.t < ttl) return unpack(hit.pack);
-      if (pending.has(key)) return unpack(await pending.get(key));
-      const job = nativeFetch(nextInput, init2).then((res) => packResponse(res)).then((pack) => {
-        cache.set(key, { t: Date.now(), pack });
-        pending.delete(key);
-        return pack;
-      }).catch((err) => {
-        pending.delete(key);
-        throw err;
-      });
-      pending.set(key, job);
-      return unpack(await job);
-    };
-    window.clearLearningHubSupabaseRuntimeCache = function() {
-      cache.clear();
-      pending.clear();
-    };
     setTimeout(function patchProfileGetter() {
       const api = window.HODSupabase;
       if (!api || !api.getProfile || api.__cleanProfileCached) return;
@@ -10418,6 +10619,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         if (p) {
           last = p;
           at = now;
+          return p;
+        }
+        if (window.__LH_ACCESS_OK === false) {
+          last = null;
           return p;
         }
         if (last && now - at < 1e4) return last;
@@ -10575,82 +10780,6 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         btn.textContent = oldText || "L\u01B0u tr\u1EF1c ti\u1EBFp";
       }
     }, true);
-  })();
-  (function() {
-    if (window.__APP_REALTIME_CACHE_INVALIDATE_20260629) return;
-    window.__APP_REALTIME_CACHE_INVALIDATE_20260629 = true;
-    let channel = null;
-    let tries = 0;
-    function getClient() {
-      try {
-        if (window.HODSupabase && window.HODSupabase.__client) return window.HODSupabase.__client;
-        if (window.supabase && window.APP_CONFIG?.SUPABASE_URL && window.APP_CONFIG?.SUPABASE_ANON_KEY) {
-          if (!window.__lhCacheRealtimeClient) {
-            window.__lhCacheRealtimeClient = window.supabase.createClient(window.APP_CONFIG.SUPABASE_URL, window.APP_CONFIG.SUPABASE_ANON_KEY);
-          }
-          return window.__lhCacheRealtimeClient;
-        }
-      } catch (e) {
-      }
-      return null;
-    }
-    function clear(kind) {
-      try {
-        if (typeof window.clearLearningHubSupabaseCache === "function") window.clearLearningHubSupabaseCache(kind);
-        else if (kind === "questions" && typeof window.clearLearningHubQuestionCache === "function") window.clearLearningHubQuestionCache();
-        if (kind === "questions" && typeof window.loadCurrentSubjectOnly === "function") {
-          window.loadCurrentSubjectOnly(true);
-        }
-        console.info("[LearningHub cache] cleared:", kind);
-      } catch (e) {
-      }
-    }
-    function stop() {
-      if (channel) {
-        try {
-          channel.unsubscribe();
-        } catch (e) {
-        }
-        channel = null;
-      }
-    }
-    function start() {
-      return;
-      if (document.hidden) return;
-      if (channel) return;
-      const c = getClient();
-      if (!c) {
-        if (tries++ < 30) setTimeout(start, 500);
-        return;
-      }
-      try {
-        channel = c.channel("learninghub-cache-invalidate-v1").on("postgres_changes", { event: "*", schema: "public", table: "questions" }, function() {
-          clear("questions");
-        }).on("postgres_changes", { event: "*", schema: "public", table: "subjects" }, function() {
-          clear("subjects");
-          clear("questions");
-        }).subscribe(function(status) {
-          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-            channel = null;
-            if (!document.hidden) setTimeout(start, 1500);
-          }
-        });
-      } catch (e) {
-        channel = null;
-        if (tries++ < 30 && !document.hidden) setTimeout(start, 1e3);
-      }
-    }
-    document.addEventListener("visibilitychange", function() {
-      if (document.hidden) {
-        stop();
-      } else {
-        start();
-      }
-    });
-    document.addEventListener("DOMContentLoaded", function() {
-      setTimeout(start, 1200);
-    });
-    setTimeout(start, 2e3);
   })();
   (function() {
     if (window.__FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629) return;
@@ -11564,8 +11693,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       return window.HODSupabase?.getProfile?.() || null;
     }
     function approved() {
-      const p = profile();
-      return !p || !(p.approved === false || p.approved === 0 || p.approved === "0");
+      return !!window.lhHasFullAccess?.(profile());
     }
     function dataOk(code) {
       try {
@@ -11879,40 +12007,42 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     };
   })();
   (function() {
-    if (window.__LH_AUTH_FETCH_20260705) return;
-    window.__LH_AUTH_FETCH_20260705 = true;
-    var prevFetch = window.fetch ? window.fetch.bind(window) : null;
-    if (!prevFetch) return;
+    if (window.__LH_UNIFIED_FETCH_INSTALLED) return;
+    window.__LH_UNIFIED_FETCH_INSTALLED = true;
+    var originalFetch = typeof window.fetch === "function" ? window.fetch.bind(window) : null;
+    if (!originalFetch) return;
+    window.__lhOriginalFetch = originalFetch;
+    function validToken(t) {
+      return typeof t === "string" && t.trim().length > 0 && !/[\r\n]/.test(t);
+    }
+    function readTokenFromStorage(raw) {
+      if (!raw) return "";
+      var v;
+      try {
+        v = JSON.parse(raw);
+      } catch (e) {
+        return "";
+      }
+      var tok = v && (v.access_token || v.currentSession && v.currentSession.access_token || Array.isArray(v) && v[0]);
+      var exp = v && (v.expires_at || v.currentSession && v.currentSession.expires_at);
+      if (!validToken(tok)) return "";
+      if (exp && Date.now() / 1e3 > exp - 10) return "";
+      return tok.trim();
+    }
     function lhToken() {
       try {
-        var url = window.APP_CONFIG?.SUPABASE_URL || "";
+        var url = window.APP_CONFIG && window.APP_CONFIG.SUPABASE_URL || "";
         var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
         var ref = m ? m[1] : "";
         if (ref) {
-          var key = "sb-" + ref + "-auth-token";
-          var raw = localStorage.getItem(key);
-          if (raw) {
-            var v = JSON.parse(raw);
-            var tok = v && (v.access_token || v.currentSession && v.currentSession.access_token || Array.isArray(v) && v[0]);
-            var exp = v && (v.expires_at || v.currentSession && v.currentSession.expires_at);
-            if (tok) {
-              if (exp && Date.now() / 1e3 > exp - 10) return "";
-              return tok;
-            }
-          }
+          var t = readTokenFromStorage(localStorage.getItem("sb-" + ref + "-auth-token"));
+          if (t) return t;
         }
         for (var i = 0; i < localStorage.length; i++) {
           var k = localStorage.key(i);
           if (k && k.slice(0, 3) === "sb-" && k.slice(-11) === "-auth-token") {
-            var raw = localStorage.getItem(k);
-            if (!raw) continue;
-            var v = JSON.parse(raw);
-            var tok = v && (v.access_token || v.currentSession && v.currentSession.access_token || Array.isArray(v) && v[0]);
-            var exp = v && (v.expires_at || v.currentSession && v.currentSession.expires_at);
-            if (tok) {
-              if (exp && Date.now() / 1e3 > exp - 10) return "";
-              return tok;
-            }
+            var t2 = readTokenFromStorage(localStorage.getItem(k));
+            if (t2) return t2;
           }
         }
       } catch (e) {
@@ -11920,234 +12050,687 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       return "";
     }
     window.__lhAccessToken = lhToken;
-    function lhIsApi(u) {
+    function toUrl(input) {
       try {
-        var url = new URL(u, location.href);
-        return url.origin === location.origin && url.pathname.indexOf("/api/") === 0;
+        var raw = typeof input === "string" ? input : input && input.url || "";
+        if (!raw) return null;
+        return new URL(raw, location.href);
       } catch (e) {
-        return false;
+        return null;
       }
+    }
+    function isOwnApi(url) {
+      return !!url && url.origin === location.origin && url.pathname.indexOf("/api/") === 0;
+    }
+    function methodOf(input, init2) {
+      if (init2 && init2.method) return String(init2.method).toUpperCase();
+      if (input && typeof input === "object" && input.method) return String(input.method).toUpperCase();
+      return "GET";
+    }
+    var restCache = /* @__PURE__ */ new Map();
+    var restPending = /* @__PURE__ */ new Map();
+    function supabaseOrigin() {
+      try {
+        return new URL(window.APP_CONFIG && window.APP_CONFIG.SUPABASE_URL || "").origin;
+      } catch (e) {
+        return "";
+      }
+    }
+    function restTtl(url, method) {
+      if (method !== "GET") return 0;
+      var origin = supabaseOrigin();
+      if (!origin || url.origin !== origin) return 0;
+      var p = url.pathname;
+      if (p.indexOf("/rest/v1/") !== 0 && p.indexOf("/rest/v1/") === -1) return 0;
+      if (p.indexOf("/rest/v1/profiles") !== -1) return 0;
+      if (p.indexOf("/rest/v1/questions") !== -1) return 2 * 60 * 1e3;
+      if (p.indexOf("/rest/v1/subjects") !== -1) return 2 * 60 * 1e3;
+      if (p.indexOf("/rest/v1/site_settings") !== -1) return 60 * 1e3;
+      return 0;
+    }
+    function restKey(url) {
+      var params = Array.from(url.searchParams.entries()).sort(function(a, b) {
+        return (a[0] + "=" + a[1]).localeCompare(b[0] + "=" + b[1]);
+      });
+      return url.origin + url.pathname + "?" + params.map(function(x) {
+        return x[0] + "=" + x[1];
+      }).join("&");
+    }
+    function matchKind(text, kind) {
+      if (!kind || kind === "all") return true;
+      return text.indexOf("/" + kind) !== -1;
+    }
+    function clearRestCache(kind) {
+      Array.from(restCache.keys()).forEach(function(k) {
+        if (matchKind(k, kind)) restCache.delete(k);
+      });
+      Array.from(restPending.keys()).forEach(function(k) {
+        if (matchKind(k, kind)) restPending.delete(k);
+      });
+      try {
+        Object.keys(sessionStorage).forEach(function(k) {
+          if (k.indexOf("lh_f5_cache:") === 0) sessionStorage.removeItem(k);
+        });
+      } catch (e) {
+      }
+    }
+    window.clearLearningHubSupabaseCache = clearRestCache;
+    var REVOKE_CODES = { UNAUTHORIZED: 1, BLOCKED: 1, PENDING_APPROVAL: 1, INSUFFICIENT_ROLE: 1 };
+    function dispatchDenial(code, message) {
+      if (code === "INSUFFICIENT_ROLE") {
+        if (typeof notify === "function") notify(message || "B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n th\u1EF1c hi\u1EC7n thao t\xE1c n\xE0y");
+        return;
+      }
+      if (typeof window.handleAccessRevoked === "function") {
+        window.handleAccessRevoked(message || "T\xE0i kho\u1EA3n b\u1ECB t\u1EEB ch\u1ED1i truy c\u1EADp.", code);
+      }
+    }
+    function inspectDenial(res) {
+      res.clone().json().then(function(data) {
+        var code = data && data.code;
+        if (code && REVOKE_CODES[code]) dispatchDenial(code, data.error);
+        else if (!code) {
+          dispatchDenial(res.status === 401 ? "UNAUTHORIZED" : "PENDING_APPROVAL", null);
+        }
+      }).catch(function() {
+        dispatchDenial(res.status === 401 ? "UNAUTHORIZED" : "PENDING_APPROVAL", null);
+      });
     }
     window.fetch = function(input, init2) {
-      try {
-        var url = typeof input === "string" ? input : input && input.url || "";
-        if (lhIsApi(url)) {
-          var tok = lhToken();
-          if (tok) {
-            if (input instanceof Request) {
-              if (!input.headers.has("Authorization")) {
-                var h = new Headers(input.headers);
-                h.set("Authorization", "Bearer " + tok);
-                input = new Request(input, { headers: h });
-              }
-            } else {
-              init2 = init2 || {};
-              var hh = new Headers(init2.headers || {});
-              if (!hh.has("Authorization")) hh.set("Authorization", "Bearer " + tok);
-              init2.headers = hh;
+      var url = toUrl(input);
+      var method = methodOf(input, init2);
+      var ownApi = isOwnApi(url);
+      if (ownApi) {
+        if (window.__LH_ACCESS_OK === false && /\/api\/(subjects|questions)\b/.test(url.pathname)) {
+          return Promise.resolve(new Response(
+            JSON.stringify({ error: "T\xE0i kho\u1EA3n ch\u01B0a \u0111\u01B0\u1EE3c ph\xEA duy\u1EC7t", code: "PENDING_APPROVAL" }),
+            { status: 403, headers: { "content-type": "application/json" } }
+          ));
+        }
+        var tok = lhToken();
+        try {
+          if (input instanceof Request) {
+            if (tok && !input.headers.has("Authorization")) {
+              var h = new Headers(input.headers);
+              h.set("Authorization", "Bearer " + tok);
+              input = new Request(input, { headers: h });
+            }
+          } else {
+            init2 = init2 ? Object.assign({}, init2) : {};
+            var hh = new Headers(init2.headers || {});
+            if (tok && !hh.has("Authorization")) hh.set("Authorization", "Bearer " + tok);
+            init2.headers = hh;
+            if (!init2.signal && typeof window.getLhApiSignal === "function") {
+              var sig = window.getLhApiSignal();
+              if (sig) init2.signal = sig;
             }
           }
+        } catch (e) {
+          console.warn("[LH fetch] kh\xF4ng g\u1EAFn \u0111\u01B0\u1EE3c Authorization:", e);
         }
-      } catch (e) {
+        return originalFetch(input, init2).then(function(res) {
+          if ((res.status === 401 || res.status === 403) && url.pathname.indexOf("/api/version.json") === -1) {
+            inspectDenial(res);
+          }
+          return res;
+        });
       }
-      return prevFetch(input, init2);
+      var ttl = url ? restTtl(url, method) : 0;
+      if (!ttl) return originalFetch(input, init2);
+      var key = restKey(url);
+      var hit = restCache.get(key);
+      if (hit && Date.now() - hit.at < ttl) return Promise.resolve(hit.res.clone());
+      if (restPending.has(key)) {
+        return restPending.get(key).then(function(r) {
+          return r.clone();
+        });
+      }
+      var job = originalFetch(input, init2).then(function(res) {
+        if (res.ok) restCache.set(key, { at: Date.now(), res: res.clone() });
+        restPending.delete(key);
+        return res;
+      }).catch(function(err) {
+        restPending.delete(key);
+        throw err;
+      });
+      restPending.set(key, job.then(function(r) {
+        return r.clone();
+      }));
+      return job;
     };
+    var inflight = null;
+    var lastCheckAt = 0;
+    var MIN_INTERVAL = 3e3;
+    function lhRevalidateAccess(reason, force) {
+      if (inflight) return inflight;
+      if (!force && Date.now() - lastCheckAt < MIN_INTERVAL) return Promise.resolve(null);
+      var api = window.HODSupabase;
+      if (!api || typeof api.getUser !== "function" || !api.getUser()) return Promise.resolve(null);
+      if (typeof window.lhCheckProfileOnce !== "function") return Promise.resolve(null);
+      lastCheckAt = Date.now();
+      inflight = Promise.resolve(window.lhCheckProfileOnce(reason)).catch(function(e) {
+        console.warn("[LH access] ki\u1EC3m tra th\u1EA5t b\u1EA1i:", e);
+        return null;
+      }).then(function(r) {
+        inflight = null;
+        lastCheckAt = Date.now();
+        return r;
+      });
+      return inflight;
+    }
+    window.lhRevalidateAccess = lhRevalidateAccess;
+    var pollTimer = null;
+    var POLL_MS = 90 * 1e3;
+    function startFallbackPolling() {
+      if (pollTimer) return;
+      if (window.__lhRealtimeConnected) return;
+      console.log("[LH access] Realtime m\u1EA5t k\u1EBFt n\u1ED1i -> b\u1EADt polling d\u1EF1 ph\xF2ng", POLL_MS / 1e3 + "s");
+      pollTimer = setInterval(function() {
+        if (window.__lhRealtimeConnected) {
+          stopFallbackPolling();
+          return;
+        }
+        if (document.visibilityState !== "visible") return;
+        var api = window.HODSupabase;
+        if (!api || typeof api.getUser !== "function" || !api.getUser()) return;
+        lhRevalidateAccess("polling");
+      }, POLL_MS);
+    }
+    function stopFallbackPolling() {
+      if (!pollTimer) return;
+      console.log("[LH access] Realtime \u0111\xE3 k\u1EBFt n\u1ED1i l\u1EA1i -> t\u1EAFt polling d\u1EF1 ph\xF2ng");
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+    window.startFallbackPolling = startFallbackPolling;
+    window.stopFallbackPolling = stopFallbackPolling;
+    window.lhTeardownAccessWatch = function() {
+      stopFallbackPolling();
+      inflight = null;
+      lastCheckAt = 0;
+    };
+    document.addEventListener("visibilitychange", function() {
+      if (document.visibilityState === "visible") {
+        lhRevalidateAccess("visibilitychange");
+        if (!window.__lhRealtimeConnected) startFallbackPolling();
+      } else {
+        stopFallbackPolling();
+      }
+    });
   })();
   (function() {
-    const $2 = (id) => document.getElementById(id);
-    const esc2 = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
-    let requests = [];
-    let loading = null;
-    let statusSnapshot = /* @__PURE__ */ new Map();
-    let hasFirstSnapshot = false;
-    let recentResultKeys = /* @__PURE__ */ new Set();
-    function currentUserId() {
-      return window.HODSupabase?.getUser?.()?.id || "";
+    const BOOKMARK_PREFIX = "lh_starred_v1_";
+    const SVG_UNSAVED = `<svg class="bmIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
+    const SVG_SAVED = `<svg class="bmIcon" width="18" height="18" viewBox="0 0 24 24" fill="#f5c518" stroke="#f5c518" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
+    const SVG_LIB_UNSAVED = `<svg class="bmLibIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
+    const SVG_LIB_SAVED = `<svg class="bmLibIcon" width="14" height="14" viewBox="0 0 24 24" fill="#f5c518" stroke="#f5c518" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
+    function getSubjectCode2() {
+      if (typeof RAW !== "undefined" && Array.isArray(RAW) && RAW[0] && RAW[0].subject_code) {
+        return String(RAW[0].subject_code).trim();
+      }
+      return localStorage.getItem("learninghub_subject_code_merged_v1") || "default_subject";
     }
-    function isStaff() {
-      return ["admin", "editor"].includes(String(window.HODSupabase?.getProfile?.()?.role || "").toLowerCase());
+    function bookmarkKey() {
+      return BOOKMARK_PREFIX + getSubjectCode2();
     }
-    function storageKey() {
-      return `learninghub_edit_request_seen_v1_${isStaff() ? "staff" : "user"}_${currentUserId()}`;
+    function getQKey(q) {
+      if (!q) return null;
+      if (typeof q === "string" || typeof q === "number") return "num_" + String(q);
+      if (q.num !== void 0 && q.num !== null && q.num !== "") return "num_" + String(q.num);
+      if (q.id !== void 0 && q.id !== null && q.id !== "") return "id_" + String(q.id);
+      if (q.question) return "q_" + String(q.question).trim().slice(0, 50);
+      return null;
     }
-    function seenMap() {
+    function loadBookmarks() {
       try {
-        return JSON.parse(localStorage.getItem(storageKey()) || "{}") || {};
-      } catch {
+        const primaryKey = bookmarkKey();
+        const primaryArr = JSON.parse(localStorage.getItem(primaryKey) || "[]");
+        const backupArr = JSON.parse(localStorage.getItem("lh_starred_v1_backup_all") || "[]");
+        const merged = new Set([...Array.isArray(primaryArr) ? primaryArr : [], ...Array.isArray(backupArr) ? backupArr : []].map((x) => String(x)));
+        return merged;
+      } catch (e) {
+        return /* @__PURE__ */ new Set();
+      }
+    }
+    function saveBookmarks(set) {
+      try {
+        const arr = [...set].map((x) => String(x));
+        localStorage.setItem(bookmarkKey(), JSON.stringify(arr));
+        localStorage.setItem("lh_starred_v1_backup_all", JSON.stringify(arr));
+      } catch (e) {
+      }
+    }
+    function isBookmarked(qOrKey) {
+      if (!qOrKey) return false;
+      const key = typeof qOrKey === "object" ? getQKey(qOrKey) : String(qOrKey);
+      if (!key) return false;
+      return loadBookmarks().has(key);
+    }
+    function toggleBookmarkFn(qOrKey) {
+      if (!qOrKey) return false;
+      const key = typeof qOrKey === "object" ? getQKey(qOrKey) : String(qOrKey);
+      if (!key) return false;
+      const s = loadBookmarks();
+      let added;
+      if (s.has(key)) {
+        s.delete(key);
+        added = false;
+      } else {
+        s.add(key);
+        added = true;
+      }
+      saveBookmarks(s);
+      return added;
+    }
+    function countBookmarks() {
+      return loadBookmarks().size;
+    }
+    window.__isBookmarked = isBookmarked;
+    window.__countBookmarks = countBookmarks;
+    window.__getBookmarkBtnHTML = function(q) {
+      const key = getQKey(q);
+      if (!key) return "";
+      const bookmarked = isBookmarked(key);
+      const esc2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      return `<button type="button" class="libBookmarkBtn${bookmarked ? " bookmarked" : ""}" data-lib-bookmark="${esc2(key)}" title="${bookmarked ? "B\u1ECF l\u01B0u c\xE2u n\xE0y" : "L\u01B0u c\xE2u h\u1ECFi n\xE0y"}">${bookmarked ? SVG_LIB_SAVED : SVG_LIB_UNSAVED}</button>`;
+    };
+    (function injectBookmarkCSS() {
+      if (document.getElementById("__bookmarkQCSS")) return;
+      const s = document.createElement("style");
+      s.id = "__bookmarkQCSS";
+      s.textContent = `
+      #bookmarkBtn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 4px 6px;
+        border-radius: 8px;
+        color: rgba(232,212,168,.65);
+        transition: color .18s, transform .15s, filter .18s;
+        user-select: none;
+        display: flex; align-items: center; justify-content: center;
+      }
+      #bookmarkBtn .bmIcon { transition: stroke .18s, fill .18s, transform .15s; }
+      #bookmarkBtn.bookmarked {
+        color: #f5c518;
+        filter: drop-shadow(0 0 7px rgba(245,197,24,.65));
+      }
+      #bookmarkBtn:hover { transform: scale(1.18); color: #f5c518; }
+      #bookmarkBtn:active { transform: scale(.9); }
+      @keyframes bookmarkPop {
+        0%   { transform: scale(1); }
+        40%  { transform: scale(1.42); }
+        70%  { transform: scale(.88); }
+        100% { transform: scale(1); }
+      }
+      #bookmarkBtn.pop { animation: bookmarkPop .32s ease; }
+
+      .libBookmarkBtn {
+        background: rgba(255,255,255,.03);
+        border: 1px solid rgba(200,169,110,.25);
+        border-radius: 7px;
+        cursor: pointer;
+        font-size: .82rem;
+        padding: 4px 9px;
+        color: rgba(232,212,168,.75);
+        display: inline-flex; align-items: center; gap: 4px;
+        transition: color .15s, border-color .15s, background .15s, transform .12s;
+        line-height: 1;
+        white-space: nowrap;
+      }
+      .libBookmarkBtn.bookmarked {
+        color: #f5c518;
+        border-color: rgba(245,197,24,.55);
+        background: rgba(245,197,24,.09);
+      }
+      .libBookmarkBtn:hover { transform: scale(1.06); color: #f5c518; border-color: rgba(245,197,24,.5); }
+
+      .v7FilterBtn[data-library-filter="starred"] .bookmarkCount {
+        font-size: .75em;
+        opacity: .88;
+        margin-left: 4px;
+      }
+    `;
+      document.head.appendChild(s);
+    })();
+    function getCurrentCard() {
+      try {
+        const arr = typeof pool !== "undefined" && Array.isArray(pool) && pool.length ? pool : typeof RAW !== "undefined" ? RAW : [];
+        if (!arr.length) return null;
+        const index = Math.max(0, Math.min(typeof ci === "number" ? ci : 0, arr.length - 1));
+        return arr[index] || null;
+      } catch (e) {
+        return null;
+      }
+    }
+    function updateBookmarkBtn() {
+      const btn = document.getElementById("bookmarkBtn");
+      if (!btn) return;
+      const card = getCurrentCard();
+      if (!card) return;
+      const key = getQKey(card);
+      if (!key) return;
+      const bookmarked = isBookmarked(key);
+      btn.classList.toggle("bookmarked", bookmarked);
+      btn.innerHTML = bookmarked ? SVG_SAVED : SVG_UNSAVED;
+      btn.title = bookmarked ? "B\u1ECF l\u01B0u c\xE2u n\xE0y" : "L\u01B0u c\xE2u h\u1ECFi n\xE0y";
+    }
+    window.updateBookmarkBtn = updateBookmarkBtn;
+    function addBookmarkButtonToCard() {
+      if (document.getElementById("bookmarkBtn")) {
+        updateBookmarkBtn();
+        return;
+      }
+      const cardTools = document.getElementById("cardTools");
+      if (!cardTools) return;
+      const btn = document.createElement("button");
+      btn.id = "bookmarkBtn";
+      btn.type = "button";
+      btn.className = "cardToolBtn";
+      btn.innerHTML = SVG_UNSAVED;
+      btn.title = "L\u01B0u c\xE2u h\u1ECFi n\xE0y";
+      btn.setAttribute("aria-label", "L\u01B0u c\xE2u h\u1ECFi y\xEAu th\xEDch");
+      btn.addEventListener("click", function(e) {
+        e.stopPropagation();
+        const card = getCurrentCard();
+        if (!card) return;
+        const key = getQKey(card);
+        if (!key) return;
+        const added = toggleBookmarkFn(key);
+        btn.classList.toggle("bookmarked", added);
+        btn.innerHTML = added ? SVG_SAVED : SVG_UNSAVED;
+        btn.title = added ? "B\u1ECF l\u01B0u c\xE2u n\xE0y" : "L\u01B0u c\xE2u h\u1ECFi n\xE0y";
+        btn.classList.remove("pop");
+        void btn.offsetWidth;
+        btn.classList.add("pop");
+        btn.addEventListener("animationend", () => btn.classList.remove("pop"), { once: true });
+        const displayNum = card.num || (typeof ci === "number" ? ci : 0) + 1;
+        try {
+          notify(added ? `\u{1F516} \u0110\xE3 l\u01B0u c\xE2u ${displayNum}` : `\u0110\xE3 b\u1ECF l\u01B0u c\xE2u ${displayNum}`);
+        } catch (err) {
+        }
+        if (typeof window.renderStudy === "function") window.renderStudy();
+      });
+      cardTools.appendChild(btn);
+      updateBookmarkBtn();
+    }
+    const _origUpdateCardTools = typeof updateCardTools === "function" ? updateCardTools : null;
+    window.updateCardTools = function() {
+      if (_origUpdateCardTools) _origUpdateCardTools.apply(this, arguments);
+      updateBookmarkBtn();
+    };
+    function bindLibraryClickEvents() {
+      document.addEventListener("click", function(e) {
+        const btn = e.target.closest("[data-lib-bookmark]");
+        if (!btn) return;
+        e.stopPropagation();
+        const key = btn.dataset.libBookmark;
+        if (!key) return;
+        const added = toggleBookmarkFn(key);
+        btn.classList.toggle("bookmarked", added);
+        btn.innerHTML = added ? SVG_LIB_SAVED : SVG_LIB_UNSAVED;
+        btn.title = added ? "B\u1ECF l\u01B0u" : "L\u01B0u c\xE2u n\xE0y";
+        btn.classList.remove("pop");
+        void btn.offsetWidth;
+        btn.classList.add("pop");
+        btn.addEventListener("animationend", () => btn.classList.remove("pop"), { once: true });
+        try {
+          notify(added ? `\u{1F516} \u0110\xE3 l\u01B0u c\xE2u h\u1ECFi` : `\u0110\xE3 b\u1ECF l\u01B0u c\xE2u h\u1ECFi`);
+        } catch (ex) {
+        }
+        if (typeof window.renderStudy === "function") window.renderStudy();
+        updateBookmarkBtn();
+      }, false);
+    }
+    function init2() {
+      addBookmarkButtonToCard();
+      bindLibraryClickEvents();
+      if (typeof renderUnified === "function") {
+        try {
+          renderUnified();
+        } catch (e) {
+        }
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", () => setTimeout(init2, 100));
+    } else {
+      setTimeout(init2, 100);
+    }
+    window.addEventListener("lh:subject-changed", () => {
+      setTimeout(updateBookmarkBtn, 100);
+      if (typeof renderUnified === "function") {
+        try {
+          renderUnified();
+        } catch (e) {
+        }
+      } else if (typeof window.renderStudy === "function") {
+        try {
+          window.renderStudy();
+        } catch (e) {
+        }
+      }
+    });
+  })();
+  (function() {
+    const SEEN_KEY = "lh_edit_request_seen_v1";
+    const POLL_MS = 6e4;
+    const MIN_GAP_MS = 15e3;
+    const $2 = (id) => document.getElementById(id);
+    const esc2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+    const user = () => window.HODSupabase?.getUser?.() || null;
+    let bell = null;
+    let items = [];
+    let loading = false;
+    let inflight = null;
+    let lastFetch = 0;
+    let loadedOk = false;
+    let watchedUser = null;
+    function actionsBar() {
+      return document.querySelector(".globalTop .actions") || document.querySelector("#fc .actions") || document.querySelector(".actions");
+    }
+    function readSeen() {
+      try {
+        return JSON.parse(localStorage.getItem(SEEN_KEY) || "{}") || {};
+      } catch (e) {
         return {};
       }
     }
-    function saveSeen(value) {
+    function writeSeen(map) {
       try {
-        localStorage.setItem(storageKey(), JSON.stringify(value));
-      } catch {
+        localStorage.setItem(SEEN_KEY, JSON.stringify(map));
+      } catch (e) {
       }
     }
-    function statusText(status) {
-      return { pending: "\u0110ang ch\u1EDD duy\u1EC7t", approved: "\u0110\xE3 \u0111\u01B0\u1EE3c ch\u1EA5p nh\u1EADn", rejected: "\u0110\xE3 b\u1ECB t\u1EEB ch\u1ED1i" }[status] || status || "Kh\xF4ng r\xF5";
+    function stampOf(r) {
+      return String(r.status || "") + "|" + String(r.reviewed_at || r.created_at || "");
     }
-    function questionText(row) {
-      const text = String(row?.new_data?.question || "").trim();
-      return text.length > 115 ? `${text.slice(0, 114)}\u2026` : text || "Kh\xF4ng c\xF3 n\u1ED9i dung c\xE2u h\u1ECFi";
+    function isFresh(r, seen) {
+      if (String(r.status || "pending") === "pending") return false;
+      return seen[String(r.id)] !== stampOf(r);
     }
-    function formatDate(value) {
-      if (!value) return "";
-      const date = /* @__PURE__ */ new Date(String(value).replace(" ", "T") + (String(value).includes("Z") ? "" : "Z"));
-      return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+    function statusText(s) {
+      return { pending: "\u0110ang ch\u1EDD", approved: "\u0110\xE3 duy\u1EC7t", rejected: "T\u1EEB ch\u1ED1i" }[s] || s || "Kh\xF4ng r\xF5";
     }
-    function refreshBadge() {
-      const badge = $2("hodEditRequestBadge");
-      if (!badge) return;
-      const seen = seenMap();
-      const count = isStaff() ? requests.filter((row) => !seen[`${row.id}:pending`]).length : requests.filter((row) => {
-        const key = `${row.id}:${row.status}`;
-        return ["approved", "rejected"].includes(row.status) && (!seen[key] || recentResultKeys.has(key));
-      }).length;
-      badge.textContent = count > 99 ? "99+" : String(count);
-      badge.classList.toggle("hidden", count === 0);
-      $2("hodEditRequestBell")?.classList.toggle("hasNewRequest", count > 0);
+    function statusClass(s) {
+      return s === "approved" ? "approved" : s === "rejected" ? "rejected" : "pending";
     }
-    function announceNewResult(rows) {
-      const next2 = new Map(rows.map((row) => [String(row.id), String(row.status || "")]));
-      if (hasFirstSnapshot && !isStaff()) {
-        const hasNewResult = rows.some((row) => {
-          const status = String(row.status || "");
-          return ["approved", "rejected"].includes(status) && statusSnapshot.get(String(row.id)) !== status;
-        });
-        if (hasNewResult) {
-          rows.forEach((row) => {
-            const status = String(row.status || "");
-            const key = `${row.id}:${status}`;
-            if (["approved", "rejected"].includes(status) && statusSnapshot.get(String(row.id)) !== status) recentResultKeys.add(key);
-          });
-          const message = rows.some((row) => String(row.status) === "approved" && statusSnapshot.get(String(row.id)) !== "approved") ? "Y\xEAu c\u1EA7u s\u1EEDa c\xE2u h\u1ECFi c\u1EE7a b\u1EA1n \u0111\xE3 \u0111\u01B0\u1EE3c duy\u1EC7t." : "Y\xEAu c\u1EA7u s\u1EEDa c\xE2u h\u1ECFi c\u1EE7a b\u1EA1n \u0111\xE3 \u0111\u01B0\u1EE3c ph\u1EA3n h\u1ED3i.";
-          if (typeof notifyUX === "function") notifyUX(message);
-          else if (typeof notify === "function") notify(message);
-        }
-      }
-      statusSnapshot = next2;
-      hasFirstSnapshot = true;
+    function timeText(v) {
+      if (!v) return "";
+      const d = new Date(v);
+      return isNaN(d.getTime()) ? String(v) : d.toLocaleString("vi-VN");
     }
-    function render() {
-      const list = $2("hodEditRequestList");
-      if (!list) return;
-      if (!requests.length) {
-        list.innerHTML = `<p class="muted">${isStaff() ? "Kh\xF4ng c\xF3 y\xEAu c\u1EA7u s\u1EEDa n\xE0o \u0111ang ch\u1EDD duy\u1EC7t." : "B\u1EA1n ch\u01B0a g\u1EEDi y\xEAu c\u1EA7u s\u1EEDa c\xE2u h\u1ECFi n\xE0o."}</p>`;
+    function mount() {
+      if (!bell) bell = $2("hodEditRequestBell");
+      if (!bell) return;
+      if (!user()) {
+        if (bell.isConnected) bell.remove();
         return;
       }
-      const seen = seenMap();
-      const displayRows = [...requests].sort((a, b) => {
-        const aNew = ["approved", "rejected"].includes(a.status) && (!seen[`${a.id}:${a.status}`] || recentResultKeys.has(`${a.id}:${a.status}`));
-        const bNew = ["approved", "rejected"].includes(b.status) && (!seen[`${b.id}:${b.status}`] || recentResultKeys.has(`${b.id}:${b.status}`));
-        if (aNew !== bNew) return aNew ? -1 : 1;
-        return String(b.reviewed_at || b.created_at || "").localeCompare(String(a.reviewed_at || a.created_at || ""));
-      });
-      list.innerHTML = displayRows.map((row) => {
-        const code = row.subject_code || row.new_data?.subject_code || "Ch\u01B0a r\xF5 m\xF4n";
-        const num = row.question_num || row.new_data?.num || row.question_id || "?";
-        const note = row.status === "rejected" && row.admin_note ? `<p class="hodEditRequestNote">L\xFD do: ${esc2(row.admin_note)}</p>` : "";
-        const when = row.reviewed_at || row.created_at;
-        const action = isStaff() ? '<button class="primary hodEditRequestReview" type="button" data-review-edit-request>\u0110i t\u1EDBi trang duy\u1EC7t y\xEAu c\u1EA7u</button>' : "";
-        const isNew = ["approved", "rejected"].includes(row.status) && (!seen[`${row.id}:${row.status}`] || recentResultKeys.has(`${row.id}:${row.status}`));
-        return `<article class="hodEditRequestItem ${isNew ? "is-new" : ""}"><div class="hodEditRequestHead"><b>${esc2(code)} \xB7 C\xE2u ${esc2(num)}</b><span class="hodEditRequestStatus ${esc2(row.status || "")}">${esc2(statusText(row.status))}</span></div>${isNew ? '<span class="hodEditRequestNew">M\u1EDBi</span>' : ""}<p class="hodEditRequestMeta">${esc2(questionText(row))}</p><p class="hodEditRequestMeta">${row.reviewed_at ? "C\u1EADp nh\u1EADt" : "G\u1EEDi"}: ${esc2(formatDate(when))}</p>${note}${action}</article>`;
-      }).join("");
-      list.querySelectorAll("[data-review-edit-request]").forEach((btn) => btn.onclick = () => {
-        window.location.href = "admin.html?tab=requests";
-      });
-    }
-    async function load(force = false) {
-      if (!currentUserId()) {
-        requests = [];
-        refreshBadge();
-        return [];
+      const actions = actionsBar();
+      if (!actions) return;
+      const anchor = $2("subjectTopChip") || $2("openSettings");
+      if (anchor && anchor.parentNode === actions) {
+        if (anchor.previousElementSibling !== bell) actions.insertBefore(bell, anchor);
+      } else if (bell.parentNode !== actions) {
+        actions.prepend(bell);
       }
-      if (loading) return loading;
-      loading = (async () => {
+    }
+    function paint() {
+      if (!bell || !bell.isConnected) return;
+      const seen = readSeen();
+      const n = items.filter((r) => isFresh(r, seen)).length;
+      const badge = $2("hodEditRequestBadge");
+      if (badge) {
+        badge.textContent = n > 9 ? "9+" : String(n);
+        badge.classList.toggle("hidden", n === 0);
+      }
+      bell.classList.toggle("hasNewRequest", n > 0);
+      bell.title = n > 0 ? n + " y\xEAu c\u1EA7u s\u1EEDa v\u1EEBa c\xF3 ph\u1EA3n h\u1ED3i" : "Th\xF4ng b\xE1o y\xEAu c\u1EA7u s\u1EEDa c\xE2u h\u1ECFi";
+    }
+    function isModalOpen() {
+      return !!$2("hodEditRequestModal") && !$2("hodEditRequestModal").classList.contains("hidden");
+    }
+    function fetchNow() {
+      loading = true;
+      return (async () => {
         try {
-          const endpoint = isStaff() ? "/api/staff-edit-requests" : "/api/my-edit-requests";
-          const res = await fetch(`${endpoint}?ts=${Date.now()}`, { cache: "no-store" });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
-          requests = Array.isArray(data.data) ? data.data : [];
-          announceNewResult(requests);
-          render();
-          refreshBadge();
-          return requests;
-        } catch (error) {
-          if ($2("hodEditRequestModal") && !$2("hodEditRequestModal").classList.contains("hidden")) $2("hodEditRequestList").innerHTML = `<p class="muted">Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c th\xF4ng b\xE1o: ${esc2(error.message)}</p>`;
-          return [];
+          const res = await fetch("/api/my-edit-requests?ts=" + Date.now(), { cache: "no-store" });
+          if (!res.ok) return;
+          const out = await res.json().catch(() => ({}));
+          if (Array.isArray(out?.data)) {
+            items = out.data;
+            loadedOk = true;
+          }
+        } catch (e) {
+          console.warn("[bell] kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c y\xEAu c\u1EA7u s\u1EEDa:", e);
         } finally {
-          loading = null;
+          loading = false;
+          inflight = null;
+          paint();
+          if (isModalOpen()) renderList();
         }
       })();
-      return loading;
     }
-    async function open() {
-      const modal = $2("hodEditRequestModal");
-      if (!modal) return;
-      modal.classList.remove("hidden");
-      $2("hodEditRequestTitle").textContent = isStaff() ? "Y\xEAu c\u1EA7u s\u1EEDa \u0111ang ch\u1EDD duy\u1EC7t" : "Th\xF4ng b\xE1o y\xEAu c\u1EA7u s\u1EEDa";
-      $2("hodEditRequestList").innerHTML = '<p class="muted">\u0110ang t\u1EA3i th\xF4ng b\xE1o...</p>';
-      await load(true);
-      const seen = seenMap();
-      requests.filter((row) => isStaff() || ["approved", "rejected"].includes(row.status)).forEach((row) => {
-        seen[`${row.id}:${row.status}`] = Date.now();
+    function load(force) {
+      if (!user()) {
+        items = [];
+        return Promise.resolve();
+      }
+      if (inflight) return inflight;
+      if (!force && Date.now() - lastFetch < MIN_GAP_MS) return Promise.resolve();
+      lastFetch = Date.now();
+      inflight = fetchNow();
+      return inflight;
+    }
+    function renderList() {
+      const box = $2("hodEditRequestList");
+      if (!box) return;
+      if (!user()) {
+        box.innerHTML = '<div class="hodReportEmpty">\u0110\u0103ng nh\u1EADp \u0111\u1EC3 xem th\xF4ng b\xE1o.</div>';
+        return;
+      }
+      if (!items.length) {
+        box.innerHTML = loading ? '<div class="hodReportEmpty">\u0110ang t\u1EA3i...</div>' : loadedOk ? '<div class="hodReportEmpty">B\u1EA1n ch\u01B0a g\u1EEDi y\xEAu c\u1EA7u s\u1EEDa n\xE0o.</div>' : '<div class="hodReportEmpty">Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c th\xF4ng b\xE1o. Th\u1EED l\u1EA1i sau.</div>';
+        return;
+      }
+      const seen = readSeen();
+      box.innerHTML = items.map((r) => {
+        const fresh = isFresh(r, seen);
+        const num = r.question_num || r.new_data?.num || "?";
+        const code = r.subject_code || r.new_data?.subject_code || "";
+        return `
+      <div class="hodEditRequestItem${fresh ? " is-new" : ""}">
+        <div class="hodEditRequestHead">
+          <b>C\xE2u ${esc2(num)}${code ? " \xB7 " + esc2(code) : ""}</b>
+          <span class="hodEditRequestStatus ${statusClass(r.status)}">${esc2(statusText(r.status))}</span>
+        </div>
+        <p class="hodEditRequestMeta">G\u1EEDi: ${esc2(timeText(r.created_at))}${r.reviewed_at ? " \xB7 Ph\u1EA3n h\u1ED3i: " + esc2(timeText(r.reviewed_at)) : ""}</p>
+        ${r.admin_note ? `<p class="hodEditRequestNote">Ghi ch\xFA admin: ${esc2(r.admin_note)}</p>` : ""}
+        ${fresh ? '<span class="hodEditRequestNew">M\u1EDBi</span>' : ""}
+      </div>`;
+      }).join("");
+    }
+    function markAllSeen() {
+      const seen = readSeen();
+      items.forEach((r) => {
+        if (String(r.status || "pending") !== "pending") seen[String(r.id)] = stampOf(r);
       });
-      recentResultKeys.clear();
-      saveSeen(seen);
-      refreshBadge();
+      writeSeen(seen);
     }
-    function close() {
+    function closeModal() {
       $2("hodEditRequestModal")?.classList.add("hidden");
     }
-    function bind() {
-      $2("hodEditRequestBell")?.addEventListener("click", open);
-      $2("hodEditRequestClose")?.addEventListener("click", close);
-      $2("hodEditRequestModal")?.addEventListener("click", (event) => {
-        if (event.target === $2("hodEditRequestModal")) close();
-      });
-      document.addEventListener("click", (event) => {
-        if (event.target.closest("#hodTopAvatar")) setTimeout(() => load(true), 80);
-      });
-      window.addEventListener("focus", () => load());
-      window.addEventListener("lh:profile-ready", () => load(true));
-      document.addEventListener("visibilitychange", () => {
-        if (!document.hidden) load();
-      });
-      setInterval(() => {
-        if (!document.hidden) load();
-      }, 5 * 60 * 1e3);
-      if (currentUserId()) load(true);
+    async function openModal() {
+      const modal = $2("hodEditRequestModal");
+      if (!modal) return;
+      $2("hodAccountMenu")?.classList.add("hidden");
+      modal.classList.remove("hidden");
+      renderList();
+      await load(true);
+      renderList();
+      markAllSeen();
+      paint();
     }
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind, { once: true });
-    else bind();
-  })();
-  (function() {
-    function placeBell() {
-      const bell = document.getElementById("hodEditRequestBell");
-      const actions = document.querySelector(".globalTop .actions") || document.querySelector("#fc .actions") || document.querySelector(".actions");
-      const subject = document.getElementById("subjectTopChip");
-      const settings = document.getElementById("openSettings");
-      if (!bell || !actions) return;
-      if (settings?.parentNode === actions) {
-        actions.insertBefore(bell, settings);
-      } else if (subject?.parentNode === actions) {
-        actions.insertBefore(bell, subject.nextSibling);
-      } else if (!actions.contains(bell)) {
-        actions.appendChild(bell);
+    function bind() {
+      if (!bell) bell = $2("hodEditRequestBell");
+      if (bell && !bell.__lhBellBound) {
+        bell.__lhBellBound = true;
+        bell.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openModal();
+        });
+      }
+      const closeBtn = $2("hodEditRequestClose");
+      if (closeBtn && !closeBtn.__lhBellBound) {
+        closeBtn.__lhBellBound = true;
+        closeBtn.addEventListener("click", closeModal);
+      }
+      const modal = $2("hodEditRequestModal");
+      if (modal && !modal.__lhBellBound) {
+        modal.__lhBellBound = true;
+        modal.addEventListener("mousedown", (e) => {
+          if (e.target === modal) closeModal();
+        });
       }
     }
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", placeBell, { once: true });
-    else placeBell();
-    setTimeout(placeBell, 350);
-    setTimeout(placeBell, 1200);
+    function tick() {
+      mount();
+      bind();
+      const uid = user()?.id || null;
+      if (uid !== watchedUser) {
+        watchedUser = uid;
+        items = [];
+        loadedOk = false;
+        lastFetch = 0;
+        if (uid) load(true);
+      }
+      paint();
+    }
+    function boot() {
+      tick();
+      [300, 1200, 3e3].forEach((ms) => setTimeout(tick, ms));
+      setInterval(tick, 700);
+      setInterval(() => load(false), POLL_MS);
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) tick();
+      });
+      window.addEventListener("focus", () => {
+        tick();
+        load(false);
+      });
+    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+    else boot();
   })();
 
   // src/student/main.js
-  window.getDeviceTypeString = getDeviceTypeString;
+  initVersionChecker();
+  window.getDeviceTypeString = getDeviceTypeString2;
   window.getSubjectCode = getSubjectCode;
   window.setSubjectHelper = setSubject;
-  window.syncUserSubjectToProfileHelper = syncUserSubjectToProfile;
+  window.syncUserSubjectToProfileHelper = syncUserSubjectToProfile2;
   window.fetchApiHelper = fetchApi;
   window.fetchSubjectsHelper = fetchSubjects;
   window.fetchQuestionsHelper = fetchQuestions;

@@ -536,7 +536,7 @@ button:active,.btn:active,.navBtn:active,.tab:active,.modeBtn:active,.cnt:active
 .hodReportModalHead{grid-template-columns:1fr !important;padding-right:46px !important}
 #hodReportModalReload{width:100% !important}
 }
-:root{--bg:#080605;--fog:#f5f0e8;--mist:#c9bfaa;--gold:#c8a96e;--gold2:#e8d4a8;--bd:rgba(200,169,110,.22);--ok:#72c58c;--bad:#e9877b;--r:20px;--serif:Georgia,"Times New Roman",serif;--qfs:1.14rem;--ofs:.84rem;--qlh:1.25;--olh:1.22;--frontpad:13px 16px;--qmb:7px;--optgap:5px;--optpad:6px 9px;--imgmax:86px;--imgcol:190px;--tagmb:5px;--letter:25px;--letterfs:.76rem;--card-qfs:1.458rem;--card-ofs:1.242rem;--card-afs:1.35rem;--card-letter:34px;--card-letterfs:1.026rem;--scroll-track:rgba(255,255,255,.045);--scroll-thumb:rgba(232,212,168,.72);--scroll-thumb2:rgba(200,169,110,.95);--font:"Segoe UI",Tahoma,Arial,Roboto,Helvetica,sans-serif !important;--question-font:"Segoe UI",Tahoma,Arial,Roboto,Helvetica,sans-serif !important}
+:root{--bg:#080605;--fog:#f5f0e8;--mist:#c9bfaa;--gold:#c8a96e;--gold2:#e8d4a8;--bd:rgba(200,169,110,.22);--ok:#72c58c;--bad:#e9877b;--r:20px;--serif:Georgia,"Times New Roman",serif;--qfs:1.02rem;--ofs:.82rem;--qlh:1.25;--olh:1.22;--frontpad:13px 16px;--qmb:7px;--optgap:5px;--optpad:6px 9px;--imgmax:86px;--imgcol:190px;--tagmb:5px;--letter:25px;--letterfs:.76rem;--card-qfs:1.134rem;--card-ofs:0.950rem;--card-afs:1.026rem;--card-letter:24px;--card-letterfs:0.72rem;--scroll-track:rgba(255,255,255,.045);--scroll-thumb:rgba(232,212,168,.72);--scroll-thumb2:rgba(200,169,110,.95);--font:"Segoe UI",Tahoma,Arial,Roboto,Helvetica,sans-serif !important;--question-font:"Segoe UI",Tahoma,Arial,Roboto,Helvetica,sans-serif !important}
 html,body,button,input,textarea,.q,.ot,.qtxt,.qq,.sq,.answerText,.tab,.btn,.navBtn,.modeBtn,.cnt,.primary,.start,.retry,.hodAccountMenu,.hodLoginGate,.subjectGate,.modal,.box{font-family:var(--font) !important;-webkit-font-smoothing:antialiased !important;-moz-osx-font-smoothing:grayscale !important;text-rendering:optimizeLegibility !important}
 #fc .q,#quiz .qq,#study .sq,.sq{font-family:var(--question-font) !important;font-weight:650 !important;line-height:1.42 !important;letter-spacing:-.006em !important}
 #fc .ot,#quiz .qtxt,#study .sopt,.sopt,.answerText{font-family:var(--font) !important;font-weight:500 !important;line-height:1.46 !important;letter-spacing:0 !important}
@@ -677,7 +677,7 @@ input,textarea{-webkit-user-select:text;user-select:text}
 }
 body,button,input,textarea,select{-webkit-font-smoothing:antialiased !important;text-rendering:optimizeLegibility !important}
 .brand h1,.brand h2,.top h1,.subjName,.tabs button,.tab,.nav button,.chip,.subjectPill,.subjectName{font-weight:700 !important}
-#fc .q,.q{font-size:clamp(1.18rem,1.8vw,1.48rem) !important;line-height:1.38 !important;font-weight:650 !important;letter-spacing:0 !important;margin-bottom:18px !important}
+#fc .q,.q{font-size:clamp(0.95rem,var(--card-qfs,1.134rem),1.65rem) !important;line-height:1.38 !important;font-weight:650 !important;letter-spacing:0 !important;margin-bottom:18px !important}
 #fc .opts,.opts{gap:13px !important}
 #fc .opt,.opt{padding:12px 14px !important;min-height:52px !important;border-radius:14px !important;gap:12px !important;align-items:center !important}
 #fc .ot,.ot{font-size:clamp(.96rem,1.15vw,1.08rem) !important;line-height:1.48 !important;font-weight:500 !important;letter-spacing:0 !important}
@@ -692,7 +692,7 @@ body,button,input,textarea,select{-webkit-font-smoothing:antialiased !important;
 .sitem .sq,.sitem b,.sitem strong{font-weight:600 !important}
 .sitem .snum,.qnum,.snum{font-weight:650 !important;letter-spacing:.08em !important}
 .card,.face,.qcard,.sitem,.setup,.opt,.qopt,.sopt{font-weight:500 !important}
-@media (max-width:760px){#fc .q,.q{font-size:1.12rem !important;line-height:1.42 !important}
+@media (max-width:760px){#fc .q,.q{font-size:clamp(0.85rem,var(--card-qfs,1.05rem),1.35rem) !important;line-height:1.42 !important}
 #fc .opts,.opts{gap:11px !important}
 #fc .opt,.opt{min-height:48px !important;padding:11px 12px !important}
 #fc .ot,.ot,.qtxt{font-size:.95rem !important}
@@ -3844,4 +3844,24 @@ body:not(.kizspy-active) #kizspyExamPortal {
 #questionsSection,
 .adminSectionQuestions {
   display: none !important;
+}
+
+/* ============================================================
+   FIX_FLASHCARD_QUESTION_20260726
+   1) Bỏ padding-right:120px (đặt ở @media min-width:761px) trên #question.
+      Nút cardTools/edit nằm absolute ngang hàng với .tag nên không cần né,
+      120px đó chỉ làm câu hỏi xuống dòng sớm giữa chừng.
+   2) Cỡ chữ câu hỏi bám theo --card-qfs (thanh "Cỡ chữ thẻ" trong Cài đặt)
+      thay vì bị clamp cứng 1.48rem -> slider trước đây không ăn.
+   ============================================================ */
+@media (min-width:761px){
+  /* Câu hỏi bắt đầu bên dưới hàng nút góc phải (top:20px + nút 40px = 60px)
+     nên bỏ padding-right không gây đè chữ lên nút. */
+  #fc .front,#fc .front.hasImg{padding-top:28px !important}
+  #fc .tag,#fc .front.hasImg #tag{margin-bottom:18px !important}
+  #fc .q,#fc .front.hasImg #question{
+    padding-right:0 !important;
+    font-size:clamp(0.95rem,var(--card-qfs,1.134rem),1.65rem) !important;
+    line-height:1.36 !important;
+  }
 }

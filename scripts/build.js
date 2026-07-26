@@ -2,6 +2,7 @@ import { transform, build } from 'esbuild';
 import { mkdir, readFile, writeFile, copyFile, rm } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -10,9 +11,29 @@ const dist = path.join(root, 'dist');
 const HTML_FILES = ['index.html', 'admin.html'];
 const CSS_FILES = ['app.css', 'admin.css', 'landing.css'];
 
+function getBuildVersion() {
+  if (process.env.VERCEL_GIT_COMMIT_SHA) {
+    return process.env.VERCEL_GIT_COMMIT_SHA.slice(0, 10);
+  }
+  if (process.env.VERCEL_DEPLOYMENT_ID) {
+    return process.env.VERCEL_DEPLOYMENT_ID;
+  }
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
+  } catch (e) {
+    return 'v_' + Date.now();
+  }
+}
+
 async function main() {
   await rm(dist, { recursive: true, force: true });
   await mkdir(dist, { recursive: true });
+
+  const buildVersion = getBuildVersion();
+  const versionData = JSON.stringify({ version: buildVersion, timestamp: Date.now() }, null, 2);
+  await writeFile(path.join(dist, 'version.json'), versionData);
+  await writeFile(path.join(root, 'version.json'), versionData);
+  console.log(`📌 Generated version.json (${buildVersion})`);
 
   for (const f of HTML_FILES) {
     await copyFile(path.join(root, f), path.join(dist, f));
@@ -45,7 +66,10 @@ async function main() {
     bundle: true,
     outfile: path.join(root, 'app.js'),
     target: 'es2020',
-    minifyIdentifiers: false
+    minifyIdentifiers: false,
+    define: {
+      '__APP_VERSION__': JSON.stringify(buildVersion)
+    }
   });
   await copyFile(path.join(root, 'app.js'), path.join(dist, 'app.js'));
 
@@ -56,7 +80,10 @@ async function main() {
     bundle: true,
     outfile: path.join(root, 'admin.js'),
     target: 'es2020',
-    minifyIdentifiers: false
+    minifyIdentifiers: false,
+    define: {
+      '__APP_VERSION__': JSON.stringify(buildVersion)
+    }
   });
   await copyFile(path.join(root, 'admin.js'), path.join(dist, 'admin.js'));
 
@@ -67,3 +94,4 @@ main().catch(e => {
   console.error(e);
   process.exit(1);
 });
+

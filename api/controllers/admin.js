@@ -1,5 +1,5 @@
 import { db, json } from '../lib/db.js';
-import { isStaff, getAdminEmail, roleColor, clearProfileCache } from '../lib/auth.js';
+import { checkUserAccess, getAdminEmail, roleColor, clearProfileCache, broadcastRealtimeUserStatus, isRootAdmin } from '../lib/auth.js';
 import { clearQuestionsCache } from './questions.js';
 import { clearSubjectsCache } from './subjects.js';
 
@@ -57,8 +57,11 @@ export function clearAdminDashboardCache() {
 }
 
 export async function handleAdminDashboard(req, authUser) {
-  if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
-  if (!await isStaff(authUser)) return json({ error: 'Chỉ admin/editor được xem.' }, 403);
+  if (req.method !== 'GET') return json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, 405);
+  // III: phân biệt rõ 401/BLOCKED/PENDING_APPROVAL/INSUFFICIENT_ROLE thay vì
+  // gộp tất cả thành một 403 không có code (client không biết phải xử lý kiểu gì).
+  const access = await checkUserAccess(authUser, 'staff');
+  if (!access.ok) return json({ error: access.error, code: access.code }, access.status);
 
   if (_adminDashCache && Date.now() - _adminDashCacheAt < _ADMIN_DASH_CACHE_TTL) {
     return json(_adminDashCache);
@@ -94,27 +97,42 @@ export async function handleAdminDashboard(req, authUser) {
 }
 
 export async function handleAdminAction(req, authUser) {
-  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
-  
+  if (req.method !== 'POST') return json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, 405);
+
   const body = await req.json();
   const { action, payload } = body;
+  // Danh tính LUÔN lấy từ token đã verify, không bao giờ từ body.user_id.
   const user_id = authUser.id;
 
   if (!user_id || !action) {
-    return json({ error: 'Missing user_id or action' }, 400);
+    return json({ error: 'Thiếu tham số action', code: 'BAD_REQUEST' }, 400);
   }
 
-  const userRes = await db.execute({
-    sql: 'select * from profiles where id = ?',
-    args: [user_id]
-  });
+  /*
+    SECURITY_ACTION_NORMALIZE_20260726 (LEO THANG ĐẶC QUYỀN)
+    Bug cũ: kiểm tra quyền dùng `action` THÔ, còn switch điều phối dùng
+    `act` đã .toLowerCase().trim(). Hai chuỗi khác nhau => bỏ qua được mọi kiểm tra.
+    Ví dụ editor POST {"action":"Set_User_Role","payload":{...}}:
+      - ADMIN_ONLY_ACTIONS.has("Set_User_Role") === false  -> rơi vào nhánh editor -> CHO PHÉP
+      - act === "set_user_role"                            -> switch VẪN CHẠY
+    => editor tự nâng mình lên admin. Tương tự với "Toggle_User_Block" để né cả
+    lớp bảo vệ Root Admin bên dưới.
+    Sửa: chuẩn hoá MỘT LẦN tại đây và dùng `act` cho toàn bộ phần còn lại.
+  */
+  const act = String(action || '').toLowerCase().trim();
 
-  const userProfile = userRes.rows?.[0];
+  /*
+    Một lần đọc Turso duy nhất cho toàn bộ request này (checkUserAccess dùng
+    chung cache profile 10s với các API khác), thay cho `select * from profiles`
+    riêng ở đây. Đồng thời áp luôn hàng rào chung: 401 / BLOCKED /
+    PENDING_APPROVAL / INSUFFICIENT_ROLE đều có code chuẩn.
+  */
+  const access = await checkUserAccess(authUser);
+  if (!access.ok) return json({ error: access.error, code: access.code }, access.status);
+
+  const userProfile = access.profile;
   const adminEmail = String(getAdminEmail() || '').toLowerCase().trim();
-  const isConfiguredAdmin = adminEmail && userProfile && userProfile.email && String(userProfile.email).toLowerCase().trim() === adminEmail;
-  
-  const isBlocked = userProfile?.blocked === 1 || userProfile?.blocked === true;
-  const isApproved = userProfile?.approved === 1 || userProfile?.approved === true;
+  const isConfiguredAdmin = !!adminEmail && !!userProfile?.email && String(userProfile.email).toLowerCase().trim() === adminEmail;
   const isEditorOrAdmin = ['admin', 'editor'].includes(userProfile?.role);
   const isAdminRole = userProfile?.role === 'admin';
 
@@ -129,31 +147,37 @@ export async function handleAdminAction(req, authUser) {
     'set_registration_mode',
     'approve_subject_request',
     'reject_subject_request',
-    'permanent_delete_question'
+    'permanent_delete_question',
+    // SECURITY_ACTION_NORMALIZE_20260726: xoá vĩnh viễn cả môn + toàn bộ câu hỏi của môn
+    // là thao tác không hoàn tác được, trước đây thiếu ở đây nên editor gọi thẳng API vẫn chạy.
+    'permanent_delete_subject'
   ]);
 
-  const isAllowedAction = action === 'add_subject_request'
-    ? (!isBlocked && isApproved)
-    : ADMIN_ONLY_ACTIONS.has(action)
-      ? (isConfiguredAdmin || (!isBlocked && isApproved && isAdminRole))
-      : (isConfiguredAdmin || (!isBlocked && isApproved && isEditorOrAdmin));
+  /*
+    checkUserAccess() ở trên đã đảm bảo approved === 1 && blocked === 0, nên ở
+    đây chỉ còn phải quyết định VAI TRÒ. `add_subject_request` là hành động của
+    người học nên mọi tài khoản đã duyệt đều gọi được.
+  */
+  const isAllowedAction = act === 'add_subject_request'
+    ? true
+    : ADMIN_ONLY_ACTIONS.has(act)
+      ? (isConfiguredAdmin || isAdminRole)
+      : (isConfiguredAdmin || isEditorOrAdmin);
 
   if (!isAllowedAction) {
-    return json({ error: 'Unauthorized.' }, 403);
+    return json({ error: 'Bạn không có quyền thực hiện thao tác này', code: 'INSUFFICIENT_ROLE' }, 403);
   }
 
-  if (['toggle_user_block', 'set_user_role', 'revoke_user_approval', 'reject_user_registration'].includes(action)) {
+  if (['toggle_user_block', 'set_user_role', 'revoke_user_approval', 'reject_user_registration', 'force_logout_user'].includes(act)) {
     const targetId = payload?.target_user_id;
-    if (targetId && String(targetId) !== String(user_id)) {
+    if (targetId) {
       const targetRes = await db.execute({
         sql: 'select email, role from profiles where id = ?',
         args: [targetId]
       });
       const targetProfile = targetRes.rows?.[0];
-      const targetIsConfiguredAdmin = adminEmail && targetProfile?.email &&
-        String(targetProfile.email).toLowerCase().trim() === adminEmail;
-      if (targetIsConfiguredAdmin) {
-        return json({ error: 'Không thể thao tác trên tài khoản admin gốc.' }, 403);
+      if (isRootAdmin(targetId, targetProfile?.email)) {
+        return json({ error: 'Không thể hạ quyền, khóa hoặc xóa Root Admin.', code: 'PROTECTED_ROOT_ADMIN' }, 403);
       }
     }
   }
@@ -173,14 +197,58 @@ export async function handleAdminAction(req, authUser) {
     }
   };
 
-  const act = String(action || '').toLowerCase().trim();
+  /*
+    V. ĐỒNG BỘ TURSO -> REALTIME (thứ tự bắt buộc)
+      1. Ghi Turso.
+      2. KIỂM TRA ghi thành công (rowsAffected). Không có dòng nào đổi nghĩa là
+         target_user_id sai -> báo lỗi, KHÔNG báo ok và KHÔNG bắn realtime.
+      3. Xoá cache profile phía server của user đó.
+      4. Mới gửi tín hiệu realtime.
+    Broadcast thất bại KHÔNG rollback Turso (XII): quyền đã bị chặn ở mọi API,
+    client sẽ nhận ra ở lần gọi kế tiếp / khi quay lại tab / khi polling chạy.
+  */
+  async function applyUserStatusChange(targetUserId, sql, args, reason) {
+    const targetId = String(targetUserId || '').trim();
+    if (!targetId) {
+      return { ok: false, res: json({ error: 'Thiếu target_user_id', code: 'BAD_REQUEST' }, 400) };
+    }
+    const r = await db.execute({ sql, args });
+    if (r?.rowsAffected === 0) {
+      return { ok: false, res: json({ error: 'Không tìm thấy người dùng', code: 'NOT_FOUND' }, 404) };
+    }
+    clearProfileCache(targetId);
+    const delivered = await broadcastRealtimeUserStatus(targetId, { reason });
+    return { ok: true, targetId, realtime_delivered: delivered };
+  }
 
   // OPTIM_TURSO_READS_20260726: Invalidate server cache khi có mutation.
-  const _QUESTION_MUTATIONS = new Set(['approve_request', 'save_question_direct', 'add_question', 'delete_question', 'toggle_question', 'permanent_delete_question']);
-  const _SUBJECT_MUTATIONS = new Set(['add_subject', 'delete_subject', 'approve_subject_request', 'toggle_subject_new_badge', 'reorder_subjects', 'move_subject', 'rename_subject_code', 'edit_subject']);
+  // CACHE_INVALIDATION_FIX_20260726: 'toggle_subject_new_badge' KHÔNG tồn tại (case thật
+  // là 'set_subject_new_badge'), nên bật/tắt nhãn NEW không bao giờ xoá cache -> học viên
+  // thấy nhãn cũ tới 5 phút. Bổ sung luôn restore_question/restore_subject/
+  // permanent_delete_subject vì trước đây khôi phục/xoá xong vẫn phục vụ dữ liệu cũ.
+  const _QUESTION_MUTATIONS = new Set(['approve_request', 'save_question_direct', 'add_question', 'delete_question', 'toggle_question', 'permanent_delete_question', 'restore_question']);
+  const _SUBJECT_MUTATIONS = new Set(['add_subject', 'delete_subject', 'approve_subject_request', 'set_subject_new_badge', 'reorder_subjects', 'move_subject', 'rename_subject_code', 'edit_subject', 'restore_subject', 'permanent_delete_subject']);
+  /*
+    ADMIN_DASH_CACHE_USER_ACTIONS_20260726
+    Bug: cache dashboard CHỈ được xoá cho mutation câu hỏi/môn. Các thao tác trên
+    NGƯỜI DÙNG (toggle_user_block, set_user_role, approve/revoke/reject, xoá user,
+    force_logout) không xoá gì cả, nên admin bấm Block xong:
+      - toggleBlock() sửa lạc quan cache.profiles -> badge hiện "Bị khóa"
+      - rồi loadAll() gọi lại /api/admin-dashboard -> server trả SNAPSHOT CŨ
+        (TTL 2 phút, chụp trước khi block) -> badge nhảy về "Đã duyệt"
+    User bị khóa thật (mọi API đều chặn), chỉ riêng admin nhìn thấy sai tới 2 phút.
+    Nay xoá vô điều kiện: /api/admin-action luôn là mutation, và mọi action đều
+    ghi admin_logs — bảng mà dashboard cũng hiển thị — nên chẳng có action nào
+    được phép để lại cache cũ.
+
+    Lưu ý (cùng bản chất với clearProfileCache): cache là biến module trong MỘT
+    isolate. Isolate khác vẫn có thể phục vụ snapshot cũ tới khi hết TTL; TTL 2
+    phút vẫn là chặn trên thực sự.
+  */
   function _invalidateCaches() {
-    if (_QUESTION_MUTATIONS.has(act)) { clearQuestionsCache(); clearSubjectsCache(); clearAdminDashboardCache(); }
-    if (_SUBJECT_MUTATIONS.has(act)) { clearSubjectsCache(); clearQuestionsCache(); clearAdminDashboardCache(); }
+    clearAdminDashboardCache();
+    if (_QUESTION_MUTATIONS.has(act)) { clearQuestionsCache(); clearSubjectsCache(); }
+    if (_SUBJECT_MUTATIONS.has(act)) { clearSubjectsCache(); clearQuestionsCache(); }
   }
 
   try {
@@ -753,62 +821,79 @@ export async function handleAdminAction(req, authUser) {
 
     case 'toggle_user_block': {
       const { target_user_id, blocked } = payload;
-      await db.execute({
-        sql: 'update profiles set blocked = ? where id = ?',
-        args: [blocked ? 1 : 0, target_user_id]
-      });
-
-      await logAdminAction(blocked ? 'block_user' : 'unblock_user', 'profiles', target_user_id);
-      clearProfileCache(target_user_id);
-      return json({ ok: true });
+      const out = await applyUserStatusChange(
+        target_user_id,
+        'update profiles set blocked = ? where id = ?',
+        [blocked ? 1 : 0, String(target_user_id || '').trim()],
+        blocked ? 'blocked' : 'unblocked'
+      );
+      if (!out.ok) return out.res;
+      await logAdminAction(blocked ? 'block_user' : 'unblock_user', 'profiles', out.targetId);
+      return json({ ok: true, realtime_delivered: out.realtime_delivered });
     }
 
     case 'set_user_role': {
       const { target_user_id, role } = payload;
-      if (!['user', 'editor', 'admin'].includes(role)) return json({ error: 'Invalid role' }, 400);
-      await db.execute({
-        sql: 'update profiles set role = ? where id = ?',
-        args: [role, target_user_id]
-      });
-
-      await logAdminAction('set_user_role', 'profiles', target_user_id, { role });
-      clearProfileCache(target_user_id);
-      return json({ ok: true });
+      if (!['user', 'editor', 'admin'].includes(role)) {
+        return json({ error: 'Vai trò không hợp lệ', code: 'BAD_REQUEST' }, 400);
+      }
+      /*
+        Thăng lên editor/admin thì duyệt luôn. Trước đây việc này được /api/profile
+        "chữa cháy" bằng cách tự set approved = 1 mỗi lần editor đăng nhập, khiến
+        thao tác "Thu hồi duyệt" trên editor không bao giờ có tác dụng. Nay quyết
+        định nằm đúng ở nơi admin bấm nút, còn approved thì thu hồi được bình thường.
+      */
+      const promote = role === 'editor' || role === 'admin';
+      const out = await applyUserStatusChange(
+        target_user_id,
+        promote
+          ? 'update profiles set role = ?, approved = 1 where id = ?'
+          : 'update profiles set role = ? where id = ?',
+        [role, String(target_user_id || '').trim()],
+        'role_changed'
+      );
+      if (!out.ok) return out.res;
+      await logAdminAction('set_user_role', 'profiles', out.targetId, { role });
+      return json({ ok: true, realtime_delivered: out.realtime_delivered });
     }
 
     case 'approve_user_registration': {
       const { target_user_id } = payload;
-      await db.execute({
-        sql: 'update profiles set approved = 1 where id = ?',
-        args: [target_user_id]
-      });
-
-      await logAdminAction('approve_user_registration', 'profiles', target_user_id);
-      clearProfileCache(target_user_id);
-      return json({ ok: true });
+      const out = await applyUserStatusChange(
+        target_user_id,
+        'update profiles set approved = 1, blocked = 0 where id = ?',
+        [String(target_user_id || '').trim()],
+        'approved'
+      );
+      if (!out.ok) return out.res;
+      await logAdminAction('approve_user_registration', 'profiles', out.targetId);
+      return json({ ok: true, realtime_delivered: out.realtime_delivered });
     }
 
     case 'reject_user_registration': {
       const { target_user_id } = payload;
-      await db.execute({
-        sql: 'delete from profiles where id = ?',
-        args: [target_user_id]
-      });
-
-      await logAdminAction('reject_user_registration', 'profiles', target_user_id);
-      clearProfileCache(target_user_id);
-      return json({ ok: true });
+      const out = await applyUserStatusChange(
+        target_user_id,
+        'delete from profiles where id = ?',
+        [String(target_user_id || '').trim()],
+        'rejected'
+      );
+      if (!out.ok) return out.res;
+      await logAdminAction('reject_user_registration', 'profiles', out.targetId);
+      return json({ ok: true, realtime_delivered: out.realtime_delivered });
     }
 
     case 'revoke_user_approval': {
       const { target_user_id } = payload;
-      await db.execute({
-        sql: 'update profiles set approved = 0 where id = ?',
-        args: [target_user_id]
-      });
-      await logAdminAction('revoke_user_approval', 'profiles', target_user_id);
-      clearProfileCache(target_user_id);
-      return json({ ok: true });
+      const out = await applyUserStatusChange(
+        target_user_id,
+        'update profiles set approved = 0 where id = ?',
+        [String(target_user_id || '').trim()],
+        'revoked'
+      );
+      if (!out.ok) return out.res;
+      await logAdminAction('revoke_user_approval', 'profiles', out.targetId);
+      return json({ ok: true, realtime_delivered: out.realtime_delivered });
     }
 
     case 'force_logout_user': {
@@ -824,17 +909,18 @@ export async function handleAdminAction(req, authUser) {
       const targetIsAdmin = adminEmail && targetProfile?.email &&
         String(targetProfile.email).toLowerCase().trim() === adminEmail;
       if (targetIsAdmin) {
-        return json({ error: 'Không thể đăng xuất tài khoản admin gốc.' }, 403);
+        return json({ error: 'Không thể đăng xuất tài khoản admin gốc.', code: 'PROTECTED_ROOT_ADMIN' }, 403);
       }
 
-      await db.execute({
-        sql: 'update profiles set force_logout = 1 where id = ?',
-        args: [targetId]
-      });
-
+      const out = await applyUserStatusChange(
+        targetId,
+        'update profiles set force_logout = 1 where id = ?',
+        [targetId],
+        'force_logout'
+      );
+      if (!out.ok) return out.res;
       await logAdminAction('force_logout_user', 'profiles', targetId);
-      clearProfileCache(targetId);
-      return json({ ok: true });
+      return json({ ok: true, realtime_delivered: out.realtime_delivered });
     }
 
     case 'force_logout_all': {
@@ -892,7 +978,8 @@ export async function handleAdminAction(req, authUser) {
     }
 
     default:
-      return json({ error: `Action '${action}' not supported` }, 400);
+      // Trả `act` đã chuẩn hoá, không phản chiếu nguyên văn chuỗi từ client.
+      return json({ error: `Hành động '${act}' không được hỗ trợ`, code: 'BAD_REQUEST' }, 400);
   }
 
   } finally {

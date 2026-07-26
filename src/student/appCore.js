@@ -180,95 +180,23 @@ window.APP_CONFIG = window.APP_CONFIG || {
 })();
 // ===== END PATCH_TAB_ISOLATED_SUBJECT_SESSION_20260701 =====
 
-// ===== APP_API_DEDUPE_QUESTIONS_PROFILE_20260630 =====
-// Chống gọi trùng /api/questions và /api/profile trong lúc app khởi động/chọn môn.
-// Giữ nguyên dữ liệu đang dùng, chỉ gộp các request giống nhau đang chạy cùng lúc.
-(function () {
-  if (window.__APP_API_DEDUPE_QUESTIONS_PROFILE_20260630) return;
-  window.__APP_API_DEDUPE_QUESTIONS_PROFILE_20260630 = true;
+/*
+  ===== APP_API_DEDUPE_QUESTIONS_PROFILE_20260630 — ĐÃ XÓA (VIII) =====
+  Đây là lớp ghi đè window.fetch thứ nhất trong bốn lớp. Nó cache RESPONSE của
+  POST /api/profile trong 30 giây và GET /api/questions trong 60 giây ở phía
+  client.
 
-  const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
-  if (!nativeFetch) return;
-
-  const pending = new Map();
-  const shortCache = new Map();
-  const QUESTION_TTL = 60000;
-  const PROFILE_TTL = 30000;
-
-  function methodOf(init) {
-    return String(init && init.method ? init.method : 'GET').toUpperCase();
-  }
-
-  function makeKey(input, init) {
-    let url;
-    try { url = new URL(typeof input === 'string' ? input : input.url, location.href); }
-    catch (e) { return null; }
-
-    const method = methodOf(init);
-    const path = url.pathname;
-
-    if (path === '/api/questions' && method === 'GET') {
-      const subject = url.searchParams.get('subject_code') || '';
-      if (!subject) return null;
-      return { key: 'GET:/api/questions:' + subject, ttl: QUESTION_TTL };
-    }
-
-    if (path === '/api/profile' && method === 'POST') {
-      let uid = '';
-      try { uid = JSON.parse(String(init && init.body || '{}')).id || ''; } catch (e) { }
-      return { key: 'POST:/api/profile:' + uid, ttl: PROFILE_TTL };
-    }
-
-    return null;
-  }
-
-  async function packResponse(res) {
-    const body = await res.clone().text();
-    return {
-      body,
-      status: res.status,
-      statusText: res.statusText,
-      headers: Array.from(res.headers.entries()),
-      exp: Date.now()
-    };
-  }
-
-  function unpack(pack) {
-    return new Response(pack.body, {
-      status: pack.status,
-      statusText: pack.statusText,
-      headers: new Headers(pack.headers)
-    });
-  }
-
-  window.fetch = async function (input, init) {
-    const info = makeKey(input, init);
-    if (!info) return nativeFetch(input, init);
-
-    const cached = shortCache.get(info.key);
-    if (cached && Date.now() - cached.exp < info.ttl) {
-      return unpack(cached);
-    }
-
-    if (pending.has(info.key)) {
-      const pack = await pending.get(info.key);
-      return unpack(pack);
-    }
-
-    const job = nativeFetch(input, init)
-      .then(async res => {
-        const pack = await packResponse(res);
-        shortCache.set(info.key, pack);
-        return pack;
-      })
-      .finally(() => pending.delete(info.key));
-
-    pending.set(info.key, job);
-    const pack = await job;
-    return unpack(pack);
-  };
-})();
-// ===== END APP_API_DEDUPE_QUESTIONS_PROFILE_20260630 =====
+  Vì sao phải xóa hẳn chứ không vá tiếp:
+  - Nó vô hiệu hóa chính cơ chế thu hồi quyền. Admin khóa tài khoản -> Realtime
+    báo -> loadProfile(true) gọi lại /api/profile -> lớp này trả về BẢN 200 CŨ
+    còn trong cache, tối đa 30 giây. Tệ hơn: nếu 403 được cache thì user vừa
+    được duyệt lại vẫn bị chặn.
+  - Nó cache cả response lỗi, không phân biệt status.
+  - Việc chống gọi trùng /api/profile nay nằm đúng chỗ của nó: hàng rào
+    lhRevalidateAccess() (dedupe request đang chạy + debounce 3s) ở cuối file.
+  Chống gọi trùng /api/questions do server lo (cache 5 phút phía Edge), client
+  không cần cache thêm.
+*/
 
 window.HOD_DATA = [];
 (function () { var s = document.createElement('script'); s.type = 'application/json'; s.id = 'data'; s.textContent = '[]'; document.head.appendChild(s); })();
@@ -289,134 +217,18 @@ if (location.protocol === 'file:') {
 
 
 
-// ===== APP_F5_SUPABASE_CACHE_20260629 =====
-// F5 giảm gọi Supabase: cache GET Supabase + chống gọi lặp questions/profiles.
-// Có realtime clear cache khi questions/subjects đổi.
-(function () {
-  if (window.__APP_F5_SUPABASE_CACHE_20260629) return;
-  window.__APP_F5_SUPABASE_CACHE_20260629 = true;
-
-  const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
-  if (!nativeFetch) return;
-
-  const PREFIX = 'lh_f5_cache:';
-  const mem = new Map();
-  const pending = new Map();
-  const MAX_BODY = 900 * 1024;
-  const profilePatchLast = new Map();
-
-  function methodOf(init) { return String(init && init.method ? init.method : 'GET').toUpperCase(); }
-  function isSupabaseRest(url) { return /\/rest\/v1\//.test(url.pathname); }
-  function isCacheablePath(path) { return /\/(questions|subjects|profiles|site_settings)\b/.test(path); }
-  function ttlFor(url) {
-    const p = url.pathname;
-    const q = url.search || '';
-    if (/\/questions\b/.test(p)) return 10 * 60 * 1000;
-    if (/\/subjects\b/.test(p)) return 10 * 60 * 1000;
-    if (/\/profiles\b/.test(p) && /id=eq\./.test(q)) return 10 * 60 * 1000;
-    if (/\/site_settings\b/.test(p)) return 10 * 60 * 1000;
-    return 0;
-  }
-  function keyOf(url) { return url.origin + url.pathname + url.search; }
-  function headersObj(headers) {
-    const o = { 'x-learninghub-cache': '1' };
-    try { headers.forEach((v, k) => { if (k.toLowerCase() !== 'content-length') o[k] = v; }); } catch (e) { }
-    return o;
-  }
-  function makeResponse(entry) {
-    return new Response(entry.body, { status: entry.status || 200, statusText: entry.statusText || 'OK', headers: entry.headers || { 'x-learninghub-cache': '1' } });
-  }
-  function readStore(key) {
-    try {
-      const raw = sessionStorage.getItem(PREFIX + key);
-      if (!raw) return null;
-      const e = JSON.parse(raw);
-      if (!e || !e.exp || Date.now() > e.exp) return null;
-      return e;
-    } catch (err) { return null; }
-  }
-  function writeStore(key, entry) { try { sessionStorage.setItem(PREFIX + key, JSON.stringify(entry)); } catch (err) { } }
-  async function saveFromResponse(key, ttl, res) {
-    try {
-      const txt = await res.clone().text();
-      if (txt.length > MAX_BODY) return;
-      const entry = { body: txt, status: res.status, statusText: res.statusText, headers: headersObj(res.headers), exp: Date.now() + ttl };
-      mem.set(key, entry);
-      writeStore(key, entry);
-    } catch (err) { }
-  }
-  function matchKind(text, kind) {
-    if (!kind || kind === 'all') return true;
-    if (kind === 'questions') return text.includes('/questions');
-    if (kind === 'subjects') return text.includes('/subjects');
-    if (kind === 'profiles') return text.includes('/profiles');
-    return text.includes('/' + kind);
-  }
-  function clearCache(kind) {
-    try {
-      Object.keys(sessionStorage).forEach(k => {
-        if (k.startsWith(PREFIX) && matchKind(k, kind)) sessionStorage.removeItem(k);
-      });
-      Array.from(mem.keys()).forEach(k => { if (matchKind(k, kind)) mem.delete(k); });
-      Array.from(pending.keys()).forEach(k => { if (matchKind(k, kind)) pending.delete(k); });
-      window.__LH_LAST_CACHE_CLEAR = { kind: kind || 'all', at: Date.now() };
-    } catch (e) { }
-  }
-  function shouldSkipProfilePatch(url, init) {
-    const method = methodOf(init);
-    if (method !== 'PATCH' && method !== 'PUT') return false;
-    if (!/\/profiles\b/.test(url.pathname)) return false;
-    const body = String(init && init.body ? init.body : '');
-    // Chỉ chặn các update hoạt động/avatar/email lặp, không chặn cập nhật quyền từ admin.
-    if (!/last_activity|last_login|avatar_url|email/.test(body)) return false;
-    if (/last_login/.test(body)) return false; // đăng nhập/mở web phải được ghi nhận
-    if (/role|approved|blocked|is_blocked|status/.test(body)) return false;
-    const key = keyOf(url) + '|' + body.replace(/"last_activity"\s*:\s*"[^"]+"/g, '"last_activity":"TIME"');
-    const last = profilePatchLast.get(key) || 0;
-    if (Date.now() - last < 5 * 60 * 1000) return true;
-    profilePatchLast.set(key, Date.now());
-    return false;
-  }
-
-  window.clearLearningHubQuestionCache = function () { clearCache('questions'); };
-  window.clearLearningHubSupabaseCache = clearCache;
-
-  window.fetch = async function (input, init) {
-    let url;
-    try { url = new URL(typeof input === 'string' ? input : input.url, location.href); } catch (e) { return nativeFetch(input, init); }
-
-    // Giảm profiles?id=... status 204 lặp lại do update hoạt động/avatar.
-    if (isSupabaseRest(url) && shouldSkipProfilePatch(url, init)) {
-      return new Response(null, { status: 204, statusText: 'No Content', headers: { 'x-learninghub-skip': 'profile-patch-duplicate' } });
-    }
-
-    if (methodOf(init) !== 'GET' || !isSupabaseRest(url) || !isCacheablePath(url.pathname)) return nativeFetch(input, init);
-
-    const ttl = ttlFor(url);
-    if (!ttl) return nativeFetch(input, init);
-    const key = keyOf(url);
-
-    const m = mem.get(key);
-    if (m && Date.now() <= m.exp) return makeResponse(m);
-    const s = readStore(key);
-    if (s) { mem.set(key, s); return makeResponse(s); }
-
-    if (pending.has(key)) {
-      const entry = await pending.get(key).catch(() => null);
-      if (entry) return makeResponse(entry);
-    }
-
-    // Quan trọng: chỉ gọi network 1 lần. Bản cũ gọi nativeFetch 2 lần khi cache miss.
-    const network = nativeFetch(input, init).then(async res => {
-      if (res && res.ok) await saveFromResponse(key, ttl, res);
-      return res;
-    }).finally(() => pending.delete(key));
-
-    pending.set(key, network.then(() => mem.get(key) || null));
-    return network;
-  };
-})();
-// ===== END APP_F5_SUPABASE_CACHE_20260629 =====
+/*
+  ===== APP_F5_SUPABASE_CACHE_20260629 — ĐÃ XÓA (VIII) =====
+  Lớp ghi đè window.fetch thứ hai. Cache GET Supabase REST (/rest/v1/questions,
+  subjects, profiles, site_settings) trong sessionStorage với TTL 10 phút.
+  Đã lỗi thời: dữ liệu học nay đọc từ Turso qua /api/*, Supabase chỉ còn dùng cho
+  Auth + Realtime. Riêng việc cache /rest/v1/profiles 10 phút còn nguy hiểm —
+  đó chính là bảng trạng thái quyền cũ.
+  Phần cache Supabase REST còn cần thiết (ảnh/câu hỏi trong form sửa của
+  editor) đã được gộp vào interceptor duy nhất ở cuối file.
+  Các hàm window.clearLearningHubQuestionCache / clearLearningHubSupabaseCache
+  vẫn tồn tại (do nhiều nơi khác gọi) và được định nghĩa lại ở interceptor đó.
+*/
 
 /* ===== merged app logic ===== */
 
@@ -465,7 +277,7 @@ function finalAnswerText(c) { const raw = String(c?.answer_text ?? '').trim(); c
   setv('--frontpad', '14px 18px'); setv('--optgap', '6px'); setv('--optpad', '7px 10px'); setv('--qmb', '8px'); setv('--imgmb', '7px'); setv('--tagmb', '6px'); setv('--letter', '25px'); setv('--letterfs', '.76rem'); setv('--tagfs', '.62rem'); setv('--tagpad', '3px 10px'); setv('--ogap', '8px');
 }
 function fitVisible() { return; }
-function renderCard() { let c = pool[ci] || RAW[0]; if (!c) return; fit(c); applyCardFontSize(); $('idx').textContent = ci + 1; $('total').textContent = pool.length; $('bar').style.width = ((ci + 1) / pool.length * 100) + '%'; $('tag').textContent = 'CÂU ' + c.num; $('question').textContent = c.question; const __imgEl = $('images'); const __imgKey = JSON.stringify((c.images || []).map(im => String((im && typeof im === 'object' ? (im.src || im.url || im.secure_url || im.publicUrl || im.public_url) : im) || ''))); if (__imgEl.dataset.imgKey !== __imgKey) { __imgEl.innerHTML = imgsHTML(c); __imgEl.dataset.imgKey = __imgKey; } __imgEl.style.display = (c.images && c.images.length) ? 'flex' : 'none'; document.querySelector('#fc .front')?.classList.toggle('hasImg', !!(c.images && c.images.length)); $('options').innerHTML = optionsHTML(c); $('options').classList.remove('hide'); hideOptions = false; applyCardFontSize(); updateCardTools(); $('ansLetter').textContent = (c.answer || '').split('').join(', '); $('ansText').innerHTML = esc(c.answer_text || answerText(c)).replace(/; /g, '<br>'); $('card').classList.remove('dir-horizontal', 'dir-up', 'dir-down'); $('card').classList.add('dir-' + flipDir); $('card').classList.toggle('flip', flipped); $('mode').textContent = flipMode === 'single' ? '1x' : '2x'; var _sc = localStorage.getItem('learninghub_subject_code_merged_v1') || ''; localStorage.setItem('hod102_ci', ci); if (_sc) localStorage.setItem('learninghub_progress_' + _sc, ci); localStorage.setItem('hod102_flip_mode', flipMode) } function flip(dir = 'horizontal') { flipDir = dir; flipped = !flipped; renderCard() } function next() { ci = (ci + 1) % pool.length; flipped = false; flipDir = 'horizontal'; renderCard() } function prev() { ci = (ci - 1 + pool.length) % pool.length; flipped = false; flipDir = 'horizontal'; renderCard() } function shuffle() { for (let i = pool.length - 1; i > 0; i--) { let j = Math.floor(Math.random() * (i + 1));[pool[i], pool[j]] = [pool[j], pool[i]] } ci = 0; flipped = false; flipDir = 'horizontal'; randomActive = false; localStorage.setItem('hod102_random_active', '0'); renderCard(); let sh = $('shuffle'); if (sh) { sh.classList.add('flash'); setTimeout(() => sh.classList.remove('flash'), 650) } } let __allowUserReset = false; function reset(force) { if (force !== true && __allowUserReset !== true) { try { renderCard() } catch (e) { } return } __allowUserReset = false; pool = [...RAW]; ci = 0; flipped = false; flipDir = 'horizontal'; randomActive = false; localStorage.setItem('hod102_random_active', '0'); renderCard() } function triggerReset() { __allowUserReset = true; reset(true) } function switchTab(n, b) {
+function renderCard() { let c = pool[ci] || RAW[0]; if (!c) return; fit(c); applyCardFontSize(); $('idx').textContent = ci + 1; $('total').textContent = pool.length; $('bar').style.width = ((ci + 1) / pool.length * 100) + '%'; $('tag').textContent = 'CÂU ' + c.num; $('question').textContent = c.question; const __imgEl = $('images'); const __imgKey = JSON.stringify((c.images || []).map(im => String((im && typeof im === 'object' ? (im.src || im.url || im.secure_url || im.publicUrl || im.public_url) : im) || ''))); if (__imgEl.dataset.imgKey !== __imgKey) { __imgEl.innerHTML = imgsHTML(c); __imgEl.dataset.imgKey = __imgKey; } __imgEl.style.display = (c.images && c.images.length) ? 'flex' : 'none'; document.querySelector('#fc .front')?.classList.toggle('hasImg', !!(c.images && c.images.length)); $('options').innerHTML = optionsHTML(c); $('options').classList.remove('hide'); hideOptions = false; applyCardFontSize(); updateCardTools(); if (typeof window.updateBookmarkBtn === 'function') window.updateBookmarkBtn(); $('ansLetter').textContent = (c.answer || '').split('').join(', '); $('ansText').innerHTML = esc(c.answer_text || answerText(c)).replace(/; /g, '<br>'); $('card').classList.remove('dir-horizontal', 'dir-up', 'dir-down'); $('card').classList.add('dir-' + flipDir); $('card').classList.toggle('flip', flipped); $('mode').textContent = flipMode === 'single' ? '1x' : '2x'; var _sc = localStorage.getItem('learninghub_subject_code_merged_v1') || ''; localStorage.setItem('hod102_ci', ci); if (_sc) localStorage.setItem('learninghub_progress_' + _sc, ci); localStorage.setItem('hod102_flip_mode', flipMode) } function flip(dir = 'horizontal') { flipDir = dir; flipped = !flipped; renderCard() } function next() { ci = (ci + 1) % pool.length; flipped = false; flipDir = 'horizontal'; renderCard() } function prev() { ci = (ci - 1 + pool.length) % pool.length; flipped = false; flipDir = 'horizontal'; renderCard() } function shuffle() { for (let i = pool.length - 1; i > 0; i--) { let j = Math.floor(Math.random() * (i + 1));[pool[i], pool[j]] = [pool[j], pool[i]] } ci = 0; flipped = false; flipDir = 'horizontal'; randomActive = false; localStorage.setItem('hod102_random_active', '0'); renderCard(); let sh = $('shuffle'); if (sh) { sh.classList.add('flash'); setTimeout(() => sh.classList.remove('flash'), 650) } } let __allowUserReset = false; function reset(force) { if (force !== true && __allowUserReset !== true) { try { renderCard() } catch (e) { } return } __allowUserReset = false; pool = [...RAW]; ci = 0; flipped = false; flipDir = 'horizontal'; randomActive = false; localStorage.setItem('hod102_random_active', '0'); renderCard() } function triggerReset() { __allowUserReset = true; reset(true) } function switchTab(n, b) {
   try { localStorage.setItem('learninghub_last_tab_v1', n) } catch (e) { }
   document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
   if (b) b.classList.add('active');
@@ -482,7 +294,7 @@ function renderCard() { let c = pool[ci] || RAW[0]; if (!c) return; fit(c); appl
   if (n === 'study') renderStudy();
   if (n === 'quiz') try { renderQuiz() } catch (e) { }
   if (typeof window.fixCounter === 'function') window.fixCounter();
-} function sample(a, n) { a = [...a]; for (let i = a.length - 1; i > 0; i--) { let j = Math.floor(Math.random() * (i + 1));[a[i], a[j]] = [a[j], a[i]] } return n ? a.slice(0, n) : a } function fmt(ms) { let s = Math.floor(ms / 1000), m = Math.floor(s / 60); s %= 60; return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') } function startTimer() { clearInterval(timerInt); examStart = Date.now(); timerInt = setInterval(() => $('timer').textContent = fmt(Date.now() - examStart), 1000) } function stopTimer() { clearInterval(timerInt) } function syncQuizSet() { if (qSet && qSet.length) { qSet = qSet.map(c => RAW.find(x => x.num === c.num) || c) } } function renderQuiz() { if (typeof window.__examOnlyRender === 'function') return window.__examOnlyRender(); const body = $('quizBody'); if (body) body.innerHTML = ''; } function pickAns(i, k) { if ((quizMode === 'practice' && qDone[i]) || examSubmitted) return; let c = qSet[i]; if (c.answer.length > 1) { let set = new Set((qSel[i] || '').split('').filter(Boolean)); set.has(k) ? set.delete(k) : set.add(k); qSel[i] = [...set].sort().join('') } else qSel[i] = k; renderQuiz() } function checkAns(i) { if (!qSel[i]) { alert('Bạn chọn đáp án trước nha.'); return } qDone[i] = true; renderQuiz() } function score() {/* old practice score overlay removed */ } function smart(q) { q = q.trim().toLowerCase(); if (!q) return RAW; let m = q.match(/^#(\d+)$/); if (m) return RAW.filter(c => c.num === +m[1]); m = q.match(/^answer\s*:\s*([a-e]+)$/i); if (m) return RAW.filter(c => sortAns(c.answer) === sortAns(m[1].toUpperCase())); if (['multi', 'multiple', 'chọn nhiều'].includes(q)) return RAW.filter(c => c.answer.length > 1); return RAW.filter(c => (String(c.num) + ' ' + c.question + ' ' + c.answer + ' ' + (c.answer_text || '') + ' ' + Object.values(c.options).join(' ')).toLowerCase().includes(q)) } function renderStudy() { let arr = smart($('search').value || ''), max = arr.length; $('studyList').innerHTML = arr.slice(0, max).map(c => `<div class="sitem"><div class="snum">CÂU ${c.num}</div><div class="sq">${esc(c.question)}</div><div class="qimgs">${imgsHTML(c)}</div><div class="sopts">${Object.entries(c.options).map(([k, v]) => `<div class="sopt ${c.answer.includes(k) ? 'ans' : ''}"><div class="skey">${c.answer.includes(k) ? '✓' : k}</div><div>${esc(k + '. ' + v)}</div></div>`).join('')}</div></div>`).join('') + (arr.length > max ? `<div class="more">Đang hiển thị ${max} / ${arr.length} kết quả.</div>` : arr.length ? '' : '<div class="more">Không tìm thấy kết quả.</div>') } function openEditor() { let c = pool[ci]; editDraft = clone(c); let reporting = !!(window.HODSupabase?.getUser?.()) && !window.HODSupabase?.isAdmin?.(); $('editTitle').textContent = (reporting ? 'Báo cáo / đề xuất sửa câu ' : 'Sửa câu ') + c.num; if ($('saveEdit')) $('saveEdit').textContent = reporting ? 'Gửi báo cáo cho admin' : 'Lưu sửa'; if ($('restoreEdit')) $('restoreEdit').classList.toggle('hidden', reporting); $('editQuestion').value = c.question; $('editAnswer').value = c.answer; renderEditOptions(); renderEditImages(); $('editModal').classList.remove('hidden') } function renderEditOptions() { let ops = editDraft.options || {}; let box = $('editOptions'); if (!box) return; box.innerHTML = ['A', 'B', 'C', 'D', 'E'].map(k => `<div class="field"><label>Đáp án ${k}</label><textarea data-opt="${k}">${esc(ops[k] || '')}</textarea></div>`).join('') } function renderEditImages() { let box = $('editImgs'); if (!box) { const input = $('imgUpload'); if (!input) return; box = document.createElement('div'); box.id = 'editImgs'; box.className = 'editImgs'; input.insertAdjacentElement('afterend', box); } box.innerHTML = (editDraft.images || []).map((im, i) => { const src = im && typeof im === 'object' ? (im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '') : im; return `<div class="editImg"><button class="rm" data-rm="${i}">×</button><img src="${esc(src)}" loading="lazy" decoding="async"><input class="imgUrlBox" value="${esc(src)}" readonly onclick="this.select()" title="Bấm để chọn URL ảnh" style="margin-top:6px;width:100%;max-width:260px;border:1px solid rgba(200,169,110,.24);border-radius:10px;background:rgba(0,0,0,.22);color:var(--gold2);padding:7px;font-size:.72rem;"></div>`; }).join('') || '<p style="color:var(--mist)">Chưa có hình.</p>' } function saveEditor() { let oldQ = clone(RAW.find(c => c.num === editDraft.num) || pool[ci] || editDraft); editDraft.question = $('editQuestion').value.trim(); editDraft.answer = $('editAnswer').value.trim().toUpperCase(); let ops = {}; document.querySelectorAll('[data-opt]').forEach(t => { if (t.value.trim()) ops[t.dataset.opt] = t.value.trim() }); editDraft.options = ops; editDraft.answer_text = answerText(editDraft); if (window.HODSupabase && window.HODSupabase.isReady()) { window.HODSupabase.submitEditRequest(editDraft, oldQ); return } if (window.HODSupabase?.getUser?.()) { alert('Chưa kết nối được dữ liệu duyệt. Hãy tải lại trang rồi gửi lại báo cáo.'); return } edits[editDraft.num] = { question: editDraft.question, options: editDraft.options, answer: editDraft.answer, answer_text: editDraft.answer_text, images: editDraft.images || [] }; localStorage.setItem(STORE, JSON.stringify(edits)); rebuild(); ci = pool.findIndex(c => c.num === editDraft.num); if (ci < 0) ci = 0; flipped = false; renderCard(); renderQuiz(); renderStudy(); $('editModal').classList.add('hidden'); notify('Đã lưu sửa local') } function restoreEditor() { delete edits[editDraft.num]; localStorage.setItem(STORE, JSON.stringify(edits)); rebuild(); syncQuizSet(); renderCard(); renderQuiz(); renderStudy(); $('editModal').classList.add('hidden'); notify('Đã khôi phục') } function exportEdits() { let blob = new Blob([JSON.stringify(edits, null, 2)], { type: 'application/json' }), a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'hod102_user_edits.json'; a.click(); URL.revokeObjectURL(a.href) } function importEditsFile(f) { let fr = new FileReader(); fr.onload = () => { try { edits = JSON.parse(fr.result) || {}; localStorage.setItem(STORE, JSON.stringify(edits)); rebuild(); renderCard(); renderQuiz(); renderStudy(); notify('Đã nhập file sửa') } catch (e) { alert('File JSON không hợp lệ') } }; fr.readAsText(f) } function applyCardFontSize() { let n = parseFloat(cardFontSize || '1'); if (!isFinite(n)) n = 1; n = Math.max(.8, Math.min(1.3, n)); cardFontSize = String(n); let root = document.documentElement, fc = $('fc'); let set = (k, v) => { root.style.setProperty(k, v); if (fc) fc.style.setProperty(k, v) }; let base = 1.35 * n; set('--card-qfs', (1.08 * base).toFixed(3) + 'rem'); set('--card-ofs', (.92 * base).toFixed(3) + 'rem'); set('--card-afs', (1.0 * base).toFixed(3) + 'rem'); set('--card-letter', (25 * Math.min(1.35, base)).toFixed(0) + 'px'); set('--card-letterfs', (.76 * base).toFixed(3) + 'rem'); localStorage.setItem('hod102_card_font_size_v3', String(n)); if ($('stCardFont')) $('stCardFont').value = Math.round(n * 100); if ($('stCardFontState')) $('stCardFontState').textContent = Math.round(n * 100) + '%' } function updateCardTools() { hideOptions = false; try { localStorage.removeItem('hod102_hide_options'); } catch (e) { } let sh = $('shuffle'), eye = $('toggleOpts'); if (sh) { sh.classList.remove('active'); sh.title = 'Xáo ngẫu nhiên' } if (eye) eye.remove(); } function setupGlobalHeader() { let top = document.querySelector('#fc .top'); let tabs = document.querySelector('.tabs'); if (top && !top.classList.contains('globalTop')) { top.classList.add('globalTop'); document.body.insertBefore(top, tabs || document.body.firstChild) } } function setupCardTools() { let card = $('card'); if (!card || $('cardTools')) return; let tools = document.createElement('div'); tools.id = 'cardTools'; tools.className = 'cardTools'; let sh = $('shuffle'), eye = $('toggleOpts'), ed = $('editCard'); if (eye) eye.remove(); if (sh) { sh.textContent = '⚂'; sh.classList.add('cardToolBtn', 'diceBtn'); tools.appendChild(sh) } tools.addEventListener('click', e => e.stopPropagation()); tools.addEventListener('mousedown', e => e.stopPropagation()); card.insertBefore(tools, ed); updateCardTools() } function updateSettingsUI() { if (!$('stFlipState')) return; $('stFlipState').textContent = 'Đang dùng: ' + (flipMode === 'single' ? '1x - bấm 1 lần để lật' : '2x - hạn chế lật nhầm'); if ($('stOptState')) $('stOptState').textContent = 'Đang hiện lựa chọn'; if ($('stToggleOpts')) $('stToggleOpts').style.display = 'none'; if ($('stGoInput')) $('stGoInput').value = (pool[ci]?.num) || ''; applyCardFontSize(); updateCardTools() } function toggleFlipMode() { flipMode = flipMode === 'single' ? 'double' : 'single'; flipped = false; renderCard(); updateSettingsUI() } function goToQuestionNum() { let n = +$('stGoInput').value; if (!n) { alert('Nhập số câu trước nha.'); return } let i = pool.findIndex(c => c.num === n); if (i < 0) i = RAW.findIndex(c => c.num === n); if (i < 0) { alert('Không tìm thấy câu ' + n); return } if (!pool.find(c => c.num === n)) pool = [...RAW]; ci = i; flipped = false; renderCard(); updateSettingsUI(); $('settingsModal').classList.add('hidden') } function init() {
+} function sample(a, n) { a = [...a]; for (let i = a.length - 1; i > 0; i--) { let j = Math.floor(Math.random() * (i + 1));[a[i], a[j]] = [a[j], a[i]] } return n ? a.slice(0, n) : a } function fmt(ms) { let s = Math.floor(ms / 1000), m = Math.floor(s / 60); s %= 60; return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') } function startTimer() { clearInterval(timerInt); examStart = Date.now(); timerInt = setInterval(() => $('timer').textContent = fmt(Date.now() - examStart), 1000) } function stopTimer() { clearInterval(timerInt) } function syncQuizSet() { if (qSet && qSet.length) { qSet = qSet.map(c => RAW.find(x => x.num === c.num) || c) } } function renderQuiz() { if (typeof window.__examOnlyRender === 'function') return window.__examOnlyRender(); const body = $('quizBody'); if (body) body.innerHTML = ''; } function pickAns(i, k) { if ((quizMode === 'practice' && qDone[i]) || examSubmitted) return; let c = qSet[i]; if (c.answer.length > 1) { let set = new Set((qSel[i] || '').split('').filter(Boolean)); set.has(k) ? set.delete(k) : set.add(k); qSel[i] = [...set].sort().join('') } else qSel[i] = k; renderQuiz() } function checkAns(i) { if (!qSel[i]) { alert('Bạn chọn đáp án trước nha.'); return } qDone[i] = true; renderQuiz() } function score() {/* old practice score overlay removed */ } function smart(q) { q = q.trim().toLowerCase(); if (!q) return RAW; let m = q.match(/^#(\d+)$/); if (m) return RAW.filter(c => c.num === +m[1]); m = q.match(/^answer\s*:\s*([a-e]+)$/i); if (m) return RAW.filter(c => sortAns(c.answer) === sortAns(m[1].toUpperCase())); if (['multi', 'multiple', 'chọn nhiều'].includes(q)) return RAW.filter(c => c.answer.length > 1); return RAW.filter(c => (String(c.num) + ' ' + c.question + ' ' + c.answer + ' ' + (c.answer_text || '') + ' ' + Object.values(c.options).join(' ')).toLowerCase().includes(q)) } function renderStudy() { let arr = smart($('search').value || ''), max = arr.length; $('studyList').innerHTML = arr.slice(0, max).map(c => `<div class="sitem"><div class="snum">CÂU ${c.num}</div><div class="sq">${esc(c.question)}</div><div class="qimgs">${imgsHTML(c)}</div><div class="sopts">${Object.entries(c.options).map(([k, v]) => `<div class="sopt ${c.answer.includes(k) ? 'ans' : ''}"><div class="skey">${c.answer.includes(k) ? '✓' : k}</div><div>${esc(k + '. ' + v)}</div></div>`).join('')}</div></div>`).join('') + (arr.length > max ? `<div class="more">Đang hiển thị ${max} / ${arr.length} kết quả.</div>` : arr.length ? '' : '<div class="more">Không tìm thấy kết quả.</div>') } function openEditor() { let c = pool[ci]; editDraft = clone(c); let reporting = !!(window.HODSupabase?.getUser?.()) && !window.HODSupabase?.isAdmin?.(); $('editTitle').textContent = (reporting ? 'Báo cáo / đề xuất sửa câu ' : 'Sửa câu ') + c.num; if ($('saveEdit')) $('saveEdit').textContent = reporting ? 'Gửi báo cáo cho admin' : 'Lưu sửa'; if ($('restoreEdit')) $('restoreEdit').classList.toggle('hidden', reporting); $('editQuestion').value = c.question; $('editAnswer').value = c.answer; renderEditOptions(); renderEditImages(); $('editModal').classList.remove('hidden') } function renderEditOptions() { let ops = editDraft.options || {}; let box = $('editOptions'); if (!box) return; box.innerHTML = ['A', 'B', 'C', 'D', 'E'].map(k => `<div class="field"><label>Đáp án ${k}</label><textarea data-opt="${k}">${esc(ops[k] || '')}</textarea></div>`).join('') } function renderEditImages() { let box = $('editImgs'); if (!box) { const input = $('imgUpload'); if (!input) return; box = document.createElement('div'); box.id = 'editImgs'; box.className = 'editImgs'; input.insertAdjacentElement('afterend', box); } box.innerHTML = (editDraft.images || []).map((im, i) => { const src = im && typeof im === 'object' ? (im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '') : im; return `<div class="editImg"><button class="rm" data-rm="${i}">×</button><img src="${esc(src)}" loading="lazy" decoding="async"><input class="imgUrlBox" value="${esc(src)}" readonly onclick="this.select()" title="Bấm để chọn URL ảnh" style="margin-top:6px;width:100%;max-width:260px;border:1px solid rgba(200,169,110,.24);border-radius:10px;background:rgba(0,0,0,.22);color:var(--gold2);padding:7px;font-size:.72rem;"></div>`; }).join('') || '<p style="color:var(--mist)">Chưa có hình.</p>' } function saveEditor() { let oldQ = clone(RAW.find(c => c.num === editDraft.num) || pool[ci] || editDraft); editDraft.question = $('editQuestion').value.trim(); editDraft.answer = $('editAnswer').value.trim().toUpperCase(); let ops = {}; document.querySelectorAll('[data-opt]').forEach(t => { if (t.value.trim()) ops[t.dataset.opt] = t.value.trim() }); editDraft.options = ops; editDraft.answer_text = answerText(editDraft); if (window.HODSupabase && window.HODSupabase.isReady()) { window.HODSupabase.submitEditRequest(editDraft, oldQ); return } if (window.HODSupabase?.getUser?.()) { alert('Chưa kết nối được dữ liệu duyệt. Hãy tải lại trang rồi gửi lại báo cáo.'); return } edits[editDraft.num] = { question: editDraft.question, options: editDraft.options, answer: editDraft.answer, answer_text: editDraft.answer_text, images: editDraft.images || [] }; localStorage.setItem(STORE, JSON.stringify(edits)); rebuild(); ci = pool.findIndex(c => c.num === editDraft.num); if (ci < 0) ci = 0; flipped = false; renderCard(); renderQuiz(); renderStudy(); $('editModal').classList.add('hidden'); notify('Đã lưu sửa local') } function restoreEditor() { delete edits[editDraft.num]; localStorage.setItem(STORE, JSON.stringify(edits)); rebuild(); syncQuizSet(); renderCard(); renderQuiz(); renderStudy(); $('editModal').classList.add('hidden'); notify('Đã khôi phục') } function exportEdits() { let blob = new Blob([JSON.stringify(edits, null, 2)], { type: 'application/json' }), a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'hod102_user_edits.json'; a.click(); URL.revokeObjectURL(a.href) } function importEditsFile(f) { let fr = new FileReader(); fr.onload = () => { try { edits = JSON.parse(fr.result) || {}; localStorage.setItem(STORE, JSON.stringify(edits)); rebuild(); renderCard(); renderQuiz(); renderStudy(); notify('Đã nhập file sửa') } catch (e) { alert('File JSON không hợp lệ') } }; fr.readAsText(f) } function applyCardFontSize() { let n = parseFloat(cardFontSize || '1'); if (!isFinite(n)) n = 1; n = Math.max(.8, Math.min(1.3, n)); cardFontSize = String(n); let root = document.documentElement, fc = $('fc'); let set = (k, v) => { root.style.setProperty(k, v); if (fc) fc.style.setProperty(k, v) }; let base = 1.08 * n; set('--card-qfs', (1.05 * base).toFixed(3) + 'rem'); set('--card-ofs', (.88 * base).toFixed(3) + 'rem'); set('--card-afs', (.95 * base).toFixed(3) + 'rem'); set('--card-letter', (24 * Math.min(1.2, base)).toFixed(0) + 'px'); set('--card-letterfs', (.72 * base).toFixed(3) + 'rem'); localStorage.setItem('hod102_card_font_size_v3', String(n)); if ($('stCardFont')) $('stCardFont').value = Math.round(n * 100); if ($('stCardFontState')) $('stCardFontState').textContent = Math.round(n * 100) + '%' } function updateCardTools() { hideOptions = false; try { localStorage.removeItem('hod102_hide_options'); } catch (e) { } let sh = $('shuffle'), eye = $('toggleOpts'); if (sh) { sh.classList.remove('active'); sh.title = 'Xáo ngẫu nhiên' } if (eye) eye.remove(); } function setupGlobalHeader() { let top = document.querySelector('#fc .top'); let tabs = document.querySelector('.tabs'); if (top && !top.classList.contains('globalTop')) { top.classList.add('globalTop'); document.body.insertBefore(top, tabs || document.body.firstChild) } } function setupCardTools() { let card = $('card'); if (!card || $('cardTools')) return; let tools = document.createElement('div'); tools.id = 'cardTools'; tools.className = 'cardTools'; let sh = $('shuffle'), eye = $('toggleOpts'), ed = $('editCard'); if (eye) eye.remove(); if (sh) { sh.textContent = '⚂'; sh.classList.add('cardToolBtn', 'diceBtn'); tools.appendChild(sh) } tools.addEventListener('click', e => e.stopPropagation()); tools.addEventListener('mousedown', e => e.stopPropagation()); card.insertBefore(tools, ed); updateCardTools() } function updateSettingsUI() { if (!$('stFlipState')) return; $('stFlipState').textContent = 'Đang dùng: ' + (flipMode === 'single' ? '1x - bấm 1 lần để lật' : '2x - hạn chế lật nhầm'); if ($('stOptState')) $('stOptState').textContent = 'Đang hiện lựa chọn'; if ($('stToggleOpts')) $('stToggleOpts').style.display = 'none'; if ($('stGoInput')) $('stGoInput').value = (pool[ci]?.num) || ''; applyCardFontSize(); updateCardTools() } function toggleFlipMode() { flipMode = flipMode === 'single' ? 'double' : 'single'; flipped = false; renderCard(); updateSettingsUI() } function goToQuestionNum() { let n = +$('stGoInput').value; if (!n) { alert('Nhập số câu trước nha.'); return } let i = pool.findIndex(c => c.num === n); if (i < 0) i = RAW.findIndex(c => c.num === n); if (i < 0) { alert('Không tìm thấy câu ' + n); return } if (!pool.find(c => c.num === n)) pool = [...RAW]; ci = i; flipped = false; renderCard(); updateSettingsUI(); $('settingsModal').classList.add('hidden') } function init() {
   setupGlobalHeader(); document.querySelectorAll('.tab').forEach(btn => btn.onclick = () => switchTab(btn.dataset.tab, btn)); $('shuffle').onclick = shuffle; $('reset').onclick = () => triggerReset(); if ($('toggleOpts')) $('toggleOpts').remove(); try { localStorage.removeItem('hod102_hide_options'); } catch (e) { } $('openSettings').onclick = () => { $('settingsModal').classList.remove('hidden'); updateSettingsUI() }; $('closeSettings').onclick = () => $('settingsModal').classList.add('hidden'); document.querySelectorAll('.modal,.overlay').forEach(m => { m.addEventListener('mousedown', e => { if (e.target === m) m.classList.add('hidden') }) }); document.querySelectorAll('.modal .box,.overlay .box').forEach(box => { if (!box.querySelector('.modalX')) { let x = document.createElement('button'); x.className = 'modalX'; x.type = 'button'; x.textContent = '×'; x.title = 'Đóng'; x.onclick = e => { e.stopPropagation(); box.closest('.modal,.overlay')?.classList.add('hidden') }; box.prepend(x) } }); setupCardTools(); if ($('toggleGuide')) $('toggleGuide').onclick = () => { let g = $('guidePanel'), open = g.classList.toggle('hidden') === false; $('toggleGuide').textContent = open ? 'Ẩn hướng dẫn' : 'Mở hướng dẫn' }; if ($('stCardFont')) $('stCardFont').oninput = e => { cardFontSize = (+e.target.value / 100).toFixed(2); applyCardFontSize(); renderCard() }; if ($('stCardFontReset')) $('stCardFontReset').onclick = () => { cardFontSize = '1'; applyCardFontSize(); renderCard(); updateSettingsUI() }; if ($('stToggleFlipMode')) $('stToggleFlipMode').onclick = toggleFlipMode; if ($('stToggleOpts')) $('stToggleOpts').style.display = 'none'; if ($('stShuffle')) $('stShuffle').onclick = () => { shuffle(); updateSettingsUI() }; if ($('stReset')) $('stReset').onclick = () => { triggerReset(); updateSettingsUI() }; if ($('stGo')) $('stGo').onclick = goToQuestionNum; if ($('stGoInput')) $('stGoInput').onkeydown = e => { if (e.key === 'Enter') goToQuestionNum() }; if ($('stEdit')) $('stEdit').onclick = () => { openEditor(); $('settingsModal').classList.add('hidden') }; $('editCard').title = 'Báo cáo / đề xuất sửa câu'; $('editCard').textContent = '!'; $('editCard').onclick = e => { e.stopPropagation(); openEditor() }; $('prev').onclick = prev; $('next').onclick = next; $('mode').onclick = toggleFlipMode; const handleCardClick = (e) => {
     if (e.target.closest('#editCard') || e.target.closest('#cardTools') || e.target.closest('.modal')) return;
     if (flipMode === 'single') {
@@ -585,8 +397,8 @@ window.HODSupabase = (() => {
 
   const configured = () => CONFIG.SUPABASE_URL.startsWith('https://') && !CONFIG.SUPABASE_ANON_KEY.startsWith('PASTE_');
   const isReady = () => !!client && !!currentUser;
-  const isAdmin = () => currentProfile?.role === 'admin' || currentUser?.email === 'trongbm2004@gmail.com';
-  const canOpenDashboard = () => ['admin', 'editor'].includes(currentProfile?.role) || currentUser?.email === 'trongbm2004@gmail.com';
+  const isAdmin = () => currentProfile?.role === 'admin';
+  const canOpenDashboard = () => ['admin', 'editor'].includes(currentProfile?.role);
   const $id = id => document.getElementById(id);
 
   function safeJson(obj) {
@@ -696,17 +508,71 @@ window.HODSupabase = (() => {
     }
   }
 
-  function showPendingApproval() {
+  /*
+    ACCESS_GATE_STRICT_20260726
+    Cổng truy cập fail-closed: chỉ mở web chính khi profile khẳng định
+    approved === 1 VÀ blocked === 0. Thiếu profile, profile lỗi, hay /api/profile 500
+    đều bị coi là KHÔNG có quyền.
+  */
+  const PENDING_DEFAULT_TITLE = 'Chờ phê duyệt';
+  const PENDING_DEFAULT_MESSAGE = 'Tài khoản của bạn đang chờ admin phê duyệt.<br>Bạn sẽ có thể sử dụng Learning Hub sau khi được duyệt.';
+  const BLOCKED_TITLE = 'Tài khoản bị khóa';
+  const BLOCKED_MESSAGE = 'Tài khoản của bạn đã bị quản trị viên khóa.<br>Bạn đã được đăng xuất khỏi hệ thống.';
+
+  function truthyFlag(v) {
+    return v === 1 || v === true || v === '1';
+  }
+
+  /*
+    approved === 1 && blocked === 0 — không có ngoại lệ.
+    Bản cũ có `if (['admin','editor'].includes(role)) return true;` ĐẶT TRƯỚC
+    kiểm tra approved, nên editor bị thu hồi duyệt vẫn vào được giao diện chính.
+    Nó khớp với lỗ tương ứng ở server (checkUserAccess cũ) — đã sửa cả hai phía.
+    Đây chỉ là lớp hiển thị: quyền thật do server quyết định.
+  */
+  function hasFullAccess(profile) {
+    if (!profile || typeof profile !== 'object') return false;
+    if (truthyFlag(profile.blocked) || truthyFlag(profile.is_blocked) || profile.status === 'blocked') return false;
+    return truthyFlag(profile.approved);
+  }
+  window.lhHasFullAccess = hasFullAccess;
+
+  function showPendingApproval(opts) {
     const el = $id('hodPendingApproval');
     if (el) el.classList.remove('hidden');
+    const titleEl = $id('hodPendingTitle');
+    if (titleEl) titleEl.textContent = opts?.title || PENDING_DEFAULT_TITLE;
+    const msgEl = $id('hodPendingMessage');
+    if (msgEl) msgEl.innerHTML = opts?.message || PENDING_DEFAULT_MESSAGE;
     const emailEl = $id('hodPendingEmail');
     if (emailEl) emailEl.textContent = currentUser?.email || '';
     $id('hodLoginGate')?.classList.add('hidden');
     document.body?.classList.add('hod-locked');
+    window.__LH_ACCESS_OK = false;
+    /*
+      PENDING_GATE_STICKY_20260726
+      Cờ "gate đang do luồng quyền làm chủ". Các interval UI (avatar/nút admin,
+      chạy mỗi 500ms) TUYỆT ĐỐI không được tự ẩn màn chờ duyệt khi cờ này bật —
+      xem updateAll() ở block ACCOUNT AVATAR CLEAN FINAL.
+    */
+    window.__LH_GATE_LOCKED = true;
   }
+  window.showPendingApproval = showPendingApproval;
+
+  // /api/profile lỗi server (5xx) hoặc mất mạng: không kết luận được quyền => chặn.
+  function showAccessCheckError() {
+    showPendingApproval({
+      title: 'Không thể kiểm tra quyền',
+      message: 'Không thể kiểm tra quyền, vui lòng thử lại.'
+    });
+  }
+  window.showAccessCheckError = showAccessCheckError;
+
   function hidePendingApproval() {
     const el = $id('hodPendingApproval');
     if (el) el.classList.add('hidden');
+    document.body?.classList.remove('hod-locked');
+    window.__LH_GATE_LOCKED = false;
   }
 
 
@@ -731,53 +597,280 @@ window.HODSupabase = (() => {
     await sendLoginToDiscord(currentProfile?.email || currentUser.email, currentProfile?.role || 'user');
     sessionStorage.setItem(key, 'true');
   }
+  let lhApiAbortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  function getLhApiSignal() {
+    return lhApiAbortController ? lhApiAbortController.signal : undefined;
+  }
+  window.getLhApiSignal = getLhApiSignal;
+
+  function purgeOfflineQuestionCache() {
+    try {
+      RAW = []; pool = []; ci = 0; flipped = false;
+      const q = $('question'); if (q) q.textContent = 'Tài khoản chưa được duyệt hoặc đã bị khóa.';
+      const opts = $('options'); if (opts) opts.innerHTML = '';
+      const imgs = $('images'); if (imgs) imgs.innerHTML = '';
+      const total = $('total'); if (total) total.textContent = '0';
+      const idx = $('idx'); if (idx) idx.textContent = '0';
+      if (typeof renderQuiz === 'function') renderQuiz();
+      if (typeof renderStudy === 'function') renderStudy();
+
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('lh_question_') || k.startsWith('lh_raw_') || k.startsWith('lh_starred_') || k.startsWith('learninghub_questions_'))) {
+          localStorage.removeItem(k);
+        }
+      }
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const k = sessionStorage.key(i);
+        if (k && (k.startsWith('lh_') || k.startsWith('learninghub_'))) {
+          sessionStorage.removeItem(k);
+        }
+      }
+      if (typeof caches !== 'undefined' && caches.keys) {
+        caches.keys().then(names => {
+          names.forEach(name => {
+            if (name.includes('questions') || name.includes('learninghub')) caches.delete(name);
+          });
+        }).catch(() => {});
+      }
+      if (typeof indexedDB !== 'undefined' && indexedDB.databases) {
+        indexedDB.databases().then(dbs => {
+          dbs.forEach(dbInfo => {
+            if (dbInfo.name && dbInfo.name.includes('learninghub')) indexedDB.deleteDatabase(dbInfo.name);
+          });
+        }).catch(() => {});
+      }
+    } catch (e) {
+      console.warn('purgeOfflineQuestionCache error:', e);
+    }
+  }
+
+  /*
+    VI + VII. Hai kịch bản thu hồi quyền, khác nhau ở CHỖ CÓ ĐĂNG XUẤT HAY KHÔNG.
+
+      PENDING_APPROVAL (bị thu hồi duyệt): xóa sạch dữ liệu học, GIỮ phiên
+        Supabase để user chờ được duyệt lại rồi bấm "Kiểm tra lại".
+      BLOCKED (bị khóa): xóa sạch dữ liệu học VÀ đăng xuất Supabase.
+      UNAUTHORIZED (phiên hỏng/hết hạn): dọn dữ liệu và đăng xuất, vì token
+        không còn dùng được nữa.
+
+    Bản cũ gọi showPendingApproval() với text mặc định cho cả ba, nên user bị
+    khóa vẫn đọc thấy "Tài khoản của bạn đang chờ admin phê duyệt".
+  */
+  function handleAccessRevoked(reason, code = null) {
+    if (window.__LH_REVOKING_ACCESS) return;
+    window.__LH_REVOKING_ACCESS = true;
+    console.warn('[LH Auth] Thu hồi quyền:', reason, '| code:', code);
+
+    // 1. Hủy mọi request /api/ đang chạy.
+    try {
+      if (lhApiAbortController) {
+        lhApiAbortController.abort('Access revoked');
+        lhApiAbortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      }
+    } catch (e) {}
+
+    // 2. Xóa RAM, DOM, localStorage/sessionStorage/IndexedDB/Cache Storage.
+    window.__LH_ACCESS_OK = false;
+    currentProfile = null;
+    purgeOfflineQuestionCache();
+
+    // 3. Dừng timer nền và subscription.
+    try { if (typeof window.lhTeardownAccessWatch === 'function') window.lhTeardownAccessWatch(); } catch (e) {}
+
+    const mustSignOut = code === 'BLOCKED' || code === 'UNAUTHORIZED';
+
+    if (code === 'BLOCKED') {
+      showPendingApproval({ title: BLOCKED_TITLE, message: BLOCKED_MESSAGE });
+    } else if (code === 'UNAUTHORIZED') {
+      showPendingApproval({
+        title: 'Phiên đăng nhập đã hết hạn',
+        message: 'Vui lòng đăng nhập lại để tiếp tục.'
+      });
+    } else {
+      showPendingApproval({ title: PENDING_DEFAULT_TITLE, message: PENDING_DEFAULT_MESSAGE });
+    }
+
+    if (mustSignOut) {
+      try { unsubscribeUserStatusRealtime(); } catch (e) {}
+      if (typeof signOut === 'function') signOut().catch(() => {});
+    }
+
+    updateAuthUI();
+    setTimeout(() => { window.__LH_REVOKING_ACCESS = false; }, 3000);
+  }
+  window.handleAccessRevoked = handleAccessRevoked;
+
+  /*
+    V. SUPABASE REALTIME — CHỈ LÀ CƠ CHẾ BÁO THAY ĐỔI, KHÔNG PHẢI NGUỒN QUYỀN.
+
+    Bản cũ quyết định quyền TRỰC TIẾP từ payload realtime:
+      if (data.blocked === true) handleAccessRevoked(...)
+      else if (data.approved === false) handleAccessRevoked(...)
+    Ba vấn đề:
+      1. Tin vào nội dung một message có thể bị giả mạo/ lỗi thời để khoá UI.
+      2. Payload từ server đã từng sai thật: toggle_user_block gửi kèm
+         `approved: !blocked`, nên mở khoá một tài khoản CHƯA DUYỆT lại báo cho
+         client rằng nó đã được duyệt.
+      3. Nó cũng nghe postgres_changes trên public.profiles của Supabase —
+         nhưng bảng profiles thật nằm ở TURSO. Kênh đó hoặc không bao giờ bắn,
+         hoặc bắn dữ liệu của một bảng đã lỗi thời. Đã bỏ hẳn.
+
+    Nay: nhận tín hiệu -> chống trùng -> gọi ĐÚNG MỘT LẦN /api/profile ->
+    xử lý theo kết quả thật từ Turso.
+  */
+  let statusRealtimeChannel = null;
+  let lastRealtimeSignalAt = 0;
+
+  function unsubscribeUserStatusRealtime() {
+    if (!statusRealtimeChannel) return;
+    try { statusRealtimeChannel.unsubscribe(); } catch (e) { }
+    statusRealtimeChannel = null;
+    window.__lhRealtimeConnected = false;
+  }
+  window.lhUnsubscribeUserStatus = unsubscribeUserStatusRealtime;
+
+  function onRealtimeSignal(reason) {
+    // Chống xử lý sự kiện trùng: nhiều message dồn trong 2s chỉ tính là một.
+    const now = Date.now();
+    if (now - lastRealtimeSignalAt < 2000) return;
+    lastRealtimeSignalAt = now;
+    if (typeof window.lhRevalidateAccess === 'function') {
+      window.lhRevalidateAccess('realtime:' + (reason || 'status_changed'));
+    }
+  }
+
+  function subscribeUserStatusRealtime(userId) {
+    // Một user chỉ có ĐÚNG MỘT subscription, kể cả khi lh:profile-ready bắn lại.
+    if (!userId || statusRealtimeChannel) return;
+    try {
+      const supa = window.HODSupabase?.__client;
+      if (!supa || typeof supa.channel !== 'function') return;
+
+      // Client chỉ subscribe channel của CHÍNH user đang đăng nhập.
+      statusRealtimeChannel = supa.channel('user-status-' + userId);
+
+      statusRealtimeChannel.on('broadcast', { event: 'status_changed' }, (msg) => {
+        const data = msg?.payload || {};
+        onRealtimeSignal(data.reason);
+      });
+
+      statusRealtimeChannel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[Realtime] đã theo dõi trạng thái tài khoản:', userId);
+          window.__lhRealtimeConnected = true;
+          if (typeof window.stopFallbackPolling === 'function') window.stopFallbackPolling();
+          // Kết nối (lại) xong thì kiểm tra một lần, phòng khi có thay đổi
+          // xảy ra đúng lúc kênh đang đứt.
+          if (typeof window.lhRevalidateAccess === 'function') window.lhRevalidateAccess('realtime:subscribed');
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn('[Realtime] mất kết nối:', status);
+          window.__lhRealtimeConnected = false;
+          if (document.visibilityState === 'visible' && typeof window.startFallbackPolling === 'function') {
+            window.startFallbackPolling();
+          }
+        }
+      });
+    } catch (e) {
+      console.warn('[Realtime] không đăng ký được kênh:', e);
+      statusRealtimeChannel = null;
+      window.__lhRealtimeConnected = false;
+      if (document.visibilityState === 'visible' && typeof window.startFallbackPolling === 'function') {
+        window.startFallbackPolling();
+      }
+    }
+  }
+
+  window.addEventListener('lh:profile-ready', () => {
+    const u = window.HODSupabase?.getUser?.();
+    if (u?.id) subscribeUserStatusRealtime(u.id);
+  });
+
+  /*
+    X. CHỐNG REQUEST TRÙNG
+    activeProfilePromise: nếu /api/profile đang chạy thì mọi lời gọi khác dùng
+    chung promise đó, KHÔNG tạo request thứ hai. init(), onAuthStateChange,
+    visibilitychange, Realtime và polling đều đi qua đây.
+
+    checkOnly = true -> gửi { check_only: true }: server chỉ ĐỌC trạng thái
+    quyền (PK lookup, cột hẹp) và không ghi gì. Dùng cho mọi lần xác minh lại
+    (Realtime / quay lại tab / polling), nên một tab mở cả ngày không còn tạo ra
+    hàng loạt lượt ghi device_history + last_login vô nghĩa.
+  */
   let activeProfilePromise = null;
-  async function loadProfile() {
+  async function loadProfile(force = false, checkOnly = false) {
+    window.loadProfile = loadProfile;
     if (!currentUser) { currentProfile = null; updateAuthUI(); return null; }
     if (activeProfilePromise) return activeProfilePromise;
     activeProfilePromise = (async () => {
       try {
+        const activeSubjectCode = (localStorage.getItem('learninghub_subject_code_merged_v1') || '').trim();
+        const body = checkOnly
+          ? { check_only: true }
+          : {
+              id: currentUser.id,
+              email: currentUser.email || '',
+              full_name: currentUser.user_metadata?.full_name || '',
+              avatar_url: currentUser.user_metadata?.avatar_url || currentUser.user_metadata?.picture || '',
+              current_subject: activeSubjectCode,
+              device_info: typeof getDeviceTypeString === 'function' ? getDeviceTypeString() : undefined,
+              last_login: new Date().toISOString(),
+              last_activity: new Date().toISOString()
+            };
         const res = await fetch('/api/profile?turso=1&ts=' + Date.now(), {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
-          body: JSON.stringify({
-            id: currentUser.id,
-            email: currentUser.email || '',
-            full_name: currentUser.user_metadata?.full_name || '',
-            avatar_url: currentUser.user_metadata?.avatar_url || currentUser.user_metadata?.picture || '',
-            last_login: new Date().toISOString(),
-            last_activity: new Date().toISOString()
-          })
+          body: JSON.stringify(body)
         });
         const json = await res.json().catch(() => ({}));
-        if (!res.ok || json.error) throw new Error(json.error || 'Không tải được profile từ Turso');
+        if (!res.ok || json.error) {
+          currentProfile = null;
+          window.__LH_ACCESS_OK = false;
+          /*
+            VIII: chỉ 401/403 mới là "mất quyền". 500 và lỗi mạng chỉ có nghĩa là
+            KHÔNG KẾT LUẬN ĐƯỢC -> hiện "Không thể kiểm tra quyền" kèm nút thử
+            lại, tuyệt đối không xóa dữ liệu và không đăng xuất user.
+          */
+          if (res.status === 401 || res.status === 403) {
+            handleAccessRevoked(json.error || 'Tài khoản chưa được duyệt hoặc đã bị khóa.',
+              json.code || (res.status === 401 ? 'UNAUTHORIZED' : 'PENDING_APPROVAL'));
+          } else {
+            showAccessCheckError();
+            updateAuthUI();
+          }
+          throw new Error(json.error || `Không kiểm tra được quyền (HTTP ${res.status})`);
+        }
         currentProfile = json.data || json.profile || json;
-        if (currentUser?.email === 'trongbm2004@gmail.com' && currentProfile) {
-          currentProfile.role = 'admin';
-          currentProfile.approved = true;
-        }
         if (json.force_logout || currentProfile?.force_logout) {
-          location.reload();
+          await forceLogoutNow();
           return null;
         }
-        if (currentProfile?.blocked || currentProfile?.is_blocked || currentProfile?.status === 'blocked') {
-          alert('Tài khoản của bạn đã bị khóa.');
-          await signOut();
+        if (truthyFlag(currentProfile?.blocked)) {
+          handleAccessRevoked('Tài khoản đã bị khóa', 'BLOCKED');
           return null;
         }
-        await notifyLoginToDiscordOnce();
-        if (currentProfile?.approved === false || currentProfile?.approved === 0 || currentProfile?.approved === '0') {
-          showPendingApproval();
-          updateAuthUI();
+        // Fail-closed: chỉ đi tiếp khi approved === 1 && blocked === 0.
+        // (Server đã trả 403 PENDING_APPROVAL trong trường hợp này; đây là lớp
+        //  phòng thủ thứ hai phòng khi server cũ chưa kịp deploy.)
+        if (!hasFullAccess(currentProfile)) {
+          handleAccessRevoked('Tài khoản chưa được phê duyệt', 'PENDING_APPROVAL');
           return null;
         }
+        if (!checkOnly) await notifyLoginToDiscordOnce();
+        window.__LH_ACCESS_OK = true;
         hidePendingApproval();
         updateAuthUI();
-        // Start notification loading only after the authenticated profile is ready.
         window.dispatchEvent(new CustomEvent('lh:profile-ready'));
         return currentProfile;
       } catch (e) {
         console.error('[Turso profile]', e);
         currentProfile = null;
+        window.__LH_ACCESS_OK = false;
+        // Lỗi mạng / JSON hỏng: cũng không được vào web chính.
+        if (!document.getElementById('hodPendingApproval')?.classList.contains('hidden')) {
+          // gate đã hiển thị ở nhánh trên, giữ nguyên thông điệp
+        } else {
+          showAccessCheckError();
+        }
         updateAuthUI();
         return null;
       } finally { activeProfilePromise = null; }
@@ -785,9 +878,20 @@ window.HODSupabase = (() => {
     return activeProfilePromise;
   }
 
+  /*
+    V.3: điểm vào DUY NHẤT cho việc "xác minh lại quyền từ Turso".
+    lhRevalidateAccess() (interceptor cuối file) gọi hàm này sau khi đã dedupe
+    và debounce, nên một sự kiện Realtime chỉ sinh ra tối đa MỘT request.
+  */
+  window.lhCheckProfileOnce = function (reason) {
+    console.debug('[LH access] xác minh lại quyền từ Turso, nguồn:', reason || 'unknown');
+    return loadProfile(true, true);
+  };
+
   async function loadQuestionsFromSupabase() {
     if (!currentUser) return false;
-    if (currentProfile && (currentProfile.approved === false || currentProfile.approved === 0 || currentProfile.approved === '0')) { showPendingApproval(); return false; }
+    // ACCESS_GATE_STRICT_20260726: fail-closed.
+    if (!hasFullAccess(currentProfile)) { showPendingApproval(); return false; }
     const activeSubject = localStorage.getItem('learninghub_subject_code_merged_v1') || '';
     if (!activeSubject) return false;
     try {
@@ -847,12 +951,35 @@ window.HODSupabase = (() => {
     alert('Đã tạo tài khoản. Nếu Supabase yêu cầu xác nhận email, hãy xác nhận rồi đăng nhập.');
   }
 
+  /*
+    FORCE_LOGOUT_REALLY_SIGNS_OUT_20260726
+    Bug cũ: admin bấm "Đăng xuất người dùng" -> server set force_logout=1.
+    Lần gọi /api/profile kế tiếp, server ĐỌC cờ rồi RESET NGAY về 0 và trả force_logout:true.
+    Client chỉ chạy location.reload() — KHÔNG hề signOut. Sau khi reload, session Supabase
+    vẫn còn và cờ đã bị reset => user đăng nhập lại như thường.
+    Kết quả: "Đăng xuất người dùng" chỉ có tác dụng như F5.
+    Sửa: thực sự huỷ session Supabase trước khi reload.
+  */
+  async function forceLogoutNow(reason) {
+    if (window.__LH_FORCE_LOGGING_OUT) return;
+    window.__LH_FORCE_LOGGING_OUT = true;
+    try { purgeOfflineQuestionCache(); } catch (e) {}
+    try { await signOut(); } catch (e) { console.warn('[forceLogout] signOut failed:', e); }
+    try { alert(reason || 'Bạn đã được quản trị viên đăng xuất khỏi hệ thống.'); } catch (e) {}
+    location.reload();
+  }
+  window.lhForceLogout = forceLogoutNow;
+
   async function signOut() {
     if (!client) return;
+    // IX: dọn subscription + timer khi đăng xuất, không để timer mồ côi chạy tiếp.
+    try { unsubscribeUserStatusRealtime(); } catch (e) { }
+    try { if (typeof window.lhTeardownAccessWatch === 'function') window.lhTeardownAccessWatch(); } catch (e) { }
     Object.keys(sessionStorage).filter(k => k.startsWith('hod_web_login_discord_notified_')).forEach(k => sessionStorage.removeItem(k));
     await client.auth.signOut();
     currentUser = null;
     currentProfile = null;
+    window.__LH_ACCESS_OK = false;
     updateAuthUI();
     notify2('Đã đăng xuất');
   }
@@ -971,7 +1098,7 @@ window.HODSupabase = (() => {
       const btn = $id('hodPendingRefresh');
       if (btn) { btn.disabled = true; btn.textContent = 'Đang kiểm tra...'; }
       await loadProfile();
-      if (currentProfile?.approved !== false) await loadQuestionsFromSupabase();
+      if (hasFullAccess(currentProfile)) await loadQuestionsFromSupabase();
       if (btn) { btn.disabled = false; btn.textContent = 'Kiểm tra lại'; }
     });
     $id('hodPendingLogout')?.addEventListener('click', async () => {
@@ -1093,7 +1220,23 @@ window.HODSupabase = (() => {
   async function logout() { await window.HODSupabase?.signOut?.(); showLogin(); updateAll() }
   function openDash() { if (isAdmin()) window.open('admin.html', '_blank'); else alert('Tài khoản này không có quyền admin.') }
   function updateMenu() { const admin = isAdmin(); const pRole = (profile()?.role || (email() === 'trongbm2004@gmail.com' ? 'admin' : 'user')); const rawRole = String(pRole).toLowerCase(); const mail = $('hodAccountEmail'); if (mail) mail.textContent = email() || 'Chưa đăng nhập'; const role = $('hodAccountRole'); if (role) role.textContent = (rawRole === 'admin' || email() === 'trongbm2004@gmail.com') ? 'Admin' : (rawRole === 'editor' ? 'Editor' : 'Người học'); const av = $('hodAccountAvatarBig'); if (av) { const __avb = avatarHTML(); if (av.dataset.av !== __avb) { av.innerHTML = __avb; av.dataset.av = __avb; } } $('hodAccountDashboard')?.classList.toggle('hidden', !admin) }
-  function updateAll() { ensureAvatar(); const u = user(); const p = profile(); const admin = isAdmin(); const pending = u && p && p.approved === false; document.body?.classList.toggle('hod-is-admin-final', admin); if (pending) { $('hodLoginGate')?.classList.add('hidden'); $('hodPendingApproval')?.classList.remove('hidden'); document.body?.classList.add('hod-locked'); const emailEl = $('hodPendingEmail'); if (emailEl) emailEl.textContent = p.email || u.email || ''; } else if (u) { hideLogin(); $('hodPendingApproval')?.classList.add('hidden'); } else { showLogin(); } const top = $('hodTopAvatar'); if (top) { const __ah = avatarHTML(); if (top.dataset.av !== __ah) { top.innerHTML = __ah; top.dataset.av = __ah; } top.style.display = (u && !pending) ? 'grid' : 'none' } const headerAdmin = $('adminOpenBtn'); if (headerAdmin) { headerAdmin.remove(); } if (!admin) $('adminModal')?.classList.add('hidden'); updateMenu() }
+  /*
+    PENDING_GATE_STICKY_20260726
+    Bug: điều kiện cũ là `u && p && p.approved === false`. Từ khi /api/profile trả
+    403 PENDING_APPROVAL thì user chưa duyệt KHÔNG bao giờ có profile nữa
+    (handleAccessRevoked đặt currentProfile = null), nên p = null -> pending = false
+    -> nhánh `else if (u)` của interval 500ms này ẩn luôn màn "Chờ phê duyệt" mà
+    showPendingApproval() vừa mở và bỏ luôn class hod-locked. Kết quả: user chưa
+    duyệt nhìn thấy giao diện chính rỗng với dòng "Tài khoản chưa được duyệt hoặc
+    đã bị khóa." nằm trong khung câu hỏi (do purgeOfflineQuestionCache ghi vào
+    #question), thay vì màn chờ duyệt.
+    Nay: showPendingApproval()/hidePendingApproval() là chủ của gate
+    (window.__LH_GATE_LOCKED); interval này chỉ đồng bộ theo, không tự đóng gate,
+    và KHÔNG ghi đè title/message vì lý do chặn (chờ duyệt / bị khóa / hết phiên)
+    do luồng quyền đặt.
+  */
+  function denied() { const u = user(); if (!u) return false; if (window.__LH_GATE_LOCKED === true) return true; const p = profile(); return !!p && !(window.lhHasFullAccess?.(p) ?? true); }
+  function updateAll() { ensureAvatar(); const u = user(); const p = profile(); const admin = isAdmin(); const pending = denied(); document.body?.classList.toggle('hod-is-admin-final', admin); if (pending) { $('hodLoginGate')?.classList.add('hidden'); $('hodPendingApproval')?.classList.remove('hidden'); document.body?.classList.add('hod-locked'); const emailEl = $('hodPendingEmail'); if (emailEl && !emailEl.textContent) emailEl.textContent = p?.email || u.email || ''; } else if (u) { hideLogin(); $('hodPendingApproval')?.classList.add('hidden'); } else if (window.__LH_GATE_LOCKED === true) { /* BLOCKED: đã signOut nhưng vẫn phải đọc được lý do; chỉ nút "Đăng xuất" trong gate mới mở cờ này. */ } else { showLogin(); } const top = $('hodTopAvatar'); if (top) { const __ah = avatarHTML(); if (top.dataset.av !== __ah) { top.innerHTML = __ah; top.dataset.av = __ah; } top.style.display = (u && !pending) ? 'grid' : 'none' } const headerAdmin = $('adminOpenBtn'); if (headerAdmin) { headerAdmin.remove(); } if (!admin) $('adminModal')?.classList.add('hidden'); updateMenu() }
   function patchAdmin() { if (!window.HODSupabase || window.HODSupabase.__avatarCleanPatch) return; const old = window.HODSupabase.openAdmin; window.HODSupabase.openAdmin = function () { if (!window.HODSupabase.canOpenDashboard?.()) { $('adminModal')?.classList.add('hidden'); alert('Tài khoản này không có quyền admin.'); return } return old?.apply(this, arguments) }; window.HODSupabase.__avatarCleanPatch = true }
   function bind() { $('hodGateLoginBtn')?.addEventListener('click', login); $('hodLogoutBtn')?.addEventListener('click', logout); $('hodAccountDashboard')?.addEventListener('click', openDash); document.addEventListener('click', e => { const m = $('hodAccountMenu'), a = $('hodTopAvatar'); if (m && !m.contains(e.target) && a && !a.contains(e.target)) m.classList.add('hidden') }); setInterval(() => { patchAdmin(); updateAll() }, 500); setTimeout(() => { patchAdmin(); updateAll() }, 250) }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind); else bind();
@@ -1136,10 +1279,17 @@ window.HODSupabase = (() => {
     return browser ? `${os} · ${browser}` : os;
   }
   function syncUserSubjectToProfile(code) {
-    const u = user();
-    if (!u) return;
+    const u = user() || window.HODSupabase?.getUser?.();
+    if (!u) {
+      setTimeout(() => {
+        const u2 = user() || window.HODSupabase?.getUser?.();
+        if (u2) syncUserSubjectToProfile(code);
+      }, 1000);
+      return;
+    }
     try {
       const md = u.user_metadata || {};
+      const sub = code || subjectCode() || '';
       fetch('/api/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1148,13 +1298,13 @@ window.HODSupabase = (() => {
           email: u.email,
           full_name: md.full_name || md.name || '',
           avatar_url: md.avatar_url || md.picture || '',
-          current_subject: code || subjectCode() || '',
-          device_info: getDeviceTypeString()
+          current_subject: sub,
+          device_info: typeof getDeviceTypeString === 'function' ? getDeviceTypeString() : undefined
         })
       }).catch(e => console.warn('syncUserSubjectToProfile failed:', e));
     } catch (e) { }
   }
-  function setSubject(code) { if (code) localStorage.setItem(SUBJECT_STORE, code); else localStorage.removeItem(SUBJECT_STORE); pickedCode = code || ''; syncSubjectTexts(); syncUserSubjectToProfile(code); }
+  function setSubject(code) { if (code) localStorage.setItem(SUBJECT_STORE, code); else localStorage.removeItem(SUBJECT_STORE); pickedCode = code || ''; syncSubjectTexts(); syncUserSubjectToProfile(code); try { if (typeof window.__examResetForSubjectChange === 'function') window.__examResetForSubjectChange(); } catch (e) { } }
   function meta(code) { return subjectsCache.find(x => x.code === code) || null; }
   function label(code) { const m = meta(code); return m ? `${displayCode(m.code)} · ${m.name || ''}` : (displayCode(code) || 'Chưa chọn môn'); }
   function notifyUX(msg) { if (typeof notify === 'function') notify(msg); else console.log(msg); }
@@ -1288,8 +1438,8 @@ window.HODSupabase = (() => {
   async function loadBySubject(code) {
     if (!code) return false;
     syncUserSubjectToProfile(code);
-    const p = window.HODSupabase?.getProfile?.() || null;
-    if (p && (p.approved === false || p.approved === 0 || p.approved === '0')) return false;
+    // ACCESS_GATE_STRICT_20260726: fail-closed, không có profile hợp lệ thì không gọi /api/questions.
+    if (!window.lhHasFullAccess?.(window.HODSupabase?.getProfile?.() || null)) return false;
     try {
       const res = await fetch('/api/questions?subject_code=' + encodeURIComponent(code) + '&ts=' + Date.now(), { cache: 'no-store' });
       const json = await res.json().catch(() => ({}));
@@ -1349,7 +1499,7 @@ window.HODSupabase = (() => {
   function patchSave() { if (window.__hubPatchSaveMerged || typeof saveEditor !== 'function') return; window.__hubPatchSaveMerged = true; const old = saveEditor; saveEditor = async function () { let oldQ = clone(RAW.find(c => c.num === editDraft.num) || pool[ci] || editDraft); editDraft.question = $('editQuestion').value.trim(); editDraft.answer = $('editAnswer').value.trim().toUpperCase(); let ops = {}; document.querySelectorAll('[data-opt]').forEach(t => { if (t.value.trim()) ops[t.dataset.opt] = t.value.trim(); }); editDraft.options = ops; editDraft.answer_text = answerText(editDraft); editDraft.subject_code = subjectCode(); if (window.HODSupabase && window.HODSupabase.isReady()) { const _role = String(window.HODSupabase?.getProfile?.()?.role || '').trim().toLowerCase(); if (['admin', 'editor'].includes(_role)) { const _qid = oldQ?.id || editDraft?.id; if (!_qid) { alert('Không tìm thấy ID câu hỏi. Hãy tải lại trang rồi thử lại.'); return; } const _u = window.HODSupabase?.getUser?.(); if (!_u?.id) { alert('Chưa đăng nhập. Hãy đăng nhập lại.'); return; } const _list = editDraft.images || []; const _text = editDraft.question + ' ' + Object.values(editDraft.options || {}).join(' '); const _needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(_text); const _hasImg = !!(_list.length || oldQ?.has_image); const _risk = (editDraft.answer?.length || 0) > 1 ? 'medium' : 'low'; const _newData = { question: editDraft.question, options: editDraft.options || {}, answer: editDraft.answer, answer_text: editDraft.answer_text, images: _list, has_image: _hasImg || _needsImg, error_risk: _risk, error_risk_reason: null }; const _oldData = { question: oldQ.question, options: oldQ.options || {}, answer: oldQ.answer, answer_text: oldQ.answer_text, images: oldQ.images || [] }; if (typeof notify === 'function') notify('Đang lưu...'); try { const _res = await fetch('/api/admin-action', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ user_id: _u.id, action: 'save_question_direct', payload: { question_id: _qid, new_data: _newData, old_data: _oldData } }) }); const _json = await _res.json().catch(() => ({})); if (!_res.ok || _json.error) { alert('Lưu trực tiếp thất bại: ' + (_json.error || _res.status)); return; } } catch (_err) { alert('Lỗi kết nối khi lưu: ' + _err.message); return; } if (typeof window.clearLearningHubQuestionCache === 'function') window.clearLearningHubQuestionCache(); $('editModal')?.classList.add('hidden'); if (typeof notify === 'function') notify('Đã lưu trực tiếp ✓'); if (typeof window.loadCurrentSubjectOnly === 'function') await window.loadCurrentSubjectOnly(true); else if (window.HODSupabase?.loadQuestionsFromSupabase) await window.HODSupabase.loadQuestionsFromSupabase(true); return; } await window.HODSupabase.submitEditRequest(editDraft, oldQ); return; } return old(); }; const _saveBtn = $('saveEdit'); if (_saveBtn) _saveBtn.onclick = saveEditor; }
   function patchSignOut() { if (window.__hubPatchSignoutMerged || !window.HODSupabase?.signOut) return; window.__hubPatchSignoutMerged = true; const old = window.HODSupabase.signOut.bind(window.HODSupabase); window.HODSupabase.signOut = async function () { setSubject(''); return old(); }; }
   function ensureChangeBtn() { if (!$('hodChangeSubjectBtn')) return; $('hodChangeSubjectBtn').onclick = e => { e?.preventDefault?.(); openGate(true); }; }
-  function isApproved() { const p = window.HODSupabase?.getProfile?.() || null; return !p || p.approved !== false; }
+  function isApproved() { return !!window.lhHasFullAccess?.(window.HODSupabase?.getProfile?.() || null); }
   function bind() {
     ensureChip();
     ensureChangeBtn();
@@ -2080,8 +2230,11 @@ Bắt đầu ngay từ câu 1.`;
     const subject = code();
     if (!logged()) { empty('Đăng nhập để tải dữ liệu từ Turso'); return false; }
     if (!subject) { empty('Chọn môn để tải dữ liệu từ Turso'); return false; }
-    const p = window.HODSupabase?.getProfile?.() || null;
-    if (p && (p.approved === false || p.approved === 0 || p.approved === '0')) { empty('Tài khoản đang chờ duyệt'); return false; }
+    // ACCESS_GATE_STRICT_20260726: fail-closed.
+    if (!window.lhHasFullAccess?.(window.HODSupabase?.getProfile?.() || null)) { empty('Tài khoản đang chờ duyệt'); return false; }
+    if (typeof syncUserSubjectToProfile === 'function') {
+      try { syncUserSubjectToProfile(subject); } catch (e) {}
+    }
     try {
       const res = await fetch('/api/questions?subject_code=' + encodeURIComponent(subject) + '&ts=' + Date.now(), { cache: 'no-store' });
       const json = await res.json().catch(() => ({}));
@@ -2232,7 +2385,6 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
 (function () {
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const supa = () => window.HODSupabase?.__client || null;
   const user = () => window.HODSupabase?.getUser?.() || null;
 
   function ensureReportModal() {
@@ -2288,20 +2440,24 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
   async function loadReportModalList() {
     ensureReportModal();
     const list = $('hodReportModalList');
-    const c = supa();
     const u = user();
     if (!list) return;
-    if (!c || !u) {
+    if (!u) {
       list.innerHTML = '<div class="hodReportEmpty">Đăng nhập để xem báo cáo.</div>';
       return;
     }
     list.innerHTML = '<div class="hodReportEmpty">Đang tải...</div>';
-    const { data, error } = await c.from('edit_requests')
-      .select('id,question_num,status,admin_note,created_at')
-      .eq('user_id', u.id)
-      .order('created_at', { ascending: false })
-      .limit(50);
-    if (error) {
+    // FIX_20260726: trước đây đọc thẳng client.from('edit_requests') của Supabase —
+    // đường đó đã CHẾT (dữ liệu nằm ở Turso, Supabase chỉ còn dùng để auth) nên
+    // danh sách luôn rỗng/lỗi. Dùng chung nguồn với chuông header: /api/my-edit-requests.
+    let data = null;
+    try {
+      const res = await fetch('/api/my-edit-requests?ts=' + Date.now(), { cache: 'no-store' });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || !Array.isArray(out?.data)) throw new Error(out?.error || res.status);
+      data = out.data;
+    } catch (e) {
+      console.warn('[reports] không tải được báo cáo:', e);
       list.innerHTML = '<div class="hodReportEmpty">Không tải được báo cáo.</div>';
       return;
     }
@@ -2394,6 +2550,10 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
     wrap.classList.remove('lhDragging');
     wrap.classList.add('lhSliding');
     wrap.style.transition = 'none';
+    // Khi vào đây từ một cú vuốt, touchmove đã hạ opacity của wrap xuống thấp nhất .4
+    // để tạo cảm giác thẻ mờ dần theo ngón tay. Phải trả lại 1 ngay tại đây, nếu không
+    // câu MỚI trượt vào vẫn mang inline opacity cũ và bị tối đi vĩnh viễn.
+    wrap.style.opacity = '1';
     dir === 'next' ? goNext() : goPrev(); // đổi nội dung #card bên trong wrap
     const fromX = dir === 'next' ? '100%' : '-100%'; // next: câu mới vào từ bên phải; prev: từ bên trái
     const toX = dir === 'next' ? '-100%' : '100%';   // câu cũ (ghost) ra cùng hướng vuốt
@@ -2419,7 +2579,7 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
       __slideDone = true;
       wrap.removeEventListener('transitionend', finishSlide);
       ghost.remove();
-      wrap.style.transition = ''; wrap.style.transform = '';
+      wrap.style.transition = ''; wrap.style.transform = ''; wrap.style.opacity = '';
       wrap.classList.remove('lhSliding');
       __sliding = false; window.__lhSuppressFlip = false;
     }
@@ -2595,7 +2755,9 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
       const res = await fetch('/api/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ id: u.id, email: u.email || '', full_name: md.full_name || md.name || '', avatar_url: md.avatar_url || md.picture || '' }) });
       const json = await res.json().catch(() => ({}));
       if (json && (json.force_logout || json.data?.force_logout)) {
-        location.reload();
+        // FORCE_LOGOUT_REALLY_SIGNS_OUT_20260726: phải huỷ session, không chỉ reload.
+        if (typeof window.lhForceLogout === 'function') window.lhForceLogout();
+        else location.reload();
       }
     } catch (e) {
       console.warn('[last_activity]', e);
@@ -2629,7 +2791,9 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
       });
       const json = await res.json().catch(() => ({}));
       if (json && (json.force_logout || json.data?.force_logout)) {
-        location.reload();
+        // FORCE_LOGOUT_REALLY_SIGNS_OUT_20260726: phải huỷ session, không chỉ reload.
+        if (typeof window.lhForceLogout === 'function') window.lhForceLogout();
+        else location.reload();
       }
     } catch (e) { /* ignore */ }
   }, 60000);
@@ -4733,7 +4897,9 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
     try {
       const st = JSON.parse(localStorage.getItem(EXAM_STORE) || 'null');
       if (!st || !Array.isArray(st.nums) || !st.nums.length || !Array.isArray(RAW) || !RAW.length) return false;
-      if (st.subject && examSubject() && st.subject !== examSubject()) return false;
+      const curSub = examSubject() || '';
+      const stSub = st.subject || '';
+      if (!stSub || !curSub || stSub !== curSub) return false;
       const restored = st.nums.map((n, i) => RAW.find(c => String(c.id || '') === String(st.ids?.[i] || '') || Number(c.num) === Number(n))).filter(Boolean);
       if (!restored.length) return false;
       qSet = restored;
@@ -5227,30 +5393,30 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
             
             <div class="kizspyMapGrid">
               ${(qSet || []).map((qItem, idx) => {
-                const userSel = qSel[idx] || '';
-                const isUserDone = !!userSel;
-                const isChecked = examOnlyReview || !!kizspyCheckedMap[idx];
-                const isCurrent = idx === examOnlyIndex;
-                const correctAnsStr = qItem.answer || '';
-                const isCorrect = isUserDone && S(userSel) === S(correctAnsStr);
+        const userSel = qSel[idx] || '';
+        const isUserDone = !!userSel;
+        const isChecked = examOnlyReview || !!kizspyCheckedMap[idx];
+        const isCurrent = idx === examOnlyIndex;
+        const correctAnsStr = qItem.answer || '';
+        const isCorrect = isUserDone && S(userSel) === S(correctAnsStr);
 
-                let itemClass = '';
-                if (isCurrent) itemClass += ' current';
-                if (isChecked && isUserDone) {
-                  itemClass += isCorrect ? ' ok' : ' bad';
-                } else if (isUserDone) {
-                  itemClass += ' done';
-                }
+        let itemClass = '';
+        if (isCurrent) itemClass += ' current';
+        if (isChecked && isUserDone) {
+          itemClass += isCorrect ? ' ok' : ' bad';
+        } else if (isUserDone) {
+          itemClass += ' done';
+        }
 
-                const subLabel = userSel ? E(userSel) : (isChecked && isUserDone ? (isCorrect ? '✓' : '✕') : '');
+        const subLabel = userSel ? E(userSel) : (isChecked && isUserDone ? (isCorrect ? '✓' : '✕') : '');
 
-                return `
+        return `
                   <div class="kizspyMapItem ${itemClass}" data-exam-jump="${idx}">
                     <span>${idx + 1}</span>
                     ${subLabel ? `<span class="kizspyMapItemSub">${subLabel}</span>` : ''}
                   </div>
                 `;
-              }).join('')}
+      }).join('')}
             </div>
           </div>
         </div>
@@ -5701,6 +5867,9 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
     examSelectedCodes = [];
     quizMode = 'exam';
     kizspyCheckedMap = {};
+    document.body.classList.remove('kizspy-active');
+    const portal = document.getElementById('kizspyExamPortal');
+    if (portal) portal.remove();
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(bind, 120)); else setTimeout(bind, 120);
@@ -5745,13 +5914,40 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
   function risk(q) { return q?.error_risk || (ans(q).length > 1 ? 'medium' : 'low') }
   function rColor(r) { return { high: '#e74c3c', medium: '#f39c12', low: '#27ae60' }[r] || '#999' }
   function rLabel(r) { return { high: 'Cao', medium: 'Trung bình', low: 'Thấp' }[r] || r }
-  function pass(q) { if (libraryFilter === 'all') return true; if (libraryFilter === 'has_image') return hasImg(q); return risk(q) === libraryFilter }
+  function pass(q) {
+    if (libraryFilter === 'all') return true;
+    if (libraryFilter === 'has_image') return hasImg(q);
+    if (libraryFilter === 'starred') return typeof window.__isBookmarked === 'function' ? window.__isBookmarked(q) : false;
+    return risk(q) === libraryFilter;
+  }
   function answerText2(q) { const a = ans(q); return a ? a.split('').map(k => k + '. ' + (q.options?.[k] || '')).join(' | ') : 'Chưa có đáp án' }
   function nextKey(opts) { const used = new Set(Object.keys(opts || {}).map(k => String(k).toUpperCase())); return LETTERS.find(k => !used.has(k)) }
   function miniImg(q) { const imgs = (q.images || []).map(src).filter(Boolean); return imgs.length ? `<div class="v7MiniImgs libraryMiniImgs"><img src="${esc(imgs[0])}" alt="Ảnh câu hỏi" loading="lazy" decoding="async">${imgs.length > 1 ? `<span class="v7ImgCount">+${imgs.length - 1}</span>` : ''}</div>` : '<div class="v7MiniImgs libraryMiniImgs"></div>' }
   function stat(data) { return { total: data.length, img: data.filter(hasImg).length, high: data.filter(q => risk(q) === 'high').length, medium: data.filter(q => risk(q) === 'medium').length, low: data.filter(q => risk(q) === 'low').length } }
-  function renderLibraryStats(data) { const list = $('studyList'); if (!list) return; let box = $('libraryQuestionFilters'); if (!box) { box = document.createElement('div'); box.id = 'libraryQuestionFilters'; box.className = 'v7Stats libraryQuestionFilters'; list.parentNode.insertBefore(box, list) } const s = stat(data), fs = [['all', 'Thư viện'], ['has_image', '📷 Có ảnh'], ['high', 'Rủi ro cao'], ['medium', 'Trung bình'], ['low', 'Thấp']]; box.innerHTML = `<div class="v7StatLine"><span class="v7StatItem">${s.total} câu</span><span class="v7StatItem" style="color:#3498db">${s.img} có ảnh</span><span class="v7StatItem" style="color:#e74c3c">${s.high} rủi ro cao</span><span class="v7StatItem" style="color:#f39c12">${s.medium} trung bình</span><span class="v7StatItem" style="color:#27ae60">${s.low} thấp</span></div><div class="v7FilterLine">${fs.map(f => `<button type="button" class="v7FilterBtn ${libraryFilter === f[0] ? 'active' : ''}" data-library-filter="${f[0]}">${f[1]}</button>`).join('')}</div>` }
-  function libraryCard(q) { const a = ans(q) || '?', r = risk(q); const opts = Object.entries(q.options || {}).map(([k, v]) => `<div class="libraryOption ${a.includes(String(k).toUpperCase()) ? 'correct' : ''}"><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join(''); return `<article class="v7Card libraryQuestionCard" style="border-left-color:${rColor(r)}!important"><div class="v7Row"><div class="v7Num">Câu ${esc(q.num || '')}</div><div class="v7Main"><div class="v7Question">${esc(q.question || '')}</div><div class="v7Answer"><b>Đáp án: ${esc(a)}</b><span>${esc(answerText2(q))}</span></div><div class="libraryOptions">${opts}</div></div>${miniImg(q)}<div class="v7Meta"><span class="v7RiskDot" style="background:${rColor(r)}" title="Rủi ro: ${esc(rLabel(r))}"></span></div></div></article>` }
+  function renderLibraryStats(data) {
+    const list = $('studyList'); if (!list) return;
+    let box = $('libraryQuestionFilters');
+    if (!box) { box = document.createElement('div'); box.id = 'libraryQuestionFilters'; box.className = 'v7Stats libraryQuestionFilters'; list.parentNode.insertBefore(box, list) }
+    const s = stat(data);
+    const starCnt = typeof window.__countBookmarks === 'function' ? window.__countBookmarks() : 0;
+    const fs = [
+      ['all', 'Tất cả'],
+      ['starred', `🔖 Đã lưu (${starCnt})`],
+      ['has_image', '📷 Có ảnh'],
+      ['high', 'Rủi ro cao'],
+      ['medium', 'Trung bình'],
+      ['low', 'Thấp']
+    ];
+    box.innerHTML = `<div class="v7StatLine"><span class="v7StatItem">${s.total} câu</span><span class="v7StatItem" style="color:#3498db">${s.img} có ảnh</span><span class="v7StatItem" style="color:#e74c3c">${s.high} rủi ro cao</span><span class="v7StatItem" style="color:#f39c12">${s.medium} trung bình</span><span class="v7StatItem" style="color:#27ae60">${s.low} thấp</span></div><div class="v7FilterLine">${fs.map(f => `<button type="button" class="v7FilterBtn ${libraryFilter === f[0] ? 'active' : ''}" data-library-filter="${f[0]}">${f[1]}</button>`).join('')}</div>`;
+  }
+  function libraryCard(q, idx) {
+    const a = ans(q) || '?', r = risk(q);
+    const opts = Object.entries(q.options || {}).map(([k, v]) => `<div class="libraryOption ${a.includes(String(k).toUpperCase()) ? 'correct' : ''}"><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join('');
+    const bmBtn = typeof window.__getBookmarkBtnHTML === 'function' ? window.__getBookmarkBtnHTML(q) : '';
+    const qIndex = (typeof RAW !== 'undefined' && Array.isArray(RAW)) ? RAW.findIndex(x => String(x.num || x.id) === String(q.num || q.id)) : idx;
+    const studyIndex = qIndex >= 0 ? qIndex : idx;
+    return `<article class="v7Card libraryQuestionCard" style="border-left-color:${rColor(r)}!important"><div class="v7Row"><div class="v7Num">Câu ${esc(q.num || idx + 1)}</div><div class="v7Main"><div class="v7Question">${esc(q.question || '')}</div><div class="v7Answer"><b>Đáp án: ${esc(a)}</b><span>${esc(answerText2(q))}</span></div><div class="libraryOptions">${opts}</div></div>${miniImg(q)}<div class="v7Meta" style="display:flex;align-items:center;gap:6px;"><button type="button" class="libraryV2Study act" style="padding:4px 10px;border-radius:6px;background:rgba(200,169,110,.12);color:var(--gold2);border:1px solid rgba(200,169,110,.25);cursor:pointer;" onclick="if(typeof window.goStudyFromLib==='function')window.goStudyFromLib(${studyIndex})">Học</button>${bmBtn}<button type="button" class="libraryV2Report act" style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,.05);color:var(--mist);border:1px solid rgba(200,169,110,.15);cursor:pointer;" onclick="if(typeof window.openStudyReport==='function')window.openStudyReport('${esc(q.num)}')">!</button></div></div></article>`;
+  }
   try { renderStudy = function () { const base = (typeof smart === 'function') ? smart(($('search')?.value) || '') : (typeof RAW !== 'undefined' ? RAW : []); renderLibraryStats(base); const arr = base.filter(pass); const list = $('studyList'); if (list) list.innerHTML = arr.length ? arr.map(libraryCard).join('') : '<div class="v7Empty">Không có câu nào phù hợp bộ lọc.</div>' } } catch (e) { }
   document.addEventListener('click', e => { const f = e.target.closest('[data-library-filter]'); if (f) { libraryFilter = f.dataset.libraryFilter || 'all'; localStorage.setItem(FILTER_STORE, libraryFilter); try { renderStudy() } catch (_) { } } });
   function editImgs(q) { const imgs = q.images || []; return `<div class="v7Images"><div class="v7ImagesHead"><span>Ảnh của câu hỏi</span><button class="v7UploadBtn" type="button" data-edit-pick-img>+ Thêm ảnh</button><input id="editPreviewImgInput" class="v7HiddenInput" type="file" accept="image/*" multiple></div><div class="v7Thumbs">${imgs.length ? imgs.map((im, i) => `<div class="v7Thumb"><button class="v7RemoveImg" type="button" data-edit-rm-img="${i}">×</button><img src="${esc(src(im))}" alt="Ảnh ${i + 1}" loading="lazy" decoding="async"></div>`).join('') : '<div class="v7NoImage">Chưa có ảnh.</div>'}</div></div>` }
@@ -5762,6 +5958,13 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
   async function saveEditPreview() { if (!window.editDraft) return; const oldQ = clone((typeof RAW !== 'undefined' && (RAW.find(c => c.num === window.editDraft.num))) || window.editDraft); const modal = $('editModal'); const q = (modal?.querySelector('[data-edit-question]')?.value || '').trim(); const a = (modal?.querySelector('[data-edit-answer]')?.value || '').trim().toUpperCase().replace(/[^A-Z]/g, ''); if (!q) return alert('Câu hỏi không được để trống.'); if (!a) return alert('Đáp án đúng không được để trống.'); const opts = {}; modal?.querySelectorAll('[data-edit-opt]').forEach(inp => { const k = String(inp.dataset.editOpt || '').toUpperCase(), v = (inp.value || '').trim(); if (k && v) opts[k] = v }); if (!Object.keys(opts).length) return alert('Cần ít nhất 1 đáp án.'); for (const k of a.split('')) if (!opts[k]) return alert('Đáp án đúng ' + k + ' chưa có nội dung.'); Object.assign(window.editDraft, { question: q, answer: a, options: opts, answer_text: a.split('').map(k => k + '. ' + (opts[k] || '')).join('; '), subject_code: localStorage.getItem('learninghub_subject_code_merged_v1') || window.editDraft.subject_code || '' }); if (window.HODSupabase && window.HODSupabase.isReady()) { const role = String(window.HODSupabase?.getProfile?.()?.role || '').trim().toLowerCase(); const canDirect = ['admin', 'editor'].includes(role); if (canDirect) { const id = oldQ?.id || window.editDraft?.id; if (!id) { alert('Không tìm thấy ID câu hỏi. Hãy tải lại trang rồi thử lại.'); return } const u = window.HODSupabase?.getUser?.(); if (!u?.id) { alert('Chưa đăng nhập. Hãy đăng nhập lại.'); return } const list = window.editDraft.images || []; const localHasImg = oldQ?.__imagesLoaded ? (list.length > 0) : !!(list.length || oldQ?.has_image); const text = window.editDraft.question + ' ' + Object.values(window.editDraft.options || {}).join(' '); const needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(text); const hasPlaceholder = list.some(im => { const src = typeof im === 'string' ? im : (im.src || im.url || im.secure_url || ''); return !src || src.includes('URL_') || src.includes('MÔ_TẢ') || src.includes('PLACEHOLDER') }); let risk = ''; let reason = ''; if ((localHasImg && hasPlaceholder) || (needsImg && list.length === 0)) { risk = 'high'; reason = 'Cần hình vẽ/ảnh minh họa nhưng chưa có ảnh thực tế' } else if (window.editDraft.answer.length > 1) { risk = 'medium'; reason = 'Câu chọn nhiều đáp án đúng, cần rà soát kỹ' } else { risk = 'low' } const newData = { question: window.editDraft.question, options: window.editDraft.options || {}, answer: window.editDraft.answer, answer_text: window.editDraft.answer_text, images: list, has_image: localHasImg || needsImg, error_risk: risk, error_risk_reason: reason || null }; const oldData = { question: oldQ.question, options: oldQ.options || {}, answer: oldQ.answer, answer_text: oldQ.answer_text, images: oldQ.images || [] }; if (typeof notify === 'function') notify('Đang lưu...'); try { const res = await fetch('/api/admin-action', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ user_id: u.id, action: 'save_question_direct', payload: { question_id: id, new_data: newData, old_data: oldData } }) }); const resJson = await res.json().catch(() => ({})); if (!res.ok || resJson.error) { alert('Lưu trực tiếp thất bại: ' + (resJson.error || res.status)); return } } catch (fetchErr) { alert('Lỗi kết nối khi lưu: ' + fetchErr.message); return } if (typeof window.clearLearningHubQuestionCache === 'function') { window.clearLearningHubQuestionCache(); } $('editModal')?.classList.add('hidden'); notify('Đã lưu trực tiếp ✓'); if (typeof window.loadCurrentSubjectOnly === 'function') await window.loadCurrentSubjectOnly(true); else if (window.HODSupabase?.loadQuestionsFromSupabase) await window.HODSupabase.loadQuestionsFromSupabase(true); return } await window.HODSupabase.submitEditRequest(window.editDraft, oldQ); return } if (window.HODSupabase?.getUser?.()) { alert('Chưa kết nối được dữ liệu duyệt. Hãy tải lại trang rồi gửi lại báo cáo.'); return } edits[window.editDraft.num] = { question: window.editDraft.question, options: window.editDraft.options, answer: window.editDraft.answer, answer_text: window.editDraft.answer_text, images: window.editDraft.images || [] }; localStorage.setItem('hod102_user_edits_v1', JSON.stringify(edits)); rebuild(); ci = pool.findIndex(c => c.num === window.editDraft.num); if (ci < 0) ci = 0; flipped = false; renderCard(); renderQuiz(); renderStudy(); $('editModal')?.classList.add('hidden'); notify('Đã lưu sửa local') }
   function apply() { try { openEditor = openEditPreview; saveEditor = saveEditPreview } catch (e) { } window.openEditor = openEditPreview; window.saveEditor = saveEditPreview }
   apply(); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(apply, 0)); else setTimeout(apply, 0); setTimeout(apply, 900);
+  window.goStudyFromLib = function (idx) {
+    if (typeof pool !== 'undefined' && Array.isArray(pool) && pool.length > 0) {
+      if (typeof idx === 'number' && idx >= 0 && idx < pool.length) ci = idx;
+    }
+    if (typeof renderCard === 'function') renderCard();
+    document.querySelector('[data-tab="fc"]')?.click();
+  };
   document.addEventListener('click', e => { if (e.target.closest('[data-edit-preview-close]')) return $('editModal')?.classList.add('hidden'); if (e.target.closest('[data-edit-preview-save]')) return saveEditPreview(); if (e.target.closest('[data-edit-preview-restore]')) return typeof restoreEditor === 'function' && restoreEditor(); if (e.target.closest('[data-edit-pick-img]')) return $('editPreviewImgInput')?.click(); const rm = e.target.closest('[data-edit-rm-img]'); if (rm && window.editDraft) { window.editDraft.images = window.editDraft.images || []; window.editDraft.images.splice(+rm.dataset.editRmImg, 1); redrawImg(); return } if (e.target.closest('[data-edit-add-opt]') && window.editDraft) { window.editDraft.options = window.editDraft.options || {}; const k = nextKey(window.editDraft.options); if (!k) return alert('Đã đủ số đáp án.'); window.editDraft.options[k] = ''; redrawOpt(); setTimeout(() => document.querySelector(`[data-edit-opt="${k}"]`)?.focus(), 0); return } const del = e.target.closest('[data-edit-del-opt]'); if (del && window.editDraft) { delete window.editDraft.options[String(del.dataset.editDelOpt || '').toUpperCase()]; redrawOpt() } });
   document.addEventListener('change', async e => { if (e.target?.id === 'editPreviewImgInput' && window.editDraft) { const inp = e.target; const files = Array.from(inp.files || []); if (!files.length) return; inp.disabled = true; if (typeof notify === 'function') notify('Đang upload ảnh...'); try { window.editDraft.images = window.editDraft.images || []; if (window.__LHCleanImages) window.editDraft.images = window.__LHCleanImages(window.editDraft.images); for (const file of files) { if (window.__LHUploadCloudinary) { const uploaded = await window.__LHUploadCloudinary(file); if (uploaded) window.editDraft.images.push(uploaded); } else { const fr = new FileReader(); const p = new Promise(resolve => { fr.onload = () => { window.editDraft.images.push({ id: 'edit_' + Date.now(), src: fr.result, source: 'user-upload', name: file.name }); resolve() }; fr.readAsDataURL(file) }); await p; } } redrawImg(); if (typeof notify === 'function') notify('Đã upload ảnh thành URL'); } catch (err) { alert(err.message || err) } finally { inp.disabled = false; inp.value = '' } } });
   setTimeout(() => { try { if ($('studyList')) renderStudy() } catch (e) { } }, 350);
@@ -5779,7 +5982,13 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
   function hasImg(q) { return !!((q?.images || []).map(imgSrc).filter(Boolean).length || q?.has_image) }
   function risk(q) { return q?.error_risk || (ans(q).length > 1 ? 'medium' : 'low') }
   function riskColor(r) { return { high: '#e74c3c', medium: '#f39c12', low: '#27ae60' }[r] || '#999' }
-  function pass(q) { const f = localStorage.getItem(FILTER_STORE) || 'all'; if (f === 'all') return true; if (f === 'has_image') return hasImg(q); return risk(q) === f }
+  function pass(q) {
+    const f = localStorage.getItem(FILTER_STORE) || 'all';
+    if (f === 'all') return true;
+    if (f === 'has_image') return hasImg(q);
+    if (f === 'starred') return typeof window.__isBookmarked === 'function' ? window.__isBookmarked(q) : false;
+    return risk(q) === f;
+  }
   function correctText(q) { const a = ans(q); return a ? a.split('').map(k => k + '. ' + (q.options?.[k] || '')).join(' | ') : 'Chưa có đáp án' }
   function miniImages(q) { const imgs = (q.images || []).map(imgSrc).filter(Boolean); if (!imgs.length) return '<div class="libraryV2Img empty"></div>'; return `<div class="libraryV2Img"><img src="${esc2(imgs[0])}" alt="Ảnh câu hỏi" loading="lazy" decoding="async">${imgs.length > 1 ? `<span>+${imgs.length - 1}</span>` : ''}</div>` }
   function allImages(q) { const imgs = (q.images || []).map(imgSrc).filter(Boolean); if (!imgs.length) return ''; return `<div class="libraryV2Images">${imgs.map((s, i) => `<img src="${esc2(s)}" alt="Ảnh ${i + 1}" loading="lazy" decoding="async">`).join('')}</div>` }
@@ -5789,11 +5998,23 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
     let box = $('libraryQuestionFilters');
     if (!box) { box = document.createElement('div'); box.id = 'libraryQuestionFilters'; box.className = 'v7Stats libraryQuestionFilters'; list.parentNode.insertBefore(box, list) }
     const f = localStorage.getItem(FILTER_STORE) || 'all', s = stats(data);
-    const filters = [['all', 'Thư viện'], ['has_image', '📷 Có ảnh'], ['high', 'Rủi ro cao'], ['medium', 'Trung bình'], ['low', 'Thấp']];
+    const starCnt = typeof window.__countBookmarks === 'function' ? window.__countBookmarks() : 0;
+    const filters = [
+      ['all', 'Thư viện'],
+      ['starred', `🔖 Đã lưu (${starCnt})`],
+      ['has_image', '📷 Có ảnh'],
+      ['high', 'Rủi ro cao'],
+      ['medium', 'Trung bình'],
+      ['low', 'Thấp']
+    ];
     box.innerHTML = `<div class="v7StatLine"><span class="v7StatItem">${s.total} câu</span><span class="v7StatItem" style="color:#3498db">${s.img} có ảnh</span><span class="v7StatItem" style="color:#e74c3c">${s.high} rủi ro cao</span><span class="v7StatItem" style="color:#f39c12">${s.medium} trung bình</span><span class="v7StatItem" style="color:#27ae60">${s.low} thấp</span></div><div class="v7FilterLine">${filters.map(x => `<button type="button" class="v7FilterBtn ${f === x[0] ? 'active' : ''}" data-library-filter="${x[0]}">${x[1]}</button>`).join('')}</div>`;
   }
   function optionList(q) { const a = ans(q); return Object.entries(q.options || {}).map(([k, v]) => `<div class="libraryOption ${a.includes(String(k).toUpperCase()) ? 'correct' : ''}"><b>${esc2(k)}</b><span>${esc2(v)}</span></div>`).join('') }
-  function card(q, i) { const a = ans(q) || '?', r = risk(q); return `<article class="libraryV2Card libraryQuestionCard" data-library-v2-card="${i}" data-num="${esc2(q.num || '')}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">Câu ${esc2(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${esc2(q.question || '')}</div><div class="libraryV2Answer"><b>Đáp án: ${esc2(a)}</b><span>${esc2(correctText(q))}</span></div></div>${miniImages(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-library-study="${i}">Học</button><button type="button" class="libraryV2Report" data-library-report="${i}">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${optionList(q)}</div>${allImages(q)}</div></article>` }
+  function card(q, i) {
+    const a = ans(q) || '?', r = risk(q);
+    const bmBtnHTML = typeof window.__getBookmarkBtnHTML === 'function' ? window.__getBookmarkBtnHTML(q) : '';
+    return `<article class="libraryV2Card libraryQuestionCard" data-library-v2-card="${i}" data-num="${esc2(q.num || '')}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">Câu ${esc2(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${esc2(q.question || '')}</div><div class="libraryV2Answer"><b>Đáp án: ${esc2(a)}</b><span>${esc2(correctText(q))}</span></div></div>${miniImages(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-library-study="${i}">Học</button>${bmBtnHTML}<button type="button" class="libraryV2Report" data-library-report="${i}">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${optionList(q)}</div>${allImages(q)}</div></article>`;
+  }
   function getBase() { const q = ($('search')?.value || $('studySearch')?.value || ''); try { return (typeof smart === 'function' ? smart(q) : (typeof RAW !== 'undefined' ? RAW : [])) || [] } catch (e) { return typeof RAW !== 'undefined' ? RAW : [] } }
   function render() { const base = getBase(); renderStats(base); const arr = base.filter(pass); const list = $('studyList'); if (!list) return; list.innerHTML = arr.length ? arr.map(card).join('') : '<div class="v7Empty libraryV2Empty">Không có câu nào phù hợp bộ lọc.</div>'; setTimeout(() => { try { document.dispatchEvent(new CustomEvent('library-v2-rendered')) } catch (e) { } }, 0) }
   function goStudy(i) { const q = getBase().filter(pass)[i] || getBase()[i]; if (!q) return; let idx = (pool || []).findIndex(x => Number(x.num) === Number(q.num)); if (idx < 0) { pool = [...RAW]; idx = pool.findIndex(x => Number(x.num) === Number(q.num)) } if (idx >= 0) { ci = idx; flipped = false; flipDir = 'horizontal'; try { renderCard() } catch (e) { } document.querySelector('[data-tab="fc"]')?.click?.(); } }
@@ -5866,7 +6087,13 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
   function parseQuery(raw) { const q = String(raw || '').trim(), n = norm(q); const p = { raw: q, n, num: null, answer: null, multi: false, tokens: [] }; if (/^\d+$/.test(n)) p.num = Number(n); let m = n.match(/(?:^|\s)#\s*(\d+)(?:\s|$)|(?:^|\s)cau\s*(\d+)(?:\s|$)/); if (m) p.num = Number(m[1] || m[2]); m = n.match(/(?:answer|ans|dap\s*an|dapan)\s*:\s*([a-e]+)/i); if (m) p.answer = m[1].toUpperCase().split('').sort().join(''); p.multi = /(^|\s)(multi|multiple|chon nhieu|nhieu dap an|nhieu lua chon)(\s|$)/.test(n); let tokens = n.split(/\s+/).filter(t => t.length >= 2 && !/^(answer|ans|dap|an|dapan|multi|multiple|chon|nhieu|lua|cau)$/.test(t) && !t.includes(':') && !/^#?\d+$/.test(t)); const cleanN = n.replace(/(?:answer|ans|dap\s*an|dapan)\s*:\s*[a-e]+/gi, '').replace(/(?:^|\s)#\s*\d+(?:\s|$)|(?:^|\s)cau\s*\d+(?:\s|$)/gi, '').replace(/(?:^|\s)(multi|multiple|chon nhieu|nhieu dap an|nhieu lua chon)(\s|$)/gi, '').replace(/\s+/g, ' ').trim(); if (cleanN.includes(' ') && cleanN.length >= 3) { tokens.unshift(cleanN); } p.tokens = tokens; return p }
   function hlt(text) { const raw = ($('search')?.value || $('studySearch')?.value || ''); const p = parseQuery(raw); const tokens = [...new Set((p.tokens || []).filter(t => t.length >= 2))].sort((a, b) => b.length - a.length); const src = String(text ?? ''); if (!tokens.length) return esc(src); let ns = '', map = []; for (let i = 0; i < src.length; i++) { let c = norm(src[i]); if (!c) continue; for (const ch of c) { ns += ch; map.push(i) } } let ranges = []; for (const t of tokens) { let pos = 0; while ((pos = ns.indexOf(t, pos)) > -1) { let a = map[pos], b = map[pos + t.length - 1] + 1; if (a != null && b != null && !ranges.some(r => !(b <= r[0] || a >= r[1]))) ranges.push([a, b]); pos += t.length } } if (!ranges.length) return esc(src); ranges.sort((a, b) => a[0] - b[0]); let out = '', last = 0; for (const [a, b] of ranges) { out += esc(src.slice(last, a)); out += `<mark class="searchMark tokenMark">${esc(src.slice(a, b))}</mark>`; last = b } return out + esc(src.slice(last)) }
   function searchList() { const raw = ($('search')?.value || $('studySearch')?.value || ''); const p = parseQuery(raw); let data = Array.isArray(RAW) ? RAW : []; if (!p.raw) return data; return data.map(q => { let score = 0; if (p.num !== null) { if (Number(q.num) !== p.num) return null; score += 2000 } const a = ans(q).split('').sort().join(''); if (p.answer) { if (a !== p.answer) return null; score += 900 } if (p.multi) { if (ans(q).length <= 1) return null; score += 350 } const h = allText(q); for (const t of p.tokens) { if (!h.includes(t)) return null; score += 80 } return { q, score } }).filter(Boolean).sort((x, y) => y.score - x.score || Number(x.q.num) - Number(y.q.num)).map(x => x.q) }
-  function passFilter(q) { const f = filterVal(); if (f === 'all') return true; if (f === 'has_image') return hasImg(q); return risk(q) === f }
+  function passFilter(q) {
+    const f = filterVal();
+    if (f === 'all') return true;
+    if (f === 'has_image') return hasImg(q);
+    if (f === 'starred') return typeof window.__isBookmarked === 'function' ? window.__isBookmarked(q) : false;
+    return risk(q) === f;
+  }
   function stats(data) { return { total: data.length, img: data.filter(hasImg).length, high: data.filter(q => risk(q) === 'high').length, medium: data.filter(q => risk(q) === 'medium').length, low: data.filter(q => risk(q) === 'low').length } }
   function ensureToolbar() { const list = $('studyList'); if (!list) return; let tool = $('libraryStableToolbar'); if (!tool) { tool = document.createElement('section'); tool.id = 'libraryStableToolbar'; tool.className = 'libraryStableToolbar'; tool.innerHTML = '<div class="libStableHead libStableHeadCompact"><div class="libStableInfo"><b id="libStableFilterText">Tất cả</b><em id="libStableCount">0 câu</em></div></div><div id="libStableSearchSlot"></div><div id="libStableFilters"></div>'; const searchBox = ($('search') || $('studySearch'))?.closest('.search'); (searchBox?.parentNode || list.parentNode).insertBefore(tool, searchBox || list) } const searchBox = ($('search') || $('studySearch'))?.closest('.search'); if (searchBox && $('libStableSearchSlot') && searchBox.parentNode !== $('libStableSearchSlot')) $('libStableSearchSlot').appendChild(searchBox); const input = $('search') || $('studySearch'); if (input) { input.placeholder = 'Tìm câu hoặc #12...'; if (!input.value) { try { input.value = localStorage.getItem(SEARCH_STORE) || '' } catch (e) { } } if (!$('libStableClear')) { const b = document.createElement('button'); b.id = 'libStableClear'; b.type = 'button'; b.textContent = '×'; b.title = 'Xóa tìm kiếm'; b.onclick = function () { input.value = ''; try { localStorage.removeItem(SEARCH_STORE) } catch (e) { } renderUnified(); input.focus() }; input.insertAdjacentElement('afterend', b) } input.oninput = function () { try { localStorage.setItem(SEARCH_STORE, input.value || '') } catch (e) { } renderUnified() }; $('libStableClear')?.classList.toggle('show', !!input.value.trim()) } }
   function renderFilters(base, shown) {
@@ -5874,7 +6101,15 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
     const box = $('libStableFilters');
     if (!box) return;
     const s = stats(base), f = filterVal(), v = viewVal();
-    const filters = [['all', 'Tất cả', s.total], ['has_image', 'Có ảnh', s.img], ['high', 'Rủi ro cao', s.high], ['medium', 'Trung bình', s.medium], ['low', 'Thấp', s.low]];
+    const starCnt = typeof window.__countBookmarks === 'function' ? window.__countBookmarks() : 0;
+    const filters = [
+      ['all', 'Tất cả', s.total],
+      ['starred', '🔖 Đã lưu', starCnt],
+      ['has_image', 'Có ảnh', s.img],
+      ['high', 'Rủi ro cao', s.high],
+      ['medium', 'Trung bình', s.medium],
+      ['low', 'Thấp', s.low]
+    ];
     const isAllOpen = v === 'full';
 
     box.innerHTML = `
@@ -5936,9 +6171,12 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
       isMatchInDetails = queryObj.tokens.every(t => detailsText.includes(t));
     }
     const open = viewVal() === 'full' || libraryOpenNums.has(String(q.num)) || isMatchInDetails || !!rawSearch;
-    return `<article class="libraryV2Card libraryQuestionCard ${open ? 'open' : ''}" data-num="${esc(q.num || '')}" data-stable-index="${i}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">Câu ${esc(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${hlt(q.question || '')}</div><div class="libraryV2Answer"><b>Đáp án: ${esc(a)}</b><span>${hlt(answerText(q))}</span></div></div>${miniImg(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-stable-study="${i}" title="Học câu này">Học</button><button type="button" class="libraryV2Report" data-stable-report="${i}" title="Báo cáo / sửa câu">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${options(q)}</div>${images(q, open)}</div></article>`
+    const bmBtnHTML = typeof window.__getBookmarkBtnHTML === 'function' ? window.__getBookmarkBtnHTML(q) : '';
+    return `<article class="libraryV2Card libraryQuestionCard ${open ? 'open' : ''}" data-num="${esc(q.num || '')}" data-stable-index="${i}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">Câu ${esc(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${hlt(q.question || '')}</div><div class="libraryV2Answer"><b>Đáp án: ${esc(a)}</b><span>${hlt(answerText(q))}</span></div></div>${miniImg(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-stable-study="${i}" title="Học câu này">Học</button>${bmBtnHTML}<button type="button" class="libraryV2Report" data-stable-report="${i}" title="Báo cáo / sửa câu">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${options(q)}</div>${images(q, open)}</div></article>`
   }
   function renderUnified() { ensureToolbar(); const base = searchList(); lastList = base.filter(passFilter); renderFilters(base, lastList); const list = $('studyList'); if (!list) return; list.innerHTML = lastList.length ? lastList.map(card).join('') : '<div class="libraryStableEmpty"><b>Không có câu phù hợp.</b><button type="button" data-stable-clear-all>Xóa tìm kiếm & bộ lọc</button></div>'; if ($('libStableClear')) $('libStableClear').classList.toggle('show', !!(($('search') || $('studySearch'))?.value || '').trim()) }
+  window.renderUnified = renderUnified;
+  window.renderStudy = renderUnified;
   function setCurrent(q) { let idx = (pool || []).findIndex(x => Number(x.num) === Number(q.num)); if (idx < 0) { pool = [...RAW]; idx = pool.findIndex(x => Number(x.num) === Number(q.num)) } if (idx >= 0) { ci = idx; flipped = false; flipDir = 'horizontal'; try { renderCard() } catch (e) { } return true } return false }
 
   function showImageLightbox(src) {
@@ -6091,6 +6329,7 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
   async function loadSubjectLight(force = false) {
     const code = subject();
     if (!code) return false;
+    try { if (typeof window.__examResetForSubjectChange === 'function') window.__examResetForSubjectChange(); } catch (e) { }
     try {
       const res = await fetch('/api/questions?subject_code=' + encodeURIComponent(code) + '&ts=' + Date.now(), { cache: 'no-store' });
       const json = await res.json().catch(() => ({}));
@@ -6325,7 +6564,14 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
 
 
   const CACHE_TTL = 12 * 60 * 60 * 1000; // 12 giờ
-  function cacheKey(code) { return 'learninghub_questions_cache_v1_' + code; }
+  /*
+    QUESTION_CACHE_REVALIDATE_20260726
+    Key đổi v1 -> v2 để bỏ các cache v1 đã "nhiễm độc": chúng được ghi lúc DB còn
+    images = [] và sống tới 12 giờ, nên ảnh mới thêm vào DB không bao giờ hiện ra
+    (F5 cũng vô ích vì boot dùng loadSubjectLight(false) = đọc cache).
+    Cache giờ chỉ để render tức thì, luôn kèm revalidate ngầm (xem revalidateQuestions).
+  */
+  function cacheKey(code) { return 'learninghub_questions_cache_v2_' + code; }
   function readQuestionCache(code) {
     try {
       const raw = localStorage.getItem(cacheKey(code));
@@ -6339,8 +6585,11 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
   function writeQuestionCache(code, rows) {
     try { localStorage.setItem(cacheKey(code), JSON.stringify({ savedAt: Date.now(), rows: rows || [] })); } catch (e) { }
   }
-  async function fetchTursoQuestions(code) {
-    const res = await fetch('/api/questions?subject_code=' + encodeURIComponent(code) + '&ts=' + Date.now(), { cache: 'no-store' });
+  async function fetchTursoQuestions(code, fresh = false) {
+    // fresh=1: bỏ qua cả cache 5 phút phía server (_questionsCache trong
+    // api/controllers/questions.js). `cache:'no-store'` chỉ bỏ cache của browser.
+    const res = await fetch('/api/questions?subject_code=' + encodeURIComponent(code)
+      + (fresh ? '&fresh=1' : '') + '&ts=' + Date.now(), { cache: 'no-store' });
     const json = await res.json().catch(() => ({}));
     if (!res.ok || json.error) throw new Error(json.error || 'Không tải được câu hỏi từ Turso');
     return Array.isArray(json.data) ? json.data : [];
@@ -6369,6 +6618,44 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
     try { renderCard(); renderQuiz(); renderStudy(); } catch (e) { }
   }
 
+  /*
+    QUESTION_CACHE_REVALIDATE_20260726
+    Render ngay từ cache rồi đối chiếu lại với server ở background. Vá TẠI CHỖ
+    (Object.assign lên đúng object trong RAW/pool) thay vì applyQuestionRows để
+    không reset ci -> người dùng không bị nhảy về câu khác giữa lúc đang học.
+    Fetch KHÔNG dùng fresh=1: cache 5 phút của server đủ mới cho lần đối chiếu này
+    và không tốn thêm read Turso (xem OPTIM_TURSO_READS_20260726).
+  */
+  let revalidating = {};
+  async function revalidateQuestions(code) {
+    if (revalidating[code]) return;
+    revalidating[code] = true;
+    try {
+      const rows = await fetchTursoQuestions(code);
+      if (!rows.length || subject() !== code) return;
+      writeQuestionCache(code, rows);
+      const byId = new Map(rows.map(r => [String(r.id), mapTursoRow(r, code)]));
+      let changed = 0;
+      const patch = row => {
+        const next = byId.get(String(row?.id));
+        if (!next) return row;
+        if (row.question !== next.question || row.answer !== next.answer
+          || JSON.stringify(row.images || []) !== JSON.stringify(next.images || [])) changed++;
+        return Object.assign(row, next);
+      };
+      RAW = (RAW || []).map(patch);
+      pool = (pool || []).map(patch);
+      if (changed) {
+        console.info('[revalidateQuestions] ' + code + ': cập nhật ' + changed + ' câu từ server');
+        try { renderCard(); renderQuiz(); renderStudy(); } catch (e) { }
+      }
+    } catch (e) {
+      console.warn('[revalidateQuestions]', e);
+    } finally {
+      delete revalidating[code];
+    }
+  }
+
   let activeLoadPromises = {};
   async function loadSubjectLight(force = false) {
     const code = subject();
@@ -6377,13 +6664,14 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
       const cached = readQuestionCache(code);
       if (cached && cached.length && cached.every(r => Object.prototype.hasOwnProperty.call(r, 'images'))) {
         applyQuestionRows(cached, code);
+        revalidateQuestions(code); // cố ý không await: hiện dữ liệu cache trước, sửa sau
         return true;
       }
     }
     if (activeLoadPromises[code]) return activeLoadPromises[code];
     activeLoadPromises[code] = (async () => {
       try {
-        const data = await fetchTursoQuestions(code);
+        const data = await fetchTursoQuestions(code, force);
         writeQuestionCache(code, data);
         applyQuestionRows(data, code);
         return true;
@@ -6437,7 +6725,7 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
     const code = subject();
     if (!q?.id || !code) return false;
     try {
-      const rows = await fetchTursoQuestions(code);
+      const rows = await fetchTursoQuestions(code, true); // người dùng bấm reload => phải lấy bản mới nhất
       const data = rows.find(r => String(r.id) === String(q.id));
       if (!data) { if (!silent) alert('Không reload được câu hiện tại.'); return false; }
       const clean = mapTursoRow(data, code);
@@ -6586,68 +6874,27 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
 })();
 // ===== END REMOVE_ANY_RELOAD_TEXT_BUTTON_20260628 =====
 
-// ===== FINAL_ADMIN_EDITOR_SKIP_APPROVAL_APP_20260628 =====
-// Admin / Editor không cần chờ phê duyệt tài khoản.
-(function () {
-  function isPrivileged(p) {
-    const role = String(p?.role || '').toLowerCase();
-    return role === 'admin' || role === 'editor';
-  }
-  async function approvePrivilegedProfile() {
-    try {
-      const api = window.HODSupabase;
-      const p = api?.getProfile?.();
-      const u = api?.getUser?.();
-      const c = api?.__client || null;
-      if (!p || !u || !isPrivileged(p)) return false;
+/*
+  ===== FINAL_ADMIN_EDITOR_SKIP_APPROVAL_APP_20260628 — ĐÃ XOÁ 2026-07-26 =====
+  Block cũ "Admin / Editor không cần chờ phê duyệt": nó tự set
+  `p.approved = true; p.blocked = false` trên object profile của client rồi ẩn
+  màn chờ duyệt. Xoá vì cả ba lý do:
 
-      // Nếu tài khoản đã được duyệt từ trước, ẩn màn khóa và dừng luôn, không gửi request dư thừa
-      if (p.approved === true && p.blocked === false) {
-        document.getElementById('hodPendingApproval')?.classList.add('hidden');
-        document.getElementById('hodLoginGate')?.classList.add('hidden');
-        document.body?.classList.remove('hod-locked');
-        return true;
-      }
+  1. Trái mô hình fail-closed hiện tại: điều kiện truy cập là
+     `approved === 1 && blocked === 0` cho MỌI role, không ngoại lệ cho
+     editor/admin (xem hasFullAccess() và checkUserAccess() phía server). Việc
+     auto-duyệt hợp lệ duy nhất là khi admin thăng quyền (`set_user_role`), và
+     nó chạy Ở SERVER.
+  2. Nó ghi `update({approved, blocked})` vào bảng `profiles` của SUPABASE,
+     nhưng nguồn quyền thật là TURSO. Mọi lệnh ghi phải đi qua /api/admin-action.
+  3. Nó gọi `classList.add('hidden')` trực tiếp lên #hodPendingApproval, xung
+     đột với cờ window.__LH_GATE_LOCKED (PENDING_GATE_STICKY_20260726) — gate chỉ
+     được đóng/mở qua showPendingApproval() / hidePendingApproval().
 
-      // Sửa ngay trên object profile đang dùng trong app để khỏi bị màn chờ duyệt chặn.
-      p.approved = true;
-      p.blocked = false;
-      p.is_blocked = false;
-      if (p.status === 'blocked') p.status = 'active';
-
-      // Lưu lại Supabase nếu cột approved đang false.
-      if (c) {
-        await c.from('profiles')
-          .update({ approved: true, blocked: false })
-          .eq('id', u.id)
-          .in('role', ['admin', 'editor']);
-      }
-
-      // Ẩn màn chờ duyệt nếu đang hiện.
-      document.getElementById('hodPendingApproval')?.classList.add('hidden');
-      document.getElementById('hodLoginGate')?.classList.add('hidden');
-      document.body?.classList.remove('hod-locked');
-
-      // Nếu đang có môn đã chọn thì tải lại câu hỏi sau khi tự duyệt.
-      try {
-        if (typeof window.loadCurrentSubjectOnly === 'function') await window.loadCurrentSubjectOnly();
-        else if (api?.loadQuestionsFromSupabase) await api.loadQuestionsFromSupabase();
-      } catch (e) { }
-      return true;
-    } catch (e) {
-      console.warn('[skip approval admin/editor]', e);
-      return false;
-    }
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', approvePrivilegedProfile);
-  else approvePrivilegedProfile();
-  setTimeout(approvePrivilegedProfile, 300);
-  setTimeout(approvePrivilegedProfile, 1200);
-  setTimeout(approvePrivilegedProfile, 3000);
-  // Tắt update Supabase định kỳ 5s để giảm gọi Supabase.
-})();
-// ===== END FINAL_ADMIN_EDITOR_SKIP_APPROVAL_APP_20260628 =====
+  Thực tế block này đã thành code chết trước khi xoá: user bị 403 thì
+  getProfile() trả null nên `isPrivileged(p)` false và hàm return ngay.
+  ĐỪNG thêm lại: editor/admin chưa duyệt phải được admin duyệt như user thường.
+*/
 
 // ===== FINAL_RESET_KEEP_CURRENT_TAB_20260628 =====
 // Bấm Reset chỉ reset câu/thứ tự, không nhảy tab. Đang ở Flashcard/Kiểm tra/Thư viện thì giữ nguyên tab đó.
@@ -6773,11 +7020,15 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
 
 
 // ===== SUPABASE_CACHE_CLEAR_HELPER_20260628 =====
-// Dùng trong Console nếu cần tải mới từ Supabase: localStorage.removeItem('learninghub_questions_cache_v1_' + localStorage.getItem('learninghub_subject_code_merged_v1')); location.reload();
+// Dùng trong Console nếu cần tải mới: clearLearningHubQuestionCache(); location.reload();
 window.clearLearningHubQuestionCache = function () {
   try {
     const code = localStorage.getItem('learninghub_subject_code_merged_v1') || '';
-    if (code) localStorage.removeItem('learninghub_questions_cache_v1_' + code);
+    // Xoá cả v1 (bản cũ còn sót) và v2 — xem QUESTION_CACHE_REVALIDATE_20260726.
+    if (code) {
+      localStorage.removeItem('learninghub_questions_cache_v1_' + code);
+      localStorage.removeItem('learninghub_questions_cache_v2_' + code);
+    }
     if (typeof window.clearLearningHubSupabaseCache === 'function') window.clearLearningHubSupabaseCache('questions');
   } catch (e) { }
 };
@@ -7229,128 +7480,19 @@ window.clearLearningHubQuestionCache = function () {
 })();
 // ===== END COPILOT_ULTRA_FINAL_EDIT_UPLOAD_LOCK_20260628 =====
 
-// ===== COPILOT_CLEAN_RUNTIME_GUARD_20260628 =====
-// Bản sạch: cache request Supabase + chống spam profile/question/image. Đã xóa ghi thống kê băng thông.
+// ===== COPILOT_CLEAN_RUNTIME_GUARD_20260628 (đã rút gọn) =====
+/*
+  VIII: đây từng là lớp ghi đè window.fetch THỨ BA — một bản cache Supabase REST
+  gần như trùng lặp với APP_F5_SUPABASE_CACHE (lớp thứ hai). Phần fetch đã được
+  gộp vào interceptor duy nhất ở cuối file; chỉ giữ lại đoạn cache mềm
+  getProfile bên dưới vì các interval UI (nút admin, avatar...) gọi nó liên tục.
+*/
 (function () {
   if (window.__COPILOT_CLEAN_RUNTIME_GUARD_20260628) return;
   window.__COPILOT_CLEAN_RUNTIME_GUARD_20260628 = true;
-  if (!window.fetch) return;
-
-  const SUBJECT_STORE = 'learninghub_subject_code_merged_v1';
-  const nativeFetch = window.fetch.bind(window);
-  const cache = new Map();
-  const pending = new Map();
-
-  function supabaseOrigin() {
-    try { return new URL(window.APP_CONFIG?.SUPABASE_URL || '').origin; } catch (e) { return ''; }
-  }
-  function methodOf(init) {
-    return String(init?.method || 'GET').toUpperCase();
-  }
-  function urlOf(input) {
-    try {
-      const raw = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-      return new URL(raw, location.href);
-    } catch (e) { return null; }
-  }
-  function isSupabase(url) {
-    const origin = supabaseOrigin();
-    return !!url && !!origin && url.origin === origin;
-  }
-  function isRest(url) {
-    return isSupabase(url) && url.pathname.includes('/rest/v1/');
-  }
-  function currentSubject() {
-    return (localStorage.getItem(SUBJECT_STORE) || '').trim();
-  }
-  function normalizeUrlForSubject(url, method) {
-    if (!isRest(url)) return url;
-    if (method !== 'GET' && method !== 'HEAD') return url;
-    if (!url.pathname.includes('/rest/v1/questions')) return url;
-    const subject = currentSubject();
-    if (!subject) return url;
-    if (url.searchParams.get('is_active') === 'eq.true' && !url.searchParams.has('subject_code')) {
-      url.searchParams.set('subject_code', 'eq.' + subject);
-    }
-    return url;
-  }
-  function ttlFor(url, method) {
-    if (!isRest(url)) return 0;
-    if (method !== 'GET' && method !== 'HEAD') return 0;
-
-    if (url.pathname.includes('/rest/v1/profiles')) return 10 * 60 * 1000;
-    if (url.pathname.includes('/rest/v1/subjects')) return 2 * 60 * 1000;
-    if (url.pathname.includes('/rest/v1/site_settings')) return 60 * 1000;
-
-    if (url.pathname.includes('/rest/v1/questions')) {
-      const select = url.searchParams.get('select') || '';
-      if (select === 'id') return 2 * 60 * 1000;
-      if (select === 'id,images,updated_at') return 2 * 60 * 1000;
-      if (url.searchParams.get('is_active') === 'eq.true') return 2 * 60 * 1000;
-    }
-    return 0;
-  }
-  function cacheKey(method, url) {
-    const params = Array.from(url.searchParams.entries()).sort((a, b) => (a[0] + '=' + a[1]).localeCompare(b[0] + '=' + b[1]));
-    return method + ' ' + url.origin + url.pathname + '?' + params.map(x => x[0] + '=' + x[1]).join('&');
-  }
-  async function packResponse(res) {
-    const body = await res.clone().arrayBuffer();
-    return {
-      body,
-      status: res.status,
-      statusText: res.statusText,
-      headers: Array.from(res.headers.entries())
-    };
-  }
-  function unpack(pack) {
-    return new Response(pack.body.slice(0), {
-      status: pack.status,
-      statusText: pack.statusText,
-      headers: new Headers(pack.headers)
-    });
-  }
-
-  window.fetch = async function (input, init) {
-    let url = urlOf(input);
-    const method = methodOf(init);
-    if (!url) return nativeFetch(input, init);
-
-    url = normalizeUrlForSubject(url, method);
-    let nextInput = input;
-    if (typeof input === 'string') nextInput = url.toString();
-    else if (input && input.url && input.url !== url.toString()) nextInput = new Request(url.toString(), input);
-
-    const ttl = ttlFor(url, method);
-    if (!ttl) return nativeFetch(nextInput, init);
-
-    const key = cacheKey(method, url);
-    const hit = cache.get(key);
-    if (hit && Date.now() - hit.t < ttl) return unpack(hit.pack);
-
-    if (pending.has(key)) return unpack(await pending.get(key));
-
-    const job = nativeFetch(nextInput, init)
-      .then(res => packResponse(res))
-      .then(pack => {
-        cache.set(key, { t: Date.now(), pack });
-        pending.delete(key);
-        return pack;
-      })
-      .catch(err => {
-        pending.delete(key);
-        throw err;
-      });
-    pending.set(key, job);
-    return unpack(await job);
-  };
-
-  window.clearLearningHubSupabaseRuntimeCache = function () {
-    cache.clear();
-    pending.clear();
-  };
 
   // Cache mềm getProfile để các interval UI không gây kiểm tra quyền quá dày.
+  // Chỉ là bộ nhớ đệm HIỂN THỊ; quyền thật luôn do server quyết định.
   setTimeout(function patchProfileGetter() {
     const api = window.HODSupabase;
     if (!api || !api.getProfile || api.__cleanProfileCached) return;
@@ -7360,6 +7502,8 @@ window.clearLearningHubQuestionCache = function () {
       const now = Date.now();
       const p = oldGetProfile();
       if (p) { last = p; at = now; return p; }
+      // Sau khi bị thu hồi quyền, currentProfile = null: KHÔNG trả bản cũ nữa.
+      if (window.__LH_ACCESS_OK === false) { last = null; return p; }
       if (last && now - at < 10000) return last;
       return p;
     };
@@ -7501,79 +7645,16 @@ window.clearLearningHubQuestionCache = function () {
 
 
 
-// ===== APP_REALTIME_CACHE_INVALIDATE_20260629 =====
-// Khi Supabase questions/subjects đổi, tự xóa cache để F5 lần sau nhận dữ liệu mới.
-(function () {
-  if (window.__APP_REALTIME_CACHE_INVALIDATE_20260629) return;
-  window.__APP_REALTIME_CACHE_INVALIDATE_20260629 = true;
-
-  let channel = null;
-  let tries = 0;
-
-  function getClient() {
-    try {
-      if (window.HODSupabase && window.HODSupabase.__client) return window.HODSupabase.__client;
-      if (window.supabase && window.APP_CONFIG?.SUPABASE_URL && window.APP_CONFIG?.SUPABASE_ANON_KEY) {
-        if (!window.__lhCacheRealtimeClient) {
-          window.__lhCacheRealtimeClient = window.supabase.createClient(window.APP_CONFIG.SUPABASE_URL, window.APP_CONFIG.SUPABASE_ANON_KEY);
-        }
-        return window.__lhCacheRealtimeClient;
-      }
-    } catch (e) { }
-    return null;
-  }
-  function clear(kind) {
-    try {
-      if (typeof window.clearLearningHubSupabaseCache === 'function') window.clearLearningHubSupabaseCache(kind);
-      else if (kind === 'questions' && typeof window.clearLearningHubQuestionCache === 'function') window.clearLearningHubQuestionCache();
-      if (kind === 'questions' && typeof window.loadCurrentSubjectOnly === 'function') {
-        window.loadCurrentSubjectOnly(true);
-      }
-      console.info('[LearningHub cache] cleared:', kind);
-    } catch (e) { }
-  }
-  function stop() {
-    if (channel) {
-      try { channel.unsubscribe(); } catch (e) { }
-      channel = null;
-    }
-  }
-  function start() {
-    return; // Supabase Realtime disabled as internal database uses Turso APIs.
-    if (document.hidden) return;
-    if (channel) return;
-    const c = getClient();
-    if (!c) {
-      if (tries++ < 30) setTimeout(start, 500);
-      return;
-    }
-    try {
-      channel = c.channel('learninghub-cache-invalidate-v1')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, function () { clear('questions'); })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'subjects' }, function () { clear('subjects'); clear('questions'); })
-        .subscribe(function (status) {
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-            channel = null;
-            if (!document.hidden) setTimeout(start, 1500);
-          }
-        });
-    } catch (e) {
-      channel = null;
-      if (tries++ < 30 && !document.hidden) setTimeout(start, 1000);
-    }
-  }
-
-  document.addEventListener('visibilitychange', function () {
-    if (document.hidden) {
-      stop();
-    } else {
-      start();
-    }
-  });
-  document.addEventListener('DOMContentLoaded', function () { setTimeout(start, 1200); });
-  setTimeout(start, 2000);
-})();
-// ===== END APP_REALTIME_CACHE_INVALIDATE_20260629 =====
+/*
+  ===== APP_REALTIME_CACHE_INVALIDATE_20260629 — ĐÃ XÓA (XV) =====
+  Khối này tạo MỘT KÊNH REALTIME THỨ HAI (learninghub-cache-invalidate-v1) nghe
+  postgres_changes trên public.questions/subjects của Supabase để xóa cache.
+  Nó đã chết từ lâu: hàm start() mở đầu bằng  kể từ khi dữ liệu chuyển
+  sang Turso, nên phần còn lại không bao giờ chạy — chỉ còn một client Supabase
+  thừa và một listener visibilitychange rỗng.
+  Cache câu hỏi nay do server lo (clearQuestionsCache/clearSubjectsCache trong
+  /api/admin-action) và window.clearLearningHubQuestionCache phía client.
+*/
 
 
 // ===== FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629 =====
@@ -8433,8 +8514,8 @@ window.APP_CONFIG.USE_TURSO_API = true;
   function user() { return window.HODSupabase?.getUser?.() || null; }
   function profile() { return window.HODSupabase?.getProfile?.() || null; }
   function approved() {
-    const p = profile();
-    return !p || !(p.approved === false || p.approved === 0 || p.approved === '0');
+    // ACCESS_GATE_STRICT_20260726: fail-closed.
+    return !!window.lhHasFullAccess?.(profile());
   }
   function dataOk(code) {
     try { return !!code && Array.isArray(RAW) && RAW.length > 0 && RAW.some(q => String(q.subject_code || code).toUpperCase() === String(code).toUpperCase()); }
@@ -8707,48 +8788,65 @@ window.APP_CONFIG.USE_TURSO_API = true;
 
 
 
-// ===== LH_AUTH_FETCH_20260705 =====
-// Tự đính Authorization: Bearer <supabase access_token> cho MỌI request tới /api/ cùng origin.
-// Server (api/index.js, AUTH_20260705) verify token này để lấy danh tính thật. Đặt cuối file để là
-// lớp fetch NGOÀI CÙNG: chạy trước các wrapper cache/dedupe khác nên header luôn được gắn trước.
-// Token đọc trực tiếp từ localStorage phiên Supabase (key sb-<ref>-auth-token) để lấy đồng bộ, không await.
+// ===== LH_UNIFIED_FETCH_AND_ACCESS_20260726 =====
+/*
+  INTERCEPTOR FETCH DUY NHẤT của app học sinh (mục VIII) + hàng rào xác minh
+  quyền (mục V, VI, VII, IX, X).
+
+  Trước đây file này ghi đè window.fetch BỐN lần (APP_API_DEDUPE,
+  APP_F5_SUPABASE_CACHE, COPILOT_CLEAN_RUNTIME_GUARD, LH_AUTH_FETCH). Ba lớp đầu
+  đã bị xóa; đây là lớp duy nhất còn lại.
+
+  Nguyên tắc:
+  - originalFetch được lưu ĐÚNG MỘT LẦN, cờ __LH_UNIFIED_FETCH_INSTALLED chống
+    cài lại khi init / auth state thay đổi.
+  - Chỉ gắn Authorization cho request /api/ CÙNG ORIGIN. Token phải là chuỗi
+    không rỗng, không chứa ký tự xuống dòng (header injection).
+  - Header chuẩn hóa bằng new Headers(init.headers || {}).
+  - Response được clone() trước khi đọc JSON, hàm gọi phía sau vẫn dùng được body.
+  - Chỉ 401 UNAUTHORIZED / 403 BLOCKED / 403 PENDING_APPROVAL / 403
+    INSUFFICIENT_ROLE mới kích hoạt luồng thu hồi quyền. Lỗi mạng và 5xx KHÔNG
+    bị coi là mất quyền.
+*/
 (function () {
-  if (window.__LH_AUTH_FETCH_20260705) return;
-  window.__LH_AUTH_FETCH_20260705 = true;
-  var prevFetch = window.fetch ? window.fetch.bind(window) : null;
-  if (!prevFetch) return;
+  if (window.__LH_UNIFIED_FETCH_INSTALLED) return;
+  window.__LH_UNIFIED_FETCH_INSTALLED = true;
+
+  var originalFetch = (typeof window.fetch === 'function') ? window.fetch.bind(window) : null;
+  if (!originalFetch) return;
+  window.__lhOriginalFetch = originalFetch;
+
+  // ---------- Token ----------
+  function validToken(t) {
+    return typeof t === 'string' && t.trim().length > 0 && !/[\r\n]/.test(t);
+  }
+
+  function readTokenFromStorage(raw) {
+    if (!raw) return '';
+    var v;
+    try { v = JSON.parse(raw); } catch (e) { return ''; }
+    var tok = v && (v.access_token || (v.currentSession && v.currentSession.access_token) || (Array.isArray(v) && v[0]));
+    var exp = v && (v.expires_at || (v.currentSession && v.currentSession.expires_at));
+    if (!validToken(tok)) return '';
+    // Token hết hạn: không gắn header rác, để server trả 401 sạch sẽ.
+    if (exp && (Date.now() / 1000) > (exp - 10)) return '';
+    return tok.trim();
+  }
 
   function lhToken() {
     try {
-      var url = window.APP_CONFIG?.SUPABASE_URL || '';
+      var url = window.APP_CONFIG && window.APP_CONFIG.SUPABASE_URL || '';
       var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
       var ref = m ? m[1] : '';
       if (ref) {
-        var key = 'sb-' + ref + '-auth-token';
-        var raw = localStorage.getItem(key);
-        if (raw) {
-          var v = JSON.parse(raw);
-          var tok = v && (v.access_token || (v.currentSession && v.currentSession.access_token) || (Array.isArray(v) && v[0]));
-          var exp = v && (v.expires_at || (v.currentSession && v.currentSession.expires_at));
-          if (tok) {
-            if (exp && (Date.now() / 1000) > (exp - 10)) return '';
-            return tok;
-          }
-        }
+        var t = readTokenFromStorage(localStorage.getItem('sb-' + ref + '-auth-token'));
+        if (t) return t;
       }
-      // Fallback
       for (var i = 0; i < localStorage.length; i++) {
         var k = localStorage.key(i);
         if (k && k.slice(0, 3) === 'sb-' && k.slice(-11) === '-auth-token') {
-          var raw = localStorage.getItem(k);
-          if (!raw) continue;
-          var v = JSON.parse(raw);
-          var tok = v && (v.access_token || (v.currentSession && v.currentSession.access_token) || (Array.isArray(v) && v[0]));
-          var exp = v && (v.expires_at || (v.currentSession && v.currentSession.expires_at));
-          if (tok) {
-            if (exp && (Date.now() / 1000) > (exp - 10)) return '';
-            return tok;
-          }
+          var t2 = readTokenFromStorage(localStorage.getItem(k));
+          if (t2) return t2;
         }
       }
     } catch (e) { }
@@ -8756,203 +8854,734 @@ window.APP_CONFIG.USE_TURSO_API = true;
   }
   window.__lhAccessToken = lhToken;
 
-  function lhIsApi(u) {
+  // ---------- Nhận dạng URL ----------
+  function toUrl(input) {
     try {
-      var url = new URL(u, location.href);
-      return url.origin === location.origin && url.pathname.indexOf('/api/') === 0;
-    } catch (e) { return false; }
+      var raw = typeof input === 'string' ? input : (input && input.url) || '';
+      if (!raw) return null;
+      return new URL(raw, location.href);
+    } catch (e) { return null; }
+  }
+  function isOwnApi(url) {
+    return !!url && url.origin === location.origin && url.pathname.indexOf('/api/') === 0;
+  }
+  function methodOf(input, init) {
+    if (init && init.method) return String(init.method).toUpperCase();
+    if (input && typeof input === 'object' && input.method) return String(input.method).toUpperCase();
+    return 'GET';
   }
 
-  window.fetch = function (input, init) {
+  // ---------- Cache Supabase REST (giữ từ COPILOT_CLEAN_RUNTIME_GUARD) ----------
+  /*
+    Editor sửa câu hỏi vẫn còn vài chỗ đọc Supabase REST (tra id câu hỏi, ảnh).
+    Chỉ cache GET, chỉ trên host Supabase, và KHÔNG BAO GIỜ cache /rest/v1/profiles
+    — đó là bảng trạng thái, cache nó là tự tạo lại đúng lỗ hổng vừa xóa.
+  */
+  var restCache = new Map();
+  var restPending = new Map();
+
+  function supabaseOrigin() {
+    try { return new URL(window.APP_CONFIG && window.APP_CONFIG.SUPABASE_URL || '').origin; }
+    catch (e) { return ''; }
+  }
+  function restTtl(url, method) {
+    if (method !== 'GET') return 0;
+    var origin = supabaseOrigin();
+    if (!origin || url.origin !== origin) return 0;
+    var p = url.pathname;
+    if (p.indexOf('/rest/v1/') !== 0 && p.indexOf('/rest/v1/') === -1) return 0;
+    if (p.indexOf('/rest/v1/profiles') !== -1) return 0;   // KHÔNG cache trạng thái quyền
+    if (p.indexOf('/rest/v1/questions') !== -1) return 2 * 60 * 1000;
+    if (p.indexOf('/rest/v1/subjects') !== -1) return 2 * 60 * 1000;
+    if (p.indexOf('/rest/v1/site_settings') !== -1) return 60 * 1000;
+    return 0;
+  }
+  function restKey(url) {
+    var params = Array.from(url.searchParams.entries())
+      .sort(function (a, b) { return (a[0] + '=' + a[1]).localeCompare(b[0] + '=' + b[1]); });
+    return url.origin + url.pathname + '?' + params.map(function (x) { return x[0] + '=' + x[1]; }).join('&');
+  }
+  function matchKind(text, kind) {
+    if (!kind || kind === 'all') return true;
+    return text.indexOf('/' + kind) !== -1;
+  }
+  function clearRestCache(kind) {
+    Array.from(restCache.keys()).forEach(function (k) { if (matchKind(k, kind)) restCache.delete(k); });
+    Array.from(restPending.keys()).forEach(function (k) { if (matchKind(k, kind)) restPending.delete(k); });
     try {
-      var url = typeof input === 'string' ? input : (input && input.url) || '';
-      if (lhIsApi(url)) {
-        var tok = lhToken();
-        if (tok) {
-          if (input instanceof Request) {
-            if (!input.headers.has('Authorization')) {
-              var h = new Headers(input.headers);
-              h.set('Authorization', 'Bearer ' + tok);
-              input = new Request(input, { headers: h });
-            }
-          } else {
-            init = init || {};
-            var hh = new Headers(init.headers || {});
-            if (!hh.has('Authorization')) hh.set('Authorization', 'Bearer ' + tok);
-            init.headers = hh;
-          }
-        }
-      }
-    } catch (e) { }
-    return prevFetch(input, init);
-  };
-})();
-// ===== END LH_AUTH_FETCH_20260705 =====
-
-// ===== USER_EDIT_REQUEST_BELL_20260719 =====
-// Chuông trong menu tài khoản: người học chỉ xem các yêu cầu sửa của chính họ.
-(function () {
-  const $ = id => document.getElementById(id);
-  const esc = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
-  let requests = [];
-  let loading = null;
-  let statusSnapshot = new Map();
-  let hasFirstSnapshot = false;
-  let recentResultKeys = new Set();
-
-  function currentUserId() { return window.HODSupabase?.getUser?.()?.id || ''; }
-  function isStaff() { return ['admin', 'editor'].includes(String(window.HODSupabase?.getProfile?.()?.role || '').toLowerCase()); }
-  function storageKey() { return `learninghub_edit_request_seen_v1_${isStaff() ? 'staff' : 'user'}_${currentUserId()}`; }
-  function seenMap() { try { return JSON.parse(localStorage.getItem(storageKey()) || '{}') || {}; } catch { return {}; } }
-  function saveSeen(value) { try { localStorage.setItem(storageKey(), JSON.stringify(value)); } catch { } }
-  function statusText(status) { return ({ pending: 'Đang chờ duyệt', approved: 'Đã được chấp nhận', rejected: 'Đã bị từ chối' }[status] || status || 'Không rõ'); }
-  function questionText(row) {
-    const text = String(row?.new_data?.question || '').trim();
-    return text.length > 115 ? `${text.slice(0, 114)}…` : (text || 'Không có nội dung câu hỏi');
-  }
-  function formatDate(value) {
-    if (!value) return '';
-    const date = new Date(String(value).replace(' ', 'T') + (String(value).includes('Z') ? '' : 'Z'));
-    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
-  }
-  function refreshBadge() {
-    const badge = $('hodEditRequestBadge');
-    if (!badge) return;
-    const seen = seenMap();
-    const count = isStaff()
-      ? requests.filter(row => !seen[`${row.id}:pending`]).length
-      // Người gửi không cần nhận "tin mới" cho request đang tự tạo/chờ duyệt.
-      // Chỉ báo khi quản trị viên đã đưa ra kết quả mới.
-      : requests.filter(row => {
-        const key = `${row.id}:${row.status}`;
-        return ['approved', 'rejected'].includes(row.status) && (!seen[key] || recentResultKeys.has(key));
-      }).length;
-    badge.textContent = count > 99 ? '99+' : String(count);
-    badge.classList.toggle('hidden', count === 0);
-    $('hodEditRequestBell')?.classList.toggle('hasNewRequest', count > 0);
-  }
-  function announceNewResult(rows) {
-    const next = new Map(rows.map(row => [String(row.id), String(row.status || '')]));
-    if (hasFirstSnapshot && !isStaff()) {
-      const hasNewResult = rows.some(row => {
-        const status = String(row.status || '');
-        return ['approved', 'rejected'].includes(status) && statusSnapshot.get(String(row.id)) !== status;
+      // Dọn nốt các key sessionStorage do những bản cache cũ để lại.
+      Object.keys(sessionStorage).forEach(function (k) {
+        if (k.indexOf('lh_f5_cache:') === 0) sessionStorage.removeItem(k);
       });
-      if (hasNewResult) {
-        rows.forEach(row => {
-          const status = String(row.status || '');
-          const key = `${row.id}:${status}`;
-          if (['approved', 'rejected'].includes(status) && statusSnapshot.get(String(row.id)) !== status) recentResultKeys.add(key);
-        });
-        const message = rows.some(row => String(row.status) === 'approved' && statusSnapshot.get(String(row.id)) !== 'approved')
-          ? 'Yêu cầu sửa câu hỏi của bạn đã được duyệt.'
-          : 'Yêu cầu sửa câu hỏi của bạn đã được phản hồi.';
-        if (typeof notifyUX === 'function') notifyUX(message);
-        else if (typeof notify === 'function') notify(message);
-      }
-    }
-    statusSnapshot = next;
-    hasFirstSnapshot = true;
+    } catch (e) { }
   }
-  function render() {
-    const list = $('hodEditRequestList');
-    if (!list) return;
-    if (!requests.length) {
-      list.innerHTML = `<p class="muted">${isStaff() ? 'Không có yêu cầu sửa nào đang chờ duyệt.' : 'Bạn chưa gửi yêu cầu sửa câu hỏi nào.'}</p>`;
+  window.clearLearningHubSupabaseCache = clearRestCache;
+
+  // ---------- Điều phối 401/403 ----------
+  var REVOKE_CODES = { UNAUTHORIZED: 1, BLOCKED: 1, PENDING_APPROVAL: 1, INSUFFICIENT_ROLE: 1 };
+
+  function dispatchDenial(code, message) {
+    /*
+      INSUFFICIENT_ROLE nghĩa là phiên vẫn hợp lệ, chỉ là thao tác vừa rồi vượt
+      quyền (vd người học gọi nhầm endpoint quản trị). Xóa sạch dữ liệu học và
+      đá về màn hình chờ duyệt trong trường hợp này là sai — chỉ báo lỗi.
+    */
+    if (code === 'INSUFFICIENT_ROLE') {
+      if (typeof notify === 'function') notify(message || 'Bạn không có quyền thực hiện thao tác này');
       return;
     }
-    const seen = seenMap();
-    const displayRows = [...requests].sort((a, b) => {
-      const aNew = ['approved', 'rejected'].includes(a.status) && (!seen[`${a.id}:${a.status}`] || recentResultKeys.has(`${a.id}:${a.status}`));
-      const bNew = ['approved', 'rejected'].includes(b.status) && (!seen[`${b.id}:${b.status}`] || recentResultKeys.has(`${b.id}:${b.status}`));
-      if (aNew !== bNew) return aNew ? -1 : 1;
-      return String(b.reviewed_at || b.created_at || '').localeCompare(String(a.reviewed_at || a.created_at || ''));
-    });
-    list.innerHTML = displayRows.map(row => {
-      const code = row.subject_code || row.new_data?.subject_code || 'Chưa rõ môn';
-      const num = row.question_num || row.new_data?.num || row.question_id || '?';
-      const note = row.status === 'rejected' && row.admin_note ? `<p class="hodEditRequestNote">Lý do: ${esc(row.admin_note)}</p>` : '';
-      const when = row.reviewed_at || row.created_at;
-      const action = isStaff() ? '<button class="primary hodEditRequestReview" type="button" data-review-edit-request>Đi tới trang duyệt yêu cầu</button>' : '';
-      const isNew = ['approved', 'rejected'].includes(row.status) && (!seen[`${row.id}:${row.status}`] || recentResultKeys.has(`${row.id}:${row.status}`));
-      return `<article class="hodEditRequestItem ${isNew ? 'is-new' : ''}"><div class="hodEditRequestHead"><b>${esc(code)} · Câu ${esc(num)}</b><span class="hodEditRequestStatus ${esc(row.status || '')}">${esc(statusText(row.status))}</span></div>${isNew ? '<span class="hodEditRequestNew">Mới</span>' : ''}<p class="hodEditRequestMeta">${esc(questionText(row))}</p><p class="hodEditRequestMeta">${row.reviewed_at ? 'Cập nhật' : 'Gửi'}: ${esc(formatDate(when))}</p>${note}${action}</article>`;
-    }).join('');
-    list.querySelectorAll('[data-review-edit-request]').forEach(btn => btn.onclick = () => { window.location.href = 'admin.html?tab=requests'; });
-  }
-  async function load(force = false) {
-    if (!currentUserId()) { requests = []; refreshBadge(); return []; }
-    if (loading) return loading;
-    loading = (async () => {
-      try {
-        const endpoint = isStaff() ? '/api/staff-edit-requests' : '/api/my-edit-requests';
-        // Timestamp prevents an intermediary cache from serving an old status.
-        const res = await fetch(`${endpoint}?ts=${Date.now()}`, { cache: 'no-store' });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
-        requests = Array.isArray(data.data) ? data.data : [];
-        announceNewResult(requests);
-        render(); refreshBadge();
-        return requests;
-      } catch (error) {
-        if ($('hodEditRequestModal') && !$('hodEditRequestModal').classList.contains('hidden')) $('hodEditRequestList').innerHTML = `<p class="muted">Không tải được thông báo: ${esc(error.message)}</p>`;
-        return [];
-      } finally { loading = null; }
-    })();
-    return loading;
-  }
-  async function open() {
-    const modal = $('hodEditRequestModal');
-    if (!modal) return;
-    modal.classList.remove('hidden');
-    $('hodEditRequestTitle').textContent = isStaff() ? 'Yêu cầu sửa đang chờ duyệt' : 'Thông báo yêu cầu sửa';
-    $('hodEditRequestList').innerHTML = '<p class="muted">Đang tải thông báo...</p>';
-    await load(true);
-    const seen = seenMap();
-    requests.filter(row => isStaff() || ['approved', 'rejected'].includes(row.status)).forEach(row => { seen[`${row.id}:${row.status}`] = Date.now(); });
-    recentResultKeys.clear();
-    saveSeen(seen); refreshBadge();
-  }
-  function close() { $('hodEditRequestModal')?.classList.add('hidden'); }
-  function bind() {
-    $('hodEditRequestBell')?.addEventListener('click', open);
-    $('hodEditRequestClose')?.addEventListener('click', close);
-    $('hodEditRequestModal')?.addEventListener('click', event => { if (event.target === $('hodEditRequestModal')) close(); });
-    document.addEventListener('click', event => { if (event.target.closest('#hodTopAvatar')) setTimeout(() => load(true), 80); });
-    window.addEventListener('focus', () => load());
-    // Load immediately after login, then refresh sparingly while the tab is visible.
-    window.addEventListener('lh:profile-ready', () => load(true));
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
-    // Endpoint này chỉ đọc trạng thái yêu cầu của chính user.
-    // Tối ưu tiêu thụ Turso DB Row Reads: kiểm tra định kỳ mỗi 5 phút (300s) thay vì 3s.
-    // Chuông vẫn tự động cập nhật ngay khi bấm vào chuông, chuyển tab (focus/visibilitychange) hoặc sau đăng nhập.
-    setInterval(() => { if (!document.hidden) load(); }, 5 * 60 * 1000);
-    // Trường hợp profile đã hoàn tất trước khi block chuông được gắn listener.
-    if (currentUserId()) load(true);
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind, { once: true }); else bind();
-})();
-// ===== END USER_EDIT_REQUEST_BELL_20260719 =====
-
-// ===== MOVE_EDIT_REQUEST_BELL_TO_TOPBAR_20260719 =====
-// Giữ chuông cạnh nút Đổi môn trên thanh điều hướng, trước nút cài đặt.
-(function () {
-  function placeBell() {
-    const bell = document.getElementById('hodEditRequestBell');
-    const actions = document.querySelector('.globalTop .actions') || document.querySelector('#fc .actions') || document.querySelector('.actions');
-    const subject = document.getElementById('subjectTopChip');
-    const settings = document.getElementById('openSettings');
-    if (!bell || !actions) return;
-    if (settings?.parentNode === actions) {
-      actions.insertBefore(bell, settings);
-    } else if (subject?.parentNode === actions) {
-      actions.insertBefore(bell, subject.nextSibling);
-    } else if (!actions.contains(bell)) {
-      actions.appendChild(bell);
+    if (typeof window.handleAccessRevoked === 'function') {
+      window.handleAccessRevoked(message || 'Tài khoản bị từ chối truy cập.', code);
     }
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', placeBell, { once: true });
-  else placeBell();
-  setTimeout(placeBell, 350);
-  setTimeout(placeBell, 1200);
+
+  function inspectDenial(res) {
+    // Clone trước khi đọc: body gốc vẫn còn nguyên cho hàm gọi phía sau.
+    res.clone().json().then(function (data) {
+      var code = data && data.code;
+      if (code && REVOKE_CODES[code]) dispatchDenial(code, data.error);
+      else if (!code) {
+        // 401/403 không có code: coi như phiên hỏng, nhưng không đoán BLOCKED.
+        dispatchDenial(res.status === 401 ? 'UNAUTHORIZED' : 'PENDING_APPROVAL', null);
+      }
+    }).catch(function () {
+      dispatchDenial(res.status === 401 ? 'UNAUTHORIZED' : 'PENDING_APPROVAL', null);
+    });
+  }
+
+  // ---------- Interceptor ----------
+  window.fetch = function (input, init) {
+    var url = toUrl(input);
+    var method = methodOf(input, init);
+    var ownApi = isOwnApi(url);
+
+    if (ownApi) {
+      /*
+        VI: khi đã BIẾT CHẮC không có quyền (=== false), chặn ngay ở client mọi
+        request dữ liệu học. Server vẫn tự bảo vệ bằng checkUserAccess() — đây chỉ
+        là lớp chặn sớm để khỏi gọi thừa và không rò dữ liệu vào UI.
+        Chỉ chặn khi === false, không chặn lúc chưa rõ (undefined), tránh chặn nhầm
+        request chạy song song trước khi /api/profile trả về.
+      */
+      if (window.__LH_ACCESS_OK === false && /\/api\/(subjects|questions)\b/.test(url.pathname)) {
+        return Promise.resolve(new Response(
+          JSON.stringify({ error: 'Tài khoản chưa được phê duyệt', code: 'PENDING_APPROVAL' }),
+          { status: 403, headers: { 'content-type': 'application/json' } }
+        ));
+      }
+
+      var tok = lhToken();
+      try {
+        if (input instanceof Request) {
+          if (tok && !input.headers.has('Authorization')) {
+            var h = new Headers(input.headers);
+            h.set('Authorization', 'Bearer ' + tok);
+            input = new Request(input, { headers: h });
+          }
+        } else {
+          init = init ? Object.assign({}, init) : {};
+          var hh = new Headers(init.headers || {});
+          if (tok && !hh.has('Authorization')) hh.set('Authorization', 'Bearer ' + tok);
+          init.headers = hh;
+          // VI: mọi request /api/ đều gắn signal chung để hủy được hàng loạt
+          // ngay khi quyền bị thu hồi.
+          if (!init.signal && typeof window.getLhApiSignal === 'function') {
+            var sig = window.getLhApiSignal();
+            if (sig) init.signal = sig;
+          }
+        }
+      } catch (e) {
+        console.warn('[LH fetch] không gắn được Authorization:', e);
+      }
+
+      return originalFetch(input, init).then(function (res) {
+        if ((res.status === 401 || res.status === 403) && url.pathname.indexOf('/api/version.json') === -1) {
+          inspectDenial(res);
+        }
+        return res;
+      });
+      // Lỗi mạng: để promise reject tự nhiên. KHÔNG coi là thu hồi quyền (VIII).
+    }
+
+    // ----- Nhánh Supabase REST: cache GET nhẹ, không đụng tới header -----
+    var ttl = url ? restTtl(url, method) : 0;
+    if (!ttl) return originalFetch(input, init);
+
+    var key = restKey(url);
+    var hit = restCache.get(key);
+    if (hit && Date.now() - hit.at < ttl) return Promise.resolve(hit.res.clone());
+
+    if (restPending.has(key)) {
+      return restPending.get(key).then(function (r) { return r.clone(); });
+    }
+    var job = originalFetch(input, init).then(function (res) {
+      if (res.ok) restCache.set(key, { at: Date.now(), res: res.clone() });
+      restPending.delete(key);
+      return res;
+    }).catch(function (err) {
+      restPending.delete(key);
+      throw err;
+    });
+    restPending.set(key, job.then(function (r) { return r.clone(); }));
+    return job;
+  };
+
+  /*
+    ============================================================
+    HÀNG RÀO XÁC MINH QUYỀN (V.3, X)
+    ============================================================
+    Mọi tín hiệu (Realtime, quay lại tab, polling fallback) đều đi qua đây, và
+    đây là nơi DUY NHẤT gọi /api/profile để xác minh lại:
+      - Đang có request chạy  -> dùng chung, không tạo request thứ hai.
+      - Vừa xác minh xong < 3s -> bỏ qua (debounce).
+      - Một sự kiện Realtime  -> tối đa một lần kiểm tra.
+  */
+  var inflight = null;
+  var lastCheckAt = 0;
+  var MIN_INTERVAL = 3000; // 3 giây (spec: 2-5s)
+
+  function lhRevalidateAccess(reason, force) {
+    if (inflight) return inflight;
+    if (!force && Date.now() - lastCheckAt < MIN_INTERVAL) return Promise.resolve(null);
+
+    var api = window.HODSupabase;
+    if (!api || typeof api.getUser !== 'function' || !api.getUser()) return Promise.resolve(null);
+    if (typeof window.lhCheckProfileOnce !== 'function') return Promise.resolve(null);
+
+    lastCheckAt = Date.now();
+    inflight = Promise.resolve(window.lhCheckProfileOnce(reason))
+      .catch(function (e) { console.warn('[LH access] kiểm tra thất bại:', e); return null; })
+      .then(function (r) { inflight = null; lastCheckAt = Date.now(); return r; });
+    return inflight;
+  }
+  window.lhRevalidateAccess = lhRevalidateAccess;
+
+  /*
+    IX. DỰ PHÒNG KHI REALTIME MẤT KẾT NỐI
+    Realtime là cơ chế chính. Polling chỉ chạy khi: Realtime disconnected VÀ tab
+    visible VÀ còn phiên Supabase. Chỉ tồn tại duy nhất một timer.
+  */
+  var pollTimer = null;
+  var POLL_MS = 90 * 1000; // 90s, nằm trong khoảng 60-120s
+
+  function startFallbackPolling() {
+    if (pollTimer) return; // chống tạo nhiều interval sau mỗi lần render/đăng nhập
+    if (window.__lhRealtimeConnected) return;
+    console.log('[LH access] Realtime mất kết nối -> bật polling dự phòng', POLL_MS / 1000 + 's');
+    pollTimer = setInterval(function () {
+      if (window.__lhRealtimeConnected) { stopFallbackPolling(); return; }
+      if (document.visibilityState !== 'visible') return;
+      var api = window.HODSupabase;
+      if (!api || typeof api.getUser !== 'function' || !api.getUser()) return;
+      lhRevalidateAccess('polling');
+    }, POLL_MS);
+  }
+
+  function stopFallbackPolling() {
+    if (!pollTimer) return;
+    console.log('[LH access] Realtime đã kết nối lại -> tắt polling dự phòng');
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+
+  window.startFallbackPolling = startFallbackPolling;
+  window.stopFallbackPolling = stopFallbackPolling;
+  // Dùng khi đăng xuất / khởi tạo lại app: dọn timer, tránh timer mồ côi.
+  window.lhTeardownAccessWatch = function () {
+    stopFallbackPolling();
+    inflight = null;
+    lastCheckAt = 0;
+  };
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') {
+      lhRevalidateAccess('visibilitychange');
+      if (!window.__lhRealtimeConnected) startFallbackPolling();
+    } else {
+      // Không kiểm tra gì khi tab ẩn.
+      stopFallbackPolling();
+    }
+  });
 })();
-// ===== END MOVE_EDIT_REQUEST_BELL_TO_TOPBAR_20260719 =====
+// ===== END LH_UNIFIED_FETCH_AND_ACCESS_20260726 =====
+
+// ===== BOOKMARK_QUESTIONS_FEATURE_20260726 =====
+// Tính năng lưu câu hỏi (🔖 Bookmark Ribbon SVG): lưu câu hỏi yêu thích từ flashcard, xem lại ở Thư viện.
+(function () {
+  const BOOKMARK_PREFIX = 'lh_starred_v1_';
+
+  const SVG_UNSAVED = `<svg class="bmIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
+  const SVG_SAVED = `<svg class="bmIcon" width="18" height="18" viewBox="0 0 24 24" fill="#f5c518" stroke="#f5c518" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
+
+  const SVG_LIB_UNSAVED = `<svg class="bmLibIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
+  const SVG_LIB_SAVED = `<svg class="bmLibIcon" width="14" height="14" viewBox="0 0 24 24" fill="#f5c518" stroke="#f5c518" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
+
+  function getSubjectCode() {
+    if (typeof RAW !== 'undefined' && Array.isArray(RAW) && RAW[0] && RAW[0].subject_code) {
+      return String(RAW[0].subject_code).trim();
+    }
+    return localStorage.getItem('learninghub_subject_code_merged_v1') || 'default_subject';
+  }
+
+  function bookmarkKey() {
+    return BOOKMARK_PREFIX + getSubjectCode();
+  }
+
+  // Định danh nhất quán cho từng câu hỏi (ưu tiên num, fallback id)
+  function getQKey(q) {
+    if (!q) return null;
+    if (typeof q === 'string' || typeof q === 'number') return 'num_' + String(q);
+    if (q.num !== undefined && q.num !== null && q.num !== '') return 'num_' + String(q.num);
+    if (q.id !== undefined && q.id !== null && q.id !== '') return 'id_' + String(q.id);
+    if (q.question) return 'q_' + String(q.question).trim().slice(0, 50);
+    return null;
+  }
+
+  function loadBookmarks() {
+    try {
+      const primaryKey = bookmarkKey();
+      const primaryArr = JSON.parse(localStorage.getItem(primaryKey) || '[]');
+      const backupArr = JSON.parse(localStorage.getItem('lh_starred_v1_backup_all') || '[]');
+      const merged = new Set([...(Array.isArray(primaryArr) ? primaryArr : []), ...(Array.isArray(backupArr) ? backupArr : [])].map(x => String(x)));
+      return merged;
+    } catch (e) { return new Set(); }
+  }
+
+  function saveBookmarks(set) {
+    try {
+      const arr = [...set].map(x => String(x));
+      localStorage.setItem(bookmarkKey(), JSON.stringify(arr));
+      localStorage.setItem('lh_starred_v1_backup_all', JSON.stringify(arr));
+    } catch (e) { }
+  }
+
+  function isBookmarked(qOrKey) {
+    if (!qOrKey) return false;
+    const key = typeof qOrKey === 'object' ? getQKey(qOrKey) : String(qOrKey);
+    if (!key) return false;
+    return loadBookmarks().has(key);
+  }
+
+  function toggleBookmarkFn(qOrKey) {
+    if (!qOrKey) return false;
+    const key = typeof qOrKey === 'object' ? getQKey(qOrKey) : String(qOrKey);
+    if (!key) return false;
+    const s = loadBookmarks();
+    let added;
+    if (s.has(key)) { s.delete(key); added = false; }
+    else { s.add(key); added = true; }
+    saveBookmarks(s);
+    return added;
+  }
+
+  function countBookmarks() {
+    return loadBookmarks().size;
+  }
+
+  // Gắn helpers ra window để Thư viện gọi trực tiếp trong template
+  window.__isBookmarked = isBookmarked;
+  window.__countBookmarks = countBookmarks;
+  window.__getBookmarkBtnHTML = function (q) {
+    const key = getQKey(q);
+    if (!key) return '';
+    const bookmarked = isBookmarked(key);
+    const esc2 = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    return `<button type="button" class="libBookmarkBtn${bookmarked ? ' bookmarked' : ''}" data-lib-bookmark="${esc2(key)}" title="${bookmarked ? 'Bỏ lưu câu này' : 'Lưu câu hỏi này'}">${bookmarked ? SVG_LIB_SAVED : SVG_LIB_UNSAVED}</button>`;
+  };
+
+  // ── CSS inject ────────────────────────────────────────────────────────────
+  (function injectBookmarkCSS() {
+    if (document.getElementById('__bookmarkQCSS')) return;
+    const s = document.createElement('style');
+    s.id = '__bookmarkQCSS';
+    s.textContent = `
+      #bookmarkBtn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 4px 6px;
+        border-radius: 8px;
+        color: rgba(232,212,168,.65);
+        transition: color .18s, transform .15s, filter .18s;
+        user-select: none;
+        display: flex; align-items: center; justify-content: center;
+      }
+      #bookmarkBtn .bmIcon { transition: stroke .18s, fill .18s, transform .15s; }
+      #bookmarkBtn.bookmarked {
+        color: #f5c518;
+        filter: drop-shadow(0 0 7px rgba(245,197,24,.65));
+      }
+      #bookmarkBtn:hover { transform: scale(1.18); color: #f5c518; }
+      #bookmarkBtn:active { transform: scale(.9); }
+      @keyframes bookmarkPop {
+        0%   { transform: scale(1); }
+        40%  { transform: scale(1.42); }
+        70%  { transform: scale(.88); }
+        100% { transform: scale(1); }
+      }
+      #bookmarkBtn.pop { animation: bookmarkPop .32s ease; }
+
+      .libBookmarkBtn {
+        background: rgba(255,255,255,.03);
+        border: 1px solid rgba(200,169,110,.25);
+        border-radius: 7px;
+        cursor: pointer;
+        font-size: .82rem;
+        padding: 4px 9px;
+        color: rgba(232,212,168,.75);
+        display: inline-flex; align-items: center; gap: 4px;
+        transition: color .15s, border-color .15s, background .15s, transform .12s;
+        line-height: 1;
+        white-space: nowrap;
+      }
+      .libBookmarkBtn.bookmarked {
+        color: #f5c518;
+        border-color: rgba(245,197,24,.55);
+        background: rgba(245,197,24,.09);
+      }
+      .libBookmarkBtn:hover { transform: scale(1.06); color: #f5c518; border-color: rgba(245,197,24,.5); }
+
+      .v7FilterBtn[data-library-filter="starred"] .bookmarkCount {
+        font-size: .75em;
+        opacity: .88;
+        margin-left: 4px;
+      }
+    `;
+    document.head.appendChild(s);
+  })();
+
+  // ── Flashcard: lấy chính xác câu hiện tại ─────────────────────────────────
+  function getCurrentCard() {
+    try {
+      const arr = (typeof pool !== 'undefined' && Array.isArray(pool) && pool.length) ? pool : (typeof RAW !== 'undefined' ? RAW : []);
+      if (!arr.length) return null;
+      const index = Math.max(0, Math.min(typeof ci === 'number' ? ci : 0, arr.length - 1));
+      return arr[index] || null;
+    } catch (e) { return null; }
+  }
+
+  function updateBookmarkBtn() {
+    const btn = document.getElementById('bookmarkBtn');
+    if (!btn) return;
+    const card = getCurrentCard();
+    if (!card) return;
+    const key = getQKey(card);
+    if (!key) return;
+    const bookmarked = isBookmarked(key);
+    btn.classList.toggle('bookmarked', bookmarked);
+    btn.innerHTML = bookmarked ? SVG_SAVED : SVG_UNSAVED;
+    btn.title = bookmarked ? 'Bỏ lưu câu này' : 'Lưu câu hỏi này';
+  }
+  window.updateBookmarkBtn = updateBookmarkBtn;
+
+  function addBookmarkButtonToCard() {
+    if (document.getElementById('bookmarkBtn')) { updateBookmarkBtn(); return; }
+    const cardTools = document.getElementById('cardTools');
+    if (!cardTools) return;
+    const btn = document.createElement('button');
+    btn.id = 'bookmarkBtn';
+    btn.type = 'button';
+    btn.className = 'cardToolBtn';
+    btn.innerHTML = SVG_UNSAVED;
+    btn.title = 'Lưu câu hỏi này';
+    btn.setAttribute('aria-label', 'Lưu câu hỏi yêu thích');
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      const card = getCurrentCard();
+      if (!card) return;
+      const key = getQKey(card);
+      if (!key) return;
+      const added = toggleBookmarkFn(key);
+      btn.classList.toggle('bookmarked', added);
+      btn.innerHTML = added ? SVG_SAVED : SVG_UNSAVED;
+      btn.title = added ? 'Bỏ lưu câu này' : 'Lưu câu hỏi này';
+      btn.classList.remove('pop');
+      void btn.offsetWidth;
+      btn.classList.add('pop');
+      btn.addEventListener('animationend', () => btn.classList.remove('pop'), { once: true });
+      const displayNum = card.num || ((typeof ci === 'number' ? ci : 0) + 1);
+      try { notify(added ? `🔖 Đã lưu câu ${displayNum}` : `Đã bỏ lưu câu ${displayNum}`); } catch (err) { }
+      // Nếu thư viện đang hiển thị thì render lại thư viện
+      if (typeof window.renderStudy === 'function') window.renderStudy();
+    });
+    cardTools.appendChild(btn);
+    updateBookmarkBtn();
+  }
+
+  const _origUpdateCardTools = typeof updateCardTools === 'function' ? updateCardTools : null;
+  window.updateCardTools = function () {
+    if (_origUpdateCardTools) _origUpdateCardTools.apply(this, arguments);
+    updateBookmarkBtn();
+  };
+
+  // ── Thư viện: Event listener cho nút Bookmark trên Card ───────────────────
+  function bindLibraryClickEvents() {
+    document.addEventListener('click', function (e) {
+      const btn = e.target.closest('[data-lib-bookmark]');
+      if (!btn) return;
+      e.stopPropagation();
+      const key = btn.dataset.libBookmark;
+      if (!key) return;
+      const added = toggleBookmarkFn(key);
+      btn.classList.toggle('bookmarked', added);
+      btn.innerHTML = added ? SVG_LIB_SAVED : SVG_LIB_UNSAVED;
+      btn.title = added ? 'Bỏ lưu' : 'Lưu câu này';
+      btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop');
+      btn.addEventListener('animationend', () => btn.classList.remove('pop'), { once: true });
+      try { notify(added ? `🔖 Đã lưu câu hỏi` : `Đã bỏ lưu câu hỏi`); } catch (ex) { }
+
+      // Re-render thư viện để cập nhật danh sách và số đếm bộ lọc
+      if (typeof window.renderStudy === 'function') window.renderStudy();
+      updateBookmarkBtn();
+    }, false);
+  }
+
+  function init() {
+    addBookmarkButtonToCard();
+    bindLibraryClickEvents();
+    if (typeof renderUnified === 'function') {
+      try { renderUnified(); } catch (e) { }
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => setTimeout(init, 100));
+  } else {
+    setTimeout(init, 100);
+  }
+
+  window.addEventListener('lh:subject-changed', () => {
+    setTimeout(updateBookmarkBtn, 100);
+    if (typeof renderUnified === 'function') {
+      try { renderUnified(); } catch (e) { }
+    } else if (typeof window.renderStudy === 'function') {
+      try { window.renderStudy(); } catch (e) { }
+    }
+  });
+})();
+// ===== BOOKMARK_QUESTIONS_FEATURE_20260726 END =====
+
+// ===== HEADER_EDIT_REQUEST_BELL_20260726 =====
+// Chuông thông báo yêu cầu sửa câu hỏi.
+//
+// Vị trí: NGOÀI header (.globalTop .actions), nằm bên trái nút "Đổi môn" ->
+// thứ tự trên thanh trên cùng là: [chuông] [Đổi môn] [Cài đặt] [Avatar].
+// Nút và modal đã có sẵn trong index.html (#hodEditRequestBell,
+// #hodEditRequestModal) cùng CSS cho .globalTop, nhưng trước đây không có JS nào
+// gắn vào nên nút nằm im trong menu tài khoản và không bấm được.
+//
+// Điện thoại: KHÔNG xử lý ở JS. app.css đã có
+//   @media (max-width:760px){ .globalTop #hodEditRequestBell{display:none!important} }
+// nên chuông tự ẩn trên mobile (báo cáo vẫn xem được qua menu tài khoản ->
+// "Báo cáo đã gửi"). Đừng thêm inline style.display cho nút này, vì inline
+// (không !important) sẽ thua rule !important trong CSS và ngược lại setProperty
+// important sẽ đè luôn media query mobile.
+//
+// Dữ liệu: GET /api/my-edit-requests (Turso). Supabase chỉ dùng để auth, token
+// do lớp patch fetch tự gắn Authorization - xem LH_FETCH_AUTH ở dưới file.
+(function () {
+  const SEEN_KEY = 'lh_edit_request_seen_v1';
+  const POLL_MS = 60000;
+  const MIN_GAP_MS = 15000;
+
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const user = () => window.HODSupabase?.getUser?.() || null;
+
+  let bell = null;          // giữ tham chiếu vì khi đăng xuất ta tháo nút khỏi DOM
+  let items = [];
+  let loading = false;
+  let inflight = null;      // promise của lần gọi API đang chạy (chống gọi trùng)
+  let lastFetch = 0;        // mốc lần GỌI gần nhất (kể cả lỗi) để không spam API
+  let loadedOk = false;     // đã từng lấy được danh sách -> phân biệt rỗng vs lỗi
+  let watchedUser = null;   // id user đang theo dõi, đổi user thì nạp lại từ đầu
+
+  function actionsBar() {
+    return document.querySelector('.globalTop .actions') || document.querySelector('#fc .actions') || document.querySelector('.actions');
+  }
+
+  function readSeen() {
+    try { return JSON.parse(localStorage.getItem(SEEN_KEY) || '{}') || {}; } catch (e) { return {}; }
+  }
+  function writeSeen(map) {
+    try { localStorage.setItem(SEEN_KEY, JSON.stringify(map)); } catch (e) { }
+  }
+  // Mốc "đã xem" theo trạng thái + thời điểm duyệt: admin duyệt lại lần nữa thì
+  // lại tính là thông báo mới.
+  function stampOf(r) { return String(r.status || '') + '|' + String(r.reviewed_at || r.created_at || ''); }
+  function isFresh(r, seen) {
+    if (String(r.status || 'pending') === 'pending') return false;
+    return seen[String(r.id)] !== stampOf(r);
+  }
+
+  function statusText(s) { return ({ pending: 'Đang chờ', approved: 'Đã duyệt', rejected: 'Từ chối' }[s] || s || 'Không rõ'); }
+  function statusClass(s) { return s === 'approved' ? 'approved' : (s === 'rejected' ? 'rejected' : 'pending'); }
+  function timeText(v) {
+    if (!v) return '';
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? String(v) : d.toLocaleString('vi-VN');
+  }
+
+  // Đưa chuông ra thanh header, ngay trước nút Đổi môn / Cài đặt.
+  function mount() {
+    if (!bell) bell = $('hodEditRequestBell');
+    if (!bell) return;
+    if (!user()) { if (bell.isConnected) bell.remove(); return; }
+    const actions = actionsBar();
+    if (!actions) return;
+    const anchor = $('subjectTopChip') || $('openSettings');
+    if (anchor && anchor.parentNode === actions) {
+      if (anchor.previousElementSibling !== bell) actions.insertBefore(bell, anchor);
+    } else if (bell.parentNode !== actions) {
+      actions.prepend(bell);
+    }
+  }
+
+  function paint() {
+    if (!bell || !bell.isConnected) return;
+    const seen = readSeen();
+    const n = items.filter(r => isFresh(r, seen)).length;
+    const badge = $('hodEditRequestBadge');
+    if (badge) {
+      badge.textContent = n > 9 ? '9+' : String(n);
+      badge.classList.toggle('hidden', n === 0);
+    }
+    bell.classList.toggle('hasNewRequest', n > 0);
+    bell.title = n > 0 ? n + ' yêu cầu sửa vừa có phản hồi' : 'Thông báo yêu cầu sửa câu hỏi';
+  }
+
+  function isModalOpen() { return !!$('hodEditRequestModal') && !$('hodEditRequestModal').classList.contains('hidden'); }
+
+  function fetchNow() {
+    loading = true;
+    return (async () => {
+      try {
+        const res = await fetch('/api/my-edit-requests?ts=' + Date.now(), { cache: 'no-store' });
+        // 401/403 (chưa duyệt, hết phiên) hay 5xx: im lặng, giữ dữ liệu cũ.
+        if (!res.ok) return;
+        const out = await res.json().catch(() => ({}));
+        if (Array.isArray(out?.data)) { items = out.data; loadedOk = true; }
+      } catch (e) {
+        console.warn('[bell] không tải được yêu cầu sửa:', e);
+      } finally {
+        loading = false;
+        inflight = null;
+        paint();
+        // Modal đang mở thì vẽ lại: nếu chỉ paint() thì danh sách treo ở "Đang tải...".
+        if (isModalOpen()) renderList();
+      }
+    })();
+  }
+
+  // Trả về promise của lần gọi ĐANG chạy để openModal await đúng lần đó, thay vì
+  // thoát sớm rồi render lúc dữ liệu chưa về.
+  function load(force) {
+    if (!user()) { items = []; return Promise.resolve(); }
+    if (inflight) return inflight;
+    if (!force && Date.now() - lastFetch < MIN_GAP_MS) return Promise.resolve();
+    lastFetch = Date.now();
+    inflight = fetchNow();
+    return inflight;
+  }
+
+  function renderList() {
+    const box = $('hodEditRequestList');
+    if (!box) return;
+    if (!user()) { box.innerHTML = '<div class="hodReportEmpty">Đăng nhập để xem thông báo.</div>'; return; }
+    if (!items.length) {
+      // Phân biệt "chưa gửi gì" với "gọi API lỗi" để không báo sai cho người học.
+      box.innerHTML = loading
+        ? '<div class="hodReportEmpty">Đang tải...</div>'
+        : (loadedOk
+          ? '<div class="hodReportEmpty">Bạn chưa gửi yêu cầu sửa nào.</div>'
+          : '<div class="hodReportEmpty">Không tải được thông báo. Thử lại sau.</div>');
+      return;
+    }
+    const seen = readSeen();
+    box.innerHTML = items.map(r => {
+      const fresh = isFresh(r, seen);
+      const num = r.question_num || r.new_data?.num || '?';
+      const code = r.subject_code || r.new_data?.subject_code || '';
+      return `
+      <div class="hodEditRequestItem${fresh ? ' is-new' : ''}">
+        <div class="hodEditRequestHead">
+          <b>Câu ${esc(num)}${code ? ' · ' + esc(code) : ''}</b>
+          <span class="hodEditRequestStatus ${statusClass(r.status)}">${esc(statusText(r.status))}</span>
+        </div>
+        <p class="hodEditRequestMeta">Gửi: ${esc(timeText(r.created_at))}${r.reviewed_at ? ' · Phản hồi: ' + esc(timeText(r.reviewed_at)) : ''}</p>
+        ${r.admin_note ? `<p class="hodEditRequestNote">Ghi chú admin: ${esc(r.admin_note)}</p>` : ''}
+        ${fresh ? '<span class="hodEditRequestNew">Mới</span>' : ''}
+      </div>`;
+    }).join('');
+  }
+
+  // Mở modal = đã đọc: xoá badge nhưng vẫn giữ nhãn "Mới" của lần mở này.
+  function markAllSeen() {
+    const seen = readSeen();
+    items.forEach(r => { if (String(r.status || 'pending') !== 'pending') seen[String(r.id)] = stampOf(r); });
+    writeSeen(seen);
+  }
+
+  function closeModal() { $('hodEditRequestModal')?.classList.add('hidden'); }
+
+  async function openModal() {
+    const modal = $('hodEditRequestModal');
+    if (!modal) return;
+    $('hodAccountMenu')?.classList.add('hidden');
+    modal.classList.remove('hidden');
+    renderList();
+    await load(true);
+    renderList();
+    markAllSeen();
+    paint();
+  }
+
+  function bind() {
+    if (!bell) bell = $('hodEditRequestBell');
+    if (bell && !bell.__lhBellBound) {
+      bell.__lhBellBound = true;
+      bell.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); openModal(); });
+    }
+    const closeBtn = $('hodEditRequestClose');
+    if (closeBtn && !closeBtn.__lhBellBound) {
+      closeBtn.__lhBellBound = true;
+      closeBtn.addEventListener('click', closeModal);
+    }
+    const modal = $('hodEditRequestModal');
+    if (modal && !modal.__lhBellBound) {
+      modal.__lhBellBound = true;
+      modal.addEventListener('mousedown', e => { if (e.target === modal) closeModal(); });
+    }
+  }
+
+  function tick() {
+    mount();
+    bind();
+    const uid = user()?.id || null;
+    if (uid !== watchedUser) {
+      watchedUser = uid;
+      items = [];
+      loadedOk = false;
+      lastFetch = 0;
+      if (uid) load(true);
+    }
+    paint();
+  }
+
+  function boot() {
+    tick();
+    // Lúc boot user thường CHƯA đăng nhập xong (auth async) nên tick đầu tháo nút
+    // ra; các mốc dưới đây gắn lại ngay khi có user, không phải chờ interval.
+    [300, 1200, 3000].forEach(ms => setTimeout(tick, ms));
+    setInterval(tick, 700);
+    setInterval(() => load(false), POLL_MS);
+    // PATCH_MOBILE_PERF_PAUSE_INTERVALS chặn setInterval khi tab bị ẩn, nên khi
+    // tab hiện lại phải tick tay một nhịp thay vì chờ interval.
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+    window.addEventListener('focus', () => { tick(); load(false); });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+// ===== HEADER_EDIT_REQUEST_BELL_20260726 END =====

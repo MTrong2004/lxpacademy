@@ -1,5 +1,5 @@
-import { db, json } from '../lib/db.js';
-import { roleColor, getAdminEmail } from '../lib/auth.js';
+import { json } from '../lib/db.js';
+import { roleColor, getAdminEmail, checkUserAccess } from '../lib/auth.js';
 
 async function postDiscordEmbed(embed) {
   const webhookUrl = (process.env.DISCORD_WEBHOOK_URL || '').trim().replace(/(^['"]|['"]$)/g, '');
@@ -16,18 +16,21 @@ async function postDiscordEmbed(embed) {
 }
 
 export async function handleNotify(req, authUser) {
-  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+  if (req.method !== 'POST') return json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, 405);
+  const access = await checkUserAccess(authUser);
+  if (!access.ok) return json({ error: access.error, code: access.code }, access.status);
 
   const body = await req.json();
   const { kind } = body;
   const user_id = authUser.id;
   const email = authUser.email;
-  if (!user_id || !email) return json({ error: 'Missing user_id or email' }, 400);
+  if (!user_id || !email) return json({ error: 'Thiếu thông tin người dùng', code: 'BAD_REQUEST' }, 400);
 
-  const userRes = await db.execute({ sql: 'select * from profiles where id = ?', args: [user_id] });
-  const profile = userRes.rows?.[0];
-  if (!profile || String(profile.email || '').toLowerCase().trim() !== String(email).toLowerCase().trim()) {
-    return json({ error: 'Unauthorized' }, 403);
+  // X: dùng lại profile mà checkUserAccess đã đọc (cache 10s) thay vì
+  // `select * from profiles` lần thứ hai cho cùng một request.
+  const profile = access.profile;
+  if (String(profile.email || '').toLowerCase().trim() !== String(email).toLowerCase().trim()) {
+    return json({ error: 'Phiên đăng nhập không hợp lệ', code: 'UNAUTHORIZED' }, 401);
   }
   const role = profile.role || 'user';
 
@@ -50,13 +53,12 @@ export async function handleNotify(req, authUser) {
   }
 
   if (kind === 'action') {
-    const isBlocked = profile.blocked === 1 || profile.blocked === true;
-    const isApproved = profile.approved === 1 || profile.approved === true;
+    // approved/blocked đã được checkUserAccess() xác minh, ở đây chỉ còn vai trò.
     const isEditorOrAdmin = ['admin', 'editor'].includes(role);
     const adminEmail = getAdminEmail();
     const isConfiguredAdmin = !!adminEmail && String(profile.email || '').toLowerCase().trim() === adminEmail;
-    if (!isConfiguredAdmin && !(isApproved && !isBlocked && isEditorOrAdmin)) {
-      return json({ error: 'Unauthorized' }, 403);
+    if (!isConfiguredAdmin && !isEditorOrAdmin) {
+      return json({ error: 'Bạn không có quyền thực hiện thao tác này', code: 'INSUFFICIENT_ROLE' }, 403);
     }
 
     const { action_name, target_type, target_id } = body;
@@ -76,5 +78,5 @@ export async function handleNotify(req, authUser) {
     return json({ ok: true });
   }
 
-  return json({ error: 'Invalid kind' }, 400);
+  return json({ error: 'Loại thông báo không hợp lệ', code: 'BAD_REQUEST' }, 400);
 }

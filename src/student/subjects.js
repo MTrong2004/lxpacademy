@@ -11,15 +11,16 @@ export function getSubjectCode() {
 }
 
 export function syncUserSubjectToProfile(code, supabaseUser) {
-  if (!supabaseUser) return;
+  const u = supabaseUser || window.HODSupabase?.getUser?.();
+  if (!u) return;
   try {
-    const md = supabaseUser.user_metadata || {};
+    const md = u.user_metadata || {};
     fetch('/api/profile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id: supabaseUser.id,
-        email: supabaseUser.email,
+        id: u.id,
+        email: u.email,
         full_name: md.full_name || md.name || '',
         avatar_url: md.avatar_url || md.picture || '',
         current_subject: code || getSubjectCode() || '',

@@ -26,7 +26,9 @@ export default async function handler(req) {
     let authUser = null;
     if (NEEDS_AUTH.has(path)) {
       authUser = await verifyUser(req);
-      if (!authUser) return json({ error: 'Chưa đăng nhập hoặc phiên đã hết hạn.' }, 401);
+      // III: thiếu token / token không hợp lệ -> 401 UNAUTHORIZED (có code để
+      // interceptor phía client phân biệt được với lỗi hệ thống).
+      if (!authUser) return json({ error: 'Phiên đăng nhập không hợp lệ', code: 'UNAUTHORIZED' }, 401);
     }
 
     switch (path) {
@@ -51,10 +53,16 @@ export default async function handler(req) {
       case 'admin-action':
         return await handleAdminAction(req, authUser);
       default:
-        return json({ error: 'Endpoint not found' }, 404);
+        return json({ error: 'Endpoint not found', code: 'NOT_FOUND' }, 404);
     }
   } catch (e) {
-    console.error('API Error:', e);
-    return json({ error: e.message || 'Internal Server Error' }, 500);
+    /*
+      III: chỉ exception thật mới là 500, và KHÔNG trả e.message ra browser.
+      e.message của @libsql/client thường kèm URL database và đôi khi cả phần
+      đầu auth token -> log ở server, gửi về client thông điệp chung chung.
+      Client coi 500 là "không kết luận được quyền", KHÔNG coi là bị thu hồi quyền.
+    */
+    console.error('[API Error]', path, e?.stack || e?.message || e);
+    return json({ error: 'Đã xảy ra lỗi hệ thống', code: 'INTERNAL_ERROR' }, 500);
   }
 }

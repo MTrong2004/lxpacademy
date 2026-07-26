@@ -87,6 +87,223 @@
     }
   }
 
+  // src/core/versionChecker.js
+  var currentVersion = true ? "eb96894" : null;
+  var updateDetected = false;
+  var lastCheckTime = 0;
+  var CHECK_INTERVAL_MS = 60 * 1e3;
+  var MIN_CHECK_GAP_MS = 15 * 1e3;
+  async function fetchVersion() {
+    try {
+      const res = await fetch("/version.json?_t=" + Date.now(), {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-store, no-cache"
+        }
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data && data.version ? String(data.version) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  async function checkForUpdates() {
+    if (updateDetected) return;
+    const now = Date.now();
+    if (now - lastCheckTime < MIN_CHECK_GAP_MS) return;
+    lastCheckTime = now;
+    const remoteVersion = await fetchVersion();
+    if (!remoteVersion) return;
+    if (!currentVersion) {
+      currentVersion = remoteVersion;
+      return;
+    }
+    if (remoteVersion !== currentVersion) {
+      updateDetected = true;
+      showUpdateNotification(remoteVersion);
+    }
+  }
+  function showUpdateNotification(newVersion) {
+    if (document.getElementById("lhUpdateBanner")) return;
+    const styleId = "lhUpdateBannerStyles";
+    if (!document.getElementById(styleId)) {
+      const styleEl = document.createElement("style");
+      styleEl.id = styleId;
+      styleEl.textContent = `
+      .lh-update-banner {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 2147483647;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 14px 20px;
+        background: rgba(18, 24, 38, 0.95);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-left: 4px solid #3b82f6;
+        border-radius: 16px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 24px rgba(59, 130, 246, 0.25);
+        backdrop-filter: blur(18px);
+        color: #f8fafc;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 14px;
+        animation: lhBannerSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      @keyframes lhBannerSlideIn {
+        from { opacity: 0; transform: translateY(24px) scale(0.94); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      .lh-update-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
+      }
+      .lh-update-icon svg {
+        width: 20px;
+        height: 20px;
+        fill: none;
+        stroke: #ffffff;
+        stroke-width: 2.2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .lh-update-content {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .lh-update-title {
+        font-weight: 700;
+        font-size: 14px;
+        color: #ffffff;
+        letter-spacing: -0.01em;
+      }
+      .lh-update-sub {
+        font-size: 12px;
+        color: #94a3b8;
+      }
+      .lh-update-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: 6px;
+      }
+      .lh-update-btn {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: #ffffff;
+        border: none;
+        border-radius: 10px;
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+        white-space: nowrap;
+      }
+      .lh-update-btn:hover {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        transform: translateY(-1px);
+        box-shadow: 0 6px 18px rgba(59, 130, 246, 0.5);
+      }
+      .lh-update-btn:active {
+        transform: translateY(0);
+      }
+      .lh-update-close {
+        background: transparent;
+        border: none;
+        color: #64748b;
+        cursor: pointer;
+        padding: 6px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+      }
+      .lh-update-close:hover {
+        color: #f1f5f9;
+        background: rgba(255, 255, 255, 0.1);
+      }
+      @media (max-width: 640px) {
+        .lh-update-banner {
+          left: 12px;
+          right: 12px;
+          bottom: 16px;
+          padding: 12px 14px;
+          gap: 10px;
+        }
+        .lh-update-sub {
+          display: none;
+        }
+      }
+    `;
+      document.head.appendChild(styleEl);
+    }
+    const banner = document.createElement("div");
+    banner.id = "lhUpdateBanner";
+    banner.className = "lh-update-banner";
+    banner.setAttribute("role", "alert");
+    banner.setAttribute("aria-live", "assertive");
+    banner.innerHTML = `
+    <div class="lh-update-icon">
+      <svg viewBox="0 0 24 24">
+        <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+        <path d="M3 3v5h5"></path>
+        <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+        <path d="M16 16h5v5"></path>
+      </svg>
+    </div>
+    <div class="lh-update-content">
+      <span class="lh-update-title">C\xF3 phi\xEAn b\u1EA3n m\u1EDBi</span>
+      <span class="lh-update-sub">C\u1EADp nh\u1EADt \u0111\u1EC3 t\u1EA3i giao di\u1EC7n v\xE0 d\u1EEF li\u1EC7u m\u1EDBi nh\u1EA5t</span>
+    </div>
+    <div class="lh-update-actions">
+      <button id="lhUpdateReloadBtn" class="lh-update-btn" type="button">C\u1EADp nh\u1EADt ngay</button>
+      <button id="lhUpdateCloseBtn" class="lh-update-close" type="button" aria-label="\u0110\xF3ng th\xF4ng b\xE1o">
+        <svg style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2" viewBox="0 0 24 24">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+  `;
+    document.body.appendChild(banner);
+    document.getElementById("lhUpdateReloadBtn")?.addEventListener("click", () => {
+      window.location.reload();
+    });
+    document.getElementById("lhUpdateCloseBtn")?.addEventListener("click", () => {
+      banner.remove();
+    });
+  }
+  function initVersionChecker() {
+    if (typeof window === "undefined") return;
+    if (!currentVersion) {
+      fetchVersion().then((v) => {
+        if (v) currentVersion = v;
+      });
+    }
+    setInterval(() => {
+      checkForUpdates();
+    }, CHECK_INTERVAL_MS);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        checkForUpdates();
+      }
+    });
+    window.addEventListener("focus", () => {
+      checkForUpdates();
+    });
+  }
+
   // src/admin/adminCore.js
   var CONFIG = {
     SUPABASE_URL: window.APP_CONFIG?.SUPABASE_URL || "https://kxyukiwhhorvxgxxxmfq.supabase.co",
@@ -214,22 +431,6 @@
         }
       })();
       return inflight;
-    };
-    const origFetch = window.fetch.bind(window);
-    window.fetch = function(input, init2) {
-      const p = origFetch(input, init2);
-      try {
-        const u = typeof input === "string" ? input : input && input.url || "";
-        const m = String(init2 && init2.method || input && input.method || "GET").toUpperCase();
-        if (m === "POST" && u.indexOf("/api/admin-action") !== -1) {
-          p.then(function() {
-            window.__invalidateAdminDashboardCache();
-          }, function() {
-          });
-        }
-      } catch (e) {
-      }
-      return p;
     };
   })();
   function createTursoClientMock(supaClient) {
@@ -589,7 +790,11 @@
     user = s.data.session?.user;
     if (!user) return show("login");
     await loadProfile();
-    if (!isEditor()) return show("deny");
+    if (!profile) return;
+    if (!isEditor()) {
+      __lhSetDenyMessage("Kh\xF4ng c\xF3 quy\u1EC1n", "T\xE0i kho\u1EA3n n\xE0y kh\xF4ng ph\u1EA3i admin/editor.");
+      return show("deny");
+    }
     show("app");
     await loadAll();
     try {
@@ -653,6 +858,62 @@
     $("denyBox").classList.toggle("hidden", x !== "deny");
     $("appBox").classList.toggle("hidden", x !== "app");
   }
+  function __lhSetDenyMessage(title, message) {
+    const box = document.getElementById("denyBox");
+    if (!box) return;
+    const h = box.querySelector("h2");
+    const p = box.querySelector("p");
+    if (h) h.textContent = title;
+    if (p) p.textContent = message;
+  }
+  window.__lhShowAccessError = function(message) {
+    __lhSetDenyMessage("Kh\xF4ng th\u1EC3 ki\u1EC3m tra quy\u1EC1n", message || "Kh\xF4ng th\u1EC3 ki\u1EC3m tra quy\u1EC1n, vui l\xF2ng th\u1EED l\u1EA1i.");
+    show("deny");
+  };
+  window.handleAccessRevoked = function(reason, code) {
+    if (window.__LH_ADMIN_REVOKING) return;
+    window.__LH_ADMIN_REVOKING = true;
+    console.warn("[Admin] Thu h\u1ED3i quy\u1EC1n:", reason, "| code:", code);
+    try {
+      if (typeof cache === "object" && cache) {
+        Object.keys(cache).forEach((k) => {
+          if (Array.isArray(cache[k])) cache[k] = [];
+        });
+      }
+    } catch (e) {
+    }
+    try {
+      window.__adminDashRenderedText = "";
+    } catch (e) {
+    }
+    try {
+      if (typeof window.clearAdminImageCaches === "function") window.clearAdminImageCaches();
+    } catch (e) {
+    }
+    if (code === "BLOCKED") {
+      __lhSetDenyMessage("T\xE0i kho\u1EA3n b\u1ECB kh\xF3a", "T\xE0i kho\u1EA3n c\u1EE7a b\u1EA1n \u0111\xE3 b\u1ECB qu\u1EA3n tr\u1ECB vi\xEAn kh\xF3a. B\u1EA1n \u0111\xE3 \u0111\u01B0\u1EE3c \u0111\u0103ng xu\u1EA5t.");
+    } else if (code === "UNAUTHORIZED") {
+      __lhSetDenyMessage("Phi\xEAn \u0111\u0103ng nh\u1EADp \u0111\xE3 h\u1EBFt h\u1EA1n", "Vui l\xF2ng \u0111\u0103ng nh\u1EADp l\u1EA1i.");
+    } else if (code === "PENDING_APPROVAL") {
+      __lhSetDenyMessage("Ch\u1EDD ph\xEA duy\u1EC7t", "T\xE0i kho\u1EA3n c\u1EE7a b\u1EA1n ch\u01B0a \u0111\u01B0\u1EE3c ph\xEA duy\u1EC7t ho\u1EB7c v\u1EEBa b\u1ECB thu h\u1ED3i quy\u1EC1n.");
+    } else {
+      __lhSetDenyMessage("Kh\xF4ng c\xF3 quy\u1EC1n", reason || "B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp trang qu\u1EA3n tr\u1ECB.");
+    }
+    show("deny");
+    if (code === "BLOCKED" || code === "UNAUTHORIZED") {
+      try {
+        sessionStorage.removeItem("is_logged_in");
+      } catch (e) {
+      }
+      try {
+        client?.auth?.signOut?.();
+      } catch (e) {
+      }
+    }
+    setTimeout(() => {
+      window.__LH_ADMIN_REVOKING = false;
+    }, 3e3);
+  };
   function cleanPageName(n) {
     return String(n || "").replace(/^[^\p{L}\p{N}]+/u, "").replace(/\s*\d+\s*$/, "").replace(/\s+/g, " ").trim();
   }
@@ -679,9 +940,21 @@
         body: JSON.stringify({ id: user.id, email: user.email, full_name: md.full_name || md.name || "", avatar_url: md.avatar_url || md.picture || "" })
       });
       const out = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          window.handleAccessRevoked(out.error, out.code || (res.status === 401 ? "UNAUTHORIZED" : "PENDING_APPROVAL"));
+        } else {
+          window.__lhShowAccessError("Kh\xF4ng th\u1EC3 ki\u1EC3m tra quy\u1EC1n, vui l\xF2ng th\u1EED l\u1EA1i.");
+        }
+        profile = null;
+        return;
+      }
       profile = out.data || { id: user.id, email: user.email, role: "user" };
     } catch (e) {
-      profile = { id: user.id, email: user.email, role: "user" };
+      console.warn("[admin loadProfile]", e);
+      window.__lhShowAccessError("Kh\xF4ng th\u1EC3 ki\u1EC3m tra quy\u1EC1n, vui l\xF2ng th\u1EED l\u1EA1i.");
+      profile = null;
+      return;
     }
     $("adminChip").textContent = `${profile.email || user.email} \xB7 ${profile.role}`;
     document.body.classList.toggle("role-admin", isAdmin());
@@ -808,12 +1081,21 @@
   function labelField(f) {
     return { question: "C\xE2u h\u1ECFi", answer: "\u0110\xE1p \xE1n", answer_text: "Gi\u1EA3i th\xEDch", options: "L\u1EF1a ch\u1ECDn", images: "\u1EA2nh" }[f] || f;
   }
+  function updateRequestBadge() {
+    const pending = (cache.requests || []).filter((r) => r.status === "pending").length;
+    const el = document.getElementById("requestBadge");
+    if (!el) return;
+    el.textContent = pending;
+    el.classList.toggle("hidden", pending === 0);
+  }
+  window.updateRequestBadge = updateRequestBadge;
   function renderRequests() {
     const all = cache.requests || [];
     const cnt = { pending: 0, approved: 0, rejected: 0 };
     all.forEach((r) => {
       if (cnt[r.status] !== void 0) cnt[r.status]++;
     });
+    updateRequestBadge();
     const setCount = (id, v) => {
       const el = $(id);
       if (el) el.textContent = v;
@@ -1138,40 +1420,6 @@
       } catch (e) {
       }
     }
-    window.fetch = async function(input, init2) {
-      let url;
-      try {
-        url = new URL(typeof input === "string" ? input : input.url, location.href);
-      } catch (e) {
-        return nativeFetch(input, init2);
-      }
-      if (!isGet(init2) || !isSupabaseRest(url) || !isSafePath(url.pathname)) return nativeFetch(input, init2);
-      const ttl = ttlFor(url);
-      if (!ttl) return nativeFetch(input, init2);
-      const key2 = keyOf(url, init2);
-      const mem = MEM.get(key2);
-      if (mem && Date.now() <= mem.exp) return makeResponse(mem);
-      const ss = readSession(key2);
-      if (ss) {
-        MEM.set(key2, ss);
-        return makeResponse(ss);
-      }
-      if (PENDING.has(key2)) {
-        try {
-          const entry = await PENDING.get(key2);
-          if (entry) return makeResponse(entry);
-        } catch (e) {
-        }
-      }
-      const p = nativeFetch(input, init2).then(async (res2) => {
-        if (res2 && res2.ok) await storeResponse(key2, ttl, res2);
-        return MEM.get(key2) || null;
-      }).finally(() => PENDING.delete(key2));
-      PENDING.set(key2, p);
-      const res = await nativeFetch(input, init2);
-      if (res && res.ok) await storeResponse(key2, ttl, res);
-      return res;
-    };
   })();
   document.addEventListener("DOMContentLoaded", init);
   (function() {
@@ -1380,6 +1628,7 @@ C\xE2u h\u1ECFi s\u1EBD \u0111\u01B0\u1EE3c chuy\u1EC3n v\xE0o Th\xF9ng r\xE1c.`
         const reqPending = (cache.requests || []).filter((x) => x.status === "pending").length;
         statPending.textContent = reqPending;
       }
+      updateRequestBadge();
     }
     function renderApprovalCounts() {
       const pend = pendingUsers().length;
@@ -3419,37 +3668,6 @@ ${E(val)}</pre>`;
         headers: new Headers(pack.headers)
       });
     }
-    window.fetch = async function(input, init2) {
-      let url;
-      try {
-        const raw = typeof input === "string" ? input : input && input.url ? input.url : "";
-        url = new URL(raw, location.href);
-      } catch (e) {
-        return nativeFetch(input, init2);
-      }
-      const method = methodOf(init2);
-      url = slimAdminUrl(url, method);
-      let nextInput = input;
-      if (typeof input === "string") nextInput = url.toString();
-      else if (input && input.url && input.url !== url.toString()) nextInput = new Request(url.toString(), input);
-      const ttl = ttlFor(url, method);
-      if (!ttl) return nativeFetch(nextInput, init2);
-      const k = key2(method, url);
-      const now = Date.now();
-      const hit = cache2.get(k);
-      if (hit && now - hit.t < ttl) return unpack(hit.pack);
-      if (pending.has(k)) return unpack(await pending.get(k));
-      const job = nativeFetch(nextInput, init2).then(packResponse).then((pack) => {
-        cache2.set(k, { t: Date.now(), pack });
-        pending.delete(k);
-        return pack;
-      }).catch((err2) => {
-        pending.delete(k);
-        throw err2;
-      });
-      pending.set(k, job);
-      return unpack(await job);
-    };
     window.viewHistory = async function(id) {
       const h = (window.cache?.history || cache2?.history || []).find((x) => String(x.id || "") === String(id || ""));
       if (!h) return alert("Kh\xF4ng t\xECm th\u1EA5y l\u1ECBch s\u1EED.");
@@ -3658,18 +3876,6 @@ ${E(val)}</pre>`;
       lastMap.set(key2, now);
       return false;
     }
-    window.fetch = function(input, init2) {
-      let url;
-      try {
-        url = new URL(typeof input === "string" ? input : input.url, location.href);
-      } catch (e) {
-        return nativeFetch(input, init2);
-      }
-      if (shouldSkip(url, init2)) {
-        return Promise.resolve(new Response(null, { status: 204, statusText: "No Content", headers: { "x-learninghub-skip": "admin-profile-patch-duplicate" } }));
-      }
-      return nativeFetch(input, init2);
-    };
   })();
   (function() {
     if (window.__COPILOT_COMPACT_DRAG_SUBJECT_ORDER_20260630) return;
@@ -4854,17 +5060,35 @@ ${E(val)}</pre>`;
       if (approvalBtn) approvalBtn.classList.toggle("active", mode === "approval");
       if (closedBtn) closedBtn.classList.toggle("active", mode === "closed");
     }
+    async function fetchSiteSettings() {
+      const headers = new Headers({ Accept: "application/json" });
+      let accessToken = "";
+      try {
+        const raw = typeof window.lhToken === "function" ? window.lhToken() : "";
+        if (typeof raw === "string" && raw.trim() && !/[\r\n]/.test(raw)) accessToken = raw.trim();
+      } catch (e) {
+      }
+      if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+      const response = await fetch("/api/settings", {
+        method: "GET",
+        headers,
+        cache: "no-store"
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || `HTTP ${response.status}`);
+      }
+      return data;
+    }
     window.loadRegistrationMode = async function() {
       try {
-        const res = await fetch("/api/settings", { cache: "no-store" });
-        const out = await res.json().catch(() => ({}));
-        if (!res.ok || out.error) throw new Error(out.error || "HTTP " + res.status);
-        const mode = normalizeMode(out.registration_mode || localStorage.getItem(MODE_KEY) || "approval");
+        const data = await fetchSiteSettings();
+        const mode = normalizeMode(data.registration_mode || localStorage.getItem(MODE_KEY) || "approval");
         localStorage.setItem(MODE_KEY, mode);
         paintRegistrationMode(mode);
         return mode;
       } catch (e) {
-        console.warn("[registration_mode reload fix]", e);
+        console.warn("[loadRegistrationMode] /api/settings l\u1ED7i:", e?.message || e);
         const mode = normalizeMode(localStorage.getItem(MODE_KEY) || "approval");
         paintRegistrationMode(mode);
         return mode;
@@ -4970,6 +5194,121 @@ ${E(val)}</pre>`;
   (function() {
     if (window.__COPILOT_ADMIN_IMAGE_CACHE_REALTIME_FINAL_20260630) return;
     window.__COPILOT_ADMIN_IMAGE_CACHE_REALTIME_FINAL_20260630 = true;
+    (function() {
+      if (window.__LH_UNIFIED_FETCH_INSTALLED) return;
+      window.__LH_UNIFIED_FETCH_INSTALLED = true;
+      var nativeFetch = window.fetch.bind(window);
+      function lhToken() {
+        try {
+          if (window.HODSupabase && typeof window.HODSupabase.getAccessToken === "function") {
+            var t1 = window.HODSupabase.getAccessToken();
+            if (t1 && typeof t1 === "string" && t1.trim().length > 0 && !/[\r\n]/.test(t1)) return t1.trim();
+          }
+          if (window.HODSupabase && typeof window.HODSupabase.getSession === "function") {
+            var s = window.HODSupabase.getSession();
+            if (s && s.access_token && typeof s.access_token === "string" && !/[\r\n]/.test(s.access_token)) {
+              return s.access_token.trim();
+            }
+          }
+          var url = window.APP_CONFIG?.SUPABASE_URL || "";
+          var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
+          var ref = m ? m[1] : "";
+          if (ref) {
+            var key2 = "sb-" + ref + "-auth-token";
+            var raw = localStorage.getItem(key2);
+            if (raw) {
+              var v = JSON.parse(raw);
+              var tok = v && (v.access_token || v.currentSession && v.currentSession.access_token || Array.isArray(v) && v[0]);
+              if (tok && typeof tok === "string" && tok.trim().length > 0 && !/[\r\n]/.test(tok)) return tok.trim();
+            }
+          }
+          for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            if (k && k.slice(0, 3) === "sb-" && k.slice(-11) === "-auth-token") {
+              var raw = localStorage.getItem(k);
+              if (!raw) continue;
+              var v = JSON.parse(raw);
+              var tok = v && (v.access_token || v.currentSession && v.currentSession.access_token || Array.isArray(v) && v[0]);
+              if (tok && typeof tok === "string" && tok.trim().length > 0 && !/[\r\n]/.test(tok)) return tok.trim();
+            }
+          }
+        } catch (e) {
+        }
+        return "";
+      }
+      window.lhToken = lhToken;
+      window.__lhAccessToken = lhToken;
+      function lhIsApi(u) {
+        try {
+          var url = new URL(u, location.href);
+          return url.origin === location.origin && url.pathname.indexOf("/api/") === 0;
+        } catch (e) {
+          return false;
+        }
+      }
+      window.fetch = function(input, init2) {
+        var urlStr = "";
+        var method = "GET";
+        try {
+          if (typeof input === "string") {
+            urlStr = input;
+          } else if (input && typeof input === "object" && input.url) {
+            urlStr = input.url;
+            method = input.method || "GET";
+          }
+          if (init2 && init2.method) method = init2.method;
+        } catch (e) {
+        }
+        var isApi = lhIsApi(urlStr);
+        if (isApi) {
+          var tok = lhToken();
+          if (tok) {
+            try {
+              if (input instanceof Request) {
+                if (!input.headers.has("Authorization")) {
+                  var h = new Headers(input.headers);
+                  h.set("Authorization", "Bearer " + tok);
+                  input = new Request(input, { headers: h });
+                }
+              } else {
+                init2 = init2 ? Object.assign({}, init2) : {};
+                var hh = new Headers(init2.headers || {});
+                if (!hh.has("Authorization")) hh.set("Authorization", "Bearer " + tok);
+                init2.headers = hh;
+              }
+            } catch (e) {
+              console.warn("[LH Unified Fetch] Header injection warning:", e);
+            }
+          }
+        }
+        var promise = nativeFetch(input, init2);
+        if (isApi && String(method).toUpperCase() === "POST" && urlStr.indexOf("/api/admin-action") !== -1) {
+          promise.then(function() {
+            if (typeof window.__invalidateAdminDashboardCache === "function") {
+              window.__invalidateAdminDashboardCache();
+            }
+          }, function() {
+          });
+        }
+        if (isApi && urlStr.indexOf("/api/version.json") === -1) {
+          promise.then(function(res) {
+            if (res.status !== 401 && res.status !== 403) return;
+            res.clone().json().then(function(json) {
+              var code = json && json.code;
+              if (code === "BLOCKED" || code === "PENDING_APPROVAL" || code === "UNAUTHORIZED") {
+                window.handleAccessRevoked(json.error, code);
+              } else if (code === "INSUFFICIENT_ROLE" || code === "PROTECTED_ROOT_ADMIN") {
+                if (typeof toast === "function") toast(json.error || "B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n th\u1EF1c hi\u1EC7n thao t\xE1c n\xE0y");
+                else console.warn("[Admin]", json.error);
+              }
+            }).catch(function() {
+            });
+          }).catch(function() {
+          });
+        }
+        return promise;
+      };
+    })();
     function clearAdminImageCaches() {
       try {
         Object.keys(sessionStorage).forEach(function(k) {
@@ -5102,73 +5441,6 @@ ${E(val)}</pre>`;
     document.addEventListener("visibilitychange", function() {
       if (!document.hidden) silentRefresh();
     });
-  })();
-  (function() {
-    if (window.__LH_AUTH_FETCH_20260705) return;
-    window.__LH_AUTH_FETCH_20260705 = true;
-    var prevFetch = window.fetch ? window.fetch.bind(window) : null;
-    if (!prevFetch) return;
-    function lhToken() {
-      try {
-        var url = window.APP_CONFIG?.SUPABASE_URL || "";
-        var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
-        var ref = m ? m[1] : "";
-        if (ref) {
-          var key2 = "sb-" + ref + "-auth-token";
-          var raw = localStorage.getItem(key2);
-          if (raw) {
-            var v = JSON.parse(raw);
-            var tok = v && (v.access_token || v.currentSession && v.currentSession.access_token || Array.isArray(v) && v[0]);
-            if (tok) return tok;
-          }
-        }
-        for (var i = 0; i < localStorage.length; i++) {
-          var k = localStorage.key(i);
-          if (k && k.slice(0, 3) === "sb-" && k.slice(-11) === "-auth-token") {
-            var raw = localStorage.getItem(k);
-            if (!raw) continue;
-            var v = JSON.parse(raw);
-            var tok = v && (v.access_token || v.currentSession && v.currentSession.access_token || Array.isArray(v) && v[0]);
-            if (tok) return tok;
-          }
-        }
-      } catch (e) {
-      }
-      return "";
-    }
-    window.__lhAccessToken = lhToken;
-    function lhIsApi(u) {
-      try {
-        var url = new URL(u, location.href);
-        return url.origin === location.origin && url.pathname.indexOf("/api/") === 0;
-      } catch (e) {
-        return false;
-      }
-    }
-    window.fetch = function(input, init2) {
-      try {
-        var url = typeof input === "string" ? input : input && input.url || "";
-        if (lhIsApi(url)) {
-          var tok = lhToken();
-          if (tok) {
-            if (input instanceof Request) {
-              if (!input.headers.has("Authorization")) {
-                var h = new Headers(input.headers);
-                h.set("Authorization", "Bearer " + tok);
-                input = new Request(input, { headers: h });
-              }
-            } else {
-              init2 = init2 || {};
-              var hh = new Headers(init2.headers || {});
-              if (!hh.has("Authorization")) hh.set("Authorization", "Bearer " + tok);
-              init2.headers = hh;
-            }
-          }
-        }
-      } catch (e) {
-      }
-      return prevFetch(input, init2);
-    };
   })();
   (function() {
     if (new URLSearchParams(location.search).get("tab") !== "requests") return;
@@ -5310,6 +5582,7 @@ H\u1ECD s\u1EBD b\u1ECB \u0111\u0103ng xu\u1EA5t kh\u1ECFi h\u1EC7 th\u1ED1ng v\
   })();
 
   // src/admin/main.js
+  initVersionChecker();
   window.renderUserRowSaaS = renderUserRowSaaS2;
   window.getUserTableHeadHTML = getUserTableHeadHTML2;
   window.uploadImageToCloudinaryHelper = uploadImageToCloudinary;

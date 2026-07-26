@@ -1,5 +1,5 @@
 import { db, json } from '../lib/db.js';
-import { isApprovedOrStaff } from '../lib/auth.js';
+import { checkUserAccess } from '../lib/auth.js';
 
 function parseJson(v, fallback) {
   if (v === null || v === undefined || v === '') return fallback;
@@ -22,13 +22,21 @@ export function clearQuestionsCache(subjectCode) {
 }
 
 export async function handleQuestions(req, authUser, parsedUrl) {
-  if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
-  if (!await isApprovedOrStaff(authUser)) return json({ error: 'Tài khoản chưa được duyệt.' }, 403);
+  if (req.method !== 'GET') return json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, 405);
+  const access = await checkUserAccess(authUser);
+  if (!access.ok) return json({ error: access.error, code: access.code }, access.status);
+
+  // QUESTIONS_FRESH_BYPASS_20260726: cache 5 phút ở trên chỉ được invalidate bởi
+  // các action ghi qua /api/admin-action. Nếu DB bị sửa bằng đường khác (script
+  // migration, sửa tay) thì client không có cách nào lấy bản mới trước khi TTL hết
+  // — `cache: 'no-store'` và tham số ts chỉ bỏ qua cache của browser. fresh=1 cho
+  // các lần tải chủ động (đổi môn, bấm reload câu) đọc thẳng Turso.
+  const fresh = parsedUrl.searchParams.get('fresh') === '1';
 
   const countOnly = parsedUrl.searchParams.get('count_only') === '1';
   if (countOnly) {
     const cacheKey = '__count_only__';
-    const cached = _questionsCache.get(cacheKey);
+    const cached = fresh ? null : _questionsCache.get(cacheKey);
     if (cached && Date.now() - cached.at < _QUESTIONS_CACHE_TTL) return json(cached.data);
 
     const r = await db.execute({
@@ -49,7 +57,7 @@ export async function handleQuestions(req, authUser, parsedUrl) {
   }
 
   const subject = (parsedUrl.searchParams.get('subject_code') || '').trim().toUpperCase();
-  if (subject) {
+  if (subject && !fresh) {
     const cached = _questionsCache.get(subject);
     if (cached && Date.now() - cached.at < _QUESTIONS_CACHE_TTL) return json(cached.data);
   }

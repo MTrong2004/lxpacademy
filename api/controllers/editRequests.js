@@ -1,5 +1,5 @@
 import { db, json } from '../lib/db.js';
-import { isApprovedOrStaff, isStaff, loadProfileRow, roleColor, getAdminEmail } from '../lib/auth.js';
+import { checkUserAccess, loadProfileRow, roleColor, getAdminEmail } from '../lib/auth.js';
 
 function parseJson(v, fallback) {
   if (v === null || v === undefined || v === '') return fallback;
@@ -97,8 +97,9 @@ async function notifyQuestionChange({ profile, authUser, title, questionNum, sub
 }
 
 export async function handleEditRequests(req, authUser) {
-  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
-  if (!await isApprovedOrStaff(authUser)) return json({ error: 'Tài khoản chưa được duyệt.' }, 403);
+  if (req.method !== 'POST') return json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, 405);
+  const access = await checkUserAccess(authUser);
+  if (!access.ok) return json({ error: access.error, code: access.code }, access.status);
 
   const body = await req.json();
   const profile = await loadProfileRow(authUser.id);
@@ -148,8 +149,9 @@ export async function handleEditRequests(req, authUser) {
 }
 
 export async function handleMyEditRequests(req, authUser) {
-  if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
-  if (!await isApprovedOrStaff(authUser)) return json({ error: 'Tài khoản chưa được duyệt.' }, 403);
+  if (req.method !== 'GET') return json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, 405);
+  const access = await checkUserAccess(authUser);
+  if (!access.ok) return json({ error: access.error, code: access.code }, access.status);
   const r = await db.execute({
     sql: `select e.id, e.question_id, e.question_num, e.subject_code, e.new_data, e.reason,
                  e.status, e.admin_note, e.created_at, e.reviewed_at
@@ -165,8 +167,9 @@ export async function handleMyEditRequests(req, authUser) {
 }
 
 export async function handleStaffEditRequests(req, authUser) {
-  if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
-  if (!await isStaff(authUser)) return json({ error: 'Chỉ admin/editor được xem.' }, 403);
+  if (req.method !== 'GET') return json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, 405);
+  const access = await checkUserAccess(authUser, 'staff');
+  if (!access.ok) return json({ error: access.error, code: access.code }, access.status);
   const r = await db.execute({
     sql: `select id, question_id, question_num, subject_code, user_email, old_data, new_data, reason, status, created_at
           from edit_requests where status = 'pending' order by created_at desc, id desc limit 100`,
