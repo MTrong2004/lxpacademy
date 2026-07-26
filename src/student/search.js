@@ -4,7 +4,9 @@
 
 export function filterQuestions(questions, query = '', riskFilter = 'all') {
   if (!Array.isArray(questions)) return [];
-  const q = String(query || '').trim().toLowerCase();
+  const q = String(query || '')
+    .trim()
+    .toLowerCase();
 
   return questions.filter(item => {
     // Risk Filter
@@ -22,7 +24,8 @@ export function filterQuestions(questions, query = '', riskFilter = 'all') {
       if (String(item.num) === numStr) return true;
     }
 
-    const text = `${item.num || ''} ${item.question || ''} ${item.answer || ''} ${item.answer_text || ''} ${Object.values(item.options || {}).join(' ')}`.toLowerCase();
+    const text =
+      `${item.num || ''} ${item.question || ''} ${item.answer || ''} ${item.answer_text || ''} ${Object.values(item.options || {}).join(' ')}`.toLowerCase();
     return text.includes(q);
   });
 }

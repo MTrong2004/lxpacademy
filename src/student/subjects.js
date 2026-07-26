@@ -3,6 +3,7 @@
  */
 
 import { getDeviceTypeString } from '../core/device.js';
+import { lhWarn } from '../core/log.js';
 
 const SUBJECT_STORE = 'learninghub_subject_code_merged_v1';
 
@@ -24,10 +25,12 @@ export function syncUserSubjectToProfile(code, supabaseUser) {
         full_name: md.full_name || md.name || '',
         avatar_url: md.avatar_url || md.picture || '',
         current_subject: code || getSubjectCode() || '',
-        device_info: getDeviceTypeString()
-      })
+        device_info: getDeviceTypeString(),
+      }),
     }).catch(e => console.warn('syncUserSubjectToProfile failed:', e));
-  } catch(e) {}
+  } catch (e) {
+    lhWarn('syncUserSubjectToProfile', e);
+  }
 }
 
 export function setSubject(code, supabaseUser) {

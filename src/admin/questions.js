@@ -6,7 +6,10 @@ export async function uploadImageToCloudinary(file, config = {}) {
   const cloudName = config.cloudName || window.APP_CONFIG?.CLOUDINARY_CLOUD_NAME || '';
   const uploadPreset = config.uploadPreset || window.APP_CONFIG?.CLOUDINARY_UPLOAD_PRESET || '';
   const uploadFolder = config.uploadFolder || window.APP_CONFIG?.CLOUDINARY_UPLOAD_FOLDER || 'learninghub/questions';
-  const uploadUrl = config.uploadUrl || window.APP_CONFIG?.CLOUDINARY_UPLOAD_URL || (cloudName ? `https://api.cloudinary.com/v1_1/${cloudName}/image/upload` : '');
+  const uploadUrl =
+    config.uploadUrl ||
+    window.APP_CONFIG?.CLOUDINARY_UPLOAD_URL ||
+    (cloudName ? `https://api.cloudinary.com/v1_1/${cloudName}/image/upload` : '');
 
   if (!uploadUrl || !uploadPreset) {
     throw new Error('Thiếu cấu hình Cloudinary trong config.js.');
@@ -30,7 +33,7 @@ export async function uploadImageToCloudinary(file, config = {}) {
     url: data.secure_url,
     width: data.width,
     height: data.height,
-    source: 'cloudinary'
+    source: 'cloudinary',
   };
 }
 

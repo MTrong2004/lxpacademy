@@ -7,7 +7,7 @@ let currentVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 
 let updateDetected = false;
 let lastCheckTime = 0;
 const CHECK_INTERVAL_MS = 60 * 1000; // Kiểm tra định kỳ mỗi 60s
-const MIN_CHECK_GAP_MS = 15 * 1000;  // Tối thiểu 15s giữa 2 lần check để tránh spam khi tab focus liên tục
+const MIN_CHECK_GAP_MS = 15 * 1000; // Tối thiểu 15s giữa 2 lần check để tránh spam khi tab focus liên tục
 
 function isUserTyping() {
   const active = document.activeElement;
@@ -24,8 +24,8 @@ export async function fetchVersion() {
     const res = await fetch('/version.json?_t=' + Date.now(), {
       cache: 'no-store',
       headers: {
-        'Cache-Control': 'no-store, no-cache'
-      }
+        'Cache-Control': 'no-store, no-cache',
+      },
     });
     if (!res.ok) return null;
     const data = await res.json();

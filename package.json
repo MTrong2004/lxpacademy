@@ -6,12 +6,17 @@
   "scripts": {
     "dev": "node scripts/dev-server.js",
     "build": "node scripts/build.js",
-    "migrate": "node scripts/migrate.js"
+    "migrate": "node scripts/migrate.js",
+    "map": "node scripts/map.js",
+    "check:catch": "node scripts/check-empty-catch.js",
+    "format": "prettier --write \"src/**/*.js\"",
+    "format:check": "prettier --check \"src/**/*.js\""
   },
   "dependencies": {
     "@libsql/client": "^0.17.4"
   },
   "devDependencies": {
-    "esbuild": "^0.24.0"
+    "esbuild": "^0.24.0",
+    "prettier": "^3.9.6"
   }
 }

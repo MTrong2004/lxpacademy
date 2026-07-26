@@ -16,6 +16,73 @@
     return browser ? `${os} \xB7 ${browser}` : os;
   }
 
+  // src/core/log.js
+  var MAX_KEEP = 80;
+  var index = /* @__PURE__ */ new Map();
+  var seq = 0;
+  function describe(err) {
+    if (!err) return String(err);
+    if (err instanceof Error) return (err.name || "Error") + ": " + (err.message || "");
+    if (typeof err === "object") {
+      try {
+        return JSON.stringify(err);
+      } catch (_e) {
+        return Object.prototype.toString.call(err);
+      }
+    }
+    return String(err);
+  }
+  function lhWarn(tag, err) {
+    try {
+      const label = String(tag || "unknown");
+      const msg = describe(err);
+      const key = label + "|" + msg;
+      let row = index.get(key);
+      if (!row) {
+        row = { tag: label, error: msg, count: 0, at: "", seq: 0 };
+        index.set(key, row);
+        if (index.size > MAX_KEEP) {
+          let oldestKey = null, oldestSeq = Infinity;
+          for (const [k, v] of index)
+            if (v.seq < oldestSeq) {
+              oldestSeq = v.seq;
+              oldestKey = k;
+            }
+          if (oldestKey !== null) index.delete(oldestKey);
+        }
+      }
+      row.count++;
+      row.at = (/* @__PURE__ */ new Date()).toLocaleTimeString("vi-VN");
+      row.seq = ++seq;
+      if (row.count === 1) console.warn("[" + label + "]", err);
+      else if (row.count === 10 || row.count === 100 || row.count === 1e3) {
+        console.warn("[" + label + "] l\u1EB7p l\u1EA1i " + row.count + " l\u1EA7n:", msg);
+      }
+    } catch (_e) {
+    }
+  }
+  function lhErrors() {
+    const rows = [...index.values()].sort((a, b) => b.seq - a.seq).map((r) => ({ tag: r.tag, error: r.error, count: r.count, at: r.at }));
+    try {
+      console.table(rows);
+    } catch (_e) {
+      console.log(rows);
+    }
+    return rows;
+  }
+  function lhClearErrors() {
+    index.clear();
+    seq = 0;
+    return true;
+  }
+  if (typeof window !== "undefined") {
+    window.lhWarn = lhWarn;
+    window.lhErrors = lhErrors;
+    window.lhClearErrors = lhClearErrors;
+    window.addEventListener("error", (e) => lhWarn("window.onerror", e?.error || e?.message || e));
+    window.addEventListener("unhandledrejection", (e) => lhWarn("unhandledRejection", e?.reason || e));
+  }
+
   // src/student/subjects.js
   var SUBJECT_STORE = "learninghub_subject_code_merged_v1";
   function getSubjectCode() {
@@ -39,6 +106,7 @@
         })
       }).catch((e) => console.warn("syncUserSubjectToProfile failed:", e));
     } catch (e) {
+      lhWarn("syncUserSubjectToProfile", e);
     }
   }
   function setSubject(code, supabaseUser) {
@@ -62,6 +130,7 @@
         defaultHeaders["Authorization"] = `Bearer ${session.access_token}`;
       }
     } catch (e) {
+      lhWarn("fetchApi:token", e);
     }
     const mergedOptions = {
       ...options,
@@ -134,7 +203,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "eb96894" : null;
+  var currentVersion = true ? "48ac2c2" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -429,6 +498,7 @@
   try {
     edits = JSON.parse(localStorage.getItem(STORE) || "{}");
   } catch (e) {
+    lhWarn("merged", e);
   }
   function clone(x) {
     return JSON.parse(JSON.stringify(x));
@@ -542,18 +612,47 @@
     setv("--tagpad", "3px 10px");
     setv("--ogap", "8px");
   }
+  function renderAllSafe() {
+    try {
+      renderCard?.();
+    } catch (e) {
+      console.warn("[renderCard]", e);
+    }
+    try {
+      renderQuiz?.();
+    } catch (e) {
+      console.warn("[renderQuiz]", e);
+    }
+    try {
+      renderStudy?.();
+    } catch (e) {
+      console.warn("[renderStudy]", e);
+    }
+  }
+  window.renderAllSafe = renderAllSafe;
   function renderCard() {
     let c = pool[ci] || RAW[0];
     if (!c) return;
     fit(c);
     applyCardFontSize();
-    $("idx").textContent = ci + 1;
-    $("total").textContent = pool.length;
-    $("bar").style.width = (ci + 1) / pool.length * 100 + "%";
-    $("tag").textContent = "C\xC2U " + c.num;
-    $("question").textContent = c.question;
+    const __idxEl = $("idx");
+    if (__idxEl) __idxEl.textContent = ci + 1;
+    const __totalEl = $("total");
+    if (__totalEl) __totalEl.textContent = pool.length;
+    const __barEl = $("bar");
+    if (__barEl) __barEl.style.width = (pool.length ? (ci + 1) / pool.length * 100 : 0) + "%";
+    const __tagEl = $("tag");
+    if (__tagEl) __tagEl.textContent = "C\xC2U " + c.num;
+    const __qEl = $("question");
+    if (__qEl) __qEl.textContent = c.question;
     const __imgEl = $("images");
-    const __imgKey = JSON.stringify((c.images || []).map((im) => String((im && typeof im === "object" ? im.src || im.url || im.secure_url || im.publicUrl || im.public_url : im) || "")));
+    const __imgKey = JSON.stringify(
+      (c.images || []).map(
+        (im) => String(
+          (im && typeof im === "object" ? im.src || im.url || im.secure_url || im.publicUrl || im.public_url : im) || ""
+        )
+      )
+    );
     if (__imgEl.dataset.imgKey !== __imgKey) {
       __imgEl.innerHTML = imgsHTML(c);
       __imgEl.dataset.imgKey = __imgKey;
@@ -617,6 +716,7 @@
       try {
         renderCard();
       } catch (e) {
+        lhWarn("appCore", e);
       }
       return;
     }
@@ -637,6 +737,7 @@
     try {
       localStorage.setItem("learninghub_last_tab_v1", n);
     } catch (e) {
+      lhWarn("appCore", e);
     }
     document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
     if (b) b.classList.add("active");
@@ -649,10 +750,12 @@
       if (portal) portal.remove();
     }
     if (n === "study") renderStudy();
-    if (n === "quiz") try {
-      renderQuiz();
-    } catch (e) {
-    }
+    if (n === "quiz")
+      try {
+        renderQuiz();
+      } catch (e) {
+        lhWarn("appCore", e);
+      }
     if (typeof window.fixCounter === "function") window.fixCounter();
   }
   function sample(a, n) {
@@ -686,11 +789,19 @@
     m = q.match(/^answer\s*:\s*([a-e]+)$/i);
     if (m) return RAW.filter((c) => sortAns(c.answer) === sortAns(m[1].toUpperCase()));
     if (["multi", "multiple", "ch\u1ECDn nhi\u1EC1u"].includes(q)) return RAW.filter((c) => c.answer.length > 1);
-    return RAW.filter((c) => (String(c.num) + " " + c.question + " " + c.answer + " " + (c.answer_text || "") + " " + Object.values(c.options).join(" ")).toLowerCase().includes(q));
+    return RAW.filter(
+      (c) => (String(c.num) + " " + c.question + " " + c.answer + " " + (c.answer_text || "") + " " + Object.values(c.options).join(" ")).toLowerCase().includes(q)
+    );
   }
   function renderStudy() {
     let arr = smart($("search").value || ""), max = arr.length;
-    $("studyList").innerHTML = arr.slice(0, max).map((c) => `<div class="sitem"><div class="snum">C\xC2U ${c.num}</div><div class="sq">${esc(c.question)}</div><div class="qimgs">${imgsHTML(c)}</div><div class="sopts">${Object.entries(c.options).map(([k, v]) => `<div class="sopt ${c.answer.includes(k) ? "ans" : ""}"><div class="skey">${c.answer.includes(k) ? "\u2713" : k}</div><div>${esc(k + ". " + v)}</div></div>`).join("")}</div></div>`).join("") + (arr.length > max ? `<div class="more">\u0110ang hi\u1EC3n th\u1ECB ${max} / ${arr.length} k\u1EBFt qu\u1EA3.</div>` : arr.length ? "" : '<div class="more">Kh\xF4ng t\xECm th\u1EA5y k\u1EBFt qu\u1EA3.</div>');
+    $("studyList").innerHTML = arr.slice(0, max).map(
+      (c) => `<div class="sitem"><div class="snum">C\xC2U ${c.num}</div><div class="sq">${esc(c.question)}</div><div class="qimgs">${imgsHTML(c)}</div><div class="sopts">${Object.entries(
+        c.options
+      ).map(
+        ([k, v]) => `<div class="sopt ${c.answer.includes(k) ? "ans" : ""}"><div class="skey">${c.answer.includes(k) ? "\u2713" : k}</div><div>${esc(k + ". " + v)}</div></div>`
+      ).join("")}</div></div>`
+    ).join("") + (arr.length > max ? `<div class="more">\u0110ang hi\u1EC3n th\u1ECB ${max} / ${arr.length} k\u1EBFt qu\u1EA3.</div>` : arr.length ? "" : '<div class="more">Kh\xF4ng t\xECm th\u1EA5y k\u1EBFt qu\u1EA3.</div>');
   }
   function openEditor() {
     let c = pool[ci];
@@ -709,7 +820,9 @@
     let ops = editDraft.options || {};
     let box = $("editOptions");
     if (!box) return;
-    box.innerHTML = ["A", "B", "C", "D", "E"].map((k) => `<div class="field"><label>\u0110\xE1p \xE1n ${k}</label><textarea data-opt="${k}">${esc(ops[k] || "")}</textarea></div>`).join("");
+    box.innerHTML = ["A", "B", "C", "D", "E"].map(
+      (k) => `<div class="field"><label>\u0110\xE1p \xE1n ${k}</label><textarea data-opt="${k}">${esc(ops[k] || "")}</textarea></div>`
+    ).join("");
   }
   function renderEditImages() {
     let box = $("editImgs");
@@ -744,7 +857,13 @@
       alert("Ch\u01B0a k\u1EBFt n\u1ED1i \u0111\u01B0\u1EE3c d\u1EEF li\u1EC7u duy\u1EC7t. H\xE3y t\u1EA3i l\u1EA1i trang r\u1ED3i g\u1EEDi l\u1EA1i b\xE1o c\xE1o.");
       return;
     }
-    edits[editDraft.num] = { question: editDraft.question, options: editDraft.options, answer: editDraft.answer, answer_text: editDraft.answer_text, images: editDraft.images || [] };
+    edits[editDraft.num] = {
+      question: editDraft.question,
+      options: editDraft.options,
+      answer: editDraft.answer,
+      answer_text: editDraft.answer_text,
+      images: editDraft.images || []
+    };
     localStorage.setItem(STORE, JSON.stringify(edits));
     rebuild();
     ci = pool.findIndex((c) => c.num === editDraft.num);
@@ -816,6 +935,7 @@
     try {
       localStorage.removeItem("hod102_hide_options");
     } catch (e) {
+      lhWarn("appCore", e);
     }
     let sh = $("shuffle"), eye = $("toggleOpts");
     if (sh) {
@@ -893,6 +1013,7 @@
     try {
       localStorage.removeItem("hod102_hide_options");
     } catch (e) {
+      lhWarn("appCore", e);
     }
     $("openSettings").onclick = () => {
       $("settingsModal").classList.remove("hidden");
@@ -919,39 +1040,46 @@
       }
     });
     setupCardTools();
-    if ($("toggleGuide")) $("toggleGuide").onclick = () => {
-      let g = $("guidePanel"), open = g.classList.toggle("hidden") === false;
-      $("toggleGuide").textContent = open ? "\u1EA8n h\u01B0\u1EDBng d\u1EABn" : "M\u1EDF h\u01B0\u1EDBng d\u1EABn";
-    };
-    if ($("stCardFont")) $("stCardFont").oninput = (e) => {
-      cardFontSize = (+e.target.value / 100).toFixed(2);
-      applyCardFontSize();
-      renderCard();
-    };
-    if ($("stCardFontReset")) $("stCardFontReset").onclick = () => {
-      cardFontSize = "1";
-      applyCardFontSize();
-      renderCard();
-      updateSettingsUI();
-    };
+    if ($("toggleGuide"))
+      $("toggleGuide").onclick = () => {
+        let g = $("guidePanel"), open = g.classList.toggle("hidden") === false;
+        $("toggleGuide").textContent = open ? "\u1EA8n h\u01B0\u1EDBng d\u1EABn" : "M\u1EDF h\u01B0\u1EDBng d\u1EABn";
+      };
+    if ($("stCardFont"))
+      $("stCardFont").oninput = (e) => {
+        cardFontSize = (+e.target.value / 100).toFixed(2);
+        applyCardFontSize();
+        renderCard();
+      };
+    if ($("stCardFontReset"))
+      $("stCardFontReset").onclick = () => {
+        cardFontSize = "1";
+        applyCardFontSize();
+        renderCard();
+        updateSettingsUI();
+      };
     if ($("stToggleFlipMode")) $("stToggleFlipMode").onclick = toggleFlipMode;
     if ($("stToggleOpts")) $("stToggleOpts").style.display = "none";
-    if ($("stShuffle")) $("stShuffle").onclick = () => {
-      shuffle();
-      updateSettingsUI();
-    };
-    if ($("stReset")) $("stReset").onclick = () => {
-      triggerReset();
-      updateSettingsUI();
-    };
+    if ($("stShuffle"))
+      $("stShuffle").onclick = () => {
+        shuffle();
+        updateSettingsUI();
+      };
+    if ($("stReset"))
+      $("stReset").onclick = () => {
+        triggerReset();
+        updateSettingsUI();
+      };
     if ($("stGo")) $("stGo").onclick = goToQuestionNum;
-    if ($("stGoInput")) $("stGoInput").onkeydown = (e) => {
-      if (e.key === "Enter") goToQuestionNum();
-    };
-    if ($("stEdit")) $("stEdit").onclick = () => {
-      openEditor();
-      $("settingsModal").classList.add("hidden");
-    };
+    if ($("stGoInput"))
+      $("stGoInput").onkeydown = (e) => {
+        if (e.key === "Enter") goToQuestionNum();
+      };
+    if ($("stEdit"))
+      $("stEdit").onclick = () => {
+        openEditor();
+        $("settingsModal").classList.add("hidden");
+      };
     $("editCard").title = "B\xE1o c\xE1o / \u0111\u1EC1 xu\u1EA5t s\u1EEDa c\xE2u";
     $("editCard").textContent = "!";
     $("editCard").onclick = (e) => {
@@ -1014,7 +1142,8 @@
         for (const file of files) {
           try {
             const config = window.APP_CONFIG;
-            if (!config || !config.CLOUDINARY_UPLOAD_URL) throw new Error("Thi\u1EBFu c\u1EA5u h\xECnh Cloudinary trong config.js ho\u1EB7c app.js");
+            if (!config || !config.CLOUDINARY_UPLOAD_URL)
+              throw new Error("Thi\u1EBFu c\u1EA5u h\xECnh Cloudinary trong config.js ho\u1EB7c app.js");
             const formData = new FormData();
             formData.append("file", file);
             formData.append("upload_preset", config.CLOUDINARY_UPLOAD_PRESET);
@@ -1026,7 +1155,14 @@
             }
             const data = await res.json();
             editDraft.images = editDraft.images || [];
-            editDraft.images.push({ id: data.public_id, src: data.secure_url, url: data.secure_url, secure_url: data.secure_url, source: "cloudinary", name: file.name });
+            editDraft.images.push({
+              id: data.public_id,
+              src: data.secure_url,
+              url: data.secure_url,
+              secure_url: data.secure_url,
+              source: "cloudinary",
+              name: file.name
+            });
             if (typeof window.__LHCleanImages === "function") editDraft.images = window.__LHCleanImages(editDraft.images);
             renderEditImages();
             if (typeof notify === "function") notify("\u0110\xE3 upload \u1EA3nh l\xEAn Cloudinary");
@@ -1346,6 +1482,7 @@
           lhApiAbortController = typeof AbortController !== "undefined" ? new AbortController() : null;
         }
       } catch (e) {
+        lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
       }
       window.__LH_ACCESS_OK = false;
       currentProfile = null;
@@ -1353,6 +1490,7 @@
       try {
         if (typeof window.lhTeardownAccessWatch === "function") window.lhTeardownAccessWatch();
       } catch (e) {
+        lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
       }
       const mustSignOut = code === "BLOCKED" || code === "UNAUTHORIZED";
       if (code === "BLOCKED") {
@@ -1369,6 +1507,7 @@
         try {
           unsubscribeUserStatusRealtime();
         } catch (e) {
+          lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
         }
         if (typeof signOut === "function") signOut().catch(() => {
         });
@@ -1386,6 +1525,7 @@
       try {
         statusRealtimeChannel.unsubscribe();
       } catch (e) {
+        lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
       }
       statusRealtimeChannel = null;
       window.__lhRealtimeConnected = false;
@@ -1527,7 +1667,10 @@
       const activeSubject = localStorage.getItem("learninghub_subject_code_merged_v1") || "";
       if (!activeSubject) return false;
       try {
-        const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(activeSubject) + "&ts=" + Date.now(), { cache: "no-store" });
+        const res = await fetch(
+          "/api/questions?subject_code=" + encodeURIComponent(activeSubject) + "&ts=" + Date.now(),
+          { cache: "no-store" }
+        );
         const json = await res.json().catch(() => ({}));
         if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c questions t\u1EEB Turso");
         const rows = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
@@ -1540,14 +1683,17 @@
         try {
           renderCard();
         } catch (e) {
+          lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
         }
         try {
           renderQuiz();
         } catch (e) {
+          lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
         }
         try {
           renderStudy();
         } catch (e) {
+          lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
         }
         notify2("\u0110\xE3 t\u1EA3i c\xE2u h\u1ECFi t\u1EEB Turso");
         return true;
@@ -1594,6 +1740,7 @@
       try {
         purgeOfflineQuestionCache();
       } catch (e) {
+        lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
       }
       try {
         await signOut();
@@ -1603,6 +1750,7 @@
       try {
         alert(reason || "B\u1EA1n \u0111\xE3 \u0111\u01B0\u1EE3c qu\u1EA3n tr\u1ECB vi\xEAn \u0111\u0103ng xu\u1EA5t kh\u1ECFi h\u1EC7 th\u1ED1ng.");
       } catch (e) {
+        lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
       }
       location.reload();
     }
@@ -1612,10 +1760,12 @@
       try {
         unsubscribeUserStatusRealtime();
       } catch (e) {
+        lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
       }
       try {
         if (typeof window.lhTeardownAccessWatch === "function") window.lhTeardownAccessWatch();
       } catch (e) {
+        lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
       }
       Object.keys(sessionStorage).filter((k) => k.startsWith("hod_web_login_discord_notified_")).forEach((k) => sessionStorage.removeItem(k));
       await client.auth.signOut();
@@ -1632,7 +1782,9 @@
         return;
       }
       if (!oldQ?.id) {
-        alert("C\xE2u h\u1ECFi hi\u1EC7n \u0111ang l\u1EA5y t\u1EEB data local. H\xE3y \u0111\u0103ng nh\u1EADp v\xE0 t\u1EA3i questions t\u1EEB Supabase tr\u01B0\u1EDBc khi g\u1EEDi y\xEAu c\u1EA7u s\u1EEDa.");
+        alert(
+          "C\xE2u h\u1ECFi hi\u1EC7n \u0111ang l\u1EA5y t\u1EEB data local. H\xE3y \u0111\u0103ng nh\u1EADp v\xE0 t\u1EA3i questions t\u1EEB Supabase tr\u01B0\u1EDBc khi g\u1EEDi y\xEAu c\u1EA7u s\u1EEDa."
+        );
         return;
       }
       try {
@@ -1654,7 +1806,12 @@
         new_data: questionToRow(newDraft),
         reason: ""
       };
-      const res = await fetch("/api/edit-requests", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify(payload) });
+      const res = await fetch("/api/edit-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify(payload)
+      });
       const out = await res.json().catch(() => ({}));
       if (!res.ok || out.error) return alert("G\u1EEDi y\xEAu c\u1EA7u s\u1EEDa th\u1EA5t b\u1EA1i: " + (out.error || res.status));
       $id("editModal")?.classList.add("hidden");
@@ -1670,14 +1827,19 @@
         const res = await fetch("/api/admin-dashboard", { cache: "no-store" });
         const dash = await res.json().catch(() => ({}));
         if (!res.ok || dash.error) throw new Error(dash.error || res.status);
-        data = (dash.requests || []).filter((r) => r.status === "pending").map((r) => ({ ...r, old_data: typeof r.old_data === "string" ? JSON.parse(r.old_data || "{}") : r.old_data, new_data: typeof r.new_data === "string" ? JSON.parse(r.new_data || "{}") : r.new_data }));
+        data = (dash.requests || []).filter((r) => r.status === "pending").map((r) => ({
+          ...r,
+          old_data: typeof r.old_data === "string" ? JSON.parse(r.old_data || "{}") : r.old_data,
+          new_data: typeof r.new_data === "string" ? JSON.parse(r.new_data || "{}") : r.new_data
+        }));
       } catch (e) {
         if (list) list.innerHTML = '<div class="more">' + esc(e.message || "L\u1ED7i t\u1EA3i") + "</div>";
         return;
       }
       if (count) count.textContent = `${data.length} y\xEAu c\u1EA7u`;
       if (!list) return;
-      list.innerHTML = data.length ? data.map((r) => `
+      list.innerHTML = data.length ? data.map(
+        (r) => `
       <div class="adminReq" data-request-id="${r.id}">
         <div class="adminReqHead"><span>Request #${r.id} \xB7 C\xE2u ${r.question_num || r.question_id}</span><span>${new Date(r.created_at).toLocaleString()}</span></div>
         <div class="compareGrid">
@@ -1688,13 +1850,24 @@
           <button class="btn approveBtn" data-approve="${r.id}">Duy\u1EC7t</button>
           <button class="btn rejectBtn" data-reject="${r.id}">T\u1EEB ch\u1ED1i</button>
         </div>
-      </div>`).join("") : '<div class="more">Kh\xF4ng c\xF3 y\xEAu c\u1EA7u ch\u1EDD duy\u1EC7t.</div>';
-      list.querySelectorAll("[data-approve]").forEach((btn) => btn.onclick = () => approveRequest(Number(btn.dataset.approve), data.find((x) => x.id === Number(btn.dataset.approve))));
+      </div>`
+      ).join("") : '<div class="more">Kh\xF4ng c\xF3 y\xEAu c\u1EA7u ch\u1EDD duy\u1EC7t.</div>';
+      list.querySelectorAll("[data-approve]").forEach(
+        (btn) => btn.onclick = () => approveRequest(
+          Number(btn.dataset.approve),
+          data.find((x) => x.id === Number(btn.dataset.approve))
+        )
+      );
       list.querySelectorAll("[data-reject]").forEach((btn) => btn.onclick = () => rejectRequest(Number(btn.dataset.reject)));
     }
     async function approveRequest(id, req) {
       if (!isAdmin()) return alert("Ch\u1EC9 admin m\u1EDBi duy\u1EC7t \u0111\u01B0\u1EE3c.");
-      const res = await fetch("/api/admin-action", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ user_id: currentUser.id, action: "approve_request", payload: { request_id: id } }) });
+      const res = await fetch("/api/admin-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ user_id: currentUser.id, action: "approve_request", payload: { request_id: id } })
+      });
       const out = await res.json().catch(() => ({}));
       if (!res.ok || out.error) return alert("Kh\xF4ng duy\u1EC7t \u0111\u01B0\u1EE3c: " + (out.error || res.status));
       if (typeof window.clearLearningHubQuestionCache === "function") window.clearLearningHubQuestionCache();
@@ -1713,7 +1886,16 @@
     async function rejectRequest(id) {
       if (!isAdmin()) return alert("Ch\u1EC9 admin m\u1EDBi t\u1EEB ch\u1ED1i \u0111\u01B0\u1EE3c.");
       const note = prompt("L\xFD do t\u1EEB ch\u1ED1i (tu\u1EF3 ch\u1ECDn):") || "";
-      const res = await fetch("/api/admin-action", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ user_id: currentUser.id, action: "reject_request", payload: { request_id: id, admin_note: note } }) });
+      const res = await fetch("/api/admin-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({
+          user_id: currentUser.id,
+          action: "reject_request",
+          payload: { request_id: id, admin_note: note }
+        })
+      });
       const out = await res.json().catch(() => ({}));
       if (!res.ok || out.error) return alert("Kh\xF4ng t\u1EEB ch\u1ED1i \u0111\u01B0\u1EE3c: " + (out.error || res.status));
       notify2("\u0110\xE3 t\u1EEB ch\u1ED1i y\xEAu c\u1EA7u");
@@ -1803,9 +1985,23 @@
       return loadQuestionsFromSupabase();
     }
     document.addEventListener("DOMContentLoaded", init2);
-    return { init: init2, isReady, isAdmin, canOpenDashboard, submitEditRequest, loadQuestionsFromSupabase, openAuth, openAdmin, signOut, signInGoogle, getUser: () => currentUser, getProfile: () => currentProfile, get __client() {
-      return client;
-    } };
+    return {
+      init: init2,
+      isReady,
+      isAdmin,
+      canOpenDashboard,
+      submitEditRequest,
+      loadQuestionsFromSupabase,
+      openAuth,
+      openAdmin,
+      signOut,
+      signInGoogle,
+      getUser: () => currentUser,
+      getProfile: () => currentProfile,
+      get __client() {
+        return client;
+      }
+    };
   })();
   (function() {
     function $2(id) {
@@ -1959,7 +2155,8 @@
       const mail = $2("hodAccountEmail");
       if (mail) mail.textContent = email() || "Ch\u01B0a \u0111\u0103ng nh\u1EADp";
       const role = $2("hodAccountRole");
-      if (role) role.textContent = rawRole === "admin" || email() === "trongbm2004@gmail.com" ? "Admin" : rawRole === "editor" ? "Editor" : "Ng\u01B0\u1EDDi h\u1ECDc";
+      if (role)
+        role.textContent = rawRole === "admin" || email() === "trongbm2004@gmail.com" ? "Admin" : rawRole === "editor" ? "Editor" : "Ng\u01B0\u1EDDi h\u1ECDc";
       const av = $2("hodAccountAvatarBig");
       if (av) {
         const __avb = avatarHTML();
@@ -2061,7 +2258,10 @@
       return document.getElementById(id);
     }
     function esc2(s) {
-      return String(s ?? "").replace(/[&<>"']/g, (c2) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c2]);
+      return String(s ?? "").replace(
+        /[&<>"']/g,
+        (c2) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c2]
+      );
     }
     function displayCode(code) {
       return String(code || "");
@@ -2115,6 +2315,7 @@
           })
         }).catch((e) => console.warn("syncUserSubjectToProfile failed:", e));
       } catch (e) {
+        lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
       }
     }
     function setSubject2(code) {
@@ -2126,6 +2327,12 @@
       try {
         if (typeof window.__examResetForSubjectChange === "function") window.__examResetForSubjectChange();
       } catch (e) {
+        lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
+      }
+      try {
+        window.dispatchEvent(new CustomEvent("lh:subject-changed", { detail: { code: code || "" } }));
+      } catch (e) {
+        lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
       }
     }
     function meta(code) {
@@ -2189,7 +2396,24 @@
       }
     }
     function fallbackSubjects() {
-      return [{ code: "HOD102", name: "HOD102 Learning", description: "M\xF4n m\u1EB7c \u0111\u1ECBnh \u0111\u1EC3 b\u1EAFt \u0111\u1EA7u h\u1ECDc.", cover: "", is_active: true, question_count: 0 }, { code: "MLN111", name: "MLN111 Learning", description: "B\u1ED9 c\xE2u h\u1ECFi v\xE0 t\xE0i li\u1EC7u MLN111.", cover: "", is_active: true, question_count: 0 }];
+      return [
+        {
+          code: "HOD102",
+          name: "HOD102 Learning",
+          description: "M\xF4n m\u1EB7c \u0111\u1ECBnh \u0111\u1EC3 b\u1EAFt \u0111\u1EA7u h\u1ECDc.",
+          cover: "",
+          is_active: true,
+          question_count: 0
+        },
+        {
+          code: "MLN111",
+          name: "MLN111 Learning",
+          description: "B\u1ED9 c\xE2u h\u1ECFi v\xE0 t\xE0i li\u1EC7u MLN111.",
+          cover: "",
+          is_active: true,
+          question_count: 0
+        }
+      ];
     }
     async function addQuestionCounts(subjects) {
       const list = subjects || [];
@@ -2197,6 +2421,7 @@
       try {
         store = JSON.parse(localStorage.getItem("learninghub_subject_counts_cache_v3") || "{}") || store;
       } catch (e) {
+        lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
       }
       store.counts = store.counts || {};
       store.confirmed = store.confirmed || {};
@@ -2208,6 +2433,7 @@
           if (code) current[code] = (current[code] || 0) + 1;
         });
       } catch (e) {
+        lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
       }
       return list.map((s) => {
         const code = s.code || "";
@@ -2226,7 +2452,9 @@
         if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c subjects t\u1EEB Turso");
         const rows = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
         if (!rows.length) return fallbackSubjects();
-        rows.sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) || String(a.code || "").localeCompare(String(b.code || "")));
+        rows.sort(
+          (a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) || String(a.code || "").localeCompare(String(b.code || ""))
+        );
         return await addQuestionCounts(rows);
       } catch (e) {
         console.warn("[Turso subjects]", e);
@@ -2277,13 +2505,17 @@
       const list = $2("subjectList");
       if (!list) return;
       const q = ($2("subjectSearch")?.value || "").trim().toLowerCase();
-      const arr = subjectsCache.filter((s) => !q || `${s.code || ""} ${s.name || ""} ${s.description || ""}`.toLowerCase().includes(q));
+      const arr = subjectsCache.filter(
+        (s) => !q || `${s.code || ""} ${s.name || ""} ${s.description || ""}`.toLowerCase().includes(q)
+      );
       list.innerHTML = arr.map(card).join("");
       $2("subjectEmpty")?.classList.toggle("hidden", !!arr.length);
-      list.querySelectorAll(".subjectCard").forEach((x) => x.onclick = () => {
-        pickedCode = x.dataset.code;
-        applyPicked();
-      });
+      list.querySelectorAll(".subjectCard").forEach(
+        (x) => x.onclick = () => {
+          pickedCode = x.dataset.code;
+          applyPicked();
+        }
+      );
       applyPicked();
     }
     let lastRefreshTime = 0;
@@ -2329,11 +2561,27 @@
       syncUserSubjectToProfile3(code);
       if (!window.lhHasFullAccess?.(window.HODSupabase?.getProfile?.() || null)) return false;
       try {
-        const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(code) + "&ts=" + Date.now(), { cache: "no-store" });
+        const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(code) + "&ts=" + Date.now(), {
+          cache: "no-store"
+        });
         const json = await res.json().catch(() => ({}));
         if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c questions t\u1EEB Turso");
         const data = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
-        RAW = data.map((r) => ({ id: r.id, subject_code: r.subject_code || code, num: r.num, question: r.question, options: r.options || {}, answer: r.answer, answer_text: r.answer_text, images: typeof cleanImages === "function" ? cleanImages(r.images || []) : r.images || [], has_image: !!(r.has_image || (r.images || []).length), error_risk: r.error_risk || "low", error_risk_reason: r.error_risk_reason || "", __imagesChecked: true, __imagesLoaded: true }));
+        RAW = data.map((r) => ({
+          id: r.id,
+          subject_code: r.subject_code || code,
+          num: r.num,
+          question: r.question,
+          options: r.options || {},
+          answer: r.answer,
+          answer_text: r.answer_text,
+          images: typeof cleanImages === "function" ? cleanImages(r.images || []) : r.images || [],
+          has_image: !!(r.has_image || (r.images || []).length),
+          error_risk: r.error_risk || "low",
+          error_risk_reason: r.error_risk_reason || "",
+          __imagesChecked: true,
+          __imagesLoaded: true
+        }));
         pool = [...RAW];
         var _saved = +localStorage.getItem("learninghub_progress_" + code) || 0;
         ci = Math.max(0, Math.min(_saved, Math.max(0, pool.length - 1)));
@@ -2345,18 +2593,22 @@
         try {
           if (typeof window.__examResetForSubjectChange === "function") window.__examResetForSubjectChange();
         } catch (e) {
+          lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
         }
         try {
           renderCard();
         } catch (e) {
+          lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
         }
         try {
           renderQuiz();
         } catch (e) {
+          lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
         }
         try {
           renderStudy();
         } catch (e) {
+          lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
         }
         notifyUX("\u0110\xE3 t\u1EA3i " + label(code));
         return true;
@@ -2447,11 +2699,34 @@
             const _needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(_text);
             const _hasImg = !!(_list.length || oldQ?.has_image);
             const _risk = (editDraft.answer?.length || 0) > 1 ? "medium" : "low";
-            const _newData = { question: editDraft.question, options: editDraft.options || {}, answer: editDraft.answer, answer_text: editDraft.answer_text, images: _list, has_image: _hasImg || _needsImg, error_risk: _risk, error_risk_reason: null };
-            const _oldData = { question: oldQ.question, options: oldQ.options || {}, answer: oldQ.answer, answer_text: oldQ.answer_text, images: oldQ.images || [] };
+            const _newData = {
+              question: editDraft.question,
+              options: editDraft.options || {},
+              answer: editDraft.answer,
+              answer_text: editDraft.answer_text,
+              images: _list,
+              has_image: _hasImg || _needsImg,
+              error_risk: _risk,
+              error_risk_reason: null
+            };
+            const _oldData = {
+              question: oldQ.question,
+              options: oldQ.options || {},
+              answer: oldQ.answer,
+              answer_text: oldQ.answer_text,
+              images: oldQ.images || []
+            };
             if (typeof notify === "function") notify("\u0110ang l\u01B0u...");
             try {
-              const _res = await fetch("/api/admin-action", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ user_id: _u.id, action: "save_question_direct", payload: { question_id: _qid, new_data: _newData, old_data: _oldData } }) });
+              const _res = await fetch("/api/admin-action", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                  user_id: _u.id,
+                  action: "save_question_direct",
+                  payload: { question_id: _qid, new_data: _newData, old_data: _oldData }
+                })
+              });
               const _json = await _res.json().catch(() => ({}));
               if (!_res.ok || _json.error) {
                 alert("L\u01B0u tr\u1EF1c ti\u1EBFp th\u1EA5t b\u1EA1i: " + (_json.error || _res.status));
@@ -2465,7 +2740,8 @@
             $2("editModal")?.classList.add("hidden");
             if (typeof notify === "function") notify("\u0110\xE3 l\u01B0u tr\u1EF1c ti\u1EBFp \u2713");
             if (typeof window.loadCurrentSubjectOnly === "function") await window.loadCurrentSubjectOnly(true);
-            else if (window.HODSupabase?.loadQuestionsFromSupabase) await window.HODSupabase.loadQuestionsFromSupabase(true);
+            else if (window.HODSupabase?.loadQuestionsFromSupabase)
+              await window.HODSupabase.loadQuestionsFromSupabase(true);
             return;
           }
           await window.HODSupabase.submitEditRequest(editDraft, oldQ);
@@ -2540,7 +2816,10 @@
       return supa;
     }
     function esc2(s) {
-      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      return String(s ?? "").replace(
+        /[&<>"']/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+      );
     }
     function isLoggedIn() {
       return !!window.HODSupabase?.getUser?.();
@@ -2757,7 +3036,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         if (dropZone) dropZone.classList.add("hidden");
         if (card) card.classList.remove("hidden");
         if (nameEl) nameEl.textContent = fileName;
-        if (metaEl) metaEl.textContent = Math.max(1, Math.round(parseInt(fileSize || "0") / 1024)) + " KB \xB7 S\u1EB5n s\xE0ng xem tr\u01B0\u1EDBc";
+        if (metaEl)
+          metaEl.textContent = Math.max(1, Math.round(parseInt(fileSize || "0") / 1024)) + " KB \xB7 S\u1EB5n s\xE0ng xem tr\u01B0\u1EDBc";
         const pv = $2("previewImportBtn");
         if (pv) {
           pv.classList.remove("hidden");
@@ -2891,10 +3171,14 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         const fileInput = document.getElementById("userImportFile");
         if (dropZone && fileInput) {
           ["dragenter", "dragover", "dragleave", "drop"].forEach((evt) => {
-            dropZone.addEventListener(evt, (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }, false);
+            dropZone.addEventListener(
+              evt,
+              (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              },
+              false
+            );
           });
           ["dragenter", "dragover"].forEach((evt) => {
             dropZone.addEventListener(evt, () => dropZone.classList.add("dragover"), false);
@@ -2902,15 +3186,19 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           ["dragleave", "drop"].forEach((evt) => {
             dropZone.addEventListener(evt, () => dropZone.classList.remove("dragover"), false);
           });
-          dropZone.addEventListener("drop", (e) => {
-            const dt = e.dataTransfer;
-            if (dt.files && dt.files.length) {
-              const one = new DataTransfer();
-              one.items.add(dt.files[0]);
-              fileInput.files = one.files;
-              fileInput.dispatchEvent(new Event("change"));
-            }
-          }, false);
+          dropZone.addEventListener(
+            "drop",
+            (e) => {
+              const dt = e.dataTransfer;
+              if (dt.files && dt.files.length) {
+                const one = new DataTransfer();
+                one.items.add(dt.files[0]);
+                fileInput.files = one.files;
+                fileInput.dispatchEvent(new Event("change"));
+              }
+            },
+            false
+          );
           window._dropZoneInit = true;
         }
       }
@@ -2956,23 +3244,25 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }
     window.__LHConvertQuizlet = function(raw) {
       function scanNeedsImage(t) {
-        return /(hình vẽ|hình bên|hình sau|đồ thị|bảng biến thiên|sơ đồ|xem hình|picture shows|shows an image|this (picture|image|figure)|the (image|figure|picture|diagram) (below|above)|following (image|figure|picture|diagram)|shown below|pictured|in the (picture|image|figure))/i.test(String(t || ""));
+        return /(hình vẽ|hình bên|hình sau|đồ thị|bảng biến thiên|sơ đồ|xem hình|picture shows|shows an image|this (picture|image|figure)|the (image|figure|picture|diagram) (below|above)|following (image|figure|picture|diagram)|shown below|pictured|in the (picture|image|figure))/i.test(
+          String(t || "")
+        );
       }
       function parseTerm(term, def) {
         var re = /([A-Fa-f])\.(?=\s|[A-Z])/g, m, marks = [];
         while ((m = re.exec(term)) !== null) marks.push({ L: m[1].toUpperCase(), idx: m.index, end: m.index + 2 });
-        var seq = [], expect = 65;
+        var seq2 = [], expect = 65;
         marks.forEach(function(mk) {
           if (mk.L === String.fromCharCode(expect)) {
-            seq.push(mk);
+            seq2.push(mk);
             expect++;
           }
         });
-        if (seq.length < 2) return null;
-        var question = term.slice(0, seq[0].idx).trim(), options = {};
-        for (var i = 0; i < seq.length; i++) {
-          var s = seq[i].end, e = i + 1 < seq.length ? seq[i + 1].idx : term.length;
-          options[seq[i].L] = term.slice(s, e).trim().replace(/\s+/g, " ").replace(/\.$/, "").trim();
+        if (seq2.length < 2) return null;
+        var question = term.slice(0, seq2[0].idx).trim(), options = {};
+        for (var i = 0; i < seq2.length; i++) {
+          var s = seq2[i].end, e = i + 1 < seq2.length ? seq2[i + 1].idx : term.length;
+          options[seq2[i].L] = term.slice(s, e).trim().replace(/\s+/g, " ").replace(/\.$/, "").trim();
         }
         var ams = (String(def || "").match(/(?:^|\s)([A-Fa-f])\.(?=\s|[A-Z]|$)/g) || []).map(function(x) {
           return x.trim()[0].toUpperCase();
@@ -2987,13 +3277,16 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       var terms = null;
       try {
         var j = JSON.parse(raw);
-        if (j && Array.isArray(j.terms)) terms = j.terms.map(function(t) {
-          return { term: t.term, def: t.definition };
-        });
-        else if (Array.isArray(j) && j.length && j[0] && "term" in j[0] && "definition" in j[0]) terms = j.map(function(t) {
-          return { term: t.term, def: t.definition };
-        });
+        if (j && Array.isArray(j.terms))
+          terms = j.terms.map(function(t) {
+            return { term: t.term, def: t.definition };
+          });
+        else if (Array.isArray(j) && j.length && j[0] && "term" in j[0] && "definition" in j[0])
+          terms = j.map(function(t) {
+            return { term: t.term, def: t.definition };
+          });
       } catch (e) {
+        lhWarn("QUIZLET_IMPORT_AUTODETECT_20260701", e);
       }
       if (!terms) {
         var rows = [];
@@ -3016,7 +3309,15 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         if (seen[key]) return;
         seen[key] = 1;
         var needImg = scanNeedsImage(p.question + " " + Object.values(p.options).join(" "));
-        out.push({ question: p.question, options: p.options, answer: p.answer, images: [], has_image: needImg, error_risk: "low", error_risk_reason: "" });
+        out.push({
+          question: p.question,
+          options: p.options,
+          answer: p.answer,
+          images: [],
+          has_image: needImg,
+          error_risk: "low",
+          error_risk_reason: ""
+        });
       });
       return out.length ? out : null;
     };
@@ -3124,7 +3425,16 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         if (isAdminOrEditor()) {
           showProgress("\u0110ang l\u01B0u m\xF4n h\u1ECDc...", 50, 100, "\u0110ang t\u1EA1o m\xF4n v\xE0 nh\u1EADp c\xE2u h\u1ECFi l\xEAn m\xE1y ch\u1EE7...");
           const u0 = window.HODSupabase?.getUser?.();
-          const res = await fetch("/api/admin-action", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ user_id: u0?.id, action: "add_subject", payload: { code, name: name || code, description: desc || "", questions: parsedQuestions || [] } }) });
+          const res = await fetch("/api/admin-action", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({
+              user_id: u0?.id,
+              action: "add_subject",
+              payload: { code, name: name || code, description: desc || "", questions: parsedQuestions || [] }
+            })
+          });
           const out = await res.json().catch(() => ({}));
           if (!res.ok || out.error) {
             alert("L\u1ED7i t\u1EA1o m\xF4n: " + (out.error || res.status));
@@ -3148,6 +3458,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             window.clearLearningHubSupabaseCache?.("subjects");
             window.clearLearningHubSupabaseCache?.("questions");
           } catch (e) {
+            lhWarn("appCore", e);
           }
           alert(successMsg);
           notify(successMsg);
@@ -3157,12 +3468,22 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             setTimeout(() => $2("subjectRefresh")?.click(), 5600);
             setTimeout(() => window.refreshSubjectCountsOnce?.(), 6500);
           } catch (e) {
+            lhWarn("appCore", e);
           }
         } else {
           showProgress("\u0110ang g\u1EEDi y\xEAu c\u1EA7u t\u1EA1o m\xF4n h\u1ECDc...", 50, 100, "\u0110ang t\u1EA3i d\u1EEF li\u1EC7u c\xE2u h\u1ECFi l\xEAn m\xE1y ch\u1EE7...");
           await new Promise((resolve) => setTimeout(resolve, 100));
           const u = window.HODSupabase?.getUser?.();
-          const res = await fetch("/api/admin-action", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ user_id: u?.id, action: "add_subject_request", payload: { code, name, description: desc || "", questions_data: parsedQuestions || [] } }) });
+          const res = await fetch("/api/admin-action", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({
+              user_id: u?.id,
+              action: "add_subject_request",
+              payload: { code, name, description: desc || "", questions_data: parsedQuestions || [] }
+            })
+          });
           const out = await res.json().catch(() => ({}));
           if (!res.ok || out.error) {
             alert("L\u1ED7i g\u1EEDi y\xEAu c\u1EA7u: " + (out.error || res.status));
@@ -3214,6 +3535,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         randomActive = false;
         localStorage.setItem("hod102_random_active", "0");
       } catch (e) {
+        lhWarn("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
       }
       try {
         if ($2("idx")) $2("idx").textContent = "0";
@@ -3225,6 +3547,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         renderQuiz?.();
         renderStudy?.();
       } catch (e) {
+        lhWarn("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
       }
     }
     async function loadSubjectOnly() {
@@ -3245,14 +3568,31 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           syncUserSubjectToProfile(subject);
         } catch (e) {
+          lhWarn("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
         }
       }
       try {
-        const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(subject) + "&ts=" + Date.now(), { cache: "no-store" });
+        const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(subject) + "&ts=" + Date.now(), {
+          cache: "no-store"
+        });
         const json = await res.json().catch(() => ({}));
         if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c questions t\u1EEB Turso");
         const data = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
-        RAW = data.map((r) => ({ id: r.id, subject_code: r.subject_code || subject, num: r.num, question: r.question, options: r.options || {}, answer: r.answer, answer_text: r.answer_text, images: typeof cleanImages === "function" ? cleanImages(r.images || []) : r.images || [], has_image: !!(r.has_image || (r.images || []).length), error_risk: r.error_risk || "low", error_risk_reason: r.error_risk_reason || "", __imagesChecked: true, __imagesLoaded: true }));
+        RAW = data.map((r) => ({
+          id: r.id,
+          subject_code: r.subject_code || subject,
+          num: r.num,
+          question: r.question,
+          options: r.options || {},
+          answer: r.answer,
+          answer_text: r.answer_text,
+          images: typeof cleanImages === "function" ? cleanImages(r.images || []) : r.images || [],
+          has_image: !!(r.has_image || (r.images || []).length),
+          error_risk: r.error_risk || "low",
+          error_risk_reason: r.error_risk_reason || "",
+          __imagesChecked: true,
+          __imagesLoaded: true
+        }));
         pool = [...RAW];
         var _saved2 = +localStorage.getItem("learninghub_progress_" + subject) || 0;
         ci = Math.max(0, Math.min(_saved2, Math.max(0, pool.length - 1)));
@@ -3261,9 +3601,11 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         localStorage.setItem("hod102_random_active", "0");
         try {
           if ($2("total")) $2("total").textContent = String(RAW.length);
-          renderCard();
-          renderQuiz();
-          renderStudy();
+        } catch (e) {
+          lhWarn("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
+        }
+        renderAllSafe();
+        try {
           syncSubjectTexts?.();
           updateCardTools?.();
         } catch (e) {
@@ -3285,6 +3627,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           return RAW;
         };
       } catch (e) {
+        lhWarn("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
       }
       if (window.HODSupabase) {
         window.HODSupabase.loadQuestionsFromSupabase = loadSubjectOnly;
@@ -3300,6 +3643,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         }
         if (RAW.some((q) => !q.id || !q.subject_code || q.subject_code !== subject)) loadSubjectOnly();
       } catch (e) {
+        lhWarn("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
       }
     }
     document.addEventListener("DOMContentLoaded", () => {
@@ -3325,6 +3669,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         randomActive = false;
         localStorage.setItem("hod102_random_active", "0");
       } catch (e) {
+        lhWarn("PATCH_REMOVE_RANDOM_FEATURE_FINAL", e);
       }
     }
     window.shuffle = shuffle = function() {
@@ -3342,11 +3687,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     try {
       window.HOD_DATA = [];
     } catch (e) {
+      lhWarn("PATCH_SUPABASE_SINGLE_SOURCE_ONLY", e);
     }
     try {
       const dataNode = document.getElementById("data");
       if (dataNode) dataNode.textContent = "[]";
     } catch (e) {
+      lhWarn("PATCH_SUPABASE_SINGLE_SOURCE_ONLY", e);
     }
   })();
   if (typeof finalAnswerText !== "function") {
@@ -3395,7 +3742,16 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     function init2() {
       const floorCount = w <= 480 ? 26 : w <= 860 ? 40 : 55;
       const count = Math.min(140, Math.max(floorCount, Math.floor(w * h / 14e3)));
-      parts = Array.from({ length: count }, () => ({ x: Math.random() * w, y: Math.random() * h, r: 0.7 + Math.random() * 2.4, vx: (Math.random() - 0.5) * 0.22, vy: -0.1 - Math.random() * 0.42, a: 0.18 + Math.random() * 0.55, p: Math.random() * Math.PI * 2, hue: Math.random() < 0.55 ? "255,255,255" : Math.random() < 0.5 ? "255,226,170" : "135,225,255" }));
+      parts = Array.from({ length: count }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        r: 0.7 + Math.random() * 2.4,
+        vx: (Math.random() - 0.5) * 0.22,
+        vy: -0.1 - Math.random() * 0.42,
+        a: 0.18 + Math.random() * 0.55,
+        p: Math.random() * Math.PI * 2,
+        hue: Math.random() < 0.55 ? "255,255,255" : Math.random() < 0.5 ? "255,226,170" : "135,225,255"
+      }));
     }
     function stop() {
       running = false;
@@ -3463,13 +3819,17 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const g = document.getElementById("hodLoginGate");
       if (!g || g.__particles3d) return;
       g.__particles3d = true;
-      g.addEventListener("pointermove", (e) => {
-        const r = g.getBoundingClientRect();
-        const x = Math.max(0, Math.min(100, (e.clientX - r.left) / r.width * 100));
-        const y = Math.max(0, Math.min(100, (e.clientY - r.top) / r.height * 100));
-        g.style.setProperty("--mx", x.toFixed(1) + "%");
-        g.style.setProperty("--my", y.toFixed(1) + "%");
-      }, { passive: true });
+      g.addEventListener(
+        "pointermove",
+        (e) => {
+          const r = g.getBoundingClientRect();
+          const x = Math.max(0, Math.min(100, (e.clientX - r.left) / r.width * 100));
+          const y = Math.max(0, Math.min(100, (e.clientY - r.top) / r.height * 100));
+          g.style.setProperty("--mx", x.toFixed(1) + "%");
+          g.style.setProperty("--my", y.toFixed(1) + "%");
+        },
+        { passive: true }
+      );
     }
     function boot() {
       ux();
@@ -3544,7 +3904,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       let list = d.images || [];
       if (typeof window.__LHCleanImages === "function") list = window.__LHCleanImages(list);
       list = list.map((im) => {
-        if (typeof im === "string") return { src: im, url: im, secure_url: im, source: im.includes("cloudinary.com") ? "cloudinary" : "url" };
+        if (typeof im === "string")
+          return { src: im, url: im, secure_url: im, source: im.includes("cloudinary.com") ? "cloudinary" : "url" };
         const src = im.src || im.url || im.secure_url || im.publicUrl || im.public_url || "";
         return { ...im, src, url: im.url || src, secure_url: im.secure_url || src };
       }).filter((im) => im && im.src && !String(im.src).startsWith("data:image/"));
@@ -3565,9 +3926,31 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         risk = "medium";
         reason = "C\xE2u ch\u1ECDn nhi\u1EC1u \u0111\xE1p \xE1n \u0111\xFAng, c\u1EA7n r\xE0 so\xE1t k\u1EF9";
       }
-      const payload = { id, subject_code: d.subject_code || oldQ.subject_code || sc(), num: d.num || oldQ.num, question: d.question, options: d.options || {}, answer: d.answer, answer_text: d.answer_text, images: list, updated_at: (/* @__PURE__ */ new Date()).toISOString(), has_image: localHasImg || needsImg, error_risk: risk, error_risk_reason: reason || null };
+      const payload = {
+        id,
+        subject_code: d.subject_code || oldQ.subject_code || sc(),
+        num: d.num || oldQ.num,
+        question: d.question,
+        options: d.options || {},
+        answer: d.answer,
+        answer_text: d.answer_text,
+        images: list,
+        updated_at: (/* @__PURE__ */ new Date()).toISOString(),
+        has_image: localHasImg || needsImg,
+        error_risk: risk,
+        error_risk_reason: reason || null
+      };
       try {
-        const res = await fetch("/api/admin-action", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ user_id: u?.id, action: "save_question_direct", payload: { question_id: id, new_data: payload, old_data: oldQ } }) });
+        const res = await fetch("/api/admin-action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({
+            user_id: u?.id,
+            action: "save_question_direct",
+            payload: { question_id: id, new_data: payload, old_data: oldQ }
+          })
+        });
         const json = await res.json().catch(() => ({}));
         if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng l\u01B0u \u0111\u01B0\u1EE3c v\xE0o Turso");
       } catch (error) {
@@ -3577,9 +3960,14 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       if (typeof window.clearLearningHubQuestionCache === "function") window.clearLearningHubQuestionCache();
       if (typeof window.clearLearningHubSupabaseCache === "function") window.clearLearningHubSupabaseCache("questions");
       try {
-        RAW = (RAW || []).map((q) => Number(q.id) === Number(id) || q.subject_code === payload.subject_code && Number(q.num) === Number(payload.num) ? { ...q, ...payload } : q);
-        pool = (pool || []).map((q) => Number(q.id) === Number(id) || q.subject_code === payload.subject_code && Number(q.num) === Number(payload.num) ? { ...q, ...payload } : q);
+        RAW = (RAW || []).map(
+          (q) => Number(q.id) === Number(id) || q.subject_code === payload.subject_code && Number(q.num) === Number(payload.num) ? { ...q, ...payload } : q
+        );
+        pool = (pool || []).map(
+          (q) => Number(q.id) === Number(id) || q.subject_code === payload.subject_code && Number(q.num) === Number(payload.num) ? { ...q, ...payload } : q
+        );
       } catch (e) {
+        lhWarn("FINAL_FLOATING_PARTICLES_CANVAS_20260613", e);
       }
       $2("editModal")?.classList.add("hidden");
       if (typeof notify === "function") notify("\u0110\xE3 l\u01B0u \u1EA3nh v\xE0o Turso");
@@ -3611,7 +3999,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
   })();
   (function() {
     const $2 = (id) => document.getElementById(id);
-    const esc2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+    const esc2 = (s) => String(s ?? "").replace(
+      /[&<>"']/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+    );
     const user = () => window.HODSupabase?.getUser?.() || null;
     function ensureReportModal() {
       if ($2("hodReportModal")) return;
@@ -3687,7 +4078,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         list.innerHTML = '<div class="hodReportEmpty">B\u1EA1n ch\u01B0a g\u1EEDi b\xE1o c\xE1o n\xE0o.</div>';
         return;
       }
-      list.innerHTML = data.map((r) => `
+      list.innerHTML = data.map(
+        (r) => `
       <div class="hodReportRow">
         <div class="hodReportRowTop">
           <b>C\xE2u ${esc2(r.question_num || "?")}</b>
@@ -3695,7 +4087,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         </div>
         <div class="hodReportTime">G\u1EEDi: ${esc2(new Date(r.created_at).toLocaleString("vi-VN"))}</div>
         ${r.admin_note ? `<div class="hodReportNote">Ghi ch\xFA admin: ${esc2(r.admin_note)}</div>` : ""}
-      </div>`).join("");
+      </div>`
+      ).join("");
     }
     async function openReportsTab() {
       ensureReportModal();
@@ -3821,25 +4214,37 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       function endHold() {
         clearTimers();
       }
-      btn.addEventListener("touchstart", (e) => {
-        touchActive = true;
-        e.stopPropagation();
-        startHold();
-      }, { passive: true });
-      btn.addEventListener("touchend", (e) => {
-        e.stopPropagation();
-        endHold();
-        setTimeout(() => {
-          touchActive = false;
-        }, 400);
-      }, { passive: true });
-      btn.addEventListener("touchcancel", (e) => {
-        e.stopPropagation();
-        endHold();
-        setTimeout(() => {
-          touchActive = false;
-        }, 400);
-      }, { passive: true });
+      btn.addEventListener(
+        "touchstart",
+        (e) => {
+          touchActive = true;
+          e.stopPropagation();
+          startHold();
+        },
+        { passive: true }
+      );
+      btn.addEventListener(
+        "touchend",
+        (e) => {
+          e.stopPropagation();
+          endHold();
+          setTimeout(() => {
+            touchActive = false;
+          }, 400);
+        },
+        { passive: true }
+      );
+      btn.addEventListener(
+        "touchcancel",
+        (e) => {
+          e.stopPropagation();
+          endHold();
+          setTimeout(() => {
+            touchActive = false;
+          }, 400);
+        },
+        { passive: true }
+      );
       btn.addEventListener("mousedown", (e) => {
         if (touchActive) return;
         e.stopPropagation();
@@ -3876,6 +4281,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         if (localStorage.getItem("learninghub_swipe_hint_seen_v1") === "1") zone.classList.add("swiped");
       } catch (e) {
+        lhWarn("MOBILE_FLASHCARD_NAVIGATION_20260702", e);
       }
       bindHoldRepeat($2("mobilePrev"), "prev");
       bindHoldRepeat($2("mobileNext"), "next");
@@ -3892,49 +4298,58 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           localStorage.setItem("learninghub_swipe_hint_seen_v1", "1");
         } catch (e) {
+          lhWarn("MOBILE_FLASHCARD_NAVIGATION_20260702", e);
         }
       }
-      zone.addEventListener("touchstart", (e) => {
-        const t = e.changedTouches && e.changedTouches[0];
-        if (!t) return;
-        ignoreTouch = !isMobile() || __sliding || !!e.target.closest("#cardTools, #editCard, .edit, .mobileCardNav");
-        if (ignoreTouch) return;
-        sx = t.clientX;
-        sy = t.clientY;
-        st = Date.now();
-        dragging = false;
-        decided = false;
-        axis = null;
-        moved = false;
-      }, { passive: true });
-      zone.addEventListener("touchmove", (e) => {
-        if (ignoreTouch || !isMobile() || __sliding) return;
-        const t = e.changedTouches && e.changedTouches[0];
-        if (!t) return;
-        const dx = t.clientX - sx, dy = t.clientY - sy;
-        if (!decided) {
-          if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-          decided = true;
-          axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? "x" : "y";
-          if (axis === "x") {
-            const w = ensureSlideWrap();
-            if (w) {
-              w.style.transition = "none";
-              w.classList.add("lhDragging");
+      zone.addEventListener(
+        "touchstart",
+        (e) => {
+          const t = e.changedTouches && e.changedTouches[0];
+          if (!t) return;
+          ignoreTouch = !isMobile() || __sliding || !!e.target.closest("#cardTools, #editCard, .edit, .mobileCardNav");
+          if (ignoreTouch) return;
+          sx = t.clientX;
+          sy = t.clientY;
+          st = Date.now();
+          dragging = false;
+          decided = false;
+          axis = null;
+          moved = false;
+        },
+        { passive: true }
+      );
+      zone.addEventListener(
+        "touchmove",
+        (e) => {
+          if (ignoreTouch || !isMobile() || __sliding) return;
+          const t = e.changedTouches && e.changedTouches[0];
+          if (!t) return;
+          const dx = t.clientX - sx, dy = t.clientY - sy;
+          if (!decided) {
+            if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+            decided = true;
+            axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? "x" : "y";
+            if (axis === "x") {
+              const w = ensureSlideWrap();
+              if (w) {
+                w.style.transition = "none";
+                w.classList.add("lhDragging");
+              }
             }
           }
-        }
-        if (dragging || axis === "x") {
-          dragging = true;
-          e.preventDefault();
-          if (Math.abs(dx) > 6) moved = true;
-          const w = ensureSlideWrap();
-          if (w) {
-            w.style.transform = "translateX(" + dx + "px)";
-            w.style.opacity = String(Math.max(0.4, 1 - Math.abs(dx) / (W() * 1.1)));
+          if (dragging || axis === "x") {
+            dragging = true;
+            e.preventDefault();
+            if (Math.abs(dx) > 6) moved = true;
+            const w = ensureSlideWrap();
+            if (w) {
+              w.style.transform = "translateX(" + dx + "px)";
+              w.style.opacity = String(Math.max(0.4, 1 - Math.abs(dx) / (W() * 1.1)));
+            }
           }
-        }
-      }, { passive: false });
+        },
+        { passive: false }
+      );
       function endDrag(e) {
         if (ignoreTouch || !dragging) return;
         dragging = false;
@@ -3963,12 +4378,16 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       }
       zone.addEventListener("touchend", endDrag, { passive: false });
       zone.addEventListener("touchcancel", endDrag, { passive: false });
-      zone.addEventListener("click", (e) => {
-        if (window.__lhSuppressFlip) {
-          e.stopImmediatePropagation();
-          e.preventDefault();
-        }
-      }, true);
+      zone.addEventListener(
+        "click",
+        (e) => {
+          if (window.__lhSuppressFlip) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+          }
+        },
+        true
+      );
     }
     function boot() {
       ensureSlideWrap();
@@ -4012,7 +4431,17 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       markSent(nowMs);
       try {
         const md = u?.user_metadata || {};
-        const res = await fetch("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ id: u.id, email: u.email || "", full_name: md.full_name || md.name || "", avatar_url: md.avatar_url || md.picture || "" }) });
+        const res = await fetch("/api/profile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({
+            id: u.id,
+            email: u.email || "",
+            full_name: md.full_name || md.name || "",
+            avatar_url: md.avatar_url || md.picture || ""
+          })
+        });
         const json = await res.json().catch(() => ({}));
         if (json && (json.force_logout || json.data?.force_logout)) {
           if (typeof window.lhForceLogout === "function") window.lhForceLogout();
@@ -4041,7 +4470,12 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           method: "POST",
           headers: { "Content-Type": "application/json" },
           cache: "no-store",
-          body: JSON.stringify({ id: u.id, email: u.email || "", full_name: md.full_name || md.name || "", avatar_url: md.avatar_url || md.picture || "" })
+          body: JSON.stringify({
+            id: u.id,
+            email: u.email || "",
+            full_name: md.full_name || md.name || "",
+            avatar_url: md.avatar_url || md.picture || ""
+          })
         });
         const json = await res.json().catch(() => ({}));
         if (json && (json.force_logout || json.data?.force_logout)) {
@@ -4059,7 +4493,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       return document.getElementById(id);
     }
     function escStr(s) {
-      return String(s ?? "").replace(/[\&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      return String(s ?? "").replace(
+        /[\&<>"']/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+      );
     }
     function currentCode() {
       return localStorage.getItem(STORE2) || "MLN122_3";
@@ -4162,6 +4599,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           renderCard();
         } catch (e) {
+          lhWarn("FINAL_APP_REPORT_BUTTON_NO_TOGGLE_20260614", e);
         }
         return true;
       }
@@ -4188,27 +4626,39 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       if (!list) return;
       if (!document.__studyReportNoToggleDoc) {
         document.__studyReportNoToggleDoc = true;
-        document.addEventListener("click", function(e) {
-          const btn = e.target.closest && e.target.closest(".studyReportBtn,[data-report-num]");
-          if (!btn) return;
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-          window.openStudyReport(btn.dataset.reportNum, e);
-          return false;
-        }, true);
-        document.addEventListener("pointerdown", function(e) {
-          const btn = e.target.closest && e.target.closest(".studyReportBtn,[data-report-num]");
-          if (!btn) return;
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-        }, true);
-        document.addEventListener("mousedown", function(e) {
-          const btn = e.target.closest && e.target.closest(".studyReportBtn,[data-report-num]");
-          if (!btn) return;
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-        }, true);
+        document.addEventListener(
+          "click",
+          function(e) {
+            const btn = e.target.closest && e.target.closest(".studyReportBtn,[data-report-num]");
+            if (!btn) return;
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            window.openStudyReport(btn.dataset.reportNum, e);
+            return false;
+          },
+          true
+        );
+        document.addEventListener(
+          "pointerdown",
+          function(e) {
+            const btn = e.target.closest && e.target.closest(".studyReportBtn,[data-report-num]");
+            if (!btn) return;
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+          },
+          true
+        );
+        document.addEventListener(
+          "mousedown",
+          function(e) {
+            const btn = e.target.closest && e.target.closest(".studyReportBtn,[data-report-num]");
+            if (!btn) return;
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+          },
+          true
+        );
       }
       list.querySelectorAll(".studyReportBtn,[data-report-num]").forEach((btn) => {
         btn.setAttribute("type", "button");
@@ -4523,7 +4973,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       return ans.split("").map((k) => opts[k] || "").join(" ");
     }
     function hasWholeNumber(text, num) {
-      return new RegExp("(^|\\D)" + String(num).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?=\\D|$)").test(String(text ?? ""));
+      return new RegExp("(^|\\D)" + String(num).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?=\\D|$)").test(
+        String(text ?? "")
+      );
     }
     function editDistanceOne(a, b) {
       if (a === b) return true;
@@ -4701,21 +5153,25 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const list = $("studyList");
       if (list && !list.__betterSearchBound) {
         list.__betterSearchBound = true;
-        list.addEventListener("click", function(e) {
-          const rb = e.target.closest("[data-report-num]");
-          if (rb) {
+        list.addEventListener(
+          "click",
+          function(e) {
+            const rb = e.target.closest("[data-report-num]");
+            if (rb) {
+              e.preventDefault();
+              e.stopImmediatePropagation();
+              window.openStudyReport?.(rb.dataset.reportNum, e);
+              return;
+            }
+            const it = e.target.closest(".sitem");
+            if (!it) return;
             e.preventDefault();
             e.stopImmediatePropagation();
-            window.openStudyReport?.(rb.dataset.reportNum, e);
-            return;
-          }
-          const it = e.target.closest(".sitem");
-          if (!it) return;
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          it.classList.toggle("open");
-          it.classList.remove("autoOpenAnswer");
-        }, true);
+            it.classList.toggle("open");
+            it.classList.remove("autoOpenAnswer");
+          },
+          true
+        );
       }
     }
     smart = smartBetter;
@@ -4728,6 +5184,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         renderStudyBetter();
       } catch (e) {
+        lhWarn("FINAL_SMART_SEARCH_STOPWORDS_RELEVANCE_20260614", e);
       }
     });
   })();
@@ -4738,12 +5195,16 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     const client = () => window.HODSupabase?.__client || null;
     const user = () => window.HODSupabase?.getUser?.() || null;
     const profile = () => window.HODSupabase?.getProfile?.() || null;
-    const esc2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+    const esc2 = (s) => String(s ?? "").replace(
+      /[&<>"']/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+    );
     const ADD_IMG_DRAFT_KEY = "learninghub_add_question_images_draft_v1";
     function saveAddImagesDraft() {
       try {
         localStorage.setItem(ADD_IMG_DRAFT_KEY, JSON.stringify(addImages));
       } catch (e) {
+        lhWarn("COPILOT_MERGED_ADD_QUESTION_DISPLAY_VERSION_20260629", e);
       }
     }
     function loadAddImagesDraft() {
@@ -4757,6 +5218,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         localStorage.removeItem(ADD_IMG_DRAFT_KEY);
       } catch (e) {
+        lhWarn("COPILOT_MERGED_ADD_QUESTION_DISPLAY_VERSION_20260629", e);
       }
     }
     let addImages = loadAddImagesDraft();
@@ -4997,12 +5459,14 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     function renderPrettyImages() {
       const box = $2("addImgs");
       if (!box) return;
-      box.innerHTML = addImages.length ? addImages.map((im, i) => `
+      box.innerHTML = addImages.length ? addImages.map(
+        (im, i) => `
       <div class="editImg addPreviewImg">
         <button type="button" class="rm" data-add-rm="${i}">\xD7</button>
         <img src="${esc2(im.src)}" alt="" loading="lazy" decoding="async">
         <input class="imgUrlBox" value="${esc2(im.src)}" readonly onclick="this.select()" title="B\u1EA5m \u0111\u1EC3 ch\u1ECDn URL \u1EA3nh" style="margin-top:6px;width:100%;max-width:260px;border:1px solid rgba(200,169,110,.24);border-radius:10px;background:rgba(0,0,0,.22);color:var(--gold2);padding:7px;font-size:.72rem;">
-      </div>`).join("") : "Ch\u01B0a c\xF3 h\xECnh.";
+      </div>`
+      ).join("") : "Ch\u01B0a c\xF3 h\xECnh.";
     }
     function openPrettyAddModal() {
       if (!canManage()) return;
@@ -5050,7 +5514,17 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         if (!options[k]) return alert("\u0110\xE1p \xE1n \u0111\xFAng " + k + " ch\u01B0a c\xF3 n\u1ED9i dung.");
       }
       const imgs = typeof window.__LHCleanImages === "function" ? window.__LHCleanImages(addImages || []) : addImages || [];
-      const payload = { subject_code: subject, num, question, options, answer, answer_text: answerTextLine(answer, options), images: imgs, has_image: imgs.length > 0, updated_at: (/* @__PURE__ */ new Date()).toISOString() };
+      const payload = {
+        subject_code: subject,
+        num,
+        question,
+        options,
+        answer,
+        answer_text: answerTextLine(answer, options),
+        images: imgs,
+        has_image: imgs.length > 0,
+        updated_at: (/* @__PURE__ */ new Date()).toISOString()
+      };
       const btn = $2("saveAddQuestion");
       if (btn) {
         btn.disabled = true;
@@ -5083,6 +5557,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             renderStudy?.();
           }
         } catch (e) {
+          lhWarn("COPILOT_MERGED_ADD_QUESTION_DISPLAY_VERSION_20260629", e);
         }
       } catch (err) {
         alert("Th\xEAm c\xE2u h\u1ECFi th\u1EA5t b\u1EA1i: " + (err?.message || err));
@@ -5108,10 +5583,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       document.querySelectorAll(".tab").forEach((t) => {
         if (t.__prettyAddTabBound) return;
         t.__prettyAddTabBound = true;
-        t.addEventListener("click", () => setTimeout(() => {
-          cleanupLimitText();
-          updatePlus();
-        }, 80));
+        t.addEventListener(
+          "click",
+          () => setTimeout(() => {
+            cleanupLimitText();
+            updatePlus();
+          }, 80)
+        );
       });
     }
     window.openAddQuestionModal = openPrettyAddModal;
@@ -5123,165 +5601,11 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     setInterval(updatePlus, 250);
   })();
   (function() {
-    function $2(id) {
-      return document.getElementById(id);
-    }
-    function canManage() {
-      const p = window.HODSupabase?.getProfile?.() || null;
-      const u = window.HODSupabase?.getUser?.() || null;
-      const role = String(p?.role || "").toLowerCase();
-      return !!u && (role === "admin" || role === "editor") && !(p?.blocked || p?.is_blocked || p?.status === "blocked");
-    }
-    function isStudyTab() {
-      return $2("study")?.classList.contains("active") || document.querySelector(".tab.active")?.dataset?.tab === "study";
-    }
-    function getNum(card) {
-      const d = card?.dataset?.num || card?.getAttribute?.("data-num");
-      if (d && /^\d+$/.test(String(d))) return Number(d);
-      const m = String(card?.textContent || "").match(/CÂU\s*(\d+)/i);
-      return m ? Number(m[1]) : null;
-    }
-    function addDeleteButtons() {
-      const list = $2("studyList");
-      if (!list) return;
-      const show = canManage() && isStudyTab();
-      document.body.classList.toggle("study-has-delete", show);
-      list.querySelectorAll(".sitem, .compactStudyCard").forEach((card) => {
-        let holder = card.querySelector(".compactCardRight");
-        if (!holder) {
-          holder = document.createElement("div");
-          holder.className = "compactCardRight";
-          const line = card.querySelector(".compactCardLine");
-          if (line) line.appendChild(holder);
-          else card.appendChild(holder);
-        }
-        const existing = card.querySelector(".studyDeleteAction");
-        if (!show) {
-          if (existing) existing.remove();
-          return;
-        }
-        const num = getNum(card);
-        if (!num) return;
-        card.dataset.num = String(num);
-        if (existing) {
-          existing.dataset.deleteNum = String(num);
-          return;
-        }
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "studyDeleteAction";
-        btn.dataset.deleteNum = String(num);
-        btn.title = "X\xF3a c\xE2u " + num;
-        btn.textContent = "X\xF3a";
-        holder.appendChild(btn);
-      });
-    }
-    function patchRender() {
-      if (window.__deleteButtonRenderPatched) return;
-      const old = typeof renderStudy === "function" ? renderStudy : null;
-      if (!old) return;
-      window.__deleteButtonRenderPatched = true;
-      renderStudy = function() {
-        const r = old.apply(this, arguments);
-        setTimeout(addDeleteButtons, 0);
-        setTimeout(addDeleteButtons, 100);
-        return r;
-      };
-      window.renderStudy = renderStudy;
-    }
-    function boot() {
-      patchRender();
-      addDeleteButtons();
-      document.querySelectorAll(".tab").forEach((t) => {
-        if (t.__deleteBtnBound) return;
-        t.__deleteBtnBound = true;
-        t.addEventListener("click", () => setTimeout(addDeleteButtons, 100));
-      });
-    }
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
-    else boot();
-    setTimeout(boot, 300);
-    setTimeout(boot, 1e3);
-    setInterval(addDeleteButtons, 1500);
-  })();
-  (function() {
-    function isDeleteTarget(e) {
-      return e.target?.closest?.(".studyDeleteAction,[data-delete-num]");
-    }
-    function notifySafe(msg) {
-      if (typeof notify === "function") notify(msg);
-      else alert(msg);
-    }
-    function client() {
-      return window.HODSupabase?.__client || null;
-    }
-    function user() {
-      return window.HODSupabase?.getUser?.() || null;
-    }
-    function profile() {
-      return window.HODSupabase?.getProfile?.() || null;
-    }
-    function canManage() {
-      const p = profile();
-      const role = String(p?.role || "").toLowerCase();
-      return !!user() && (role === "admin" || role === "editor") && !(p?.blocked || p?.is_blocked || p?.status === "blocked");
-    }
-    function getQ(num) {
-      num = Number(num);
-      return (RAW || []).find((q) => Number(q.num) === num) || null;
-    }
-    async function deleteQuestion(num) {
-      num = Number(num);
-      if (!num) return;
-      const q = getQ(num);
-      if (!q) return notifySafe("Kh\xF4ng th\u1EA5y c\xE2u " + num);
-      if (!canManage()) return notifySafe("Kh\xF4ng c\xF3 quy\u1EC1n x\xF3a");
-      if (!confirm("X\xF3a c\xE2u " + num + "?\nC\xE2u h\u1ECFi s\u1EBD b\u1ECB \u1EA9n kh\u1ECFi th\u01B0 vi\u1EC7n.")) return;
-      if (!q.id) return notifySafe("Kh\xF4ng t\xECm th\u1EA5y ID c\xE2u h\u1ECFi. H\xE3y t\u1EA3i l\u1EA1i trang r\u1ED3i th\u1EED l\u1EA1i.");
-      const u = window.HODSupabase?.getUser?.();
-      const res = await fetch("/api/admin-action", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ user_id: u?.id, action: "delete_question", payload: { question_id: q.id } }) });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok || out.error) return notifySafe("L\u1ED7i x\xF3a: " + (out.error || res.status));
-      if (typeof window.clearLearningHubQuestionCache === "function") {
-        window.clearLearningHubQuestionCache();
-      }
-      RAW = (RAW || []).filter((x) => Number(x.num) !== num);
-      pool = (pool || []).filter((x) => Number(x.num) !== num);
-      if (ci >= pool.length) ci = Math.max(0, pool.length - 1);
-      try {
-        renderStudy?.();
-        renderCard?.();
-        renderQuiz?.();
-      } catch (e) {
-      }
-      notifySafe("\u0110\xE3 x\xF3a c\xE2u " + num);
-    }
-    function stopOnly(e) {
-      const btn = isDeleteTarget(e);
-      if (!btn) return;
-      e.preventDefault?.();
-      e.stopPropagation?.();
-      e.stopImmediatePropagation?.();
-      return btn;
-    }
-    if (!document.__deleteNoToggleFinal20260627) {
-      document.__deleteNoToggleFinal20260627 = true;
-      ["pointerdown", "mousedown", "touchstart"].forEach((ev) => {
-        document.addEventListener(ev, function(e) {
-          stopOnly(e);
-        }, true);
-      });
-      document.addEventListener("click", function(e) {
-        const btn = stopOnly(e);
-        if (!btn) return;
-        deleteQuestion(btn.dataset.deleteNum || btn.getAttribute("data-delete-num"));
-        return false;
-      }, true);
-    }
-  })();
-  (function() {
     function escPrompt(s) {
-      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      return String(s ?? "").replace(
+        /[&<>"']/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+      );
     }
     function getPromptText() {
       return window.__ADD_SUBJECT_AI_PROMPT || window.AI_PROMPT || document.getElementById("userAiPromptText")?.textContent || "";
@@ -5352,21 +5676,25 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         done();
       }
     };
-    document.addEventListener("click", function(e) {
-      const viewBtn = e.target.closest && e.target.closest("#btnViewPrompt,.aiViewPromptBtn");
-      if (viewBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        window.__openUserAIPromptModal();
-        return;
-      }
-      const copyBtn = e.target.closest && e.target.closest("#btnCopyPrompt");
-      if (copyBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        window.__copyUserAIPrompt();
-      }
-    }, true);
+    document.addEventListener(
+      "click",
+      function(e) {
+        const viewBtn = e.target.closest && e.target.closest("#btnViewPrompt,.aiViewPromptBtn");
+        if (viewBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          window.__openUserAIPromptModal();
+          return;
+        }
+        const copyBtn = e.target.closest && e.target.closest("#btnCopyPrompt");
+        if (copyBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          window.__copyUserAIPrompt();
+        }
+      },
+      true
+    );
   })();
   (function() {
     function $2(id) {
@@ -5404,16 +5732,21 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         window.__closeImportPreviewModal?.();
       } catch (e) {
+        lhWarn("FIX_DELETE_IMPORT_FILE_20260625", e);
       }
       notifySafe("\u0110\xE3 x\xF3a file import");
     };
-    document.addEventListener("click", function(e) {
-      const btn = e.target.closest?.(".removeFileBtn");
-      if (!btn) return;
-      e.preventDefault();
-      e.stopPropagation();
-      window.__clearUserImportFile();
-    }, true);
+    document.addEventListener(
+      "click",
+      function(e) {
+        const btn = e.target.closest?.(".removeFileBtn");
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        window.__clearUserImportFile();
+      },
+      true
+    );
   })();
   (function() {
     function $2(id) {
@@ -5467,15 +5800,21 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         if (Number(step) === 2) enhancePromptStep();
       }, 0);
     };
-    document.addEventListener("click", function(e) {
-      const btn = e.target.closest?.('[onclick*="__switchStep(2)"]');
-      if (btn) setTimeout(enhancePromptStep, 0);
-    }, true);
+    document.addEventListener(
+      "click",
+      function(e) {
+        const btn = e.target.closest?.('[onclick*="__switchStep(2)"]');
+        if (btn) setTimeout(enhancePromptStep, 0);
+      },
+      true
+    );
     document.addEventListener("DOMContentLoaded", () => setTimeout(enhancePromptStep, 800));
   })();
   (function() {
     function cleanStrayPromptButtons() {
-      document.querySelectorAll(".subjectGate .polishedSubjectPanel > .aiCopyBtn, .subjectGate .polishedSubjectPanel > #btnCopyPrompt, .subjectGate > .aiCopyBtn, .subjectGate > #btnCopyPrompt").forEach((btn) => {
+      document.querySelectorAll(
+        ".subjectGate .polishedSubjectPanel > .aiCopyBtn, .subjectGate .polishedSubjectPanel > #btnCopyPrompt, .subjectGate > .aiCopyBtn, .subjectGate > #btnCopyPrompt"
+      ).forEach((btn) => {
         if (!btn.closest("#addStep2")) btn.remove();
       });
     }
@@ -5529,14 +5868,21 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         patchPromptModal();
       }, 1e3);
     });
-    document.addEventListener("click", () => setTimeout(() => {
-      cleanPromptTip();
-      patchPromptModal();
-    }, 0), true);
+    document.addEventListener(
+      "click",
+      () => setTimeout(() => {
+        cleanPromptTip();
+        patchPromptModal();
+      }, 0),
+      true
+    );
   })();
   (function() {
     function escHtml(s) {
-      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      return String(s ?? "").replace(
+        /[&<>"']/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+      );
     }
     function getPreviewData(data) {
       const arr = data || window.__previewImportData || [];
@@ -5844,7 +6190,12 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             var fr = new FileReader();
             fr.onload = function() {
               if (!q.images) q.images = [];
-              q.images.push({ id: "prev_" + Date.now() + "_" + Math.random().toString(16).slice(2), src: fr.result, source: "user-upload", name: file.name });
+              q.images.push({
+                id: "prev_" + Date.now() + "_" + Math.random().toString(16).slice(2),
+                src: fr.result,
+                source: "user-upload",
+                name: file.name
+              });
               if (!q.has_image) {
                 q.has_image = true;
               }
@@ -5934,7 +6285,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
   (function() {
     const LETTERS = ["A", "B", "C", "D", "E", "F", "G"];
     function escHtml(s) {
-      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      return String(s ?? "").replace(
+        /[&<>"']/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+      );
     }
     function getData() {
       return window.__previewImportData || [];
@@ -5988,10 +6342,16 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       }
       const grid = card.querySelector(".previewAnswerGrid");
       if (grid && !card.querySelector(".inlineAddOptionMini")) {
-        grid.insertAdjacentHTML("afterend", `<button class="inlineAddOptionMini" type="button" title="Th\xEAm \u0111\xE1p \xE1n" onclick="window.__inlineAddPreviewOption(${i})">+</button>`);
+        grid.insertAdjacentHTML(
+          "afterend",
+          `<button class="inlineAddOptionMini" type="button" title="Th\xEAm \u0111\xE1p \xE1n" onclick="window.__inlineAddPreviewOption(${i})">+</button>`
+        );
       }
       if (!card.querySelector(".inlineEditActionsMini")) {
-        card.insertAdjacentHTML("beforeend", `<div class="inlineEditActionsMini"><button class="btn" type="button" onclick="window.__cancelInlineKeepEdit(${i})">H\u1EE7y</button><button class="primary" type="button" onclick="window.__saveInlineKeepEdit(${i})">L\u01B0u s\u1EEDa</button></div>`);
+        card.insertAdjacentHTML(
+          "beforeend",
+          `<div class="inlineEditActionsMini"><button class="btn" type="button" onclick="window.__cancelInlineKeepEdit(${i})">H\u1EE7y</button><button class="primary" type="button" onclick="window.__saveInlineKeepEdit(${i})">L\u01B0u s\u1EEDa</button></div>`
+        );
       }
       questionEl?.focus();
     };
@@ -5999,10 +6359,15 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const card = document.querySelector(`[data-pcard="${i}"]`);
       const grid = card?.querySelector(".previewAnswerGrid");
       if (!card || !grid) return;
-      const keys = Array.from(grid.querySelectorAll(".previewAnswerOption")).map((x) => String(x.dataset.k || "").toUpperCase());
+      const keys = Array.from(grid.querySelectorAll(".previewAnswerOption")).map(
+        (x) => String(x.dataset.k || "").toUpperCase()
+      );
       const k = nextKey(keys);
       if (!k) return alert("\u0110\xE3 \u0111\u1EE7 s\u1ED1 l\u1EF1a ch\u1ECDn.");
-      grid.insertAdjacentHTML("beforeend", `<div class="previewAnswerOption" data-pi="${i}" data-k="${k}"><b>${k}</b><span contenteditable="true" data-opt-text="${k}"></span></div>`);
+      grid.insertAdjacentHTML(
+        "beforeend",
+        `<div class="previewAnswerOption" data-pi="${i}" data-k="${k}"><b>${k}</b><span contenteditable="true" data-opt-text="${k}"></span></div>`
+      );
       grid.querySelector(`[data-k="${k}"] span`)?.focus();
     };
     window.__cancelInlineKeepEdit = function(i) {
@@ -6041,7 +6406,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       card.querySelectorAll(".previewAnswerOption").forEach((opt) => {
         if (opt.querySelector(".inlineDeleteOptionBtn")) return;
         const k = opt.dataset.k || "";
-        opt.insertAdjacentHTML("beforeend", `<button class="inlineDeleteOptionBtn" type="button" title="X\xF3a \u0111\xE1p \xE1n ${k}" onclick="window.__deleteInlinePreviewOption(this)">\xD7</button>`);
+        opt.insertAdjacentHTML(
+          "beforeend",
+          `<button class="inlineDeleteOptionBtn" type="button" title="X\xF3a \u0111\xE1p \xE1n ${k}" onclick="window.__deleteInlinePreviewOption(this)">\xD7</button>`
+        );
       });
     }
     window.__deleteInlinePreviewOption = function(btn) {
@@ -6122,7 +6490,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
   (function() {
     const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
     function esc2(s) {
-      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      return String(s ?? "").replace(
+        /[&<>"']/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+      );
     }
     function getData(data) {
       const arr = data || window.__previewImportData || [];
@@ -6147,7 +6518,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }
     function renderEditCard(q, i) {
       const opts = q.options || {};
-      const optionRows = Object.keys(opts).sort().map((k) => `<div class="simpleEditOption" data-opt-row="${esc2(k)}"><div class="simpleEditKey">${esc2(k)}</div><input value="${esc2(opts[k] || "")}" data-edit-opt="${esc2(k)}"><button class="simpleEditDel" type="button" data-del-opt="${esc2(k)}">\xD7</button></div>`).join("");
+      const optionRows = Object.keys(opts).sort().map(
+        (k) => `<div class="simpleEditOption" data-opt-row="${esc2(k)}"><div class="simpleEditKey">${esc2(k)}</div><input value="${esc2(opts[k] || "")}" data-edit-opt="${esc2(k)}"><button class="simpleEditDel" type="button" data-del-opt="${esc2(k)}">\xD7</button></div>`
+      ).join("");
       return `<article class="simplePreviewCard simpleEditCard" data-simple-card="${i}"><div class="simpleEditHead"><div class="simpleEditTitle">S\u1EEDa to\xE0n b\u1ED9 C\xE2u ${esc2(q.num || i + 1)}</div></div><div class="simpleEditGrid"><div class="simpleEditField"><label>C\xE2u h\u1ECFi</label><textarea data-edit-question>${esc2(q.question || "")}</textarea></div><div class="simpleEditField"><label>\u0110\xE1p \xE1n \u0111\xFAng</label><input data-edit-answer value="${esc2(normAns(q))}" placeholder="VD: A ho\u1EB7c AC"></div></div><div class="simpleEditField" style="margin-top:10px"><label>C\xE1c \u0111\xE1p \xE1n</label><div class="simpleEditOptions">${optionRows}</div></div><div class="simpleEditBottom"><button class="btn" type="button" data-add-opt="${i}">+ Th\xEAm \u0111\xE1p \xE1n</button><div class="simpleEditMiniActions"><button class="btn" type="button" data-cancel-simple="${i}">H\u1EE7y</button><button class="primary" type="button" data-save-simple="${i}">L\u01B0u s\u1EEDa</button></div></div></article>`;
     }
     function renderList(data) {
@@ -6262,7 +6635,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
     let currentFilter = "all";
     function esc2(s) {
-      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      return String(s ?? "").replace(
+        /[&<>"']/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+      );
     }
     function getData(data) {
       const arr = data || window.__previewImportData || [];
@@ -6299,13 +6675,25 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       return q.error_risk === currentFilter;
     }
     function stat(data) {
-      return { total: data.length, img: data.filter((q) => q.has_image).length, high: data.filter((q) => q.error_risk === "high").length, medium: data.filter((q) => q.error_risk === "medium").length, low: data.filter((q) => q.error_risk === "low").length };
+      return {
+        total: data.length,
+        img: data.filter((q) => q.has_image).length,
+        high: data.filter((q) => q.error_risk === "high").length,
+        medium: data.filter((q) => q.error_risk === "medium").length,
+        low: data.filter((q) => q.error_risk === "low").length
+      };
     }
     function renderStats(data) {
       const s = stat(data);
       const box = document.getElementById("simplePreviewStats");
       if (!box) return;
-      const filters = [["all", "Th\u01B0 vi\u1EC7n"], ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"], ["high", "R\u1EE7i ro cao"], ["medium", "Trung b\xECnh"], ["low", "Th\u1EA5p"]];
+      const filters = [
+        ["all", "Th\u01B0 vi\u1EC7n"],
+        ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"],
+        ["high", "R\u1EE7i ro cao"],
+        ["medium", "Trung b\xECnh"],
+        ["low", "Th\u1EA5p"]
+      ];
       box.innerHTML = `<div class="simplePreviewStatLine"><span class="simplePreviewStatItem">${s.total} c\xE2u</span><span class="simplePreviewStatItem" style="color:#3498db">${s.img} c\xF3 \u1EA3nh</span><span class="simplePreviewStatItem" style="color:#e74c3c">${s.high} r\u1EE7i ro cao</span><span class="simplePreviewStatItem" style="color:#f39c12">${s.medium} trung b\xECnh</span><span class="simplePreviewStatItem" style="color:#27ae60">${s.low} th\u1EA5p</span></div><div class="simplePreviewFilterLine">${filters.map((f) => `<button type="button" class="simpleFilterBtn ${currentFilter === f[0] ? "active" : ""}" data-filter="${f[0]}">${f[1]}</button>`).join("")}</div>`;
     }
     function renderCard2(q, i) {
@@ -6314,7 +6702,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }
     function renderEditCard(q, i) {
       const opts = q.options || {};
-      const optionRows = Object.keys(opts).sort().map((k) => `<div class="simpleEditOption" data-opt-row="${esc2(k)}"><div class="simpleEditKey">${esc2(k)}</div><input value="${esc2(opts[k] || "")}" data-edit-opt="${esc2(k)}"><button class="simpleEditDel" type="button" data-del-opt="${esc2(k)}">\xD7</button></div>`).join("");
+      const optionRows = Object.keys(opts).sort().map(
+        (k) => `<div class="simpleEditOption" data-opt-row="${esc2(k)}"><div class="simpleEditKey">${esc2(k)}</div><input value="${esc2(opts[k] || "")}" data-edit-opt="${esc2(k)}"><button class="simpleEditDel" type="button" data-del-opt="${esc2(k)}">\xD7</button></div>`
+      ).join("");
       return `<article class="simplePreviewCard simpleEditCard" data-simple-card="${i}"><div class="simpleEditHead"><div class="simpleEditTitle">S\u1EEDa to\xE0n b\u1ED9 C\xE2u ${esc2(q.num || i + 1)}</div></div><div class="simpleEditGrid"><div class="simpleEditField"><label>C\xE2u h\u1ECFi</label><textarea data-edit-question>${esc2(q.question || "")}</textarea></div><div class="simpleEditField"><label>\u0110\xE1p \xE1n \u0111\xFAng</label><input data-edit-answer value="${esc2(normAns(q))}" placeholder="VD: A ho\u1EB7c AC"></div></div><div class="simpleEditField" style="margin-top:10px"><label>C\xE1c \u0111\xE1p \xE1n</label><div class="simpleEditOptions">${optionRows}</div></div><div class="simpleEditBottom"><button class="btn" type="button" data-add-opt="${i}">+ Th\xEAm \u0111\xE1p \xE1n</button><div class="simpleEditMiniActions"><button class="btn" type="button" data-cancel-simple="${i}">H\u1EE7y</button><button class="primary" type="button" data-save-simple="${i}">L\u01B0u s\u1EEDa</button></div></div></article>`;
     }
     function renderList(data) {
@@ -6438,7 +6828,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
     let currentFilter = "all";
     function esc2(s) {
-      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      return String(s ?? "").replace(
+        /[&<>"']/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+      );
     }
     function getData(data) {
       const arr = data || window.__previewImportData || [];
@@ -6479,12 +6872,24 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       return q.error_risk === currentFilter;
     }
     function stat(data) {
-      return { total: data.length, img: data.filter((q) => q.has_image).length, high: data.filter((q) => q.error_risk === "high").length, medium: data.filter((q) => q.error_risk === "medium").length, low: data.filter((q) => q.error_risk === "low").length };
+      return {
+        total: data.length,
+        img: data.filter((q) => q.has_image).length,
+        high: data.filter((q) => q.error_risk === "high").length,
+        medium: data.filter((q) => q.error_risk === "medium").length,
+        low: data.filter((q) => q.error_risk === "low").length
+      };
     }
     function renderStats(data) {
       const s = stat(data), box = document.getElementById("simplePreviewStats");
       if (!box) return;
-      const filters = [["all", "Th\u01B0 vi\u1EC7n"], ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"], ["high", "R\u1EE7i ro cao"], ["medium", "Trung b\xECnh"], ["low", "Th\u1EA5p"]];
+      const filters = [
+        ["all", "Th\u01B0 vi\u1EC7n"],
+        ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"],
+        ["high", "R\u1EE7i ro cao"],
+        ["medium", "Trung b\xECnh"],
+        ["low", "Th\u1EA5p"]
+      ];
       box.innerHTML = `<div class="simplePreviewStatLine"><span class="simplePreviewStatItem">${s.total} c\xE2u</span><span class="simplePreviewStatItem" style="color:#3498db">${s.img} c\xF3 \u1EA3nh</span><span class="simplePreviewStatItem" style="color:#e74c3c">${s.high} r\u1EE7i ro cao</span><span class="simplePreviewStatItem" style="color:#f39c12">${s.medium} trung b\xECnh</span><span class="simplePreviewStatItem" style="color:#27ae60">${s.low} th\u1EA5p</span></div><div class="simplePreviewFilterLine">${filters.map((f) => `<button type="button" class="imagePreviewFilterBtn ${currentFilter === f[0] ? "active" : ""}" data-imgui-filter="${f[0]}">${f[1]}</button>`).join("")}</div>`;
     }
     function miniImages(q) {
@@ -6502,7 +6907,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }
     function renderEditCard(q, i) {
       const opts = q.options || {};
-      const optionRows = Object.keys(opts).sort().map((k) => `<div class="simpleEditOption" data-opt-row="${esc2(k)}"><div class="simpleEditKey">${esc2(k)}</div><input value="${esc2(opts[k] || "")}" data-imgui-opt="${esc2(k)}"><button class="simpleEditDel" type="button" data-imgui-del-opt="${esc2(k)}">\xD7</button></div>`).join("");
+      const optionRows = Object.keys(opts).sort().map(
+        (k) => `<div class="simpleEditOption" data-opt-row="${esc2(k)}"><div class="simpleEditKey">${esc2(k)}</div><input value="${esc2(opts[k] || "")}" data-imgui-opt="${esc2(k)}"><button class="simpleEditDel" type="button" data-imgui-del-opt="${esc2(k)}">\xD7</button></div>`
+      ).join("");
       return `<article class="simplePreviewCard simpleEditCard" data-imgui-card="${i}"><div class="simpleEditHead imageEditHeadTop"><div class="simpleEditTitle">S\u1EEDa to\xE0n b\u1ED9 C\xE2u ${esc2(q.num || i + 1)}</div><div class="imageEditHeadActions"><button class="btn" type="button" data-imgui-cancel="${i}">H\u1EE7y</button><button class="primary" type="button" data-imgui-save="${i}">L\u01B0u s\u1EEDa</button></div></div><div class="simpleEditGrid"><div class="simpleEditField"><label>C\xE2u h\u1ECFi</label><textarea data-imgui-question>${esc2(q.question || "")}</textarea></div><div class="simpleEditField"><label>\u0110\xE1p \xE1n \u0111\xFAng</label><input data-imgui-answer value="${esc2(normAns(q))}" placeholder="VD: A ho\u1EB7c AC"></div></div><div class="simpleEditField" style="margin-top:10px"><label>C\xE1c \u0111\xE1p \xE1n</label><div class="simpleEditOptions">${optionRows}</div></div>${renderImages(q, i)}<div class="simpleEditBottom imageEditBottomOnlyAdd"><button class="btn" type="button" data-imgui-add-opt="${i}">+ Th\xEAm \u0111\xE1p \xE1n</button></div></article>`;
     }
     function renderList(data) {
@@ -6653,7 +7060,12 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             const fr = new FileReader();
             const p = new Promise((resolve) => {
               fr.onload = function() {
-                q.images.push({ id: "import_" + Date.now() + "_" + Math.random().toString(16).slice(2), src: fr.result, source: "user-upload", name: file.name });
+                q.images.push({
+                  id: "import_" + Date.now() + "_" + Math.random().toString(16).slice(2),
+                  src: fr.result,
+                  source: "user-upload",
+                  name: file.name
+                });
                 resolve();
               };
               fr.readAsDataURL(file);
@@ -6683,7 +7095,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
     let currentFilter = "all";
     function esc2(s) {
-      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      return String(s ?? "").replace(
+        /[&<>"']/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+      );
     }
     function getData(data) {
       const arr = data || window.__previewImportData || [];
@@ -6724,12 +7139,24 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       return q.error_risk === currentFilter;
     }
     function stats(data) {
-      return { total: data.length, img: data.filter((q) => q.has_image).length, high: data.filter((q) => q.error_risk === "high").length, medium: data.filter((q) => q.error_risk === "medium").length, low: data.filter((q) => q.error_risk === "low").length };
+      return {
+        total: data.length,
+        img: data.filter((q) => q.has_image).length,
+        high: data.filter((q) => q.error_risk === "high").length,
+        medium: data.filter((q) => q.error_risk === "medium").length,
+        low: data.filter((q) => q.error_risk === "low").length
+      };
     }
     function renderStats(data) {
       const s = stats(data), box = document.getElementById("v7Stats");
       if (!box) return;
-      const filters = [["all", "Th\u01B0 vi\u1EC7n"], ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"], ["high", "R\u1EE7i ro cao"], ["medium", "Trung b\xECnh"], ["low", "Th\u1EA5p"]];
+      const filters = [
+        ["all", "Th\u01B0 vi\u1EC7n"],
+        ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"],
+        ["high", "R\u1EE7i ro cao"],
+        ["medium", "Trung b\xECnh"],
+        ["low", "Th\u1EA5p"]
+      ];
       box.innerHTML = `<div class="v7StatLine"><span class="v7StatItem">${s.total} c\xE2u</span><span class="v7StatItem" style="color:#3498db">${s.img} c\xF3 \u1EA3nh</span><span class="v7StatItem" style="color:#e74c3c">${s.high} r\u1EE7i ro cao</span><span class="v7StatItem" style="color:#f39c12">${s.medium} trung b\xECnh</span><span class="v7StatItem" style="color:#27ae60">${s.low} th\u1EA5p</span></div><div class="v7FilterLine">${filters.map((f) => `<button type="button" class="v7FilterBtn ${currentFilter === f[0] ? "active" : ""}" data-v7-filter="${f[0]}">${f[1]}</button>`).join("")}</div>`;
     }
     function miniImages(q) {
@@ -6747,7 +7174,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }
     function renderEditCard(q, i) {
       const opts = q.options || {};
-      const optionRows = Object.keys(opts).sort().map((k) => `<div class="v7OptRow"><div class="v7Key">${esc2(k)}</div><input value="${esc2(opts[k] || "")}" data-v7-opt="${esc2(k)}"><button class="v7DelOpt" type="button" data-v7-del-opt="${esc2(k)}">\xD7</button></div>`).join("");
+      const optionRows = Object.keys(opts).sort().map(
+        (k) => `<div class="v7OptRow"><div class="v7Key">${esc2(k)}</div><input value="${esc2(opts[k] || "")}" data-v7-opt="${esc2(k)}"><button class="v7DelOpt" type="button" data-v7-del-opt="${esc2(k)}">\xD7</button></div>`
+      ).join("");
       return `<article class="v7Card" data-v7-card="${i}"><div class="v7EditHead"><div class="v7EditTitle">S\u1EEDa to\xE0n b\u1ED9 C\xE2u ${esc2(q.num || i + 1)}</div><div class="v7EditHeadActions"><button class="btn" type="button" data-v7-cancel="${i}">H\u1EE7y</button><button class="primary" type="button" data-v7-save="${i}">L\u01B0u s\u1EEDa</button></div></div><div class="v7EditGrid"><div class="v7Field"><label>C\xE2u h\u1ECFi</label><textarea data-v7-question>${esc2(q.question || "")}</textarea></div><div class="v7Field"><label>\u0110\xE1p \xE1n \u0111\xFAng</label><input data-v7-answer value="${esc2(normAns(q))}" placeholder="VD: A ho\u1EB7c AC"></div></div><div class="v7Field" style="margin-top:10px"><label>C\xE1c \u0111\xE1p \xE1n</label><div class="v7Options">${optionRows}</div></div>${renderImages(q, i)}<div class="v7Bottom"><button class="btn" type="button" data-v7-add-opt="${i}">+ Th\xEAm \u0111\xE1p \xE1n</button></div></article>`;
     }
     function renderList(data) {
@@ -6898,7 +7327,12 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             const fr = new FileReader();
             const p = new Promise((resolve) => {
               fr.onload = function() {
-                q.images.push({ id: "import_" + Date.now() + "_" + Math.random().toString(16).slice(2), src: fr.result, source: "user-upload", name: file.name });
+                q.images.push({
+                  id: "import_" + Date.now() + "_" + Math.random().toString(16).slice(2),
+                  src: fr.result,
+                  source: "user-upload",
+                  name: file.name
+                });
                 resolve();
               };
               fr.readAsDataURL(file);
@@ -6949,18 +7383,22 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const img = lb.querySelector(".v7LightboxImg");
       if (img) img.removeAttribute("src");
     }
-    document.addEventListener("click", function(e) {
-      const thumb = e.target.closest(".v7MiniImgs img, .v7Thumb img");
-      if (thumb) {
-        e.preventDefault();
-        e.stopPropagation();
-        openImg(thumb.currentSrc || thumb.src);
-        return;
-      }
-      if (e.target.closest(".v7LightboxClose") || e.target.id === "v7ImageLightbox") {
-        closeImg();
-      }
-    }, true);
+    document.addEventListener(
+      "click",
+      function(e) {
+        const thumb = e.target.closest(".v7MiniImgs img, .v7Thumb img");
+        if (thumb) {
+          e.preventDefault();
+          e.stopPropagation();
+          openImg(thumb.currentSrc || thumb.src);
+          return;
+        }
+        if (e.target.closest(".v7LightboxClose") || e.target.id === "v7ImageLightbox") {
+          closeImg();
+        }
+      },
+      true
+    );
     document.addEventListener("keydown", function(e) {
       if (e.key === "Escape") closeImg();
     });
@@ -6968,7 +7406,18 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
   (function() {
     window.__APP_UI_CLEAN_FINAL__ = "20260627";
     function cleanupOldUI() {
-      ["#hodLoginScreen", "#hodRoleBar", "#hodUserDock", "#hodFinalRoleBar", "#hodFinalLogin", ".hodAuthLanding", ".hodFloatingAuth", ".legacyLogin", ".legacyAuth", ".oldLanding"].forEach(function(s) {
+      [
+        "#hodLoginScreen",
+        "#hodRoleBar",
+        "#hodUserDock",
+        "#hodFinalRoleBar",
+        "#hodFinalLogin",
+        ".hodAuthLanding",
+        ".hodFloatingAuth",
+        ".legacyLogin",
+        ".legacyAuth",
+        ".oldLanding"
+      ].forEach(function(s) {
         document.querySelectorAll(s).forEach(function(el) {
           el.remove();
         });
@@ -7072,26 +7521,31 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     function saveExam() {
       try {
         if (!qSet || !qSet.length) return;
-        localStorage.setItem(EXAM_STORE, JSON.stringify({
-          subject: examSubject(),
-          nums: (qSet || []).map((c) => c.num),
-          ids: (qSet || []).map((c) => c.id || ""),
-          qSel: qSel || {},
-          submitted: !!examSubmitted,
-          index: examOnlyIndex || 0,
-          review: !!examOnlyReview,
-          qCnt: qCnt || 0,
-          timerMs: nowTimerMs(),
-          timer: examElapsed,
-          layoutMode: examLayoutMode
-        }));
+        localStorage.setItem(
+          EXAM_STORE,
+          JSON.stringify({
+            subject: examSubject(),
+            nums: (qSet || []).map((c) => c.num),
+            ids: (qSet || []).map((c) => c.id || ""),
+            qSel: qSel || {},
+            submitted: !!examSubmitted,
+            index: examOnlyIndex || 0,
+            review: !!examOnlyReview,
+            qCnt: qCnt || 0,
+            timerMs: nowTimerMs(),
+            timer: examElapsed,
+            layoutMode: examLayoutMode
+          })
+        );
       } catch (e) {
+        lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", e);
       }
     }
     function clearExam() {
       try {
         localStorage.removeItem(EXAM_STORE);
       } catch (e) {
+        lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", e);
       }
     }
     function restoreExam() {
@@ -7162,7 +7616,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const activeSubject = examSubject();
       const subjects = cachedSubjects();
       const totalCount = (RAW || []).length;
-      if (activeSubject && (!examSelectedCodes.length || !examSelectedCodes.includes(activeSubject))) examSelectedCodes = [activeSubject];
+      if (activeSubject && (!examSelectedCodes.length || !examSelectedCodes.includes(activeSubject)))
+        examSelectedCodes = [activeSubject];
       const activeBase = baseCode(activeSubject);
       const activeSub = subjects.find((s) => s.code === activeSubject) || (activeSubject ? { code: activeSubject, name: displayCode(activeSubject), question_count: totalCount } : null);
       const matchingSubjects = subjects.filter((s) => s.code !== activeSubject && baseCode(s.code) === activeBase);
@@ -7296,6 +7751,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           try {
             localStorage.setItem("hod102_exam_layout_mode", examLayoutMode);
           } catch (e) {
+            lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", e);
           }
           modal.querySelectorAll("[data-pick-layout]").forEach((x) => x.classList.remove("active"));
           card.classList.add("active");
@@ -7387,7 +7843,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const out = [];
       for (const code of codes) {
         try {
-          const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(code) + "&ts=" + Date.now(), { cache: "no-store" });
+          const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(code) + "&ts=" + Date.now(), {
+            cache: "no-store"
+          });
           const json = await res.json().catch(() => ({}));
           if (res.ok && Array.isArray(json.data)) out.push(...json.data);
         } catch (e) {
@@ -7691,6 +8149,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
               try {
                 localStorage.setItem("hod102_kizspy_split_pct", String(kizspySplitPct));
               } catch (ex) {
+                lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
               }
               leftPane.style.setProperty("flex", `0 0 ${kizspySplitPct}%`, "important");
               leftPane.style.setProperty("width", `${kizspySplitPct}%`, "important");
@@ -7717,6 +8176,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
                 try {
                   localStorage.setItem("hod102_kizspy_font_size", String(kizspyFontSize));
                 } catch (ex) {
+                  lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
                 }
                 saveExam();
                 draw();
@@ -7730,6 +8190,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
               try {
                 localStorage.setItem("hod102_kizspy_font_size", "10");
               } catch (ex) {
+                lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
               }
               saveExam();
               draw();
@@ -7743,6 +8204,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
                 try {
                   localStorage.setItem("hod102_kizspy_font_size", String(kizspyFontSize));
                 } catch (ex) {
+                  lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
                 }
                 saveExam();
                 draw();
@@ -7779,60 +8241,67 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             };
           });
           const pBtn = portal.querySelector("#examPrev");
-          if (pBtn) pBtn.onclick = () => {
-            if (examOnlyIndex > 0) {
-              examOnlyIndex--;
-              saveExam();
-              draw();
-            }
-          };
+          if (pBtn)
+            pBtn.onclick = () => {
+              if (examOnlyIndex > 0) {
+                examOnlyIndex--;
+                saveExam();
+                draw();
+              }
+            };
           const nBtn = portal.querySelector("#examNext");
-          if (nBtn) nBtn.onclick = () => {
-            if (examOnlyIndex < total - 1) {
-              examOnlyIndex++;
-              saveExam();
-              draw();
-            }
-          };
+          if (nBtn)
+            nBtn.onclick = () => {
+              if (examOnlyIndex < total - 1) {
+                examOnlyIndex++;
+                saveExam();
+                draw();
+              }
+            };
           const tBtn = portal.querySelector("#examToggleLayout");
-          if (tBtn) tBtn.onclick = () => {
-            examLayoutMode = "standard";
-            try {
-              localStorage.setItem("hod102_exam_layout_mode", "standard");
-            } catch (ex) {
-            }
-            document.body.classList.remove("kizspy-active");
-            if (portal) portal.remove();
-            saveExam();
-            draw();
-          };
-          const sBtn = portal.querySelector("#examSubmit");
-          if (sBtn) sBtn.onclick = () => {
-            submit();
-          };
-          const exBtn = portal.querySelector("#examOnlyExit");
-          if (exBtn) exBtn.onclick = () => {
-            if (confirm("Tho\xE1t b\xE0i ki\u1EC3m tra hi\u1EC7n t\u1EA1i?")) {
+          if (tBtn)
+            tBtn.onclick = () => {
+              examLayoutMode = "standard";
+              try {
+                localStorage.setItem("hod102_exam_layout_mode", "standard");
+              } catch (ex) {
+                lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
+              }
               document.body.classList.remove("kizspy-active");
               if (portal) portal.remove();
-              clearExam();
-              qSet = [];
-              qSel = {};
-              examSubmitted = false;
-              examOnlyReview = false;
-              examOnlyIndex = 0;
-              resetTimer();
+              saveExam();
               draw();
-            }
-          };
+            };
+          const sBtn = portal.querySelector("#examSubmit");
+          if (sBtn)
+            sBtn.onclick = () => {
+              submit();
+            };
+          const exBtn = portal.querySelector("#examOnlyExit");
+          if (exBtn)
+            exBtn.onclick = () => {
+              if (confirm("Tho\xE1t b\xE0i ki\u1EC3m tra hi\u1EC7n t\u1EA1i?")) {
+                document.body.classList.remove("kizspy-active");
+                if (portal) portal.remove();
+                clearExam();
+                qSet = [];
+                qSel = {};
+                examSubmitted = false;
+                examOnlyReview = false;
+                examOnlyIndex = 0;
+                resetTimer();
+                draw();
+              }
+            };
           const exToResBtn = portal.querySelector("#examOnlyExitToResult");
-          if (exToResBtn) exToResBtn.onclick = () => {
-            examOnlyReview = false;
-            document.body.classList.remove("kizspy-active");
-            if (portal) portal.remove();
-            saveExam();
-            draw();
-          };
+          if (exToResBtn)
+            exToResBtn.onclick = () => {
+              examOnlyReview = false;
+              document.body.classList.remove("kizspy-active");
+              if (portal) portal.remove();
+              saveExam();
+              draw();
+            };
         }, 20);
       } else {
         document.body.classList.remove("kizspy-active");
@@ -7980,73 +8449,81 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const body = $2("quizBody");
       if (body && body.dataset.examOnlyBound !== "1") {
         body.dataset.examOnlyBound = "1";
-        document.addEventListener("keydown", (e) => {
-          if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
-          if (e.ctrlKey || e.metaKey || e.altKey) return;
-          if ($2("quiz") && $2("quiz").classList.contains("active")) {
-            if (e.key === "ArrowRight") {
-              if (qSet && qSet.length) {
-                examOnlyIndex = Math.min(qSet.length - 1, examOnlyIndex + 1);
-                saveExam();
-                draw();
-              }
-              return;
-            }
-            if (e.key === "ArrowLeft" || e.key === "Backspace") {
-              if (qSet && qSet.length) {
-                examOnlyIndex = Math.max(0, examOnlyIndex - 1);
-                saveExam();
-                draw();
-              }
-              if (e.key === "Backspace") e.preventDefault();
-              return;
-            }
-            const keyUpper = e.key.toUpperCase();
-            let keyOpt = "";
-            if (["A", "B", "C", "D", "E"].includes(keyUpper)) {
-              keyOpt = keyUpper;
-            } else if (["1", "2", "3", "4", "5"].includes(e.key)) {
-              const mapKey = { "1": "A", "2": "B", "3": "C", "4": "D", "5": "E" };
-              keyOpt = mapKey[e.key];
-            }
-            if (keyOpt && !examSubmitted && qSet && qSet.length) {
-              const c = qSet[examOnlyIndex];
-              if (c && c.options && c.options[keyOpt]) {
-                if (String(c.answer || "").length > 1) {
-                  const set = new Set(String(qSel[examOnlyIndex] || "").split("").filter(Boolean));
-                  set.has(keyOpt) ? set.delete(keyOpt) : set.add(keyOpt);
-                  qSel[examOnlyIndex] = Array.from(set).sort().join("");
-                } else {
-                  qSel[examOnlyIndex] = keyOpt;
+        document.addEventListener(
+          "keydown",
+          (e) => {
+            if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            if ($2("quiz") && $2("quiz").classList.contains("active")) {
+              if (e.key === "ArrowRight") {
+                if (qSet && qSet.length) {
+                  examOnlyIndex = Math.min(qSet.length - 1, examOnlyIndex + 1);
+                  saveExam();
+                  draw();
                 }
-                saveExam();
-                draw();
                 return;
               }
-            }
-            if (e.key === "Escape") {
-              if (examOnlyReview) {
-                examOnlyReview = false;
-                saveExam();
-                draw();
-              } else {
-                const exitBtn = $2("examOnlyExit") || $2("examOnlyExitToResult");
-                if (exitBtn) exitBtn.click();
+              if (e.key === "ArrowLeft" || e.key === "Backspace") {
+                if (qSet && qSet.length) {
+                  examOnlyIndex = Math.max(0, examOnlyIndex - 1);
+                  saveExam();
+                  draw();
+                }
+                if (e.key === "Backspace") e.preventDefault();
+                return;
               }
-              return;
+              const keyUpper = e.key.toUpperCase();
+              let keyOpt = "";
+              if (["A", "B", "C", "D", "E"].includes(keyUpper)) {
+                keyOpt = keyUpper;
+              } else if (["1", "2", "3", "4", "5"].includes(e.key)) {
+                const mapKey = { 1: "A", 2: "B", 3: "C", 4: "D", 5: "E" };
+                keyOpt = mapKey[e.key];
+              }
+              if (keyOpt && !examSubmitted && qSet && qSet.length) {
+                const c = qSet[examOnlyIndex];
+                if (c && c.options && c.options[keyOpt]) {
+                  if (String(c.answer || "").length > 1) {
+                    const set = new Set(
+                      String(qSel[examOnlyIndex] || "").split("").filter(Boolean)
+                    );
+                    set.has(keyOpt) ? set.delete(keyOpt) : set.add(keyOpt);
+                    qSel[examOnlyIndex] = Array.from(set).sort().join("");
+                  } else {
+                    qSel[examOnlyIndex] = keyOpt;
+                  }
+                  saveExam();
+                  draw();
+                  return;
+                }
+              }
+              if (e.key === "Escape") {
+                if (examOnlyReview) {
+                  examOnlyReview = false;
+                  saveExam();
+                  draw();
+                } else {
+                  const exitBtn = $2("examOnlyExit") || $2("examOnlyExitToResult");
+                  if (exitBtn) exitBtn.click();
+                }
+                return;
+              }
+              if (e.code === "Space" || e.key === "ArrowUp" || e.key === "ArrowDown") {
+                e.preventDefault();
+              }
             }
-            if (e.code === "Space" || e.key === "ArrowUp" || e.key === "ArrowDown") {
-              e.preventDefault();
-            }
-          }
-        }, true);
+          },
+          true
+        );
         body.addEventListener("click", (e) => {
           const opt = e.target.closest("[data-exam-opt]");
           if (opt && !examSubmitted && qSet && qSet.length) {
             const c = qSet[examOnlyIndex];
             const k = opt.dataset.examOpt;
             if (c && String(c.answer || "").length > 1) {
-              const set = new Set(String(qSel[examOnlyIndex] || "").split("").filter(Boolean));
+              const set = new Set(
+                String(qSel[examOnlyIndex] || "").split("").filter(Boolean)
+              );
               set.has(k) ? set.delete(k) : set.add(k);
               qSel[examOnlyIndex] = Array.from(set).sort().join("");
             } else qSel[examOnlyIndex] = k;
@@ -8065,6 +8542,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             try {
               localStorage.setItem("hod102_exam_layout_mode", examLayoutMode);
             } catch (ex) {
+              lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
             }
             saveExam();
             draw();
@@ -8146,6 +8624,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         stopTimer();
       } catch (e) {
+        lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", e);
       }
       qSet = [];
       qSel = {};
@@ -8188,13 +8667,14 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
   })();
   (function() {
     const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
-    const FILTER_STORE = "learninghub_library_filter_v1";
-    let libraryFilter = localStorage.getItem(FILTER_STORE) || "all";
     function $2(id) {
       return document.getElementById(id);
     }
     function esc2(s) {
-      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      return String(s ?? "").replace(
+        /[&<>"']/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+      );
     }
     function ans(q) {
       return String(q?.answer || "").toUpperCase().replace(/[^A-Z]/g, "");
@@ -8202,96 +8682,21 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     function src(im) {
       return typeof im === "string" ? im : im?.src || im?.url || "";
     }
-    function hasImg(q) {
-      return !!((q?.images || []).map(src).filter(Boolean).length || q?.has_image);
-    }
     function risk(q) {
       return q?.error_risk || (ans(q).length > 1 ? "medium" : "low");
-    }
-    function rColor(r) {
-      return { high: "#e74c3c", medium: "#f39c12", low: "#27ae60" }[r] || "#999";
-    }
-    function rLabel(r) {
-      return { high: "Cao", medium: "Trung b\xECnh", low: "Th\u1EA5p" }[r] || r;
-    }
-    function pass(q) {
-      if (libraryFilter === "all") return true;
-      if (libraryFilter === "has_image") return hasImg(q);
-      if (libraryFilter === "starred") return typeof window.__isBookmarked === "function" ? window.__isBookmarked(q) : false;
-      return risk(q) === libraryFilter;
-    }
-    function answerText2(q) {
-      const a = ans(q);
-      return a ? a.split("").map((k) => k + ". " + (q.options?.[k] || "")).join(" | ") : "Ch\u01B0a c\xF3 \u0111\xE1p \xE1n";
     }
     function nextKey(opts) {
       const used = new Set(Object.keys(opts || {}).map((k) => String(k).toUpperCase()));
       return LETTERS.find((k) => !used.has(k));
     }
-    function miniImg(q) {
-      const imgs = (q.images || []).map(src).filter(Boolean);
-      return imgs.length ? `<div class="v7MiniImgs libraryMiniImgs"><img src="${esc2(imgs[0])}" alt="\u1EA2nh c\xE2u h\u1ECFi" loading="lazy" decoding="async">${imgs.length > 1 ? `<span class="v7ImgCount">+${imgs.length - 1}</span>` : ""}</div>` : '<div class="v7MiniImgs libraryMiniImgs"></div>';
-    }
-    function stat(data) {
-      return { total: data.length, img: data.filter(hasImg).length, high: data.filter((q) => risk(q) === "high").length, medium: data.filter((q) => risk(q) === "medium").length, low: data.filter((q) => risk(q) === "low").length };
-    }
-    function renderLibraryStats(data) {
-      const list = $2("studyList");
-      if (!list) return;
-      let box = $2("libraryQuestionFilters");
-      if (!box) {
-        box = document.createElement("div");
-        box.id = "libraryQuestionFilters";
-        box.className = "v7Stats libraryQuestionFilters";
-        list.parentNode.insertBefore(box, list);
-      }
-      const s = stat(data);
-      const starCnt = typeof window.__countBookmarks === "function" ? window.__countBookmarks() : 0;
-      const fs = [
-        ["all", "T\u1EA5t c\u1EA3"],
-        ["starred", `\u{1F516} \u0110\xE3 l\u01B0u (${starCnt})`],
-        ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"],
-        ["high", "R\u1EE7i ro cao"],
-        ["medium", "Trung b\xECnh"],
-        ["low", "Th\u1EA5p"]
-      ];
-      box.innerHTML = `<div class="v7StatLine"><span class="v7StatItem">${s.total} c\xE2u</span><span class="v7StatItem" style="color:#3498db">${s.img} c\xF3 \u1EA3nh</span><span class="v7StatItem" style="color:#e74c3c">${s.high} r\u1EE7i ro cao</span><span class="v7StatItem" style="color:#f39c12">${s.medium} trung b\xECnh</span><span class="v7StatItem" style="color:#27ae60">${s.low} th\u1EA5p</span></div><div class="v7FilterLine">${fs.map((f) => `<button type="button" class="v7FilterBtn ${libraryFilter === f[0] ? "active" : ""}" data-library-filter="${f[0]}">${f[1]}</button>`).join("")}</div>`;
-    }
-    function libraryCard(q, idx) {
-      const a = ans(q) || "?", r = risk(q);
-      const opts = Object.entries(q.options || {}).map(([k, v]) => `<div class="libraryOption ${a.includes(String(k).toUpperCase()) ? "correct" : ""}"><b>${esc2(k)}</b><span>${esc2(v)}</span></div>`).join("");
-      const bmBtn = typeof window.__getBookmarkBtnHTML === "function" ? window.__getBookmarkBtnHTML(q) : "";
-      const qIndex = typeof RAW !== "undefined" && Array.isArray(RAW) ? RAW.findIndex((x) => String(x.num || x.id) === String(q.num || q.id)) : idx;
-      const studyIndex = qIndex >= 0 ? qIndex : idx;
-      return `<article class="v7Card libraryQuestionCard" style="border-left-color:${rColor(r)}!important"><div class="v7Row"><div class="v7Num">C\xE2u ${esc2(q.num || idx + 1)}</div><div class="v7Main"><div class="v7Question">${esc2(q.question || "")}</div><div class="v7Answer"><b>\u0110\xE1p \xE1n: ${esc2(a)}</b><span>${esc2(answerText2(q))}</span></div><div class="libraryOptions">${opts}</div></div>${miniImg(q)}<div class="v7Meta" style="display:flex;align-items:center;gap:6px;"><button type="button" class="libraryV2Study act" style="padding:4px 10px;border-radius:6px;background:rgba(200,169,110,.12);color:var(--gold2);border:1px solid rgba(200,169,110,.25);cursor:pointer;" onclick="if(typeof window.goStudyFromLib==='function')window.goStudyFromLib(${studyIndex})">H\u1ECDc</button>${bmBtn}<button type="button" class="libraryV2Report act" style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,.05);color:var(--mist);border:1px solid rgba(200,169,110,.15);cursor:pointer;" onclick="if(typeof window.openStudyReport==='function')window.openStudyReport('${esc2(q.num)}')">!</button></div></div></article>`;
-    }
-    try {
-      renderStudy = function() {
-        const base = typeof smart === "function" ? smart($2("search")?.value || "") : typeof RAW !== "undefined" ? RAW : [];
-        renderLibraryStats(base);
-        const arr = base.filter(pass);
-        const list = $2("studyList");
-        if (list) list.innerHTML = arr.length ? arr.map(libraryCard).join("") : '<div class="v7Empty">Kh\xF4ng c\xF3 c\xE2u n\xE0o ph\xF9 h\u1EE3p b\u1ED9 l\u1ECDc.</div>';
-      };
-    } catch (e) {
-    }
-    document.addEventListener("click", (e) => {
-      const f = e.target.closest("[data-library-filter]");
-      if (f) {
-        libraryFilter = f.dataset.libraryFilter || "all";
-        localStorage.setItem(FILTER_STORE, libraryFilter);
-        try {
-          renderStudy();
-        } catch (_) {
-        }
-      }
-    });
     function editImgs(q) {
       const imgs = q.images || [];
       return `<div class="v7Images"><div class="v7ImagesHead"><span>\u1EA2nh c\u1EE7a c\xE2u h\u1ECFi</span><button class="v7UploadBtn" type="button" data-edit-pick-img>+ Th\xEAm \u1EA3nh</button><input id="editPreviewImgInput" class="v7HiddenInput" type="file" accept="image/*" multiple></div><div class="v7Thumbs">${imgs.length ? imgs.map((im, i) => `<div class="v7Thumb"><button class="v7RemoveImg" type="button" data-edit-rm-img="${i}">\xD7</button><img src="${esc2(src(im))}" alt="\u1EA2nh ${i + 1}" loading="lazy" decoding="async"></div>`).join("") : '<div class="v7NoImage">Ch\u01B0a c\xF3 \u1EA3nh.</div>'}</div></div>`;
     }
     function optRows(opts) {
-      return Object.keys(opts || {}).sort().map((k) => `<div class="v7OptRow"><div class="v7Key">${esc2(k)}</div><input value="${esc2(opts[k] || "")}" data-edit-opt="${esc2(k)}"><button class="v7DelOpt" type="button" data-edit-del-opt="${esc2(k)}">\xD7</button></div>`).join("");
+      return Object.keys(opts || {}).sort().map(
+        (k) => `<div class="v7OptRow"><div class="v7Key">${esc2(k)}</div><input value="${esc2(opts[k] || "")}" data-edit-opt="${esc2(k)}"><button class="v7DelOpt" type="button" data-edit-del-opt="${esc2(k)}">\xD7</button></div>`
+      ).join("");
     }
     function redrawImg() {
       const h = $2("editPreviewImageHost");
@@ -8317,7 +8722,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }
     async function saveEditPreview() {
       if (!window.editDraft) return;
-      const oldQ = clone(typeof RAW !== "undefined" && RAW.find((c) => c.num === window.editDraft.num) || window.editDraft);
+      const oldQ = clone(
+        typeof RAW !== "undefined" && RAW.find((c) => c.num === window.editDraft.num) || window.editDraft
+      );
       const modal = $2("editModal");
       const q = (modal?.querySelector("[data-edit-question]")?.value || "").trim();
       const a = (modal?.querySelector("[data-edit-answer]")?.value || "").trim().toUpperCase().replace(/[^A-Z]/g, "");
@@ -8330,7 +8737,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       });
       if (!Object.keys(opts).length) return alert("C\u1EA7n \xEDt nh\u1EA5t 1 \u0111\xE1p \xE1n.");
       for (const k of a.split("")) if (!opts[k]) return alert("\u0110\xE1p \xE1n \u0111\xFAng " + k + " ch\u01B0a c\xF3 n\u1ED9i dung.");
-      Object.assign(window.editDraft, { question: q, answer: a, options: opts, answer_text: a.split("").map((k) => k + ". " + (opts[k] || "")).join("; "), subject_code: localStorage.getItem("learninghub_subject_code_merged_v1") || window.editDraft.subject_code || "" });
+      Object.assign(window.editDraft, {
+        question: q,
+        answer: a,
+        options: opts,
+        answer_text: a.split("").map((k) => k + ". " + (opts[k] || "")).join("; "),
+        subject_code: localStorage.getItem("learninghub_subject_code_merged_v1") || window.editDraft.subject_code || ""
+      });
       if (window.HODSupabase && window.HODSupabase.isReady()) {
         const role = String(window.HODSupabase?.getProfile?.()?.role || "").trim().toLowerCase();
         const canDirect = ["admin", "editor"].includes(role);
@@ -8364,11 +8777,34 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           } else {
             risk2 = "low";
           }
-          const newData = { question: window.editDraft.question, options: window.editDraft.options || {}, answer: window.editDraft.answer, answer_text: window.editDraft.answer_text, images: list, has_image: localHasImg || needsImg, error_risk: risk2, error_risk_reason: reason || null };
-          const oldData = { question: oldQ.question, options: oldQ.options || {}, answer: oldQ.answer, answer_text: oldQ.answer_text, images: oldQ.images || [] };
+          const newData = {
+            question: window.editDraft.question,
+            options: window.editDraft.options || {},
+            answer: window.editDraft.answer,
+            answer_text: window.editDraft.answer_text,
+            images: list,
+            has_image: localHasImg || needsImg,
+            error_risk: risk2,
+            error_risk_reason: reason || null
+          };
+          const oldData = {
+            question: oldQ.question,
+            options: oldQ.options || {},
+            answer: oldQ.answer,
+            answer_text: oldQ.answer_text,
+            images: oldQ.images || []
+          };
           if (typeof notify === "function") notify("\u0110ang l\u01B0u...");
           try {
-            const res = await fetch("/api/admin-action", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ user_id: u.id, action: "save_question_direct", payload: { question_id: id, new_data: newData, old_data: oldData } }) });
+            const res = await fetch("/api/admin-action", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                user_id: u.id,
+                action: "save_question_direct",
+                payload: { question_id: id, new_data: newData, old_data: oldData }
+              })
+            });
             const resJson = await res.json().catch(() => ({}));
             if (!res.ok || resJson.error) {
               alert("L\u01B0u tr\u1EF1c ti\u1EBFp th\u1EA5t b\u1EA1i: " + (resJson.error || res.status));
@@ -8384,7 +8820,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           $2("editModal")?.classList.add("hidden");
           notify("\u0110\xE3 l\u01B0u tr\u1EF1c ti\u1EBFp \u2713");
           if (typeof window.loadCurrentSubjectOnly === "function") await window.loadCurrentSubjectOnly(true);
-          else if (window.HODSupabase?.loadQuestionsFromSupabase) await window.HODSupabase.loadQuestionsFromSupabase(true);
+          else if (window.HODSupabase?.loadQuestionsFromSupabase)
+            await window.HODSupabase.loadQuestionsFromSupabase(true);
           return;
         }
         await window.HODSupabase.submitEditRequest(window.editDraft, oldQ);
@@ -8394,7 +8831,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         alert("Ch\u01B0a k\u1EBFt n\u1ED1i \u0111\u01B0\u1EE3c d\u1EEF li\u1EC7u duy\u1EC7t. H\xE3y t\u1EA3i l\u1EA1i trang r\u1ED3i g\u1EEDi l\u1EA1i b\xE1o c\xE1o.");
         return;
       }
-      edits[window.editDraft.num] = { question: window.editDraft.question, options: window.editDraft.options, answer: window.editDraft.answer, answer_text: window.editDraft.answer_text, images: window.editDraft.images || [] };
+      edits[window.editDraft.num] = {
+        question: window.editDraft.question,
+        options: window.editDraft.options,
+        answer: window.editDraft.answer,
+        answer_text: window.editDraft.answer_text,
+        images: window.editDraft.images || []
+      };
       localStorage.setItem("hod102_user_edits_v1", JSON.stringify(edits));
       rebuild();
       ci = pool.findIndex((c) => c.num === window.editDraft.num);
@@ -8411,6 +8854,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         openEditor = openEditPreview;
         saveEditor = saveEditPreview;
       } catch (e) {
+        lhWarn("LIBRARY_FILTER_AND_EDIT_PREVIEW_LAYOUT_20260627", e);
       }
       window.openEditor = openEditPreview;
       window.saveEditor = saveEditPreview;
@@ -8471,7 +8915,12 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
               const fr = new FileReader();
               const p = new Promise((resolve) => {
                 fr.onload = () => {
-                  window.editDraft.images.push({ id: "edit_" + Date.now(), src: fr.result, source: "user-upload", name: file.name });
+                  window.editDraft.images.push({
+                    id: "edit_" + Date.now(),
+                    src: fr.result,
+                    source: "user-upload",
+                    name: file.name
+                  });
                   resolve();
                 };
                 fr.readAsDataURL(file);
@@ -8493,180 +8942,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         if ($2("studyList")) renderStudy();
       } catch (e) {
+        lhWarn("LIBRARY_FILTER_AND_EDIT_PREVIEW_LAYOUT_20260627", e);
       }
     }, 350);
-  })();
-  (function() {
-    const FILTER_STORE = "learninghub_library_filter_v1";
-    function $2(id) {
-      return document.getElementById(id);
-    }
-    function esc2(s) {
-      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-    }
-    function ans(q) {
-      return String(q?.answer || "").toUpperCase().replace(/[^A-Z]/g, "");
-    }
-    function imgSrc(im) {
-      return typeof im === "string" ? im : im?.src || im?.url || "";
-    }
-    function hasImg(q) {
-      return !!((q?.images || []).map(imgSrc).filter(Boolean).length || q?.has_image);
-    }
-    function risk(q) {
-      return q?.error_risk || (ans(q).length > 1 ? "medium" : "low");
-    }
-    function riskColor(r) {
-      return { high: "#e74c3c", medium: "#f39c12", low: "#27ae60" }[r] || "#999";
-    }
-    function pass(q) {
-      const f = localStorage.getItem(FILTER_STORE) || "all";
-      if (f === "all") return true;
-      if (f === "has_image") return hasImg(q);
-      if (f === "starred") return typeof window.__isBookmarked === "function" ? window.__isBookmarked(q) : false;
-      return risk(q) === f;
-    }
-    function correctText(q) {
-      const a = ans(q);
-      return a ? a.split("").map((k) => k + ". " + (q.options?.[k] || "")).join(" | ") : "Ch\u01B0a c\xF3 \u0111\xE1p \xE1n";
-    }
-    function miniImages(q) {
-      const imgs = (q.images || []).map(imgSrc).filter(Boolean);
-      if (!imgs.length) return '<div class="libraryV2Img empty"></div>';
-      return `<div class="libraryV2Img"><img src="${esc2(imgs[0])}" alt="\u1EA2nh c\xE2u h\u1ECFi" loading="lazy" decoding="async">${imgs.length > 1 ? `<span>+${imgs.length - 1}</span>` : ""}</div>`;
-    }
-    function allImages(q) {
-      const imgs = (q.images || []).map(imgSrc).filter(Boolean);
-      if (!imgs.length) return "";
-      return `<div class="libraryV2Images">${imgs.map((s, i) => `<img src="${esc2(s)}" alt="\u1EA2nh ${i + 1}" loading="lazy" decoding="async">`).join("")}</div>`;
-    }
-    function stats(data) {
-      return { total: data.length, img: data.filter(hasImg).length, high: data.filter((q) => risk(q) === "high").length, medium: data.filter((q) => risk(q) === "medium").length, low: data.filter((q) => risk(q) === "low").length };
-    }
-    function renderStats(data) {
-      const list = $2("studyList");
-      if (!list) return;
-      let box = $2("libraryQuestionFilters");
-      if (!box) {
-        box = document.createElement("div");
-        box.id = "libraryQuestionFilters";
-        box.className = "v7Stats libraryQuestionFilters";
-        list.parentNode.insertBefore(box, list);
-      }
-      const f = localStorage.getItem(FILTER_STORE) || "all", s = stats(data);
-      const starCnt = typeof window.__countBookmarks === "function" ? window.__countBookmarks() : 0;
-      const filters = [
-        ["all", "Th\u01B0 vi\u1EC7n"],
-        ["starred", `\u{1F516} \u0110\xE3 l\u01B0u (${starCnt})`],
-        ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"],
-        ["high", "R\u1EE7i ro cao"],
-        ["medium", "Trung b\xECnh"],
-        ["low", "Th\u1EA5p"]
-      ];
-      box.innerHTML = `<div class="v7StatLine"><span class="v7StatItem">${s.total} c\xE2u</span><span class="v7StatItem" style="color:#3498db">${s.img} c\xF3 \u1EA3nh</span><span class="v7StatItem" style="color:#e74c3c">${s.high} r\u1EE7i ro cao</span><span class="v7StatItem" style="color:#f39c12">${s.medium} trung b\xECnh</span><span class="v7StatItem" style="color:#27ae60">${s.low} th\u1EA5p</span></div><div class="v7FilterLine">${filters.map((x) => `<button type="button" class="v7FilterBtn ${f === x[0] ? "active" : ""}" data-library-filter="${x[0]}">${x[1]}</button>`).join("")}</div>`;
-    }
-    function optionList(q) {
-      const a = ans(q);
-      return Object.entries(q.options || {}).map(([k, v]) => `<div class="libraryOption ${a.includes(String(k).toUpperCase()) ? "correct" : ""}"><b>${esc2(k)}</b><span>${esc2(v)}</span></div>`).join("");
-    }
-    function card(q, i) {
-      const a = ans(q) || "?", r = risk(q);
-      const bmBtnHTML = typeof window.__getBookmarkBtnHTML === "function" ? window.__getBookmarkBtnHTML(q) : "";
-      return `<article class="libraryV2Card libraryQuestionCard" data-library-v2-card="${i}" data-num="${esc2(q.num || "")}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">C\xE2u ${esc2(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${esc2(q.question || "")}</div><div class="libraryV2Answer"><b>\u0110\xE1p \xE1n: ${esc2(a)}</b><span>${esc2(correctText(q))}</span></div></div>${miniImages(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-library-study="${i}">H\u1ECDc</button>${bmBtnHTML}<button type="button" class="libraryV2Report" data-library-report="${i}">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${optionList(q)}</div>${allImages(q)}</div></article>`;
-    }
-    function getBase() {
-      const q = $2("search")?.value || $2("studySearch")?.value || "";
-      try {
-        return (typeof smart === "function" ? smart(q) : typeof RAW !== "undefined" ? RAW : []) || [];
-      } catch (e) {
-        return typeof RAW !== "undefined" ? RAW : [];
-      }
-    }
-    function render() {
-      const base = getBase();
-      renderStats(base);
-      const arr = base.filter(pass);
-      const list = $2("studyList");
-      if (!list) return;
-      list.innerHTML = arr.length ? arr.map(card).join("") : '<div class="v7Empty libraryV2Empty">Kh\xF4ng c\xF3 c\xE2u n\xE0o ph\xF9 h\u1EE3p b\u1ED9 l\u1ECDc.</div>';
-      setTimeout(() => {
-        try {
-          document.dispatchEvent(new CustomEvent("library-v2-rendered"));
-        } catch (e) {
-        }
-      }, 0);
-    }
-    function goStudy(i) {
-      const q = getBase().filter(pass)[i] || getBase()[i];
-      if (!q) return;
-      let idx = (pool || []).findIndex((x) => Number(x.num) === Number(q.num));
-      if (idx < 0) {
-        pool = [...RAW];
-        idx = pool.findIndex((x) => Number(x.num) === Number(q.num));
-      }
-      if (idx >= 0) {
-        ci = idx;
-        flipped = false;
-        flipDir = "horizontal";
-        try {
-          renderCard();
-        } catch (e) {
-        }
-        document.querySelector('[data-tab="fc"]')?.click?.();
-      }
-    }
-    function report(i) {
-      const q = getBase().filter(pass)[i] || getBase()[i];
-      if (!q) return;
-      if (typeof window.openStudyReport === "function") return window.openStudyReport(q.num);
-      let idx = (pool || []).findIndex((x) => Number(x.num) === Number(q.num));
-      if (idx < 0) {
-        pool = [...RAW];
-        idx = pool.findIndex((x) => Number(x.num) === Number(q.num));
-      }
-      if (idx >= 0) {
-        ci = idx;
-        flipped = false;
-        try {
-          renderCard();
-          openEditor();
-        } catch (e) {
-        }
-      }
-    }
-    try {
-      renderStudy = render;
-      window.renderStudy = render;
-    } catch (e) {
-      window.renderStudy = render;
-    }
-    document.addEventListener("click", function(e) {
-      const f = e.target.closest("[data-library-filter]");
-      if (f) {
-        localStorage.setItem(FILTER_STORE, f.dataset.libraryFilter || "all");
-        render();
-        return;
-      }
-      const t = e.target.closest("[data-library-toggle]");
-      if (t) {
-        const card2 = t.closest(".libraryV2Card");
-        card2?.classList.toggle("open");
-        t.textContent = card2?.classList.contains("open") ? "Thu g\u1ECDn" : "M\u1EDF";
-        return;
-      }
-      const h = e.target.closest("[data-library-study]");
-      if (h) {
-        goStudy(+h.dataset.libraryStudy);
-        return;
-      }
-      const r = e.target.closest("[data-library-report]");
-      if (r) {
-        report(+r.dataset.libraryReport);
-        return;
-      }
-    }, true);
-    document.addEventListener("DOMContentLoaded", () => setTimeout(render, 60));
-    setTimeout(render, 500);
   })();
   (function() {
     const FILTER_STORE = "learninghub_library_filter_v1";
@@ -8674,7 +8952,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     const OPEN_STORE = "learninghub_library_open_nums_v1";
     const SEARCH_STORE = "learninghub_library_search_v1";
     const $2 = (id) => document.getElementById(id);
-    const esc2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+    const esc2 = (s) => String(s ?? "").replace(
+      /[&<>"']/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+    );
     const norm = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/[^a-z0-9#:\s]/g, " ").replace(/\s+/g, " ").trim();
     const ans = (q) => String(q?.answer || "").toUpperCase().replace(/[^A-Z]/g, "");
     const imgSrc = (im) => typeof im === "string" ? im : im?.src || im?.url || "";
@@ -8718,11 +8999,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     try {
       JSON.parse(localStorage.getItem(OPEN_STORE) || "[]").forEach((n) => libraryOpenNums.add(String(n)));
     } catch (e) {
+      lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
     }
     function saveOpenState() {
       try {
         localStorage.setItem(OPEN_STORE, JSON.stringify([...libraryOpenNums]));
       } catch (e) {
+        lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
       }
     }
     function answerText2(q) {
@@ -8741,7 +9024,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       m = n.match(/(?:answer|ans|dap\s*an|dapan)\s*:\s*([a-e]+)/i);
       if (m) p.answer = m[1].toUpperCase().split("").sort().join("");
       p.multi = /(^|\s)(multi|multiple|chon nhieu|nhieu dap an|nhieu lua chon)(\s|$)/.test(n);
-      let tokens = n.split(/\s+/).filter((t) => t.length >= 2 && !/^(answer|ans|dap|an|dapan|multi|multiple|chon|nhieu|lua|cau)$/.test(t) && !t.includes(":") && !/^#?\d+$/.test(t));
+      let tokens = n.split(/\s+/).filter(
+        (t) => t.length >= 2 && !/^(answer|ans|dap|an|dapan|multi|multiple|chon|nhieu|lua|cau)$/.test(t) && !t.includes(":") && !/^#?\d+$/.test(t)
+      );
       const cleanN = n.replace(/(?:answer|ans|dap\s*an|dapan)\s*:\s*[a-e]+/gi, "").replace(/(?:^|\s)#\s*\d+(?:\s|$)|(?:^|\s)cau\s*\d+(?:\s|$)/gi, "").replace(/(?:^|\s)(multi|multiple|chon nhieu|nhieu dap an|nhieu lua chon)(\s|$)/gi, "").replace(/\s+/g, " ").trim();
       if (cleanN.includes(" ") && cleanN.length >= 3) {
         tokens.unshift(cleanN);
@@ -8819,7 +9104,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       return risk(q) === f;
     }
     function stats(data) {
-      return { total: data.length, img: data.filter(hasImg).length, high: data.filter((q) => risk(q) === "high").length, medium: data.filter((q) => risk(q) === "medium").length, low: data.filter((q) => risk(q) === "low").length };
+      return {
+        total: data.length,
+        img: data.filter(hasImg).length,
+        high: data.filter((q) => risk(q) === "high").length,
+        medium: data.filter((q) => risk(q) === "medium").length,
+        low: data.filter((q) => risk(q) === "low").length
+      };
     }
     function ensureToolbar() {
       const list = $2("studyList");
@@ -8834,7 +9125,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         (searchBox2?.parentNode || list.parentNode).insertBefore(tool, searchBox2 || list);
       }
       const searchBox = ($2("search") || $2("studySearch"))?.closest(".search");
-      if (searchBox && $2("libStableSearchSlot") && searchBox.parentNode !== $2("libStableSearchSlot")) $2("libStableSearchSlot").appendChild(searchBox);
+      if (searchBox && $2("libStableSearchSlot") && searchBox.parentNode !== $2("libStableSearchSlot"))
+        $2("libStableSearchSlot").appendChild(searchBox);
       const input = $2("search") || $2("studySearch");
       if (input) {
         input.placeholder = "T\xECm c\xE2u ho\u1EB7c #12...";
@@ -8842,6 +9134,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           try {
             input.value = localStorage.getItem(SEARCH_STORE) || "";
           } catch (e) {
+            lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
           }
         }
         if (!$2("libStableClear")) {
@@ -8855,6 +9148,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             try {
               localStorage.removeItem(SEARCH_STORE);
             } catch (e) {
+              lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
             }
             renderUnified2();
             input.focus();
@@ -8865,6 +9159,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           try {
             localStorage.setItem(SEARCH_STORE, input.value || "");
           } catch (e) {
+            lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
           }
           renderUnified2();
         };
@@ -8911,7 +9206,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }
     function options(q) {
       const a = ans(q);
-      return Object.entries(q.options || {}).map(([k, v]) => `<div class="libraryOption ${a.includes(String(k).toUpperCase()) ? "correct" : ""}"><b>${esc2(k)}</b><span>${hlt(v)}</span></div>`).join("");
+      return Object.entries(q.options || {}).map(
+        ([k, v]) => `<div class="libraryOption ${a.includes(String(k).toUpperCase()) ? "correct" : ""}"><b>${esc2(k)}</b><span>${hlt(v)}</span></div>`
+      ).join("");
     }
     function images(q, open) {
       if (!open) return "";
@@ -8952,6 +9249,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       return `<article class="libraryV2Card libraryQuestionCard ${open ? "open" : ""}" data-num="${esc2(q.num || "")}" data-stable-index="${i}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">C\xE2u ${esc2(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${hlt(q.question || "")}</div><div class="libraryV2Answer"><b>\u0110\xE1p \xE1n: ${esc2(a)}</b><span>${hlt(answerText2(q))}</span></div></div>${miniImg(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-stable-study="${i}" title="H\u1ECDc c\xE2u n\xE0y">H\u1ECDc</button>${bmBtnHTML}<button type="button" class="libraryV2Report" data-stable-report="${i}" title="B\xE1o c\xE1o / s\u1EEDa c\xE2u">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${options(q)}</div>${images(q, open)}</div></article>`;
     }
     function renderUnified2() {
+      if (typeof window.__LHNormalizeAll === "function") window.__LHNormalizeAll();
       ensureToolbar();
       const base = searchList();
       lastList = base.filter(passFilter);
@@ -8959,7 +9257,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const list = $2("studyList");
       if (!list) return;
       list.innerHTML = lastList.length ? lastList.map(card).join("") : '<div class="libraryStableEmpty"><b>Kh\xF4ng c\xF3 c\xE2u ph\xF9 h\u1EE3p.</b><button type="button" data-stable-clear-all>X\xF3a t\xECm ki\u1EBFm & b\u1ED9 l\u1ECDc</button></div>';
-      if ($2("libStableClear")) $2("libStableClear").classList.toggle("show", !!(($2("search") || $2("studySearch"))?.value || "").trim());
+      if ($2("libStableClear"))
+        $2("libStableClear").classList.toggle("show", !!(($2("search") || $2("studySearch"))?.value || "").trim());
     }
     window.renderUnified = renderUnified2;
     window.renderStudy = renderUnified2;
@@ -8976,6 +9275,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           renderCard();
         } catch (e) {
+          lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
         }
         return true;
       }
@@ -9013,82 +9313,89 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         overlay.querySelector("img").style.transform = "scale(1)";
       }, 10);
     }
-    document.addEventListener("click", function(e) {
-      const zoomImg = e.target.closest(".libraryV2Images img, #images img, .sitem img, .dqEditImg img, .libraryV2Img img");
-      if (zoomImg && zoomImg.src) {
-        e.preventDefault();
-        e.stopPropagation();
-        showImageLightbox(zoomImg.src);
-        return;
-      }
-      const toggleAll = e.target.closest("[data-stable-toggle-all]");
-      if (toggleAll) {
-        e.preventDefault();
-        const targetView = toggleAll.dataset.stableToggleAll;
-        localStorage.setItem(VIEW_STORE, targetView);
-        if (targetView === "compact") {
-          libraryOpenNums.clear();
-          saveOpenState();
-        }
-        renderUnified2();
-        return;
-      }
-      const f = e.target.closest("[data-stable-filter]");
-      if (f) {
-        e.preventDefault();
-        localStorage.setItem(FILTER_STORE, f.dataset.stableFilter || "all");
-        renderUnified2();
-        return;
-      }
-      if (e.target.closest("[data-stable-clear-all]")) {
-        e.preventDefault();
-        const input = $2("search") || $2("studySearch");
-        if (input) input.value = "";
-        try {
-          localStorage.removeItem(SEARCH_STORE);
-        } catch (_e) {
-        }
-        localStorage.setItem(FILTER_STORE, "all");
-        renderUnified2();
-        return;
-      }
-      const h = e.target.closest("[data-stable-study]");
-      if (h) {
-        e.preventDefault();
-        const q = lastList[+h.dataset.stableStudy];
-        if (q && setCurrent(q)) document.querySelector('[data-tab="fc"]')?.click?.();
-        return;
-      }
-      const r = e.target.closest("[data-stable-report]");
-      if (r) {
-        e.preventDefault();
-        const q = lastList[+r.dataset.stableReport];
-        if (q) {
-          if (typeof window.openStudyReport === "function") window.openStudyReport(q.num, e);
-          else if (setCurrent(q)) openEditor?.();
-        }
-        return;
-      }
-      const cardRow = e.target.closest(".libraryV2Row");
-      if (cardRow) {
-        const card2 = cardRow.closest(".libraryV2Card");
-        if (card2) {
+    document.addEventListener(
+      "click",
+      function(e) {
+        const zoomImg = e.target.closest(
+          ".libraryV2Images img, #images img, .sitem img, .dqEditImg img, .libraryV2Img img"
+        );
+        if (zoomImg && zoomImg.src) {
           e.preventDefault();
-          card2.classList.toggle("open");
-          const num = card2.dataset.num;
-          if (num) {
-            if (card2.classList.contains("open")) libraryOpenNums.add(String(num));
-            else libraryOpenNums.delete(String(num));
+          e.stopPropagation();
+          showImageLightbox(zoomImg.src);
+          return;
+        }
+        const toggleAll = e.target.closest("[data-stable-toggle-all]");
+        if (toggleAll) {
+          e.preventDefault();
+          const targetView = toggleAll.dataset.stableToggleAll;
+          localStorage.setItem(VIEW_STORE, targetView);
+          if (targetView === "compact") {
+            libraryOpenNums.clear();
             saveOpenState();
           }
-          const toggleBtn = card2.querySelector("[data-stable-toggle]");
-          if (toggleBtn) {
-            toggleBtn.textContent = card2.classList.contains("open") ? "Thu g\u1ECDn" : "M\u1EDF";
+          renderUnified2();
+          return;
+        }
+        const f = e.target.closest("[data-stable-filter]");
+        if (f) {
+          e.preventDefault();
+          localStorage.setItem(FILTER_STORE, f.dataset.stableFilter || "all");
+          renderUnified2();
+          return;
+        }
+        if (e.target.closest("[data-stable-clear-all]")) {
+          e.preventDefault();
+          const input = $2("search") || $2("studySearch");
+          if (input) input.value = "";
+          try {
+            localStorage.removeItem(SEARCH_STORE);
+          } catch (_e) {
+            lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", _e);
+          }
+          localStorage.setItem(FILTER_STORE, "all");
+          renderUnified2();
+          return;
+        }
+        const h = e.target.closest("[data-stable-study]");
+        if (h) {
+          e.preventDefault();
+          const q = lastList[+h.dataset.stableStudy];
+          if (q && setCurrent(q)) document.querySelector('[data-tab="fc"]')?.click?.();
+          return;
+        }
+        const r = e.target.closest("[data-stable-report]");
+        if (r) {
+          e.preventDefault();
+          const q = lastList[+r.dataset.stableReport];
+          if (q) {
+            if (typeof window.openStudyReport === "function") window.openStudyReport(q.num, e);
+            else if (setCurrent(q)) openEditor?.();
           }
           return;
         }
-      }
-    }, true);
+        const cardRow = e.target.closest(".libraryV2Row");
+        if (cardRow) {
+          const card2 = cardRow.closest(".libraryV2Card");
+          if (card2) {
+            e.preventDefault();
+            card2.classList.toggle("open");
+            const num = card2.dataset.num;
+            if (num) {
+              if (card2.classList.contains("open")) libraryOpenNums.add(String(num));
+              else libraryOpenNums.delete(String(num));
+              saveOpenState();
+            }
+            const toggleBtn = card2.querySelector("[data-stable-toggle]");
+            if (toggleBtn) {
+              toggleBtn.textContent = card2.classList.contains("open") ? "Thu g\u1ECDn" : "M\u1EDF";
+            }
+            return;
+          }
+        }
+      },
+      true
+    );
     function apply() {
       try {
         renderStudy = renderUnified2;
@@ -9101,11 +9408,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           if (!s.value) s.value = localStorage.getItem(SEARCH_STORE) || "";
         } catch (e) {
+          lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
         }
         s.oninput = function() {
           try {
             localStorage.setItem(SEARCH_STORE, s.value || "");
           } catch (e) {
+            lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
           }
           renderUnified2();
         };
@@ -9113,6 +9422,22 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       renderUnified2();
     }
     window.__renderStudyUnified = renderUnified2;
+    window.addEventListener("lh:subject-changed", () => {
+      const s = $2("search") || $2("studySearch");
+      if (s) s.value = "";
+      try {
+        localStorage.removeItem(SEARCH_STORE);
+      } catch (e) {
+        lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
+      }
+      libraryOpenNums.clear();
+      saveOpenState();
+      try {
+        renderUnified2();
+      } catch (e) {
+        lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
+      }
+    });
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => setTimeout(apply, 0));
     else setTimeout(apply, 0);
     setTimeout(apply, 700);
@@ -9149,7 +9474,15 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const res = await fetch(CLOUDINARY_UPLOAD_URL, { method: "POST", body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error?.message || "Upload Cloudinary th\u1EA5t b\u1EA1i");
-      return { id: data.public_id, public_id: data.public_id, src: data.secure_url, url: data.secure_url, width: data.width, height: data.height, source: "cloudinary" };
+      return {
+        id: data.public_id,
+        public_id: data.public_id,
+        src: data.secure_url,
+        url: data.secure_url,
+        width: data.width,
+        height: data.height,
+        source: "cloudinary"
+      };
     }
     async function loadSubjectLight(force = false) {
       const code = subject();
@@ -9157,26 +9490,38 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         if (typeof window.__examResetForSubjectChange === "function") window.__examResetForSubjectChange();
       } catch (e) {
+        lhWarn("COPILOT_CLOUDINARY_IMAGE_FIX_20260627", e);
       }
       try {
-        const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(code) + "&ts=" + Date.now(), { cache: "no-store" });
+        const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(code) + "&ts=" + Date.now(), {
+          cache: "no-store"
+        });
         const json = await res.json().catch(() => ({}));
         if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c c\xE2u h\u1ECFi t\u1EEB Turso");
         const data = Array.isArray(json.data) ? json.data : [];
         RAW = data.map((r) => {
           const images = typeof cleanImages === "function" ? cleanImages(r.images || []) : r.images || [];
-          return { id: r.id, subject_code: r.subject_code || code, num: r.num, question: r.question, options: r.options || {}, answer: r.answer || "", answer_text: r.answer_text || "", images, has_image: !!(r.has_image || images.length), error_risk: r.error_risk, error_risk_reason: r.error_risk_reason, __imagesChecked: true, __imagesLoaded: true };
+          return {
+            id: r.id,
+            subject_code: r.subject_code || code,
+            num: r.num,
+            question: r.question,
+            options: r.options || {},
+            answer: r.answer || "",
+            answer_text: r.answer_text || "",
+            images,
+            has_image: !!(r.has_image || images.length),
+            error_risk: r.error_risk,
+            error_risk_reason: r.error_risk_reason,
+            __imagesChecked: true,
+            __imagesLoaded: true
+          };
         });
         pool = [...RAW];
         const saved = +localStorage.getItem("learninghub_progress_" + code) || 0;
         ci = Math.max(0, Math.min(saved, Math.max(0, pool.length - 1)));
         flipped = false;
-        try {
-          renderCard();
-          renderQuiz();
-          renderStudy();
-        } catch (e) {
-        }
+        renderAllSafe();
         return true;
       } catch (e) {
         console.warn("[light load]", e);
@@ -9202,6 +9547,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           renderCard();
         } catch (e) {
+          lhWarn("COPILOT_CLOUDINARY_IMAGE_FIX_20260627", e);
         }
       }
     }
@@ -9247,6 +9593,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             const { data } = await c.from("questions").select("*").eq("id", q.id).maybeSingle();
             if (data) Object.assign(q, data, { images: data.images || [], __imagesLoaded: true });
           } catch (e) {
+            lhWarn("COPILOT_CLOUDINARY_IMAGE_FIX_20260627", e);
           }
         }
         const r = oldOpenEditor.apply(this, arguments);
@@ -9397,7 +9744,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const box = $2("editImgs");
       if (!box) return oldRenderEditImages ? oldRenderEditImages() : void 0;
       editDraft.images = cleanImages2(editDraft.images);
-      box.innerHTML = editDraft.images.length ? editDraft.images.map((im, i) => `<div class="editImg"><button class="rm" data-rm="${i}">\xD7</button><img src="${esc(im.src)}" loading="lazy" decoding="async"></div>`).join("") : '<p style="color:var(--mist)">Ch\u01B0a c\xF3 h\xECnh.</p>';
+      box.innerHTML = editDraft.images.length ? editDraft.images.map(
+        (im, i) => `<div class="editImg"><button class="rm" data-rm="${i}">\xD7</button><img src="${esc(im.src)}" loading="lazy" decoding="async"></div>`
+      ).join("") : '<p style="color:var(--mist)">Ch\u01B0a c\xF3 h\xECnh.</p>';
     };
     const oldOpenEditor = typeof openEditor === "function" ? openEditor : null;
     if (oldOpenEditor && !oldOpenEditor.__urlOnlyPatch) {
@@ -9412,6 +9761,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
               if (data) Object.assign(q, mapTursoRow(data, code));
             }
           } catch (e) {
+            lhWarn("FINAL_URL_ONLY_IMAGES_AND_CURRENT_RELOAD_20260628", e);
           }
         }
         const r = oldOpenEditor.apply(this, arguments);
@@ -9453,10 +9803,14 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         localStorage.setItem(cacheKey(code), JSON.stringify({ savedAt: Date.now(), rows: rows || [] }));
       } catch (e) {
+        lhWarn("FINAL_URL_ONLY_IMAGES_AND_CURRENT_RELOAD_20260628", e);
       }
     }
     async function fetchTursoQuestions(code, fresh = false) {
-      const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(code) + (fresh ? "&fresh=1" : "") + "&ts=" + Date.now(), { cache: "no-store" });
+      const res = await fetch(
+        "/api/questions?subject_code=" + encodeURIComponent(code) + (fresh ? "&fresh=1" : "") + "&ts=" + Date.now(),
+        { cache: "no-store" }
+      );
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c c\xE2u h\u1ECFi t\u1EEB Turso");
       return Array.isArray(json.data) ? json.data : [];
@@ -9487,12 +9841,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const saved = +localStorage.getItem("learninghub_progress_" + code) || 0;
       ci = Math.max(0, Math.min(saved, Math.max(0, pool.length - 1)));
       flipped = false;
-      try {
-        renderCard();
-        renderQuiz();
-        renderStudy();
-      } catch (e) {
-      }
+      renderAllSafe();
     }
     let revalidating = {};
     async function revalidateQuestions(code) {
@@ -9507,19 +9856,15 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         const patch = (row) => {
           const next2 = byId.get(String(row?.id));
           if (!next2) return row;
-          if (row.question !== next2.question || row.answer !== next2.answer || JSON.stringify(row.images || []) !== JSON.stringify(next2.images || [])) changed++;
+          if (row.question !== next2.question || row.answer !== next2.answer || JSON.stringify(row.images || []) !== JSON.stringify(next2.images || []))
+            changed++;
           return Object.assign(row, next2);
         };
         RAW = (RAW || []).map(patch);
         pool = (pool || []).map(patch);
         if (changed) {
           console.info("[revalidateQuestions] " + code + ": c\u1EADp nh\u1EADt " + changed + " c\xE2u t\u1EEB server");
-          try {
-            renderCard();
-            renderQuiz();
-            renderStudy();
-          } catch (e) {
-          }
+          renderAllSafe();
         }
       } catch (e) {
         console.warn("[revalidateQuestions]", e);
@@ -9578,29 +9923,28 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           const mapped = mapTursoRow(data, code);
           Object.assign(q, mapped);
           try {
-            writeQuestionCache(code, pool.map((x) => ({
-              id: x.id,
-              subject_code: x.subject_code,
-              num: x.num,
-              question: x.question,
-              options: x.options,
-              answer: x.answer,
-              answer_text: x.answer_text,
-              images: x.images,
-              is_active: x.is_active,
-              updated_at: x.updated_at,
-              has_image: x.has_image,
-              error_risk: x.error_risk,
-              error_risk_reason: x.error_risk_reason
-            })));
+            writeQuestionCache(
+              code,
+              pool.map((x) => ({
+                id: x.id,
+                subject_code: x.subject_code,
+                num: x.num,
+                question: x.question,
+                options: x.options,
+                answer: x.answer,
+                answer_text: x.answer_text,
+                images: x.images,
+                is_active: x.is_active,
+                updated_at: x.updated_at,
+                has_image: x.has_image,
+                error_risk: x.error_risk,
+                error_risk_reason: x.error_risk_reason
+              }))
+            );
           } catch (e) {
+            lhWarn("FINAL_URL_ONLY_IMAGES_AND_CURRENT_RELOAD_20260628", e);
           }
-          try {
-            renderCard();
-            renderQuiz();
-            renderStudy();
-          } catch (e) {
-          }
+          renderAllSafe();
         }
         q.__imagesLoaded = true;
         return !!data;
@@ -9626,12 +9970,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         const upd = (row) => String(row.id) === String(clean.id) ? Object.assign(row, clean) : row;
         RAW = (RAW || []).map(upd);
         pool = (pool || []).map(upd);
-        try {
-          renderCard();
-          renderQuiz();
-          renderStudy();
-        } catch (e) {
-        }
+        renderAllSafe();
         if (!silent) notifyX("\u0110\xE3 reload c\xE2u hi\u1EC7n t\u1EA1i");
         return true;
       } catch (e) {
@@ -9733,7 +10072,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       document.querySelectorAll("button").forEach(function(b) {
         const txt = (b.textContent || "").trim().toLowerCase();
         const title = (b.getAttribute("title") || "").toLowerCase();
-        if (b.id === "reloadCurrentQuestionBtn" || txt === "\u21BB c\xE2u" || title.includes("reload c\xE2u") || title.includes("t\u1EA3i c\xE2u")) b.remove();
+        if (b.id === "reloadCurrentQuestionBtn" || txt === "\u21BB c\xE2u" || title.includes("reload c\xE2u") || title.includes("t\u1EA3i c\xE2u"))
+          b.remove();
       });
     }
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", kill);
@@ -9775,12 +10115,14 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       if (typeof notify === "function") notify("\u0110\xE3 reset");
     }
     window.resetKeepCurrentTab = doResetKeepTab;
-    if (typeof reset === "function") reset = window.reset = function() {
-      doResetKeepTab();
-    };
-    if (typeof triggerReset === "function") triggerReset = window.triggerReset = function() {
-      doResetKeepTab();
-    };
+    if (typeof reset === "function")
+      reset = window.reset = function() {
+        doResetKeepTab();
+      };
+    if (typeof triggerReset === "function")
+      triggerReset = window.triggerReset = function() {
+        doResetKeepTab();
+      };
     function bindReset() {
       ["reset", "stReset"].forEach((id) => {
         const btn = document.getElementById(id);
@@ -9816,6 +10158,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           img.src = src;
         });
       } catch (e) {
+        lhWarn("FINAL_IMAGE_NO_FLICKER_HARD_FIX_20260628", e);
       }
     }
     function preloadAround() {
@@ -9825,6 +10168,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         preloadQuestionImages(pool[(ci + 1) % pool.length]);
         preloadQuestionImages(pool[(ci - 1 + pool.length) % pool.length]);
       } catch (e) {
+        lhWarn("FINAL_IMAGE_NO_FLICKER_HARD_FIX_20260628", e);
       }
     }
     const oldNext = typeof next === "function" ? next : null;
@@ -9854,27 +10198,34 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         tab = localStorage.getItem(TAB_STORE) || "";
       } catch (e) {
+        lhWarn("PERSIST_LAST_TAB_AND_EXAM_20260628", e);
       }
       if (!/^(fc|quiz|study)$/.test(tab)) return;
       const btn = document.querySelector(`.tab[data-tab="${tab}"],[data-tab="${tab}"]`);
       if (btn && !btn.classList.contains("active")) btn.click();
     }
-    document.addEventListener("click", (e) => {
-      const t = e.target.closest("[data-tab]");
-      if (t?.dataset?.tab) {
-        const tabId = t.dataset.tab;
-        try {
-          localStorage.setItem(TAB_STORE, tabId);
-        } catch (_e) {
+    document.addEventListener(
+      "click",
+      (e) => {
+        const t = e.target.closest("[data-tab]");
+        if (t?.dataset?.tab) {
+          const tabId = t.dataset.tab;
+          try {
+            localStorage.setItem(TAB_STORE, tabId);
+          } catch (_e) {
+            lhWarn("PERSIST_LAST_TAB_AND_EXAM_20260628", _e);
+          }
+          switchTab(tabId, t);
         }
-        switchTab(tabId, t);
-      }
-    }, true);
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => {
-      setTimeout(restoreLastTab, 250);
-      setTimeout(restoreLastTab, 1200);
-      setTimeout(restoreLastTab, 2500);
-    });
+      },
+      true
+    );
+    if (document.readyState === "loading")
+      document.addEventListener("DOMContentLoaded", () => {
+        setTimeout(restoreLastTab, 250);
+        setTimeout(restoreLastTab, 1200);
+        setTimeout(restoreLastTab, 2500);
+      });
     else {
       setTimeout(restoreLastTab, 250);
       setTimeout(restoreLastTab, 1200);
@@ -9890,6 +10241,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       }
       if (typeof window.clearLearningHubSupabaseCache === "function") window.clearLearningHubSupabaseCache("questions");
     } catch (e) {
+      lhWarn("SUPABASE_CACHE_CLEAR_HELPER_20260628", e);
     }
   };
   (function() {
@@ -9905,7 +10257,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     function imgSrc(im) {
       if (!im) return "";
       if (typeof im === "string") return im.trim();
-      return String(im.secure_url || im.src || im.url || im.publicUrl || im.public_url || im.file_url || im.image_url || im.path || "").trim();
+      return String(
+        im.secure_url || im.src || im.url || im.publicUrl || im.public_url || im.file_url || im.image_url || im.path || ""
+      ).trim();
     }
     function cleanImages2(list) {
       let raw = list || [];
@@ -9959,7 +10313,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const code = q.subject_code || d?.subject_code || currentSubject();
       if (code && q.id) {
         try {
-          const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(code) + "&ts=" + Date.now(), { cache: "no-store" });
+          const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(code) + "&ts=" + Date.now(), {
+            cache: "no-store"
+          });
           const json = await res.json().catch(() => ({}));
           const rows = Array.isArray(json.data) ? json.data : [];
           const found = rows.find((r) => String(r.id) === String(q.id));
@@ -9968,6 +10324,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             q = { ...q, ...found, images, has_image: !!(found.has_image || images.length) };
           }
         } catch (e) {
+          lhWarn("CLEAN_IMAGE_REQUEST_DELETE_OLD_CREATE_NEW_20260628", e);
         }
       }
       return q;
@@ -10054,9 +10411,15 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           new_data: newRow,
           reason: ""
         };
-        const reqRes = await fetch("/api/edit-requests", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify(payload) });
+        const reqRes = await fetch("/api/edit-requests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify(payload)
+        });
         const reqOut = await reqRes.json().catch(() => ({}));
-        if (!reqRes.ok || reqOut.error) return alert("G\u1EEDi y\xEAu c\u1EA7u s\u1EEDa th\u1EA5t b\u1EA1i: " + (reqOut.error || reqRes.status)), false;
+        if (!reqRes.ok || reqOut.error)
+          return alert("G\u1EEDi y\xEAu c\u1EA7u s\u1EEDa th\u1EA5t b\u1EA1i: " + (reqOut.error || reqRes.status)), false;
         $2("editModal")?.classList.add("hidden");
         notifyUser("\u0110\xE3 g\u1EEDi y\xEAu c\u1EA7u s\u1EEDa cho admin");
         return false;
@@ -10089,12 +10452,15 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     setInterval(bind, 1e3);
   })();
   (function() {
-    const CFG = window.APP_CONFIG = Object.assign({
-      CLOUDINARY_CLOUD_NAME: "ddc4uvm7m",
-      CLOUDINARY_UPLOAD_PRESET: "learninghub_unsigned",
-      CLOUDINARY_UPLOAD_FOLDER: "learninghub/questions",
-      CLOUDINARY_UPLOAD_URL: "https://api.cloudinary.com/v1_1/ddc4uvm7m/image/upload"
-    }, window.APP_CONFIG || {});
+    const CFG = window.APP_CONFIG = Object.assign(
+      {
+        CLOUDINARY_CLOUD_NAME: "ddc4uvm7m",
+        CLOUDINARY_UPLOAD_PRESET: "learninghub_unsigned",
+        CLOUDINARY_UPLOAD_FOLDER: "learninghub/questions",
+        CLOUDINARY_UPLOAD_URL: "https://api.cloudinary.com/v1_1/ddc4uvm7m/image/upload"
+      },
+      window.APP_CONFIG || {}
+    );
     function $2(id) {
       return document.getElementById(id);
     }
@@ -10125,7 +10491,15 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const res = await fetch(url, { method: "POST", body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error?.message || "Cloudinary l\u1ED7i HTTP " + res.status);
-      const img = { id: data.public_id, public_id: data.public_id, src: data.secure_url, url: data.secure_url, width: data.width, height: data.height, source: "cloudinary" };
+      const img = {
+        id: data.public_id,
+        public_id: data.public_id,
+        src: data.secure_url,
+        url: data.secure_url,
+        width: data.width,
+        height: data.height,
+        source: "cloudinary"
+      };
       return img;
     }
     window.__LHUploadCloudinary = window.__LHUploadCloudinary || directUpload;
@@ -10226,7 +10600,15 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const res = await fetch(url, { method: "POST", body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error?.message || "Cloudinary l\u1ED7i HTTP " + res.status);
-      return { id: data.public_id, public_id: data.public_id, src: data.secure_url, url: data.secure_url, width: data.width, height: data.height, source: "cloudinary" };
+      return {
+        id: data.public_id,
+        public_id: data.public_id,
+        src: data.secure_url,
+        url: data.secure_url,
+        width: data.width,
+        height: data.height,
+        source: "cloudinary"
+      };
     }
     function cleanList(arr) {
       return (arr || []).filter(Boolean).map((im) => {
@@ -10391,7 +10773,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       return /^data:image\//i.test(String(s || ""));
     }
     function escx(s) {
-      return String(s ?? "").replace(/[&<>"']/g, (a) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[a]);
+      return String(s ?? "").replace(
+        /[&<>"']/g,
+        (a) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[a]
+      );
     }
     function toFile(data, name) {
       const a = String(data).split(","), m = (a[0].match(/:(.*?);/) || [])[1] || "image/png", b = atob(a[1] || ""), u8 = new Uint8Array(b.length);
@@ -10408,7 +10793,15 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       if (cfg.CLOUDINARY_UPLOAD_FOLDER) fd.append("folder", cfg.CLOUDINARY_UPLOAD_FOLDER);
       const res = await fetch(url, { method: "POST", body: fd }), j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error?.message || "Cloudinary l\u1ED7i " + res.status);
-      return { id: j.public_id, public_id: j.public_id, src: j.secure_url, url: j.secure_url, width: j.width, height: j.height, source: "cloudinary" };
+      return {
+        id: j.public_id,
+        public_id: j.public_id,
+        src: j.secure_url,
+        url: j.secure_url,
+        width: j.width,
+        height: j.height,
+        source: "cloudinary"
+      };
     }
     function imgs(a) {
       return (a || []).map((im) => {
@@ -10435,7 +10828,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const d = draft(), box = $2("editImgs");
       if (!d || !box) return;
       d.images = imgs(d.images).filter((x) => !dataUrl(x.src || x.url));
-      box.innerHTML = d.images.length ? d.images.map((im, i) => `<div class="editImg"><button class="rm" data-rm="${i}">\xD7</button><img src="${escx(im.src)}" loading="lazy" decoding="async"><input value="${escx(im.src)}" readonly onclick="this.select()" style="margin-top:6px;width:100%;max-width:260px;border:1px solid rgba(200,169,110,.24);border-radius:10px;background:rgba(0,0,0,.22);color:var(--gold2);padding:7px;font-size:.72rem;"></div>`).join("") : '<p style="color:var(--mist)">Ch\u01B0a c\xF3 h\xECnh.</p>';
+      box.innerHTML = d.images.length ? d.images.map(
+        (im, i) => `<div class="editImg"><button class="rm" data-rm="${i}">\xD7</button><img src="${escx(im.src)}" loading="lazy" decoding="async"><input value="${escx(im.src)}" readonly onclick="this.select()" style="margin-top:6px;width:100%;max-width:260px;border:1px solid rgba(200,169,110,.24);border-radius:10px;background:rgba(0,0,0,.22);color:var(--gold2);padding:7px;font-size:.72rem;"></div>`
+      ).join("") : '<p style="color:var(--mist)">Ch\u01B0a c\xF3 h\xECnh.</p>';
     }
     async function runUpload(files) {
       const d = draft();
@@ -10468,19 +10863,23 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       if (!inp || inp.__ultraUpload) return;
       inp.__ultraUpload = true;
       inp.onchange = null;
-      inp.addEventListener("change", (e) => {
-        const files = [...e.target.files || []];
-        if (!files.length) return;
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        pending = runUpload(files).catch((err) => {
-          status("Upload l\u1ED7i: " + (err.message || err));
-          alert(err.message || err);
-          throw err;
-        }).finally(() => {
-          inp.value = "";
-        });
-      }, true);
+      inp.addEventListener(
+        "change",
+        (e) => {
+          const files = [...e.target.files || []];
+          if (!files.length) return;
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          pending = runUpload(files).catch((err) => {
+            status("Upload l\u1ED7i: " + (err.message || err));
+            alert(err.message || err);
+            throw err;
+          }).finally(() => {
+            inp.value = "";
+          });
+        },
+        true
+      );
     }
     function build() {
       const d = draft();
@@ -10544,8 +10943,30 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         }
         const oldQ = (RAW || []).find((x) => String(x.id) === String(id)) || (pool || [])[ci] || d;
         const imgs2 = d.images || [];
-        const payload = { id, subject_code: d.subject_code || oldQ.subject_code || sc(), num: d.num || oldQ.num, question: d.question, options: d.options || {}, answer: d.answer, answer_text: d.answer_text, images: imgs2, has_image: imgs2.length > 0, updated_at: (/* @__PURE__ */ new Date()).toISOString(), error_risk: oldQ.error_risk || "low", error_risk_reason: oldQ.error_risk_reason || null };
-        const res = await fetch("/api/admin-action", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ user_id: usr.id, action: "save_question_direct", payload: { question_id: id, new_data: payload, old_data: oldQ } }) });
+        const payload = {
+          id,
+          subject_code: d.subject_code || oldQ.subject_code || sc(),
+          num: d.num || oldQ.num,
+          question: d.question,
+          options: d.options || {},
+          answer: d.answer,
+          answer_text: d.answer_text,
+          images: imgs2,
+          has_image: imgs2.length > 0,
+          updated_at: (/* @__PURE__ */ new Date()).toISOString(),
+          error_risk: oldQ.error_risk || "low",
+          error_risk_reason: oldQ.error_risk_reason || null
+        };
+        const res = await fetch("/api/admin-action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({
+            user_id: usr.id,
+            action: "save_question_direct",
+            payload: { question_id: id, new_data: payload, old_data: oldQ }
+          })
+        });
         const json = await res.json().catch(() => ({}));
         if (!res.ok || json.error) {
           alert("L\u01B0u tr\u1EF1c ti\u1EBFp th\u1EA5t b\u1EA1i: " + (json.error || res.status));
@@ -10569,12 +10990,16 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       if (!b || b.__ultraSave) return;
       b.__ultraSave = true;
       b.onclick = null;
-      b.addEventListener("click", async (e) => {
-        if (!can()) return;
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        await saveDirect();
-      }, true);
+      b.addEventListener(
+        "click",
+        async (e) => {
+          if (!can()) return;
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          await saveDirect();
+        },
+        true
+      );
     }
     const old = window.openEditor || (typeof openEditor === "function" ? openEditor : null);
     if (old && !old.__ultraOpen) {
@@ -10699,7 +11124,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       return r.error || !r.data ? null : r.data.id;
     }
     function updateLocal(d, id) {
-      const patch = Object.assign({}, d, { id, images: cleanImgs(d.images), has_image: !!(d.images && d.images.length), __imagesChecked: true, __imagesLoaded: true });
+      const patch = Object.assign({}, d, {
+        id,
+        images: cleanImgs(d.images),
+        has_image: !!(d.images && d.images.length),
+        __imagesChecked: true,
+        __imagesLoaded: true
+      });
       try {
         if (Array.isArray(RAW)) {
           const i = RAW.findIndex((q) => String(q.id) === String(id) || Number(q.num) === Number(patch.num));
@@ -10748,7 +11179,20 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         answer_text: oldQ.answer_text || "",
         images: cleanImgs(oldQ.images || [])
       };
-      const res = await fetch("/api/admin-action", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ user_id: u?.id, action: "save_question_direct", payload: { question_id: id, new_data: Object.assign({ id, subject_code: d.subject_code, num: d.num }, payload), old_data } }) });
+      const res = await fetch("/api/admin-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({
+          user_id: u?.id,
+          action: "save_question_direct",
+          payload: {
+            question_id: id,
+            new_data: Object.assign({ id, subject_code: d.subject_code, num: d.num }, payload),
+            old_data
+          }
+        })
+      });
       const out = await res.json().catch(() => ({}));
       if (!res.ok || out.error) {
         alert("L\u01B0u tr\u1EF1c ti\u1EBFp th\u1EA5t b\u1EA1i: " + (out.error || res.status));
@@ -10763,23 +11207,27 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       if (typeof notify === "function") notify("\u0110\xE3 l\u01B0u \u1EA3nh v\xE0 c\u1EADp nh\u1EADt c\xE2u hi\u1EC7n t\u1EA1i");
       return true;
     }
-    document.addEventListener("click", async function(e) {
-      const btn = e.target.closest?.("#saveEdit,[data-edit-preview-save]");
-      if (!btn || !btn.closest?.("#editModal")) return;
-      if (!canDirect()) return;
-      e.preventDefault?.();
-      e.stopPropagation?.();
-      e.stopImmediatePropagation?.();
-      const oldText = btn.textContent;
-      btn.disabled = true;
-      btn.textContent = "\u0110ang l\u01B0u...";
-      try {
-        await saveDirectNoReload();
-      } finally {
-        btn.disabled = false;
-        btn.textContent = oldText || "L\u01B0u tr\u1EF1c ti\u1EBFp";
-      }
-    }, true);
+    document.addEventListener(
+      "click",
+      async function(e) {
+        const btn = e.target.closest?.("#saveEdit,[data-edit-preview-save]");
+        if (!btn || !btn.closest?.("#editModal")) return;
+        if (!canDirect()) return;
+        e.preventDefault?.();
+        e.stopPropagation?.();
+        e.stopImmediatePropagation?.();
+        const oldText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "\u0110ang l\u01B0u...";
+        try {
+          await saveDirectNoReload();
+        } finally {
+          btn.disabled = false;
+          btn.textContent = oldText || "L\u01B0u tr\u1EF1c ti\u1EBFp";
+        }
+      },
+      true
+    );
   })();
   (function() {
     if (window.__FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629) return;
@@ -10791,6 +11239,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           active.blur();
         } catch (e) {
+          lhWarn("FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629", e);
         }
       }
     }
@@ -10804,11 +11253,15 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       obs.observe(gate, { attributes: true, attributeFilter: ["class", "aria-hidden"] });
     }
     ["click", "pointerdown", "mousedown", "touchstart"].forEach((ev) => {
-      document.addEventListener(ev, (e) => {
-        if (e.target && e.target.closest && e.target.closest("#subjectEnter,#subjectLogout,#subjectGate .close,#subjectGate [data-close]")) {
-          setTimeout(blurInsideGate, 0);
-        }
-      }, true);
+      document.addEventListener(
+        ev,
+        (e) => {
+          if (e.target && e.target.closest && e.target.closest("#subjectEnter,#subjectLogout,#subjectGate .close,#subjectGate [data-close]")) {
+            setTimeout(blurInsideGate, 0);
+          }
+        },
+        true
+      );
     });
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", patchGate);
     else patchGate();
@@ -10847,6 +11300,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         localStorage.setItem(STORE2, JSON.stringify(data || {}));
       } catch (e) {
+        lhWarn("SUBJECT_COUNTS_ONCE_CACHE_20260629", e);
       }
     }
     function dirty() {
@@ -10856,6 +11310,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         on ? localStorage.setItem(DIRTY, "1") : localStorage.removeItem(DIRTY);
       } catch (e) {
+        lhWarn("SUBJECT_COUNTS_ONCE_CACHE_20260629", e);
       }
     }
     function ensureStore() {
@@ -10874,6 +11329,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           return n > 0 ? n : null;
         }
       } catch (e) {
+        lhWarn("SUBJECT_COUNTS_ONCE_CACHE_20260629", e);
       }
       return null;
     }
@@ -10966,14 +11422,18 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       setTimeout(() => refresh(false), 1200);
       setTimeout(() => refresh(false), 2600);
     });
-    document.addEventListener("click", (e) => {
-      if (e.target.closest("#subjectRefresh")) setTimeout(() => refresh(true), 600);
-      if (e.target.closest("#hodChangeSubjectBtn,#subjectTopChip")) {
-        setTimeout(paint, 300);
-        setTimeout(() => refresh(false), 1200);
-        setTimeout(() => refresh(false), 2600);
-      }
-    }, true);
+    document.addEventListener(
+      "click",
+      (e) => {
+        if (e.target.closest("#subjectRefresh")) setTimeout(() => refresh(true), 600);
+        if (e.target.closest("#hodChangeSubjectBtn,#subjectTopChip")) {
+          setTimeout(paint, 300);
+          setTimeout(() => refresh(false), 1200);
+          setTimeout(() => refresh(false), 2600);
+        }
+      },
+      true
+    );
   })();
   (function() {
     if (window.__ACTIVE_SUBJECT_COUNT_SYNC_20260629) return;
@@ -10994,6 +11454,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         localStorage.setItem(STORE2, JSON.stringify(x || {}));
       } catch (e) {
+        lhWarn("ACTIVE_SUBJECT_COUNT_SYNC_20260629", e);
       }
     }
     function cssEscape(s) {
@@ -11008,6 +11469,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         if (Array.isArray(RAW) && RAW.length) return RAW.length;
         if (Array.isArray(pool) && pool.length) return pool.length;
       } catch (e) {
+        lhWarn("ACTIVE_SUBJECT_COUNT_SYNC_20260629", e);
       }
       return 0;
     }
@@ -11077,6 +11539,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         localStorage.removeItem("hod102_hide_options");
       } catch (e) {
+        lhWarn("REMOVE_EYE_HIDE_OPTIONS_20260629", e);
       }
       var opt = document.getElementById("options");
       if (opt) opt.classList.remove("hide");
@@ -11252,18 +11715,14 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         KEYS.forEach((k) => localStorage.removeItem(k));
       } catch (e) {
+        lhWarn("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
       }
       try {
         localStorage.setItem("learninghub_subject_gate_tab_v1", "list");
       } catch (e) {
+        lhWarn("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
       }
-      const ids = [
-        "addSubjectCode",
-        "addSubjectName",
-        "addSubjectDesc",
-        "userImportData",
-        "userImportFile"
-      ];
+      const ids = ["addSubjectCode", "addSubjectName", "addSubjectDesc", "userImportData", "userImportFile"];
       ids.forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.value = "";
@@ -11294,12 +11753,14 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         cleared = sessionStorage.getItem(SESSION_KEY) || "";
       } catch (e) {
+        lhWarn("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
       }
       if (cleared === uid) return;
       clearAddSubjectDraft();
       try {
         sessionStorage.setItem(SESSION_KEY, uid);
       } catch (e) {
+        lhWarn("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
       }
     }
     function patchAuthMethods() {
@@ -11312,6 +11773,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           try {
             sessionStorage.removeItem(SESSION_KEY);
           } catch (e) {
+            lhWarn("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
           }
           return oldGoogle.apply(this, arguments);
         };
@@ -11323,6 +11785,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           try {
             sessionStorage.removeItem(SESSION_KEY);
           } catch (e) {
+            lhWarn("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
           }
           return oldSignOut.apply(this, arguments);
         };
@@ -11356,24 +11819,20 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         if (Array.isArray(RAW)) RAW.forEach(normalizeQuestionAttrs);
       } catch (e) {
+        lhWarn("COPILOT_KEEP_IMPORT_QUESTION_ATTRIBUTES_20260629", e);
       }
       try {
         if (Array.isArray(pool)) pool.forEach(normalizeQuestionAttrs);
       } catch (e) {
+        lhWarn("COPILOT_KEEP_IMPORT_QUESTION_ATTRIBUTES_20260629", e);
       }
       try {
         if (Array.isArray(qSet)) qSet.forEach(normalizeQuestionAttrs);
       } catch (e) {
+        lhWarn("COPILOT_KEEP_IMPORT_QUESTION_ATTRIBUTES_20260629", e);
       }
     }
-    const oldRenderStudy = typeof renderStudy === "function" ? renderStudy : null;
-    if (oldRenderStudy && !oldRenderStudy.__keepAttrs) {
-      renderStudy = function() {
-        normalizeAll();
-        return oldRenderStudy.apply(this, arguments);
-      };
-      renderStudy.__keepAttrs = true;
-    }
+    window.__LHNormalizeAll = normalizeAll;
     const oldRenderCard = typeof renderCard === "function" ? renderCard : null;
     if (oldRenderCard && !oldRenderCard.__keepAttrs) {
       renderCard = function() {
@@ -11392,7 +11851,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       return im && typeof im === "object" ? im.src || im.url || im.secure_url || im.publicUrl || im.public_url || "" : im || "";
     }
     function safeEsc(s) {
-      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      return String(s ?? "").replace(
+        /[&<>"']/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+      );
     }
     function ensureEditImgsBox() {
       let box = $2("editImgs");
@@ -11466,27 +11928,39 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       ensureEditPasteHint();
       if (modal.__editPreviewPasteUploadBound) return;
       modal.__editPreviewPasteUploadBound = true;
-      modal.addEventListener("paste", (e) => {
-        const files = imageFilesFromClipboard(e);
-        if (!files.length) return;
-        e.preventDefault();
-        setInputFilesAndUpload(files, "paste");
-      }, true);
-      modal.addEventListener("dragover", (e) => {
-        const hasFile = [...e.dataTransfer?.items || []].some((item) => item.kind === "file");
-        if (!hasFile) return;
-        e.preventDefault();
-        modal.classList.add("dragImageOver");
-        ensureEditPasteHint();
-      }, true);
+      modal.addEventListener(
+        "paste",
+        (e) => {
+          const files = imageFilesFromClipboard(e);
+          if (!files.length) return;
+          e.preventDefault();
+          setInputFilesAndUpload(files, "paste");
+        },
+        true
+      );
+      modal.addEventListener(
+        "dragover",
+        (e) => {
+          const hasFile = [...e.dataTransfer?.items || []].some((item) => item.kind === "file");
+          if (!hasFile) return;
+          e.preventDefault();
+          modal.classList.add("dragImageOver");
+          ensureEditPasteHint();
+        },
+        true
+      );
       modal.addEventListener("dragleave", () => modal.classList.remove("dragImageOver"), true);
-      modal.addEventListener("drop", (e) => {
-        const files = imageFilesFromDrop(e);
-        if (!files.length) return;
-        e.preventDefault();
-        modal.classList.remove("dragImageOver");
-        setInputFilesAndUpload(files, "drop");
-      }, true);
+      modal.addEventListener(
+        "drop",
+        (e) => {
+          const files = imageFilesFromDrop(e);
+          if (!files.length) return;
+          e.preventDefault();
+          modal.classList.remove("dragImageOver");
+          setInputFilesAndUpload(files, "drop");
+        },
+        true
+      );
     }
     function boot() {
       bindEditPreviewPasteUpload();
@@ -11564,27 +12038,39 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       ensureHints();
       if (m.__importPreviewPasteBound) return;
       m.__importPreviewPasteBound = true;
-      m.addEventListener("paste", (e) => {
-        const files = filesFromPaste(e);
-        if (!files.length) return;
-        e.preventDefault();
-        uploadByInput(files, "paste");
-      }, true);
-      m.addEventListener("dragover", (e) => {
-        const has = [...e.dataTransfer?.items || []].some((item) => item.kind === "file");
-        if (!has) return;
-        e.preventDefault();
-        m.classList.add("dragImageOver");
-        ensureHints();
-      }, true);
+      m.addEventListener(
+        "paste",
+        (e) => {
+          const files = filesFromPaste(e);
+          if (!files.length) return;
+          e.preventDefault();
+          uploadByInput(files, "paste");
+        },
+        true
+      );
+      m.addEventListener(
+        "dragover",
+        (e) => {
+          const has = [...e.dataTransfer?.items || []].some((item) => item.kind === "file");
+          if (!has) return;
+          e.preventDefault();
+          m.classList.add("dragImageOver");
+          ensureHints();
+        },
+        true
+      );
       m.addEventListener("dragleave", () => m.classList.remove("dragImageOver"), true);
-      m.addEventListener("drop", (e) => {
-        const files = filesFromDrop(e);
-        if (!files.length) return;
-        e.preventDefault();
-        m.classList.remove("dragImageOver");
-        uploadByInput(files, "drop");
-      }, true);
+      m.addEventListener(
+        "drop",
+        (e) => {
+          const files = filesFromDrop(e);
+          if (!files.length) return;
+          e.preventDefault();
+          m.classList.remove("dragImageOver");
+          uploadByInput(files, "drop");
+        },
+        true
+      );
     }
     function boot() {
       bind();
@@ -11613,6 +12099,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         localStorage.setItem(STORE2, JSON.stringify({ counts: counts || {}, confirmed: counts || {}, at: Date.now() }));
       } catch (e) {
+        lhWarn("TURSO_SUBJECT_COUNTS_FALLBACK_20260630", e);
       }
     }
     function norm(code) {
@@ -11706,14 +12193,17 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         renderCard?.();
       } catch (e) {
+        lhWarn("APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630", e);
       }
       try {
         renderQuiz?.();
       } catch (e) {
+        lhWarn("APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630", e);
       }
       try {
         renderStudy?.();
       } catch (e) {
+        lhWarn("APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630", e);
       }
     }
     async function loadOnce(reason) {
@@ -11769,6 +12259,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       };
       window.imgsHTML = imgsHTML;
     } catch (e) {
+      lhWarn("COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630", e);
     }
   })();
   (function() {
@@ -11791,18 +12282,21 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         if (typeof notify === "function") notify(msg);
       } catch (e) {
+        lhWarn("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
       }
     }
     function prog(title, current, total, detail) {
       try {
         if (typeof showProgress === "function") showProgress(title, current, total, detail || "");
       } catch (e) {
+        lhWarn("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
       }
     }
     function hideProg() {
       try {
         if (typeof hideProgress === "function") hideProgress();
       } catch (e) {
+        lhWarn("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
       }
     }
     function cleanQuestions(arr) {
@@ -11827,7 +12321,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       let arr = window.__previewImportData || window.__LH_LAST_PREVIEW_IMPORT_DATA || [];
       if (!Array.isArray(arr) || !arr.length) {
         try {
-          let s = String($2("userImportData")?.value || localStorage.getItem("learninghub_add_subject_file_data_v1") || "").trim();
+          let s = String(
+            $2("userImportData")?.value || localStorage.getItem("learninghub_add_subject_file_data_v1") || ""
+          ).trim();
           const m = s.match(/```json\s*([\s\S]*?)```/i) || s.match(/```\s*([\s\S]*?)```/);
           if (m) s = m[1].trim();
           const j = JSON.parse(s);
@@ -11866,6 +12362,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         window.clearLearningHubSupabaseCache?.("questions");
         window.clearLearningHubQuestionCache?.();
       } catch (e) {
+        lhWarn("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
       }
     }
     function clearState() {
@@ -11873,8 +12370,14 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         window.__previewImportData = [];
         window.__LH_LAST_PREVIEW_IMPORT_DATA = [];
         $2("importPreviewModal")?.classList.add("hidden");
-        ["learninghub_add_subject_file_name_v1", "learninghub_add_subject_file_size_v1", "learninghub_add_subject_file_data_v1", "learninghub_add_subject_file_previewed_v1"].forEach((k) => localStorage.removeItem(k));
+        [
+          "learninghub_add_subject_file_name_v1",
+          "learninghub_add_subject_file_size_v1",
+          "learninghub_add_subject_file_data_v1",
+          "learninghub_add_subject_file_previewed_v1"
+        ].forEach((k) => localStorage.removeItem(k));
       } catch (e) {
+        lhWarn("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
       }
     }
     async function uploadOne(finalCode, q, i) {
@@ -11920,7 +12423,12 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }
     async function createLarge(code, name, desc, questions) {
       prog("\u0110ang t\u1EA1o m\xF4n h\u1ECDc...", 0, questions.length, "T\u1EA1o m\xF4n tr\u01B0\u1EDBc, r\u1ED3i upload nhi\u1EC1u c\xE2u song song...");
-      const created = await postAction("add_subject", { code, name: name || code, description: desc || "", questions: [] });
+      const created = await postAction("add_subject", {
+        code,
+        name: name || code,
+        description: desc || "",
+        questions: []
+      });
       const finalCode = created.code || created.subject_code || code;
       const success = await uploadParallel(finalCode, questions);
       cacheCount(finalCode, success);
@@ -11982,6 +12490,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             setTimeout(() => $2("subjectRefresh")?.click(), 5600);
             setTimeout(() => window.refreshSubjectCountsOnce?.(), 6500);
           } catch (e) {
+            lhWarn("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
           }
         } else {
           prog("\u0110ang g\u1EEDi y\xEAu c\u1EA7u t\u1EA1o m\xF4n h\u1ECDc...", 0, 100, "\u0110ang t\u1EA3i d\u1EEF li\u1EC7u c\xE2u h\u1ECFi...");
@@ -12046,6 +12555,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           }
         }
       } catch (e) {
+        lhWarn("LH_UNIFIED_FETCH_AND_ACCESS_20260726", e);
       }
       return "";
     }
@@ -12112,6 +12622,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           if (k.indexOf("lh_f5_cache:") === 0) sessionStorage.removeItem(k);
         });
       } catch (e) {
+        lhWarn("LH_UNIFIED_FETCH_AND_ACCESS_20260726", e);
       }
     }
     window.clearLearningHubSupabaseCache = clearRestCache;
@@ -12142,10 +12653,12 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       var ownApi = isOwnApi(url);
       if (ownApi) {
         if (window.__LH_ACCESS_OK === false && /\/api\/(subjects|questions)\b/.test(url.pathname)) {
-          return Promise.resolve(new Response(
-            JSON.stringify({ error: "T\xE0i kho\u1EA3n ch\u01B0a \u0111\u01B0\u1EE3c ph\xEA duy\u1EC7t", code: "PENDING_APPROVAL" }),
-            { status: 403, headers: { "content-type": "application/json" } }
-          ));
+          return Promise.resolve(
+            new Response(JSON.stringify({ error: "T\xE0i kho\u1EA3n ch\u01B0a \u0111\u01B0\u1EE3c ph\xEA duy\u1EC7t", code: "PENDING_APPROVAL" }), {
+              status: 403,
+              headers: { "content-type": "application/json" }
+            })
+          );
         }
         var tok = lhToken();
         try {
@@ -12193,9 +12706,12 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         restPending.delete(key);
         throw err;
       });
-      restPending.set(key, job.then(function(r) {
-        return r.clone();
-      }));
+      restPending.set(
+        key,
+        job.then(function(r) {
+          return r.clone();
+        })
+      );
       return job;
     };
     var inflight = null;
@@ -12286,7 +12802,11 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         const primaryKey = bookmarkKey();
         const primaryArr = JSON.parse(localStorage.getItem(primaryKey) || "[]");
         const backupArr = JSON.parse(localStorage.getItem("lh_starred_v1_backup_all") || "[]");
-        const merged = new Set([...Array.isArray(primaryArr) ? primaryArr : [], ...Array.isArray(backupArr) ? backupArr : []].map((x) => String(x)));
+        const merged = new Set(
+          [...Array.isArray(primaryArr) ? primaryArr : [], ...Array.isArray(backupArr) ? backupArr : []].map(
+            (x) => String(x)
+          )
+        );
         return merged;
       } catch (e) {
         return /* @__PURE__ */ new Set();
@@ -12298,6 +12818,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         localStorage.setItem(bookmarkKey(), JSON.stringify(arr));
         localStorage.setItem("lh_starred_v1_backup_all", JSON.stringify(arr));
       } catch (e) {
+        lhWarn("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
       }
     }
     function isBookmarked(qOrKey) {
@@ -12331,7 +12852,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const key = getQKey(q);
       if (!key) return "";
       const bookmarked = isBookmarked(key);
-      const esc2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      const esc2 = (s) => String(s ?? "").replace(
+        /[&<>"']/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+      );
       return `<button type="button" class="libBookmarkBtn${bookmarked ? " bookmarked" : ""}" data-lib-bookmark="${esc2(key)}" title="${bookmarked ? "B\u1ECF l\u01B0u c\xE2u n\xE0y" : "L\u01B0u c\xE2u h\u1ECFi n\xE0y"}">${bookmarked ? SVG_LIB_SAVED : SVG_LIB_UNSAVED}</button>`;
     };
     (function injectBookmarkCSS() {
@@ -12397,8 +12921,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         const arr = typeof pool !== "undefined" && Array.isArray(pool) && pool.length ? pool : typeof RAW !== "undefined" ? RAW : [];
         if (!arr.length) return null;
-        const index = Math.max(0, Math.min(typeof ci === "number" ? ci : 0, arr.length - 1));
-        return arr[index] || null;
+        const index2 = Math.max(0, Math.min(typeof ci === "number" ? ci : 0, arr.length - 1));
+        return arr[index2] || null;
       } catch (e) {
         return null;
       }
@@ -12448,6 +12972,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           notify(added ? `\u{1F516} \u0110\xE3 l\u01B0u c\xE2u ${displayNum}` : `\u0110\xE3 b\u1ECF l\u01B0u c\xE2u ${displayNum}`);
         } catch (err) {
+          lhWarn("BOOKMARK_QUESTIONS_FEATURE_20260726", err);
         }
         if (typeof window.renderStudy === "function") window.renderStudy();
       });
@@ -12460,27 +12985,32 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       updateBookmarkBtn();
     };
     function bindLibraryClickEvents() {
-      document.addEventListener("click", function(e) {
-        const btn = e.target.closest("[data-lib-bookmark]");
-        if (!btn) return;
-        e.stopPropagation();
-        const key = btn.dataset.libBookmark;
-        if (!key) return;
-        const added = toggleBookmarkFn(key);
-        btn.classList.toggle("bookmarked", added);
-        btn.innerHTML = added ? SVG_LIB_SAVED : SVG_LIB_UNSAVED;
-        btn.title = added ? "B\u1ECF l\u01B0u" : "L\u01B0u c\xE2u n\xE0y";
-        btn.classList.remove("pop");
-        void btn.offsetWidth;
-        btn.classList.add("pop");
-        btn.addEventListener("animationend", () => btn.classList.remove("pop"), { once: true });
-        try {
-          notify(added ? `\u{1F516} \u0110\xE3 l\u01B0u c\xE2u h\u1ECFi` : `\u0110\xE3 b\u1ECF l\u01B0u c\xE2u h\u1ECFi`);
-        } catch (ex) {
-        }
-        if (typeof window.renderStudy === "function") window.renderStudy();
-        updateBookmarkBtn();
-      }, false);
+      document.addEventListener(
+        "click",
+        function(e) {
+          const btn = e.target.closest("[data-lib-bookmark]");
+          if (!btn) return;
+          e.stopPropagation();
+          const key = btn.dataset.libBookmark;
+          if (!key) return;
+          const added = toggleBookmarkFn(key);
+          btn.classList.toggle("bookmarked", added);
+          btn.innerHTML = added ? SVG_LIB_SAVED : SVG_LIB_UNSAVED;
+          btn.title = added ? "B\u1ECF l\u01B0u" : "L\u01B0u c\xE2u n\xE0y";
+          btn.classList.remove("pop");
+          void btn.offsetWidth;
+          btn.classList.add("pop");
+          btn.addEventListener("animationend", () => btn.classList.remove("pop"), { once: true });
+          try {
+            notify(added ? `\u{1F516} \u0110\xE3 l\u01B0u c\xE2u h\u1ECFi` : `\u0110\xE3 b\u1ECF l\u01B0u c\xE2u h\u1ECFi`);
+          } catch (ex) {
+            lhWarn("BOOKMARK_QUESTIONS_FEATURE_20260726", ex);
+          }
+          if (typeof window.renderStudy === "function") window.renderStudy();
+          updateBookmarkBtn();
+        },
+        false
+      );
     }
     function init2() {
       addBookmarkButtonToCard();
@@ -12489,6 +13019,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           renderUnified();
         } catch (e) {
+          lhWarn("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
         }
       }
     }
@@ -12503,11 +13034,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           renderUnified();
         } catch (e) {
+          lhWarn("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
         }
       } else if (typeof window.renderStudy === "function") {
         try {
           window.renderStudy();
         } catch (e) {
+          lhWarn("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
         }
       }
     });
@@ -12517,7 +13050,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     const POLL_MS = 6e4;
     const MIN_GAP_MS = 15e3;
     const $2 = (id) => document.getElementById(id);
-    const esc2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+    const esc2 = (s) => String(s ?? "").replace(
+      /[&<>"']/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+    );
     const user = () => window.HODSupabase?.getUser?.() || null;
     let bell = null;
     let items = [];
@@ -12540,6 +13076,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         localStorage.setItem(SEEN_KEY, JSON.stringify(map));
       } catch (e) {
+        lhWarn("HEADER_EDIT_REQUEST_BELL_20260726", e);
       }
     }
     function stampOf(r) {

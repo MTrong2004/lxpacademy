@@ -25,4 +25,3 @@ window.filterQuestionsHelper = filterQuestions;
 window.shuffleQuestionsHelper = shuffleQuestions;
 window.formatFlashcardFrontHelper = formatFlashcardFront;
 window.formatFlashcardBackHelper = formatFlashcardBack;
-

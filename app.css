@@ -1061,12 +1061,6 @@ to{transform:translateX(130%) skewX(-18deg)}
 }
 body.add-question-modal-open #addQuestionFab,body.add-question-modal-open #addQuestionFab.prettyAddFab,#addQuestionModal:not(.hidden)~#addQuestionFab,#addQuestionModal:not(.hidden)~#addQuestionFab.prettyAddFab{display:none !important;visibility:hidden !important;opacity:0 !important;pointer-events:none !important;animation:none !important;transform:none !important}
 body.add-question-modal-open #addQuestionFab::before,body.add-question-modal-open #addQuestionFab::after{display:none !important;content:none !important;opacity:0 !important}
-.studyDeleteAction{min-width:42px !important;width:auto !important;height:24px !important;padding:0 9px !important;border-radius:999px !important;border:1px solid rgba(233,135,123,.38) !important;background:rgba(233,135,123,.10) !important;color:#ffd0ca !important;font-size:.68rem !important;line-height:1 !important;font-weight:900 !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;cursor:pointer !important;flex:0 0 auto !important;box-shadow:0 6px 14px rgba(0,0,0,.18) !important;transition:transform .15s ease,background .15s ease,border-color .15s ease,box-shadow .15s ease !important}
-.studyDeleteAction:hover{transform:translateY(-1px) scale(1.04) !important;background:rgba(233,135,123,.20) !important;border-color:rgba(255,180,170,.60) !important;box-shadow:0 10px 22px rgba(0,0,0,.24),0 0 14px rgba(233,135,123,.14) !important}
-.studyDeleteAction:active{transform:scale(.95) !important}
-body.study-has-delete .compactCardRight{gap:6px !important;justify-content:flex-end !important}
-@media (max-width:760px){.studyDeleteAction{min-width:38px !important;height:26px !important;padding:0 8px !important;font-size:.66rem !important}
-}
 .addSubjectForm.hidden{display:none !important}
 .userAddSubjectWrap{width:100% !important;max-width:100% !important;min-width:0 !important;overflow:hidden !important;box-sizing:border-box !important}
 .subject-stepper{display:flex !important;align-items:center !important;justify-content:space-between !important;width:100% !important;max-width:100% !important;min-width:0 !important;gap:14px !important;margin:0 0 24px !important;padding:10px 0 !important;box-sizing:border-box !important;overflow:hidden !important}
@@ -1734,10 +1728,8 @@ body:not(.hod-is-admin-final) #adminOpenBtn,body:not(.hod-is-admin-final) #hodFl
 #studyList .sitem.open,#study .sitem.open,.sitem.compactStudyCard.open,#studyList .sitem.autoOpenAnswer,#study .sitem.autoOpenAnswer,.sitem.autoOpenAnswer{max-height:none !important;overflow:visible !important;border-color:rgba(232,212,168,.34) !important}
 .compactCardLine{gap:10px !important}
 .compactCardRight{gap:6px !important}
-.expandHint,.studyDeleteAction,.studyReportBtn{height:30px !important;min-height:30px !important;border-radius:999px !important;font-size:.76rem !important;font-weight:850 !important;display:inline-flex !important;align-items:center !important;justify-content:center !important}
+.expandHint,.studyReportBtn{height:30px !important;min-height:30px !important;border-radius:999px !important;font-size:.76rem !important;font-weight:850 !important;display:inline-flex !important;align-items:center !important;justify-content:center !important}
 .expandHint{padding:0 10px !important}
-.studyDeleteAction{padding:0 11px !important;color:#ffd0ca !important;border:1px solid rgba(233,135,123,.34) !important;background:rgba(233,135,123,.08) !important}
-.studyDeleteAction:hover{background:rgba(233,135,123,.16) !important;border-color:rgba(233,135,123,.50) !important}
 .studyReportBtn{width:30px !important;min-width:30px !important;padding:0 !important}
 #study .snum,.snum,.compactSubject{min-width:max-content !important}
 #study .sq,.sq,.compactQuestionText{font-size:1rem !important;line-height:1.36 !important}
@@ -1751,8 +1743,8 @@ body:not(.hod-is-admin-final) #adminOpenBtn,body:not(.hod-is-admin-final) #hodFl
 #study .snum,.snum,.compactSubject{font-size:.60rem !important;padding:4px 7px !important}
 #study .sq,.sq,.compactQuestionText{font-size:.90rem !important;line-height:1.32 !important;-webkit-line-clamp:2 !important}
 .compactCardRight{gap:5px !important;max-width:128px !important}
-.expandHint,.studyDeleteAction,.studyReportBtn{height:27px !important;min-height:27px !important;font-size:.68rem !important}
-.expandHint,.studyDeleteAction{padding:0 8px !important}
+.expandHint,.studyReportBtn{height:27px !important;min-height:27px !important;font-size:.68rem !important}
+.expandHint{padding:0 8px !important}
 .studyReportBtn{width:27px !important;min-width:27px !important}
 #studyList .sitem.open,#study .sitem.open,.sitem.compactStudyCard.open,#studyList .sitem.autoOpenAnswer,#study .sitem.autoOpenAnswer,.sitem.autoOpenAnswer{max-height:none !important}
 }

@@ -2,10 +2,12 @@
  * Student API Fetch Helpers for Learning Hub
  */
 
+import { lhWarn } from '../core/log.js';
+
 export async function fetchApi(endpoint, options = {}) {
   const url = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
   const defaultHeaders = {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
   };
 
   // Attach Supabase access token if available
@@ -14,14 +16,16 @@ export async function fetchApi(endpoint, options = {}) {
     if (session?.access_token) {
       defaultHeaders['Authorization'] = `Bearer ${session.access_token}`;
     }
-  } catch (e) {}
+  } catch (e) {
+    lhWarn('fetchApi:token', e);
+  }
 
   const mergedOptions = {
     ...options,
     headers: {
       ...defaultHeaders,
-      ...(options.headers || {})
-    }
+      ...(options.headers || {}),
+    },
   };
 
   const response = await fetch(url, mergedOptions);

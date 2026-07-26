@@ -17,7 +17,7 @@ export function formatFlashcardFront(questionItem) {
     num: questionItem.num,
     question: questionItem.question || '',
     options: questionItem.options || {},
-    hasImages: Array.isArray(questionItem.images) && questionItem.images.length > 0
+    hasImages: Array.isArray(questionItem.images) && questionItem.images.length > 0,
   };
 }
 
@@ -30,6 +30,6 @@ export function formatFlashcardBack(questionItem) {
 
   return {
     answer,
-    fullAnswerText
+    fullAnswerText,
   };
 }

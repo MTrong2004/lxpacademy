@@ -88,7 +88,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "eb96894" : null;
+  var currentVersion = true ? "48ac2c2" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -304,6 +304,73 @@
     });
   }
 
+  // src/core/log.js
+  var MAX_KEEP = 80;
+  var index = /* @__PURE__ */ new Map();
+  var seq = 0;
+  function describe(err2) {
+    if (!err2) return String(err2);
+    if (err2 instanceof Error) return (err2.name || "Error") + ": " + (err2.message || "");
+    if (typeof err2 === "object") {
+      try {
+        return JSON.stringify(err2);
+      } catch (_e) {
+        return Object.prototype.toString.call(err2);
+      }
+    }
+    return String(err2);
+  }
+  function lhWarn(tag, err2) {
+    try {
+      const label = String(tag || "unknown");
+      const msg = describe(err2);
+      const key2 = label + "|" + msg;
+      let row = index.get(key2);
+      if (!row) {
+        row = { tag: label, error: msg, count: 0, at: "", seq: 0 };
+        index.set(key2, row);
+        if (index.size > MAX_KEEP) {
+          let oldestKey = null, oldestSeq = Infinity;
+          for (const [k, v] of index)
+            if (v.seq < oldestSeq) {
+              oldestSeq = v.seq;
+              oldestKey = k;
+            }
+          if (oldestKey !== null) index.delete(oldestKey);
+        }
+      }
+      row.count++;
+      row.at = (/* @__PURE__ */ new Date()).toLocaleTimeString("vi-VN");
+      row.seq = ++seq;
+      if (row.count === 1) console.warn("[" + label + "]", err2);
+      else if (row.count === 10 || row.count === 100 || row.count === 1e3) {
+        console.warn("[" + label + "] l\u1EB7p l\u1EA1i " + row.count + " l\u1EA7n:", msg);
+      }
+    } catch (_e) {
+    }
+  }
+  function lhErrors() {
+    const rows = [...index.values()].sort((a, b) => b.seq - a.seq).map((r) => ({ tag: r.tag, error: r.error, count: r.count, at: r.at }));
+    try {
+      console.table(rows);
+    } catch (_e) {
+      console.log(rows);
+    }
+    return rows;
+  }
+  function lhClearErrors() {
+    index.clear();
+    seq = 0;
+    return true;
+  }
+  if (typeof window !== "undefined") {
+    window.lhWarn = lhWarn;
+    window.lhErrors = lhErrors;
+    window.lhClearErrors = lhClearErrors;
+    window.addEventListener("error", (e) => lhWarn("window.onerror", e?.error || e?.message || e));
+    window.addEventListener("unhandledrejection", (e) => lhWarn("unhandledRejection", e?.reason || e));
+  }
+
   // src/admin/adminCore.js
   var CONFIG = {
     SUPABASE_URL: window.APP_CONFIG?.SUPABASE_URL || "https://kxyukiwhhorvxgxxxmfq.supabase.co",
@@ -315,13 +382,16 @@
   var activeStatus = "all";
   var cache = { profiles: [], questions: [], requests: [], history: [], logs: [] };
   var $ = (id) => document.getElementById(id);
-  var esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;"
-  })[c]);
+  var esc = (s) => String(s ?? "").replace(
+    /[&<>"']/g,
+    (c) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    })[c]
+  );
   function safe(o) {
     try {
       return JSON.stringify(o, null, 2);
@@ -418,6 +488,7 @@
           try {
             dash = JSON.parse(text) || {};
           } catch (e) {
+            lhWarn("FIX_ADMIN_DASHBOARD_DEDUP_20260705", e);
           }
           const out = { ok: res.ok, status: res.status, dash, text };
           if (res.ok && !dash.error) {
@@ -711,7 +782,13 @@
             } else {
               apiAction = "edit_subject";
               const subjectId = idVal || codeVal && (localCache?.subjects || []).find((s) => String(s.code) === String(codeVal))?.id;
-              apiPayload = { id: subjectId, name: payload.name, description: payload.description, cover: payload.cover, sort_order: payload.sort_order };
+              apiPayload = {
+                id: subjectId,
+                name: payload.name,
+                description: payload.description,
+                cover: payload.cover,
+                sort_order: payload.sort_order
+              };
             }
           } else if (tableName === "subject_requests") {
             if (payload.status === "approved") {
@@ -807,10 +884,12 @@
           if (savedPage === "subjectsAdmin" && typeof window.loadSubjectsAdmin === "function") window.loadSubjectsAdmin();
           if (savedPage === "approvals" && typeof loadRegistrationMode === "function") loadRegistrationMode();
           if (savedPage === "trash" && typeof window.loadTrash === "function") window.loadTrash();
-          if (savedPage === "subjectRequests" && typeof window.loadSubjectRequests === "function") window.loadSubjectRequests();
+          if (savedPage === "subjectRequests" && typeof window.loadSubjectRequests === "function")
+            window.loadSubjectRequests();
         }
       }
     } catch (e) {
+      lhWarn("adminCore", e);
     }
   }
   function bind() {
@@ -828,7 +907,8 @@
     $("exportBtn").onclick = exportAll;
     $("search").oninput = function() {
       render();
-      if (typeof renderApprovals === "function" && document.getElementById("approvals")?.classList.contains("active")) renderApprovals();
+      if (typeof renderApprovals === "function" && document.getElementById("approvals")?.classList.contains("active"))
+        renderApprovals();
     };
     $("closeModal").onclick = closeModal;
     $("modal").addEventListener("mousedown", (e) => {
@@ -881,14 +961,17 @@
         });
       }
     } catch (e) {
+      lhWarn("adminCore", e);
     }
     try {
       window.__adminDashRenderedText = "";
     } catch (e) {
+      lhWarn("adminCore", e);
     }
     try {
       if (typeof window.clearAdminImageCaches === "function") window.clearAdminImageCaches();
     } catch (e) {
+      lhWarn("adminCore", e);
     }
     if (code === "BLOCKED") {
       __lhSetDenyMessage("T\xE0i kho\u1EA3n b\u1ECB kh\xF3a", "T\xE0i kho\u1EA3n c\u1EE7a b\u1EA1n \u0111\xE3 b\u1ECB qu\u1EA3n tr\u1ECB vi\xEAn kh\xF3a. B\u1EA1n \u0111\xE3 \u0111\u01B0\u1EE3c \u0111\u0103ng xu\u1EA5t.");
@@ -904,10 +987,12 @@
       try {
         sessionStorage.removeItem("is_logged_in");
       } catch (e) {
+        lhWarn("adminCore", e);
       }
       try {
         client?.auth?.signOut?.();
       } catch (e) {
+        lhWarn("adminCore", e);
       }
     }
     setTimeout(() => {
@@ -927,6 +1012,7 @@
       sessionStorage.setItem("admin_current_page", id);
       sessionStorage.setItem("admin_current_page_name", n);
     } catch (e) {
+      lhWarn("adminCore", e);
     }
     render();
   }
@@ -937,7 +1023,12 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         cache: "no-store",
-        body: JSON.stringify({ id: user.id, email: user.email, full_name: md.full_name || md.name || "", avatar_url: md.avatar_url || md.picture || "" })
+        body: JSON.stringify({
+          id: user.id,
+          email: user.email,
+          full_name: md.full_name || md.name || "",
+          avatar_url: md.avatar_url || md.picture || ""
+        })
       });
       const out = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -962,7 +1053,9 @@
       const isAlreadyNotified = sessionStorage.getItem("is_logged_in");
       if (!isAlreadyNotified) {
         sessionStorage.setItem("is_logged_in", "true");
-        sendLoginToDiscord(profile.email || user.email, profile.role || "user").catch((e) => console.warn("sendLoginToDiscord failed:", e));
+        sendLoginToDiscord(profile.email || user.email, profile.role || "user").catch(
+          (e) => console.warn("sendLoginToDiscord failed:", e)
+        );
       }
     }
   }
@@ -976,7 +1069,12 @@
       return false;
     }
     try {
-      const res = await fetch("/api/admin-action", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ user_id: user.id, action, payload: payload || {} }) });
+      const res = await fetch("/api/admin-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ user_id: user.id, action, payload: payload || {} })
+      });
       const out = await res.json().catch(() => ({}));
       if (!res.ok || out.error) {
         alert("Thao t\xE1c th\u1EA5t b\u1EA1i: " + (out.error || res.status));
@@ -1123,7 +1221,8 @@
   }
   function formatValue(v) {
     if (Array.isArray(v)) return v.length ? `${v.length} \u1EA3nh` : "Kh\xF4ng c\xF3";
-    if (typeof v === "object" && v) return Object.entries(v).map(([k, val]) => `${k}. ${val}`).join("\n");
+    if (typeof v === "object" && v)
+      return Object.entries(v).map(([k, val]) => `${k}. ${val}`).join("\n");
     return String(v ?? "");
   }
   function viewUserEdits(uid) {
@@ -1160,7 +1259,16 @@
     if (note === null) return;
     setBusy(true, "\u0110ang t\u1EEB ch\u1ED1i...");
     try {
-      const res = await fetch("/api/admin-action", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ user_id: user.id, action: "reject_request", payload: { request_id: id, admin_note: note || "" } }) });
+      const res = await fetch("/api/admin-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({
+          user_id: user.id,
+          action: "reject_request",
+          payload: { request_id: id, admin_note: note || "" }
+        })
+      });
       const out = await res.json().catch(() => ({}));
       if (!res.ok || out.error) return alert(out.error || "Kh\xF4ng t\u1EEB ch\u1ED1i \u0111\u01B0\u1EE3c");
       await loadAll();
@@ -1197,9 +1305,13 @@
     await loadAll();
   }
   function exportAll() {
-    const subjects = Array.from(new Set((cache.questions || []).map((q) => q.subject_code || "HOD102").filter(Boolean))).sort();
+    const subjects = Array.from(
+      new Set((cache.questions || []).map((q) => q.subject_code || "HOD102").filter(Boolean))
+    ).sort();
     const subjectOptions = ["all", ...subjects].map((code) => `<option value="${esc(code)}">${code === "all" ? "T\u1EA5t c\u1EA3 m\xF4n" : esc(code)}</option>`).join("");
-    openModal("Xu\u1EA5t d\u1EEF li\u1EC7u (Turso)", `
+    openModal(
+      "Xu\u1EA5t d\u1EEF li\u1EC7u (Turso)",
+      `
     <div style="padding:10px 0;display:grid;gap:14px;">
       <p style="color:rgba(245,240,232,.72);margin:0 0 4px;font-size:0.9rem;line-height:1.4;">
         D\u1EEF li\u1EC7u xu\u1EA5t l\u1EA5y tr\u1EF1c ti\u1EBFp t\u1EEB Turso (database hi\u1EC7n t\u1EA1i). Ph\u1EA7n c\xE2u h\u1ECFi c\xF3 th\u1EC3 t\u1EA3i h\u1EBFt 1 l\u1EA7n ho\u1EB7c ch\u1ECDn \u0111\xFAng m\xF4n.
@@ -1235,7 +1347,8 @@
         </button>
       </div>
     </div>
-  `);
+  `
+    );
     $("exportQuestionsJsonBtn").onclick = () => downloadExportFile("questions_json", $("exportQuestionSubject")?.value || "all");
     $("exportQuestionsCsvBtn").onclick = () => downloadExportFile("questions_csv", $("exportQuestionSubject")?.value || "all");
     $("exportProfilesJsonBtn").onclick = () => downloadExportFile("profiles_json");
@@ -1260,7 +1373,9 @@
     const j = await res.json().catch(() => ({}));
     if (!res.ok || j.error) throw new Error(j.error || "HTTP " + res.status);
     const rows = Array.isArray(j.data) ? j.data : [];
-    rows.sort((a, b) => String(a.subject_code || "").localeCompare(String(b.subject_code || "")) || (Number(a.num) || 0) - (Number(b.num) || 0));
+    rows.sort(
+      (a, b) => String(a.subject_code || "").localeCompare(String(b.subject_code || "")) || (Number(a.num) || 0) - (Number(b.num) || 0)
+    );
     return rows;
   }
   async function fetchProfilesForExport() {
@@ -1272,16 +1387,55 @@
   }
   function questionsToCsv(rows) {
     const esc2 = (v) => '"' + String(v == null ? "" : v).replace(/"/g, '""').replace(/\r?\n/g, " ") + '"';
-    const header = ["subject_code", "num", "question", "A", "B", "C", "D", "E", "answer", "answer_text", "has_image", "error_risk"];
+    const header = [
+      "subject_code",
+      "num",
+      "question",
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "answer",
+      "answer_text",
+      "has_image",
+      "error_risk"
+    ];
     const lines = [header.join(",")];
     (rows || []).forEach((q) => {
       const o = q.options || {};
-      lines.push([q.subject_code, q.num, q.question, o.A, o.B, o.C, o.D, o.E, q.answer, q.answer_text, q.has_image ? 1 : 0, q.error_risk || "low"].map(esc2).join(","));
+      lines.push(
+        [
+          q.subject_code,
+          q.num,
+          q.question,
+          o.A,
+          o.B,
+          o.C,
+          o.D,
+          o.E,
+          q.answer,
+          q.answer_text,
+          q.has_image ? 1 : 0,
+          q.error_risk || "low"
+        ].map(esc2).join(",")
+      );
     });
     return "\uFEFF" + lines.join("\r\n");
   }
   function toCsv(rows) {
-    const cols = ["id", "email", "full_name", "role", "approved", "blocked", "avatar_url", "last_login", "last_activity", "created_at"];
+    const cols = [
+      "id",
+      "email",
+      "full_name",
+      "role",
+      "approved",
+      "blocked",
+      "avatar_url",
+      "last_login",
+      "last_activity",
+      "created_at"
+    ];
     const escCsv = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
     return cols.join(",") + "\n" + rows.map((r) => cols.map((c) => escCsv(r[c])).join(",")).join("\n");
   }
@@ -1290,10 +1444,15 @@
       setBusy(true, "\u0110ang xu\u1EA5t...");
       if (type === "questions_json") {
         const rows = await fetchQuestionsForExport(subjectCode);
-        downloadBlobFile(JSON.stringify(rows, null, 2), `questions_${safeFilePart(subjectCode)}.json`, "application/json;charset=utf-8");
+        downloadBlobFile(
+          JSON.stringify(rows, null, 2),
+          `questions_${safeFilePart(subjectCode)}.json`,
+          "application/json;charset=utf-8"
+        );
         try {
           await logAction("export_questions_json", "questions", subjectCode, { count: rows.length });
         } catch (e) {
+          lhWarn("ADMIN_LOGIN_NOTIFY_NOT_F5", e);
         }
         toast("\u0110\xE3 t\u1EA3i c\xE2u h\u1ECFi JSON");
       } else if (type === "questions_csv") {
@@ -1302,6 +1461,7 @@
         try {
           await logAction("export_questions_csv", "questions", subjectCode, { count: rows.length });
         } catch (e) {
+          lhWarn("ADMIN_LOGIN_NOTIFY_NOT_F5", e);
         }
         toast("\u0110\xE3 t\u1EA3i c\xE2u h\u1ECFi CSV");
       } else if (type === "profiles_json") {
@@ -1310,6 +1470,7 @@
         try {
           await logAction("export_profiles_json", "profiles", "all", { count: rows.length });
         } catch (e) {
+          lhWarn("ADMIN_LOGIN_NOTIFY_NOT_F5", e);
         }
         toast("\u0110\xE3 t\u1EA3i profiles JSON");
       } else if (type === "profiles_csv") {
@@ -1318,6 +1479,7 @@
         try {
           await logAction("export_profiles_csv", "profiles", "all", { count: rows.length });
         } catch (e) {
+          lhWarn("ADMIN_LOGIN_NOTIFY_NOT_F5", e);
         }
         toast("\u0110\xE3 t\u1EA3i profiles CSV");
       } else {
@@ -1333,8 +1495,12 @@
         };
         downloadBlobFile(JSON.stringify(full, null, 2), "learninghub_full_backup.json", "application/json;charset=utf-8");
         try {
-          await logAction("export_full_backup", "backup", "json", { questions: full.questions.length, profiles: full.profiles.length });
+          await logAction("export_full_backup", "backup", "json", {
+            questions: full.questions.length,
+            profiles: full.profiles.length
+          });
         } catch (e) {
+          lhWarn("ADMIN_LOGIN_NOTIFY_NOT_F5", e);
         }
         toast("\u0110\xE3 t\u1EA3i full backup");
       }
@@ -1362,7 +1528,9 @@
       return /\/rest\/v1\//.test(url.pathname);
     }
     function isSafePath(path) {
-      return /\/(profiles|site_settings|subjects|subject_requests|edit_requests|question_history|admin_logs|questions)\b/.test(path);
+      return /\/(profiles|site_settings|subjects|subject_requests|edit_requests|question_history|admin_logs|questions)\b/.test(
+        path
+      );
     }
     function ttlFor(url) {
       const p = url.pathname;
@@ -1386,11 +1554,16 @@
       try {
         headers.forEach((v, k) => out[k] = v);
       } catch (e) {
+        lhWarn("F5_SUPABASE_MICRO_CACHE_20260629", e);
       }
       return out;
     }
     function makeResponse(entry) {
-      return new Response(entry.body, { status: entry.status || 200, statusText: entry.statusText || "OK", headers: entry.headers || {} });
+      return new Response(entry.body, {
+        status: entry.status || 200,
+        statusText: entry.statusText || "OK",
+        headers: entry.headers || {}
+      });
     }
     function readSession(key2) {
       try {
@@ -1407,6 +1580,7 @@
       try {
         sessionStorage.setItem(SS_PREFIX + key2, JSON.stringify(entry));
       } catch (e) {
+        lhWarn("F5_SUPABASE_MICRO_CACHE_20260629", e);
       }
     }
     async function storeResponse(key2, ttl, res) {
@@ -1414,10 +1588,17 @@
         const clone = res.clone();
         const text = await clone.text();
         if (text.length > MAX_BODY) return;
-        const entry = { body: text, status: res.status, statusText: res.statusText, headers: headersObj(res.headers), exp: Date.now() + ttl };
+        const entry = {
+          body: text,
+          status: res.status,
+          statusText: res.statusText,
+          headers: headersObj(res.headers),
+          exp: Date.now() + ttl
+        };
         MEM.set(key2, entry);
         writeSession(key2, entry);
       } catch (e) {
+        lhWarn("F5_SUPABASE_MICRO_CACHE_20260629", e);
       }
     }
   })();
@@ -1453,7 +1634,9 @@
       return row?.changed_by_email || row?.user_email || row?.admin_email || emailByUserId(row?.changed_by) || emailByUserId(row?.user_id) || emailByUserId(row?.approved_by) || "Kh\xF4ng r\xF5 email";
     }
     window.renderHistory = renderHistory = function() {
-      const arr = (cache.history || []).filter((h) => match(`${safe(h)} ${realQuestionNum2(h)} ${historyTitle2(h)} ${realSubjectCode2(h)} ${editorEmail(h)}`));
+      const arr = (cache.history || []).filter(
+        (h) => match(`${safe(h)} ${realQuestionNum2(h)} ${historyTitle2(h)} ${realSubjectCode2(h)} ${editorEmail(h)}`)
+      );
       $("historyList").innerHTML = arr.map((h) => {
         const no = realQuestionNum2(h);
         const subject = realSubjectCode2(h);
@@ -1899,8 +2082,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         if (!q.answer) errors.push(`C\xE2u ${i + 1}: thi\u1EBFu "answer"`);
       });
       if (errors.length) {
-        alert("D\u1EEF li\u1EC7u c\xF3 l\u1ED7i:\n\n" + errors.slice(0, 10).join("\n") + (errors.length > 10 ? `
-...v\xE0 ${errors.length - 10} l\u1ED7i kh\xE1c` : ""));
+        alert(
+          "D\u1EEF li\u1EC7u c\xF3 l\u1ED7i:\n\n" + errors.slice(0, 10).join("\n") + (errors.length > 10 ? `
+...v\xE0 ${errors.length - 10} l\u1ED7i kh\xE1c` : "")
+        );
         return;
       }
       parsedQuestions = data;
@@ -1910,13 +2095,15 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         <div class="aiPreviewHeader">
           <b>Xem tr\u01B0\u1EDBc: ${data.length} c\xE2u h\u1ECFi</b>
         </div>
-        <div class="aiPreviewList">${data.slice(0, 8).map((q, i) => `
+        <div class="aiPreviewList">${data.slice(0, 8).map(
+          (q, i) => `
           <div class="aiPreviewItem">
             <span class="aiPreviewNum">C\xE2u ${q.num || i + 1}</span>
             <span class="aiPreviewQ">${esc((q.question || "").substring(0, 100))}${(q.question || "").length > 100 ? "..." : ""}</span>
             <span class="aiPreviewA">\u0110\xE1p \xE1n: ${esc(q.answer || "?")}</span>
           </div>
-        `).join("")}${data.length > 8 ? `<div class="aiPreviewMore">...v\xE0 ${data.length - 8} c\xE2u kh\xE1c</div>` : ""}</div>
+        `
+        ).join("")}${data.length > 8 ? `<div class="aiPreviewMore">...v\xE0 ${data.length - 8} c\xE2u kh\xE1c</div>` : ""}</div>
       `;
       }
       if (btn) btn.disabled = false;
@@ -1930,7 +2117,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const subject = newSubject || subjectSelect || "HOD102";
       if (!confirm(`Import ${parsedQuestions.length} c\xE2u h\u1ECFi v\xE0o m\xF4n "${subject}"?
 
-C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
+C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`))
+        return;
       setBusy(true, "\u0110ang import...");
       let success = 0, errors = 0;
       try {
@@ -1941,7 +2129,12 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
         const total = parsedQuestions.length;
         for (let i = 0; i < total; i++) {
           const q = parsedQuestions[i];
-          showProgress("\u0110ang import c\xE2u h\u1ECFi...", i + 1, total, `\u0110ang nh\u1EADp c\xE2u ${q.num || i + 1}: ${q.question ? q.question.substring(0, 50) + "..." : ""}`);
+          showProgress(
+            "\u0110ang import c\xE2u h\u1ECFi...",
+            i + 1,
+            total,
+            `\u0110ang nh\u1EADp c\xE2u ${q.num || i + 1}: ${q.question ? q.question.substring(0, 50) + "..." : ""}`
+          );
           let num = Number(q.num) || nextNum;
           if (existingNums.has(num)) {
             num = nextNum;
@@ -1984,7 +2177,12 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
             error_risk_reason: reason || null
           };
           try {
-            const res = await fetch("/api/admin-action", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ user_id: user?.id, action: "add_question", payload: { question_data: payload } }) });
+            const res = await fetch("/api/admin-action", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              cache: "no-store",
+              body: JSON.stringify({ user_id: user?.id, action: "add_question", payload: { question_data: payload } })
+            });
             const out = await res.json().catch(() => ({}));
             if (!res.ok || out.error) {
               console.warn("Import l\u1ED7i c\xE2u " + num + ":", out.error || res.status);
@@ -2050,14 +2248,18 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       try {
         subjectData = (cache.subjects || []).find((s) => String(s.code || "").toUpperCase() === String(code).toUpperCase());
         if (!subjectData) throw new Error("Kh\xF4ng t\xECm th\u1EA5y m\xF4n " + code);
-        questionsCount = (cache.questions || []).filter((q) => String(q.subject_code || "").toUpperCase() === String(code).toUpperCase()).length;
+        questionsCount = (cache.questions || []).filter(
+          (q) => String(q.subject_code || "").toUpperCase() === String(code).toUpperCase()
+        ).length;
       } catch (err2) {
         setBusy(false);
         return alert("L\u1ED7i t\u1EA3i th\xF4ng tin m\xF4n h\u1ECDc: " + err2.message);
       }
       setBusy(false);
       const name = subjectData.name || "";
-      openModal("X\xE1c nh\u1EADn x\xF3a m\xF4n h\u1ECDc", `
+      openModal(
+        "X\xE1c nh\u1EADn x\xF3a m\xF4n h\u1ECDc",
+        `
       <div style="padding:10px 0;">
         <div style="background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:10px;padding:16px;margin-bottom:20px;color:#e74c3c;">
           <h3 style="margin-top:0;margin-bottom:8px;font-size:0.96rem;font-weight:bold;">\u26A0\uFE0F C\u1EA3nh b\xE1o h\xE0nh \u0111\u1ED9ng nguy hi\u1EC3m!</h3>
@@ -2083,7 +2285,8 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
           <button class="act bad" id="btnConfirmDeleteSubject" disabled style="width:100%;text-align:center;padding:10px;font-size:0.88rem;font-weight:bold;border-radius:8px;opacity:0.5;cursor:not-allowed;">X\xE1c nh\u1EADn x\xF3a</button>
         </div>
       </div>
-    `);
+    `
+      );
       const input = document.getElementById("confirmDeleteSubjectCode");
       const btn = document.getElementById("btnConfirmDeleteSubject");
       if (input && btn) {
@@ -2110,10 +2313,16 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
             if (!actionRes.ok || actionJson.error) {
               throw new Error(actionJson.error || "Kh\xF4ng x\xF3a \u0111\u01B0\u1EE3c m\xF4n h\u1ECDc.");
             }
-            const questionsData = Array.from(cache.questions || []).filter((q) => String(q.subject_code || "").toUpperCase() === String(code || "").toUpperCase());
-            cache.questions = (cache.questions || []).filter((q) => String(q.subject_code || "").toUpperCase() !== String(code || "").toUpperCase());
+            const questionsData = Array.from(cache.questions || []).filter(
+              (q) => String(q.subject_code || "").toUpperCase() === String(code || "").toUpperCase()
+            );
+            cache.questions = (cache.questions || []).filter(
+              (q) => String(q.subject_code || "").toUpperCase() !== String(code || "").toUpperCase()
+            );
             if (window.__ADMIN_PAGE_STATE__) {
-              window.__ADMIN_PAGE_STATE__.subjects = (window.__ADMIN_PAGE_STATE__.subjects || []).filter((s) => String(s).toUpperCase() !== String(code || "").toUpperCase());
+              window.__ADMIN_PAGE_STATE__.subjects = (window.__ADMIN_PAGE_STATE__.subjects || []).filter(
+                (s) => String(s).toUpperCase() !== String(code || "").toUpperCase()
+              );
               if (window.__ADMIN_PAGE_STATE__.subject !== "all" && String(window.__ADMIN_PAGE_STATE__.subject).toUpperCase() === String(code || "").toUpperCase()) {
                 window.__ADMIN_PAGE_STATE__.subject = "all";
                 localStorage.setItem("admin_question_subject_filter_v1", "all");
@@ -2204,13 +2413,16 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
   })();
   (function() {
     const $2 = (id) => document.getElementById(id);
-    const esc2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;"
-    })[c]);
+    const esc2 = (s) => String(s ?? "").replace(
+      /[&<>"']/g,
+      (c) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      })[c]
+    );
     function date2(d) {
       if (!d) return "Ch\u01B0a c\xF3";
       try {
@@ -2378,7 +2590,8 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
         list.innerHTML = '<p class="muted">Kh\xF4ng c\xF3 m\xF4n h\u1ECDc ph\xF9 h\u1EE3p.</p>';
         return;
       }
-      list.innerHTML = arr.map((s) => `
+      list.innerHTML = arr.map(
+        (s) => `
       <div class="subjectAdminItem">
         <div class="subjectAdminCode">${esc(s.code || "")}</div>
         <div class="subjectAdminInfo">
@@ -2389,7 +2602,8 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
           <button class="act warn" type="button" onclick="openEditSubjectAdmin('${esc(String(s.code || "")).replace(/'/g, "&#39;")}')">S\u1EEDa</button>
           ${isAdmin() ? `<button class="act bad" type="button" onclick="deleteSubjectAdmin('${esc(String(s.code || "")).replace(/'/g, "&#39;")}')">X\xF3a</button>` : ""}
         </div>
-      </div>`).join("");
+      </div>`
+      ).join("");
     };
     window.openEditSubjectAdmin = async function(code) {
       if (!isEditor()) return alert("Admin ho\u1EB7c Editor m\u1EDBi \u0111\u01B0\u1EE3c s\u1EEDa m\xF4n h\u1ECDc.");
@@ -2399,7 +2613,9 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
         if (res.error || !res.data) return alert("Kh\xF4ng t\xECm th\u1EA5y m\xF4n h\u1ECDc.");
         s = res.data;
       }
-      openModal("S\u1EEDa m\xF4n h\u1ECDc", `
+      openModal(
+        "S\u1EEDa m\xF4n h\u1ECDc",
+        `
       <div class="editSubjectForm">
         <div class="editSubjectNotice">
           N\u1EBFu \u0111\u1ED5i <b>m\xE3 m\xF4n</b>, h\u1EC7 th\u1ED1ng c\u0169ng s\u1EBD chuy\u1EC3n to\xE0n b\u1ED9 c\xE2u h\u1ECFi c\u1EE7a m\xF4n c\u0169 sang m\xE3 m\xF4n m\u1EDBi.
@@ -2427,7 +2643,8 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
           <button class="act ok" type="button" onclick="saveSubjectAdmin()">L\u01B0u thay \u0111\u1ED5i</button>
           <button class="act" type="button" onclick="closeModal()">\u0110\xF3ng</button>
         </div>
-      </div>`);
+      </div>`
+      );
       setTimeout(() => {
         const input = $id("editSubjectCode");
         if (input) {
@@ -2453,11 +2670,24 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       try {
         if (newCode === oldCode) {
           if (!subject.id) return alert("Kh\xF4ng t\xECm th\u1EA5y ID m\xF4n h\u1ECDc. B\u1EA5m T\u1EA3i l\u1EA1i r\u1ED3i th\u1EED l\u1EA1i.");
-          if (!await adminAction("edit_subject", { id: subject.id, name, description: description || "", cover: subject.cover || "", sort_order: subject.sort_order || 0 })) return;
+          if (!await adminAction("edit_subject", {
+            id: subject.id,
+            name,
+            description: description || "",
+            cover: subject.cover || "",
+            sort_order: subject.sort_order || 0
+          }))
+            return;
           subject.name = name;
           subject.description = description || "";
         } else {
-          if (!await adminAction("rename_subject_code", { old_code: oldCode, new_code: newCode, name, description: description || "" })) return;
+          if (!await adminAction("rename_subject_code", {
+            old_code: oldCode,
+            new_code: newCode,
+            name,
+            description: description || ""
+          }))
+            return;
         }
         await logAction("edit_subject", "subjects", oldCode, {
           old_code: oldCode,
@@ -2551,6 +2781,7 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       try {
         localStorage.setItem(STORE_KEY, JSON.stringify(map || {}));
       } catch (e) {
+        lhWarn("FINAL_ADMIN_SUBJECT_EDIT_20260625", e);
       }
     }
     function cleanNavText(btn) {
@@ -2562,7 +2793,8 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       if (page === "overview" || text.includes("t\u1ED5ng quan")) return "overview";
       if (page === "approvals" || text.includes("ph\xEA duy\u1EC7t")) return "approvals";
       if (page === "requests" || text.includes("y\xEAu c\u1EA7u s\u1EEDa")) return "requests";
-      if (page.includes("subjectrequest") || text.includes("yc th\xEAm m\xF4n") || text.includes("y\xEAu c\u1EA7u th\xEAm m\xF4n")) return "subjectRequests";
+      if (page.includes("subjectrequest") || text.includes("yc th\xEAm m\xF4n") || text.includes("y\xEAu c\u1EA7u th\xEAm m\xF4n"))
+        return "subjectRequests";
       if (page === "subjectsadmin" || text === "m\xF4n h\u1ECDc" || text.includes("qu\u1EA3n l\xFD m\xF4n")) return "subjectsAdmin";
       if (page === "questions" || text.includes("c\xE2u h\u1ECFi")) return "questions";
       if (page.includes("trash") || page.includes("deleted") || text.includes("th\xF9ng r\xE1c")) return "trash";
@@ -2777,7 +3009,9 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
         if (k) {
           questions = questions.filter((t) => {
             const q = t.original_data || {};
-            return matchTrashText(`${q.subject_code || ""} ${q.question || ""} ${q.answer || ""} ${q.answer_text || ""} ${q.num || ""} ${t.deleted_by_email || ""}`);
+            return matchTrashText(
+              `${q.subject_code || ""} ${q.question || ""} ${q.answer || ""} ${q.answer_text || ""} ${q.num || ""} ${t.deleted_by_email || ""}`
+            );
           });
           subjects = subjects.filter((t) => {
             const s = (t.original_data || {}).subject || {};
@@ -2816,7 +3050,8 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       if (!isAdmin()) return alert("Ch\u1EC9 admin.");
       const t = deletedQuestionsCache.find((x) => idText(x.id) === idText(id));
       const q = t?.original_data || {};
-      if (!confirm("X\xF3a V\u0128NH VI\u1EC4N c\xE2u " + String(q.num || q.id || "?") + "?\n\nKh\xF4ng th\u1EC3 kh\xF4i ph\u1EE5c sau thao t\xE1c n\xE0y!")) return;
+      if (!confirm("X\xF3a V\u0128NH VI\u1EC4N c\xE2u " + String(q.num || q.id || "?") + "?\n\nKh\xF4ng th\u1EC3 kh\xF4i ph\u1EE5c sau thao t\xE1c n\xE0y!"))
+        return;
       setBusy(true, "\u0110ang x\xF3a v\u0129nh vi\u1EC5n...");
       try {
         if (!await adminAction("permanent_delete_question", { question_id: id })) return;
@@ -2856,7 +3091,10 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       try {
         const r = await deleteRowById("deleted_subjects", id);
         if (r.error) return alert("L\u1ED7i x\xF3a v\u0129nh vi\u1EC5n: " + r.error.message);
-        if (!(r.data || []).length) return alert("Kh\xF4ng t\xECm th\u1EA5y d\xF2ng \u0111\u1EC3 x\xF3a. B\u1EA5m T\u1EA3i l\u1EA1i, n\u1EBFu v\u1EABn c\xF2n th\xEC ki\u1EC3m tra quy\u1EC1n x\xF3a b\u1EA3ng deleted_subjects.");
+        if (!(r.data || []).length)
+          return alert(
+            "Kh\xF4ng t\xECm th\u1EA5y d\xF2ng \u0111\u1EC3 x\xF3a. B\u1EA5m T\u1EA3i l\u1EA1i, n\u1EBFu v\u1EABn c\xF2n th\xEC ki\u1EC3m tra quy\u1EC1n x\xF3a b\u1EA3ng deleted_subjects."
+          );
         await logAction("permanent_delete_subject", "deleted_subjects", id, { code: sub.code });
         await loadTrash();
         toast("\u0110\xE3 x\xF3a v\u0129nh vi\u1EC5n");
@@ -2868,7 +3106,9 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       const t = deletedQuestionsCache.find((x) => idText(x.id) === idText(id));
       if (!t) return alert("Kh\xF4ng t\xECm th\u1EA5y.");
       const q = t.original_data || {};
-      openModal("Chi ti\u1EBFt c\xE2u \u0111\xE3 x\xF3a", `
+      openModal(
+        "Chi ti\u1EBFt c\xE2u \u0111\xE3 x\xF3a",
+        `
       <p><b>M\xF4n:</b> ${esc(q.subject_code || "")}</p>
       <p><b>C\xE2u ${esc(String(q.num || ""))}:</b> ${esc(q.question || "")}</p>
       <p><b>\u0110\xE1p \xE1n:</b> ${esc(q.answer || "")}</p>
@@ -2878,7 +3118,8 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
         <button class="act ok" onclick="restoreQuestion(${arg(t.id)});closeModal();">Kh\xF4i ph\u1EE5c</button>
         <button class="act bad" onclick="permanentDelete(${arg(t.id)});closeModal();">X\xF3a v\u0129nh vi\u1EC5n</button>
       </div>
-    `);
+    `
+      );
     };
     document.addEventListener("DOMContentLoaded", () => {
       document.querySelectorAll(".nav").forEach((b) => {
@@ -2970,13 +3211,25 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       const p = (cache.profiles || []).find((x) => String(x.id) === String(uid));
       if (!p) return alert("Kh\xF4ng t\xECm th\u1EA5y ng\u01B0\u1EDDi d\xF9ng.");
       const src = avatarUrl(p), name = p.email || p.id || "Ng\u01B0\u1EDDi d\xF9ng";
-      if (src) openModal("Avatar - " + name, `<div class="lhAvatarPreview"><img src="${esc(src)}" alt="Avatar" referrerpolicy="no-referrer"><p class="muted">${esc(name)}</p></div>`);
-      else openModal("Avatar - " + name, `<div class="lhAvatarPreview lhAvatarPreviewEmpty"><div>${esc(avatarLetter(p))}</div><p class="muted">T\xE0i kho\u1EA3n n\xE0y ch\u01B0a c\xF3 avatar trong database.</p><p class="muted">${esc(name)}</p></div>`);
+      if (src)
+        openModal(
+          "Avatar - " + name,
+          `<div class="lhAvatarPreview"><img src="${esc(src)}" alt="Avatar" referrerpolicy="no-referrer"><p class="muted">${esc(name)}</p></div>`
+        );
+      else
+        openModal(
+          "Avatar - " + name,
+          `<div class="lhAvatarPreview lhAvatarPreviewEmpty"><div>${esc(avatarLetter(p))}</div><p class="muted">T\xE0i kho\u1EA3n n\xE0y ch\u01B0a c\xF3 avatar trong database.</p><p class="muted">${esc(name)}</p></div>`
+        );
     };
-    document.addEventListener("click", (e) => {
-      if (e.target.closest("#lhActionMenuFloat") || e.target.closest(".lhDotsBtn")) return;
-      closeUserActionMenuFinal();
-    }, true);
+    document.addEventListener(
+      "click",
+      (e) => {
+        if (e.target.closest("#lhActionMenuFloat") || e.target.closest(".lhDotsBtn")) return;
+        closeUserActionMenuFinal();
+      },
+      true
+    );
     window.addEventListener("resize", closeUserActionMenuFinal);
     window.addEventListener("scroll", closeUserActionMenuFinal, true);
     document.addEventListener("keydown", (e) => {
@@ -3024,7 +3277,10 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       const p = (cache.profiles || []).find((x) => String(x.id) === String(uid));
       if (!p) return alert("Kh\xF4ng t\xECm th\u1EA5y user.");
       if (String(p.role || "").toLowerCase() === "admin") return alert("Kh\xF4ng th\u1EC3 thu h\u1ED3i quy\u1EC1n truy c\u1EADp c\u1EE7a admin.");
-      if (!confirm("Thu h\u1ED3i quy\u1EC1n truy c\u1EADp c\u1EE7a: " + (p.email || uid) + "?\n\nUser s\u1EBD chuy\u1EC3n v\u1EC1 tab Ph\xEA duy\u1EC7t \u0111\u1EC3 admin duy\u1EC7t l\u1EA1i.")) return;
+      if (!confirm(
+        "Thu h\u1ED3i quy\u1EC1n truy c\u1EADp c\u1EE7a: " + (p.email || uid) + "?\n\nUser s\u1EBD chuy\u1EC3n v\u1EC1 tab Ph\xEA duy\u1EC7t \u0111\u1EC3 admin duy\u1EC7t l\u1EA1i."
+      ))
+        return;
       setBusy(true, "\u0110ang thu h\u1ED3i...");
       try {
         if (!await adminAction("revoke_user_approval", { target_user_id: uid })) return;
@@ -3042,6 +3298,7 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
         window.renderUsers?.();
         window.renderApprovals?.();
       } catch (e) {
+        lhWarn("REVOKE_MOVES_USER_TO_APPROVAL_AND_APPROVED_USERS_UI_20260625", e);
       }
     }, 300);
   })();
@@ -3098,7 +3355,11 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       if (elStaff) elStaff.textContent = staffCount;
       const elPending = $("userStatPending");
       if (elPending) elPending.textContent = pendingCount;
-      const arr = approvedProfiles.filter((p) => match(`${p.email || ""} ${p.role || ""} ${p.id || ""} ${p.current_subject || ""} ${p.device_info || ""} ${p.last_activity || ""}`)).sort((a, b) => actMs(b) - actMs(a));
+      const arr = approvedProfiles.filter(
+        (p) => match(
+          `${p.email || ""} ${p.role || ""} ${p.id || ""} ${p.current_subject || ""} ${p.device_info || ""} ${p.last_activity || ""}`
+        )
+      ).sort((a, b) => actMs(b) - actMs(a));
       const headHTML = typeof getUserTableHeadHTML === "function" ? getUserTableHeadHTML() : `<div class="userRow muted tableHead lhUserRowSaaS approvedUsersHead">
           <div class="thCol">NG\u01AF\u1EDCI D\xD9NG</div>
           <div class="thCol thMeta"><span class="thSub">M\xD4N \u0110ANG H\u1ECCC</span><span class="thDev">THI\u1EBET B\u1ECA</span></div>
@@ -3171,7 +3432,8 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
         el.innerHTML = '<p class="muted">Kh\xF4ng c\xF3 t\xE0i kho\u1EA3n n\xE0o \u0111ang ch\u1EDD duy\u1EC7t.</p>';
         return;
       }
-      el.innerHTML = arr.map((p) => `<div class="approvalCard isPending approvalCardFixed">
+      el.innerHTML = arr.map(
+        (p) => `<div class="approvalCard isPending approvalCardFixed">
       <div class="approvalAvatarCell">${avatarButton(p, "approvalAvatar")}</div>
       <div class="approvalCardInfo">
         <div class="mail">${esc(p.email || p.id)}</div>
@@ -3179,13 +3441,15 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
         <div class="uid">${esc(p.id)}</div>
       </div>
       <div class="approvalCardActions">${isAdmin() ? `<button class="act ok" onclick="approveUser('${esc(p.id)}')">Ph\xEA duy\u1EC7t</button><button class="act bad" onclick="rejectUser('${esc(p.id)}')">T\u1EEB ch\u1ED1i & x\xF3a</button>` : '<span class="muted">Ch\u1EC9 admin</span>'}</div>
-    </div>`).join("");
+    </div>`
+      ).join("");
     };
     setTimeout(() => {
       try {
         renderUsers();
         renderApprovals();
       } catch (e) {
+        lhWarn("FINAL_APPROVAL_UI_AND_REMOVE_USER_NOTE_20260625", e);
       }
     }, 250);
   })();
@@ -3208,8 +3472,10 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
     }
     function ensureFinalRender() {
       try {
-        if (document.getElementById("users")?.classList.contains("active") && typeof renderUsers === "function") renderUsers();
-        if (document.getElementById("approvals")?.classList.contains("active") && typeof renderApprovals === "function") renderApprovals();
+        if (document.getElementById("users")?.classList.contains("active") && typeof renderUsers === "function")
+          renderUsers();
+        if (document.getElementById("approvals")?.classList.contains("active") && typeof renderApprovals === "function")
+          renderApprovals();
       } catch (e) {
         console.warn("[admin cleanup render]", e);
       }
@@ -3240,15 +3506,27 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       return im.src || im.url || im.secure_url || im.publicUrl || im.public_url || im.path || "";
     }
     async function uploadCloudinary(file) {
-      if (!CLOUDINARY_UPLOAD_PRESET || CLOUDINARY_UPLOAD_PRESET === "YOUR_UNSIGNED_UPLOAD_PRESET") throw new Error("Ch\u01B0a c\xF3 unsigned upload preset Cloudinary.");
+      if (!CLOUDINARY_UPLOAD_PRESET || CLOUDINARY_UPLOAD_PRESET === "YOUR_UNSIGNED_UPLOAD_PRESET")
+        throw new Error("Ch\u01B0a c\xF3 unsigned upload preset Cloudinary.");
       const fd = new FormData();
       fd.append("file", file);
       fd.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
       fd.append("folder", "learninghub/questions");
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, { method: "POST", body: fd });
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+        method: "POST",
+        body: fd
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error?.message || "Upload Cloudinary th\u1EA5t b\u1EA1i");
-      return { id: data.public_id, public_id: data.public_id, src: data.secure_url, url: data.secure_url, width: data.width, height: data.height, source: "cloudinary" };
+      return {
+        id: data.public_id,
+        public_id: data.public_id,
+        src: data.secure_url,
+        url: data.secure_url,
+        width: data.width,
+        height: data.height,
+        source: "cloudinary"
+      };
     }
     let directEditDraftImages = [];
     function renderDirectEditImages() {
@@ -3258,7 +3536,9 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
         box.innerHTML = '<div class="dqNoImage">Ch\u01B0a c\xF3 h\xECnh.</div>';
         return;
       }
-      box.innerHTML = directEditDraftImages.map((im, i) => `<div class="dqEditImg"><button type="button" onclick="removeDirectEditImage(${i})">\xD7</button><img src="${escAttr(imgSrc(im))}" alt="\u1EA2nh c\xE2u h\u1ECFi"></div>`).join("");
+      box.innerHTML = directEditDraftImages.map(
+        (im, i) => `<div class="dqEditImg"><button type="button" onclick="removeDirectEditImage(${i})">\xD7</button><img src="${escAttr(imgSrc(im))}" alt="\u1EA2nh c\xE2u h\u1ECFi"></div>`
+      ).join("");
     }
     window.removeDirectEditImage = function(i) {
       directEditDraftImages.splice(i, 1);
@@ -3277,7 +3557,9 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       const q = await getFullQuestion(id);
       if (!q) return;
       directEditDraftImages = Array.isArray(q.images) ? JSON.parse(JSON.stringify(q.images)) : q.images ? [q.images] : [];
-      openModal(`S\u1EEDa tr\u1EF1c ti\u1EBFp c\xE2u ${q.num || q.id}`, `
+      openModal(
+        `S\u1EEDa tr\u1EF1c ti\u1EBFp c\xE2u ${q.num || q.id}`,
+        `
       <div class="directEditAppStyle directEditPolished">
         <div class="directTopBar"><div class="directHint">\u1EA2nh m\u1EDBi s\u1EBD upload l\xEAn Cloudinary.</div><div class="directTopActions actions"><button class="act ok directSaveBtn" onclick="saveQuestionDirect(${q.id})">L\u01B0u tr\u1EF1c ti\u1EBFp</button><button class="act directCloseBtn" onclick="closeModal()">\u0110\xF3ng</button></div></div>
         <div class="directEditGrid compactDirectGrid">
@@ -3288,26 +3570,28 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
           </section>
           <section class="directRight directPanel">${["A", "B", "C", "D", "E"].map((k) => `<div class="field directOptionField"><label>\u0110\xE1p \xE1n ${k}</label><textarea data-dq-opt="${k}">${esc(optVal(q, k))}</textarea></div>`).join("")}</section>
         </div>
-      </div>`);
+      </div>`
+      );
       setTimeout(() => {
         renderDirectEditImages();
         const inp = $("dqImgUpload");
-        if (inp) inp.onchange = async (e) => {
-          const files = Array.from(e.target.files || []);
-          if (!files.length) return;
-          inp.disabled = true;
-          toast("\u0110ang upload \u1EA3nh l\xEAn Cloudinary...");
-          try {
-            for (const file of files) directEditDraftImages.push(await uploadCloudinary(file));
-            renderDirectEditImages();
-            toast("\u0110\xE3 upload \u1EA3nh");
-          } catch (err2) {
-            alert(err2.message || err2);
-          } finally {
-            inp.disabled = false;
-            e.target.value = "";
-          }
-        };
+        if (inp)
+          inp.onchange = async (e) => {
+            const files = Array.from(e.target.files || []);
+            if (!files.length) return;
+            inp.disabled = true;
+            toast("\u0110ang upload \u1EA3nh l\xEAn Cloudinary...");
+            try {
+              for (const file of files) directEditDraftImages.push(await uploadCloudinary(file));
+              renderDirectEditImages();
+              toast("\u0110\xE3 upload \u1EA3nh");
+            } catch (err2) {
+              alert(err2.message || err2);
+            } finally {
+              inp.disabled = false;
+              e.target.value = "";
+            }
+          };
       }, 0);
     };
     window.saveQuestionDirect = async function(id) {
@@ -3326,7 +3610,8 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       if (!answer) return alert("\u0110\xE1p \xE1n \u0111\xFAng kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
       let list = Array.isArray(directEditDraftImages) ? directEditDraftImages : [];
       list = list.map((im) => {
-        if (typeof im === "string") return { src: im, url: im, secure_url: im, source: im.includes("cloudinary.com") ? "cloudinary" : "url" };
+        if (typeof im === "string")
+          return { src: im, url: im, secure_url: im, source: im.includes("cloudinary.com") ? "cloudinary" : "url" };
         const src = im.src || im.url || im.secure_url || im.publicUrl || im.public_url || "";
         return { ...im, src, url: im.url || src, secure_url: im.secure_url || src };
       }).filter((im) => im && im.src && !String(im.src).startsWith("data:image/"));
@@ -3349,7 +3634,16 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       };
       setBusy(true, "\u0110ang l\u01B0u...");
       try {
-        const res = await fetch("/api/admin-action", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ user_id: user.id, action: "save_question_direct", payload: { question_id: id, new_data: payload, old_data: oldQ } }) });
+        const res = await fetch("/api/admin-action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({
+            user_id: user.id,
+            action: "save_question_direct",
+            payload: { question_id: id, new_data: payload, old_data: oldQ }
+          })
+        });
         const out = await res.json().catch(() => ({}));
         if (!res.ok || out.error) return alert(out.error || "Kh\xF4ng l\u01B0u \u0111\u01B0\u1EE3c v\xE0o Turso");
         if (typeof window.clearLearningHubQuestionCache === "function") window.clearLearningHubQuestionCache();
@@ -3366,7 +3660,13 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
   })();
   (function() {
     const QUESTION_COLS = "id,num,subject_code,question,options,answer,images,is_active,updated_at,created_at,has_image,error_risk,error_risk_reason";
-    const STATE = window.__ADMIN_PAGE_STATE__ = window.__ADMIN_PAGE_STATE__ || { page: 1, size: 50, total: 0, subject: localStorage.getItem("admin_question_subject_filter_v1") || "all", subjects: [] };
+    const STATE = window.__ADMIN_PAGE_STATE__ = window.__ADMIN_PAGE_STATE__ || {
+      page: 1,
+      size: 50,
+      total: 0,
+      subject: localStorage.getItem("admin_question_subject_filter_v1") || "all",
+      subjects: []
+    };
     function search() {
       return String($("search")?.value || "").trim();
     }
@@ -3379,7 +3679,9 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       }
     }
     async function loadSubjects() {
-      const subjects = await safeQ(client.from("subjects").select("code,is_active").order("sort_order", { ascending: true }).order("code", { ascending: true }));
+      const subjects = await safeQ(
+        client.from("subjects").select("code,is_active").order("sort_order", { ascending: true }).order("code", { ascending: true })
+      );
       let set = new Set(subjects.filter((s) => s && s.code && s.is_active !== false).map((s) => s.code));
       if (!set.size) {
         const rows = await safeQ(client.from("questions").select("subject_code").limit(1e4));
@@ -3438,7 +3740,9 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       const max = Math.max(1, Math.ceil((STATE.total || 0) / STATE.size));
       const tabs = `<div class="questionSubjectTabs"><button class="subjectTab ${STATE.subject === "all" ? "active" : ""}" onclick="setQuestionSubjectFilter('all')">T\u1EA5t c\u1EA3</button>${STATE.subjects.map((s) => `<button class="subjectTab ${STATE.subject === s ? "active" : ""}" onclick="setQuestionSubjectFilter('${esc(s)}')">${esc(s)}</button>`).join("")}</div>`;
       const pager = `<div class="questionPager actions"><button class="act" onclick="adminQuestionPage(-1)" ${STATE.page <= 1 ? "disabled" : ""}>\u2039 Trang tr\u01B0\u1EDBc</button><b>Trang ${STATE.page}/${max}</b><button class="act" onclick="adminQuestionPage(1)" ${STATE.page >= max ? "disabled" : ""}>Trang sau \u203A</button></div>`;
-      const html = rows.map((q) => `<div class="item questionAdminItem"><div class="head"><div><div class="questionSubjectCode">${esc(q.subject_code || "HOD102")}</div><b>C\xE2u ${esc(q.num || q.id)}</b></div>${q.is_active === false ? badge("hidden") : badge("active")}</div><p>${esc(q.question || "")}</p><p class="muted">\u0110\xE1p \xE1n: ${esc(q.answer || "")}</p><div class="actions"><button class="act" onclick="viewQuestion(${q.id})">Xem</button><button class="act warn" onclick="editQuestionDirect(${q.id})">S\u1EEDa tr\u1EF1c ti\u1EBFp</button><button class="act warn" onclick="toggleQuestion(${q.id},${q.is_active === false})">${q.is_active === false ? "Hi\u1EC7n" : "\u1EA8n"}</button>${isAdmin() ? `<button class="act bad" onclick="deleteQuestionAdmin(${q.id})">X\xF3a</button>` : ""}</div></div>`).join("") || "<p class=muted>Kh\xF4ng c\xF3 c\xE2u h\u1ECFi.</p>";
+      const html = rows.map(
+        (q) => `<div class="item questionAdminItem"><div class="head"><div><div class="questionSubjectCode">${esc(q.subject_code || "HOD102")}</div><b>C\xE2u ${esc(q.num || q.id)}</b></div>${q.is_active === false ? badge("hidden") : badge("active")}</div><p>${esc(q.question || "")}</p><p class="muted">\u0110\xE1p \xE1n: ${esc(q.answer || "")}</p><div class="actions"><button class="act" onclick="viewQuestion(${q.id})">Xem</button><button class="act warn" onclick="editQuestionDirect(${q.id})">S\u1EEDa tr\u1EF1c ti\u1EBFp</button><button class="act warn" onclick="toggleQuestion(${q.id},${q.is_active === false})">${q.is_active === false ? "Hi\u1EC7n" : "\u1EA8n"}</button>${isAdmin() ? `<button class="act bad" onclick="deleteQuestionAdmin(${q.id})">X\xF3a</button>` : ""}</div></div>`
+      ).join("") || "<p class=muted>Kh\xF4ng c\xF3 c\xE2u h\u1ECFi.</p>";
       $("questionList").innerHTML = `<div class="questionToolbar"><div>${tabs}</div><button class="act ok addQuestionBtn" onclick="openAddQuestionAdmin()">+ Th\xEAm c\xE2u h\u1ECFi</button></div><div class="questionResultNote">\u0110ang hi\u1EC3n th\u1ECB ${rows.length}/${STATE.total} c\xE2u. Kh\xF4ng t\u1EA3i \u1EA3nh \u1EDF danh s\xE1ch.</div>` + pager + html + pager;
     };
     window.viewQuestion = async function(id) {
@@ -3452,13 +3756,17 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
     if (inp && !inp.__adminFinalSearch) {
       inp.__adminFinalSearch = true;
       let t;
-      inp.addEventListener("input", () => {
-        clearTimeout(t);
-        t = setTimeout(() => {
-          STATE.page = 1;
-          loadQuestionPage().then(render);
-        }, 350);
-      }, { passive: true });
+      inp.addEventListener(
+        "input",
+        () => {
+          clearTimeout(t);
+          t = setTimeout(() => {
+            STATE.page = 1;
+            loadQuestionPage().then(render);
+          }, 350);
+        },
+        { passive: true }
+      );
     }
   })();
   (function() {
@@ -3472,13 +3780,16 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
         const r0 = await window.__fetchAdminDashboardJSON();
         const dash = r0.dash || {};
         if (!r0.ok || dash.error) throw new Error(dash.error || "HTTP " + r0.status);
-        subjectReqCache = (dash.subject_requests || []).map((s) => ({ ...s, questions_data: (typeof s.questions_data === "string" ? (() => {
-          try {
-            return JSON.parse(s.questions_data);
-          } catch (e) {
-            return [];
-          }
-        })() : s.questions_data) || [] }));
+        subjectReqCache = (dash.subject_requests || []).map((s) => ({
+          ...s,
+          questions_data: (typeof s.questions_data === "string" ? (() => {
+            try {
+              return JSON.parse(s.questions_data);
+            } catch (e) {
+              return [];
+            }
+          })() : s.questions_data) || []
+        }));
         cache.subject_requests = subjectReqCache;
       } catch (e) {
         if (el) el.innerHTML = `<p class="muted">Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c subject_requests: ${esc(e.message || e)}</p>`;
@@ -3537,8 +3848,13 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       const r = subjectReqCache.find((x) => String(x.id) === String(id));
       if (!r) return;
       const qs = Array.isArray(r.questions_data) ? r.questions_data : [];
-      const html = qs.slice(0, 50).map((q, i) => `<div class="item"><b>C\xE2u ${esc(q.num || i + 1)}</b>: ${esc(String(q.question || "").slice(0, 220))}<br><span class="muted">\u0110\xE1p \xE1n: ${esc(q.answer || "?")}</span></div>`).join("") || '<p class="muted">Kh\xF4ng c\xF3 c\xE2u h\u1ECFi \u0111\xEDnh k\xE8m.</p>';
-      openModal(`C\xE2u h\u1ECFi c\u1EE7a y\xEAu c\u1EA7u ${esc(r.code || "")}`, html + (qs.length > 50 ? `<p class="muted">C\xF2n ${qs.length - 50} c\xE2u n\u1EEFa...</p>` : ""));
+      const html = qs.slice(0, 50).map(
+        (q, i) => `<div class="item"><b>C\xE2u ${esc(q.num || i + 1)}</b>: ${esc(String(q.question || "").slice(0, 220))}<br><span class="muted">\u0110\xE1p \xE1n: ${esc(q.answer || "?")}</span></div>`
+      ).join("") || '<p class="muted">Kh\xF4ng c\xF3 c\xE2u h\u1ECFi \u0111\xEDnh k\xE8m.</p>';
+      openModal(
+        `C\xE2u h\u1ECFi c\u1EE7a y\xEAu c\u1EA7u ${esc(r.code || "")}`,
+        html + (qs.length > 50 ? `<p class="muted">C\xF2n ${qs.length - 50} c\xE2u n\u1EEFa...</p>` : "")
+      );
     };
     const oldSetPageFixed = setPage;
     setPage = function(id, n) {
@@ -3553,12 +3869,17 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
     });
   })();
   (function() {
-    const E = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+    const E = (x) => String(x ?? "").replace(
+      /[&<>"']/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+    );
     function getImgUrl(im) {
       if (!im) return "";
       if (typeof im === "string") return im.trim();
       if (typeof im !== "object") return "";
-      return String(im.src || im.url || im.secure_url || im.publicUrl || im.public_url || im.file_url || im.image_url || im.dataUrl || im.data_url || im.path || "").trim();
+      return String(
+        im.src || im.url || im.secure_url || im.publicUrl || im.public_url || im.file_url || im.image_url || im.dataUrl || im.data_url || im.path || ""
+      ).trim();
     }
     function imgs(v) {
       if (!v) return [];
@@ -3613,9 +3934,13 @@ ${E(val)}</pre>`;
       const oldData = Object.assign({}, q || {}, r.old_data || {});
       if (q && !Object.prototype.hasOwnProperty.call(oldData, "images")) oldData.images = q.images || [];
       const newData = Object.assign({}, r.new_data || {});
-      if (!Object.prototype.hasOwnProperty.call(newData, "images") && r.new_data && Object.keys(r.new_data).length) newData.images = [];
+      if (!Object.prototype.hasOwnProperty.call(newData, "images") && r.new_data && Object.keys(r.new_data).length)
+        newData.images = [];
       const subject = typeof subjectLabel === "function" ? subjectLabel(r) : r.subject_code || oldData.subject_code || newData.subject_code || "Ch\u01B0a r\xF5 m\xF4n";
-      openModal(`${subject} \xB7 Y\xEAu c\u1EA7u s\u1EEDa c\xE2u ${typeof questionLabel === "function" ? questionLabel(r) : r.question_num || r.id}`, compareHTML(oldData, newData));
+      openModal(
+        `${subject} \xB7 Y\xEAu c\u1EA7u s\u1EEDa c\xE2u ${typeof questionLabel === "function" ? questionLabel(r) : r.question_num || r.id}`,
+        compareHTML(oldData, newData)
+      );
     };
   })();
   (function() {
@@ -3712,7 +4037,10 @@ ${E(val)}</pre>`;
       const r = await findSubjectRequestForDelete(id);
       if (!r) return alert("Kh\xF4ng t\xECm th\u1EA5y y\xEAu c\u1EA7u trong database. B\u1EA5m T\u1EA3i l\u1EA1i r\u1ED3i th\u1EED l\u1EA1i.");
       const label = (r.code || "?") + " - " + (r.name || "");
-      if (!confirm("X\xF3a y\xEAu c\u1EA7u th\xEAm m\xF4n b\u1ECB l\u1ED7i n\xE0y?\n\n" + label + "\n\nN\u1EBFu database kh\xF4ng cho x\xF3a h\u1EB3n, h\u1EC7 th\u1ED1ng s\u1EBD \u1EA9n y\xEAu c\u1EA7u n\xE0y kh\u1ECFi danh s\xE1ch ch\u1EDD duy\u1EC7t.")) return;
+      if (!confirm(
+        "X\xF3a y\xEAu c\u1EA7u th\xEAm m\xF4n b\u1ECB l\u1ED7i n\xE0y?\n\n" + label + "\n\nN\u1EBFu database kh\xF4ng cho x\xF3a h\u1EB3n, h\u1EC7 th\u1ED1ng s\u1EBD \u1EA9n y\xEAu c\u1EA7u n\xE0y kh\u1ECFi danh s\xE1ch ch\u1EDD duy\u1EC7t."
+      ))
+        return;
       setBusy(true, "\u0110ang x\xF3a y\xEAu c\u1EA7u l\u1ED7i...");
       try {
         if (!await adminAction("reject_subject_request", { request_id: id, admin_note: "\u0110\xE3 \u1EA9n y\xEAu c\u1EA7u l\u1ED7i" })) return;
@@ -3746,6 +4074,7 @@ ${E(val)}</pre>`;
         const dot = chip.querySelector(".autoDot");
         if (dot) dot.style.background = "var(--gold2)";
       } catch (e) {
+        lhWarn("COPILOT_DISABLE_ALL_ADMIN_REALTIME_FINAL_20260629", e);
       }
     }
     function removeAdminRealtimeChannels() {
@@ -3757,10 +4086,12 @@ ${E(val)}</pre>`;
             try {
               client.removeChannel(ch);
             } catch (e) {
+              lhWarn("COPILOT_DISABLE_ALL_ADMIN_REALTIME_FINAL_20260629", e);
             }
           }
         });
       } catch (e) {
+        lhWarn("COPILOT_DISABLE_ALL_ADMIN_REALTIME_FINAL_20260629", e);
       }
     }
     window.startAdminRealtime = function() {
@@ -3819,6 +4150,7 @@ ${E(val)}</pre>`;
       try {
         sessionStorage.setItem("admin_mobile_lite_opened", "1");
       } catch (e) {
+        lhWarn("MOBILE_APPROVAL_LITE_ADMIN_20260629", e);
       }
       if (typeof setPage === "function") setPage("approvals", "Ph\xEA duy\u1EC7t");
       else target.click();
@@ -3965,9 +4297,13 @@ ${E(val)}</pre>`;
     }
     function filteredSubjects() {
       const q = String(document.getElementById("search")?.value || "").trim().toLowerCase();
-      const arr = dragSubjectCache.filter(isActiveSubjectRow).slice().sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) || String(a.code || "").localeCompare(String(b.code || "")));
+      const arr = dragSubjectCache.filter(isActiveSubjectRow).slice().sort(
+        (a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) || String(a.code || "").localeCompare(String(b.code || ""))
+      );
       if (!q) return arr;
-      return arr.filter((s) => `${s.code || ""} ${s.name || ""} ${s.description || ""} ${getSubjectQuestionCount(s)} c\xE2u`.toLowerCase().includes(q));
+      return arr.filter(
+        (s) => `${s.code || ""} ${s.name || ""} ${s.description || ""} ${getSubjectQuestionCount(s)} c\xE2u`.toLowerCase().includes(q)
+      );
     }
     async function saveSubjectOrder() {
       if (!isAdmin()) return toast("Ch\u1EC9 admin \u0111\u01B0\u1EE3c \u0111\u1ED5i th\u1EE9 t\u1EF1 m\xF4n.");
@@ -4005,7 +4341,8 @@ ${E(val)}</pre>`;
         return;
       }
       const totalQuestions = arr.reduce((sum, s) => sum + getSubjectQuestionCount(s), 0);
-      list.innerHTML = `<p class="subjectOrderHint">T\u1ED5ng: <b>${arr.length}</b> m\xF4n \xB7 <b>${totalQuestions}</b> c\xE2u. K\xE9o d\u1EA5u \u2630 \u0111\u1EC3 \u0111\u1ED5i v\u1ECB tr\xED.</p>` + arr.map((s, idx) => `
+      list.innerHTML = `<p class="subjectOrderHint">T\u1ED5ng: <b>${arr.length}</b> m\xF4n \xB7 <b>${totalQuestions}</b> c\xE2u. K\xE9o d\u1EA5u \u2630 \u0111\u1EC3 \u0111\u1ED5i v\u1ECB tr\xED.</p>` + arr.map(
+        (s, idx) => `
       <div class="subjectAdminItem" draggable="true" data-subject-key="${esc(subjectKey(s))}" data-visible-index="${idx}">
         <div class="subjectDragHandle" title="K\xE9o \u0111\u1EC3 \u0111\u1ED5i v\u1ECB tr\xED">\u2630</div>
         <div class="subjectAdminCode">${esc(s.code || "")}</div>
@@ -4018,7 +4355,8 @@ ${E(val)}</pre>`;
           <button class="act warn" type="button" onclick="openEditSubjectAdmin('${escJs(s.code)}')">S\u1EEDa</button>
           ${isAdmin() ? `<button class="act bad" type="button" onclick="deleteSubjectAdmin('${escJs(s.code)}')">X\xF3a</button>` : ""}
         </div>
-      </div>`).join("");
+      </div>`
+      ).join("");
       bindSubjectDragEvents();
     };
     function bindSubjectDragEvents() {
@@ -4112,7 +4450,9 @@ ${E(val)}</pre>`;
         return alert("Kh\xF4ng t\xECm th\u1EA5y m\xF4n h\u1ECDc.");
       }
       currentSubjectForNewBadge = s;
-      openModal("S\u1EEDa m\xF4n h\u1ECDc", `
+      openModal(
+        "S\u1EEDa m\xF4n h\u1ECDc",
+        `
       <div class="editSubjectForm">
         <div class="editSubjectNotice">
           N\u1EBFu \u0111\u1ED5i <b>m\xE3 m\xF4n</b>, h\u1EC7 th\u1ED1ng c\u0169ng s\u1EBD chuy\u1EC3n to\xE0n b\u1ED9 c\xE2u h\u1ECFi c\u1EE7a m\xF4n c\u0169 sang m\xE3 m\xF4n m\u1EDBi.
@@ -4144,7 +4484,8 @@ ${E(val)}</pre>`;
           <button class="act ok" type="button" onclick="saveSubjectAdmin()">L\u01B0u thay \u0111\u1ED5i</button>
           <button class="act" type="button" onclick="closeModal()">\u0110\xF3ng</button>
         </div>
-      </div>`);
+      </div>`
+      );
       setTimeout(() => {
         const input = document.getElementById("editSubjectCode");
         if (input) {
@@ -4159,7 +4500,8 @@ ${E(val)}</pre>`;
       if (!isEditor()) return alert("Admin ho\u1EB7c Editor m\u1EDBi \u0111\u01B0\u1EE3c s\u1EEDa m\xF4n h\u1ECDc.");
       const oldCode = (document.getElementById("editSubjectOldCode")?.value || "").trim().toUpperCase();
       const newCode = (document.getElementById("editSubjectCode")?.value || "").trim().toUpperCase();
-      if (newCode !== oldCode && typeof oldSaveSubjectAdmin === "function") return oldSaveSubjectAdmin.apply(this, arguments);
+      if (newCode !== oldCode && typeof oldSaveSubjectAdmin === "function")
+        return oldSaveSubjectAdmin.apply(this, arguments);
       const subject = currentSubjectForNewBadge || {};
       const name = (document.getElementById("editSubjectName")?.value || "").trim();
       const description = (document.getElementById("editSubjectDesc")?.value || "").trim();
@@ -4280,7 +4622,9 @@ ${E(val)}</pre>`;
     };
     window.toggleSubjectNewBadgeFromCard = async function(code) {
       if (!isEditor()) return alert("Admin ho\u1EB7c Editor m\u1EDBi \u0111\u01B0\u1EE3c s\u1EEDa m\xF4n h\u1ECDc.");
-      const btn = Array.from(document.querySelectorAll(".subjectNewToggle")).find((b) => (b.getAttribute("onclick") || "").includes("'" + code + "'"));
+      const btn = Array.from(document.querySelectorAll(".subjectNewToggle")).find(
+        (b) => (b.getAttribute("onclick") || "").includes("'" + code + "'")
+      );
       if (btn) btn.classList.add("isBusy");
       try {
         let subject = cardSubjectCache.find((s) => String(s.code) === String(code)) || (cache.subjects || []).find((s) => String(s.code) === String(code));
@@ -4288,7 +4632,9 @@ ${E(val)}</pre>`;
         const next = !hasNewBadge(subject);
         if (!await adminAction("set_subject_new_badge", { id: subject.id, enabled: next })) return;
         subject.cover = makeCover(subject.cover || "", next);
-        cardSubjectCache = cardSubjectCache.map((s) => String(s.code) === String(code) ? { ...s, cover: subject.cover } : s);
+        cardSubjectCache = cardSubjectCache.map(
+          (s) => String(s.code) === String(code) ? { ...s, cover: subject.cover } : s
+        );
         toast(next ? "\u0110\xE3 b\u1EADt NEW" : "\u0110\xE3 t\u1EAFt NEW");
         await window.loadSubjectsAdmin?.();
       } finally {
@@ -4312,7 +4658,14 @@ ${E(val)}</pre>`;
       try {
         let subject = cardSubjectCache.find((s) => String(s.code) === String(code)) || (cache.subjects || []).find((s) => String(s.code) === String(code));
         if (!subject) return alert("Kh\xF4ng t\xECm th\u1EA5y m\xF4n h\u1ECDc.");
-        if (!await adminAction("edit_subject", { id: subject.id, name, description: description || "", cover: subject.cover || "", sort_order: subject.sort_order || 0 })) return;
+        if (!await adminAction("edit_subject", {
+          id: subject.id,
+          name,
+          description: description || "",
+          cover: subject.cover || "",
+          sort_order: subject.sort_order || 0
+        }))
+          return;
         closeModal();
         await window.loadSubjectsAdmin?.();
         toast("\u0110\xE3 l\u01B0u m\xF4n h\u1ECDc");
@@ -4320,9 +4673,12 @@ ${E(val)}</pre>`;
         setBusy(false);
       }
     };
-    document.addEventListener("DOMContentLoaded", () => setTimeout(() => {
-      if (document.getElementById("subjectsAdmin")?.classList.contains("active")) refreshCardNewButtons();
-    }, 900));
+    document.addEventListener(
+      "DOMContentLoaded",
+      () => setTimeout(() => {
+        if (document.getElementById("subjectsAdmin")?.classList.contains("active")) refreshCardNewButtons();
+      }, 900)
+    );
   })();
   (function() {
     if (window.__COPILOT_ADMIN_RELOAD_FIX_20260630) return;
@@ -4331,12 +4687,14 @@ ${E(val)}</pre>`;
       try {
         if (client && typeof client.clearCache === "function") client.clearCache();
       } catch (e) {
+        lhWarn("COPILOT_ADMIN_RELOAD_FIX_20260630", e);
       }
       try {
         Object.keys(sessionStorage).forEach((k) => {
           if (k.startsWith("admin_f5_micro_cache:") || k.startsWith("lh_f5_cache:")) sessionStorage.removeItem(k);
         });
       } catch (e) {
+        lhWarn("COPILOT_ADMIN_RELOAD_FIX_20260630", e);
       }
     }
     function showLoadingNumbers() {
@@ -4372,14 +4730,35 @@ ${E(val)}</pre>`;
           approved: p.approved === 1 || p.approved === true || p.approved === "1",
           blocked: p.blocked === 1 || p.blocked === true || p.blocked === "1"
         }));
-        cache.questions = (dash.questions || []).map((q) => ({ ...q, options: pj(q.options, {}), images: pj(q.images, []) }));
-        cache.requests = (dash.requests || []).map((r) => ({ ...r, old_data: pj(r.old_data, {}), new_data: pj(r.new_data, {}) }));
-        cache.history = (dash.history || []).map((h) => ({ ...h, previous_data: pj(h.previous_data, {}), new_data: pj(h.new_data, {}) }));
+        cache.questions = (dash.questions || []).map((q) => ({
+          ...q,
+          options: pj(q.options, {}),
+          images: pj(q.images, [])
+        }));
+        cache.requests = (dash.requests || []).map((r) => ({
+          ...r,
+          old_data: pj(r.old_data, {}),
+          new_data: pj(r.new_data, {})
+        }));
+        cache.history = (dash.history || []).map((h) => ({
+          ...h,
+          previous_data: pj(h.previous_data, {}),
+          new_data: pj(h.new_data, {})
+        }));
         cache.logs = isAdmin() ? (dash.logs || []).map((l) => ({ ...l, details: pj(l.details, {}) })) : [];
         cache.subjects = dash.subjects || [];
-        cache.subject_requests = (dash.subject_requests || []).map((s) => ({ ...s, questions_data: pj(s.questions_data, []) }));
-        cache.deleted_questions = (dash.deleted_questions || []).map((d) => ({ ...d, original_data: pj(d.original_data, {}) }));
-        cache.deleted_subjects = (dash.deleted_subjects || []).map((d) => ({ ...d, original_data: pj(d.original_data, {}) }));
+        cache.subject_requests = (dash.subject_requests || []).map((s) => ({
+          ...s,
+          questions_data: pj(s.questions_data, [])
+        }));
+        cache.deleted_questions = (dash.deleted_questions || []).map((d) => ({
+          ...d,
+          original_data: pj(d.original_data, {})
+        }));
+        cache.deleted_subjects = (dash.deleted_subjects || []).map((d) => ({
+          ...d,
+          original_data: pj(d.original_data, {})
+        }));
         if (typeof window.__adminSyncQuestionPage === "function") await window.__adminSyncQuestionPage();
         render();
         window.__adminDashRenderedText = r0.text || "";
@@ -4403,7 +4782,8 @@ ${E(val)}</pre>`;
         const page = sessionStorage.getItem("admin_current_page") || "overview";
         if (page === "subjectsAdmin" && typeof window.loadSubjectsAdmin === "function") await window.loadSubjectsAdmin();
         if (page === "trash" && typeof window.loadTrash === "function") await window.loadTrash();
-        if (page === "subjectRequests" && typeof window.loadSubjectRequests === "function") await window.loadSubjectRequests();
+        if (page === "subjectRequests" && typeof window.loadSubjectRequests === "function")
+          await window.loadSubjectRequests();
         if (page === "approvals" && typeof window.renderApprovals === "function") window.renderApprovals();
       };
     }
@@ -4435,6 +4815,7 @@ ${E(val)}</pre>`;
           setPage("overview", "T\u1ED5ng quan");
         }
       } catch (e) {
+        lhWarn("COPILOT_HIDE_USERS_FROM_EDITOR_20260630", e);
       }
     }
     const oldSetPageHideUsers = window.setPage || setPage;
@@ -4796,7 +5177,8 @@ ${E(val)}</pre>`;
           toast("\u0110\xE3 x\xF3a v\u0129nh vi\u1EC5n m\xF4n");
           return;
         }
-        if (typeof oldPermanentDeleteSubject === "function") return await oldPermanentDeleteSubject.apply(this, arguments);
+        if (typeof oldPermanentDeleteSubject === "function")
+          return await oldPermanentDeleteSubject.apply(this, arguments);
       } catch (e) {
         alert("L\u1ED7i x\xF3a m\xF4n: " + (e?.message || e));
       } finally {
@@ -4878,7 +5260,9 @@ ${E(val)}</pre>`;
         if (deny) btn.tabIndex = -1;
         else btn.removeAttribute("tabindex");
       });
-      document.querySelectorAll('[data-page="approvals"], [data-page="users"], [data-page="logs"], [data-page="trash"], #exportBtn').forEach((el) => {
+      document.querySelectorAll(
+        '[data-page="approvals"], [data-page="users"], [data-page="logs"], [data-page="trash"], #exportBtn'
+      ).forEach((el) => {
         const deny = !isAdmin();
         el.classList.toggle("accessHidden", deny);
         el.setAttribute("aria-hidden", deny ? "true" : "false");
@@ -4895,23 +5279,28 @@ ${E(val)}</pre>`;
           sessionStorage.setItem("admin_current_page", "overview");
           sessionStorage.setItem("admin_current_page_name", "T\u1ED5ng quan");
         } catch (e) {
+          lhWarn("COPILOT_EDITOR_ACCESS_HIDE_20260630", e);
         }
         if (typeof setPage === "function") setPage("overview", "T\u1ED5ng quan");
       }
     }
-    document.addEventListener("click", function(e) {
-      const nav = e.target.closest?.(".nav[data-page]");
-      if (!nav) return;
-      const page = nav.dataset.page || "";
-      if (!canOpenPage(page)) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        toast("T\xE0i kho\u1EA3n editor kh\xF4ng c\xF3 quy\u1EC1n v\xE0o m\u1EE5c n\xE0y");
-        hideDeniedMenus();
-        return false;
-      }
-    }, true);
+    document.addEventListener(
+      "click",
+      function(e) {
+        const nav = e.target.closest?.(".nav[data-page]");
+        if (!nav) return;
+        const page = nav.dataset.page || "";
+        if (!canOpenPage(page)) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          toast("T\xE0i kho\u1EA3n editor kh\xF4ng c\xF3 quy\u1EC1n v\xE0o m\u1EE5c n\xE0y");
+          hideDeniedMenus();
+          return false;
+        }
+      },
+      true
+    );
     const oldSetPage = typeof setPage === "function" ? setPage : null;
     if (oldSetPage && !oldSetPage.__editorAccessGuarded) {
       const guardedSetPage = function(id, name) {
@@ -4972,6 +5361,7 @@ ${E(val)}</pre>`;
           localStorage.setItem(PAGE_NAME_KEY, name);
         }
       } catch (e) {
+        lhWarn("COPILOT_KEEP_ADMIN_TAB_AFTER_RESET_20260630", e);
       }
     }
     function getSavedAdminPage() {
@@ -4996,10 +5386,14 @@ ${E(val)}</pre>`;
       patchedSetPage.__keepTabAfterReset = true;
       setPage = window.setPage = patchedSetPage;
     }
-    document.addEventListener("click", function(e) {
-      const nav = e.target.closest?.(".nav[data-page]");
-      if (nav) saveAdminPage(nav.dataset.page, nav.textContent.trim());
-    }, true);
+    document.addEventListener(
+      "click",
+      function(e) {
+        const nav = e.target.closest?.(".nav[data-page]");
+        if (nav) saveAdminPage(nav.dataset.page, nav.textContent.trim());
+      },
+      true
+    );
     function restoreSavedAdminPage() {
       if (!user || !profile || !profile.role) return;
       const saved = getSavedAdminPage();
@@ -5008,10 +5402,13 @@ ${E(val)}</pre>`;
       const page = document.getElementById(saved.id);
       if (!nav || !page || typeof setPage !== "function") return;
       setPage(saved.id, saved.name || nav.textContent.trim());
-      if (saved.id === "approvals" && typeof window.loadRegistrationMode === "function") setTimeout(window.loadRegistrationMode, 50);
-      if (saved.id === "subjectsAdmin" && typeof window.loadSubjectsAdmin === "function") setTimeout(window.loadSubjectsAdmin, 50);
+      if (saved.id === "approvals" && typeof window.loadRegistrationMode === "function")
+        setTimeout(window.loadRegistrationMode, 50);
+      if (saved.id === "subjectsAdmin" && typeof window.loadSubjectsAdmin === "function")
+        setTimeout(window.loadSubjectsAdmin, 50);
       if (saved.id === "trash" && typeof window.loadTrash === "function") setTimeout(window.loadTrash, 50);
-      if (saved.id === "subjectRequests" && typeof window.loadSubjectRequests === "function") setTimeout(window.loadSubjectRequests, 50);
+      if (saved.id === "subjectRequests" && typeof window.loadSubjectRequests === "function")
+        setTimeout(window.loadSubjectRequests, 50);
     }
     [600, 1200, 2200, 3500].forEach((ms) => setTimeout(restoreSavedAdminPage, ms));
   })();
@@ -5028,6 +5425,7 @@ ${E(val)}</pre>`;
         const parsed = JSON.parse(v);
         if (typeof parsed === "string") v = parsed;
       } catch (e) {
+        lhWarn("COPILOT_ADMIN_REG_MODE_AND_PAGE_RESTORE_FIX_20260630", e);
       }
       v = String(v || "approval").replace(/^"+|"+$/g, "").trim();
       return ["open", "approval", "closed"].includes(v) ? v : "approval";
@@ -5035,7 +5433,8 @@ ${E(val)}</pre>`;
     function clearSoftCache(kind) {
       try {
         if (typeof client?.clearCache === "function") client.clearCache();
-        if (typeof window.clearLearningHubSupabaseCache === "function") window.clearLearningHubSupabaseCache(kind || "site_settings");
+        if (typeof window.clearLearningHubSupabaseCache === "function")
+          window.clearLearningHubSupabaseCache(kind || "site_settings");
         Object.keys(sessionStorage).forEach(function(k) {
           const s = String(k);
           if (s.includes("site_settings") || s.includes("registration_mode") || s.startsWith("admin_f5_micro_cache:") || s.startsWith("lh_f5_cache:")) {
@@ -5043,6 +5442,7 @@ ${E(val)}</pre>`;
           }
         });
       } catch (e) {
+        lhWarn("COPILOT_ADMIN_REG_MODE_AND_PAGE_RESTORE_FIX_20260630", e);
       }
     }
     function paintRegistrationMode(mode) {
@@ -5052,9 +5452,12 @@ ${E(val)}</pre>`;
       const approvalBtn = document.getElementById("regGateApproval");
       const closedBtn = document.getElementById("regGateClosed");
       if (status) {
-        if (mode === "open") status.innerHTML = '<span style="color:#66bb6a;font-weight:900">M\u1EDE</span> \u2014 Ai \u0111\u0103ng k\xFD c\u0169ng v\xE0o \u0111\u01B0\u1EE3c ngay, kh\xF4ng c\u1EA7n duy\u1EC7t';
-        else if (mode === "closed") status.innerHTML = '<span style="color:#ef5350;font-weight:900">\u0110\xD3NG</span> \u2014 Kh\xF4ng ai \u0111\u0103ng k\xFD m\u1EDBi \u0111\u01B0\u1EE3c';
-        else status.innerHTML = '<span style="color:#ffc107;font-weight:900">C\u1EA6N DUY\u1EC6T</span> \u2014 User m\u1EDBi ph\u1EA3i ch\u1EDD admin ph\xEA duy\u1EC7t';
+        if (mode === "open")
+          status.innerHTML = '<span style="color:#66bb6a;font-weight:900">M\u1EDE</span> \u2014 Ai \u0111\u0103ng k\xFD c\u0169ng v\xE0o \u0111\u01B0\u1EE3c ngay, kh\xF4ng c\u1EA7n duy\u1EC7t';
+        else if (mode === "closed")
+          status.innerHTML = '<span style="color:#ef5350;font-weight:900">\u0110\xD3NG</span> \u2014 Kh\xF4ng ai \u0111\u0103ng k\xFD m\u1EDBi \u0111\u01B0\u1EE3c';
+        else
+          status.innerHTML = '<span style="color:#ffc107;font-weight:900">C\u1EA6N DUY\u1EC6T</span> \u2014 User m\u1EDBi ph\u1EA3i ch\u1EDD admin ph\xEA duy\u1EC7t';
       }
       if (openBtn) openBtn.classList.toggle("active", mode === "open");
       if (approvalBtn) approvalBtn.classList.toggle("active", mode === "approval");
@@ -5067,6 +5470,7 @@ ${E(val)}</pre>`;
         const raw = typeof window.lhToken === "function" ? window.lhToken() : "";
         if (typeof raw === "string" && raw.trim() && !/[\r\n]/.test(raw)) accessToken = raw.trim();
       } catch (e) {
+        lhWarn("COPILOT_ADMIN_REG_MODE_AND_PAGE_RESTORE_FIX_20260630", e);
       }
       if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
       const response = await fetch("/api/settings", {
@@ -5109,6 +5513,7 @@ ${E(val)}</pre>`;
         try {
           await logAction("set_registration_mode", "site_settings", "registration_mode", { mode });
         } catch (e) {
+          lhWarn("COPILOT_ADMIN_REG_MODE_AND_PAGE_RESTORE_FIX_20260630", e);
         }
         toast("\u0110\xE3 chuy\u1EC3n c\u1ED5ng \u0111\u0103ng k\xFD: " + mode);
       } finally {
@@ -5122,11 +5527,18 @@ ${E(val)}</pre>`;
         try {
           if (id) {
             sessionStorage.setItem(PAGE_KEY, id);
-            sessionStorage.setItem(PAGE_NAME_KEY, name || document.querySelector('.nav[data-page="' + id + '"]')?.textContent?.trim() || id);
+            sessionStorage.setItem(
+              PAGE_NAME_KEY,
+              name || document.querySelector('.nav[data-page="' + id + '"]')?.textContent?.trim() || id
+            );
             localStorage.setItem(PAGE_KEY, id);
-            localStorage.setItem(PAGE_NAME_KEY, name || document.querySelector('.nav[data-page="' + id + '"]')?.textContent?.trim() || id);
+            localStorage.setItem(
+              PAGE_NAME_KEY,
+              name || document.querySelector('.nav[data-page="' + id + '"]')?.textContent?.trim() || id
+            );
           }
         } catch (e) {
+          lhWarn("COPILOT_ADMIN_REG_MODE_AND_PAGE_RESTORE_FIX_20260630", e);
         }
       };
       fixedSetPage.__copilotPageRestoreFix = true;
@@ -5181,7 +5593,12 @@ ${E(val)}</pre>`;
       if (!confirm("Duy\u1EC7t thay \u0111\u1ED5i cho c\xE2u " + questionLabel(r) + "?")) return;
       setBusy(true, "\u0110ang duy\u1EC7t...");
       try {
-        const res = await fetch("/api/admin-action", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ user_id: user.id, action: "approve_request", payload: { request_id: id } }) });
+        const res = await fetch("/api/admin-action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({ user_id: user.id, action: "approve_request", payload: { request_id: id } })
+        });
         const out = await res.json().catch(() => ({}));
         if (!res.ok || out.error) return alert(out.error || "Kh\xF4ng duy\u1EC7t \u0111\u01B0\u1EE3c");
         toast("\u0110\xE3 duy\u1EC7t");
@@ -5233,6 +5650,7 @@ ${E(val)}</pre>`;
             }
           }
         } catch (e) {
+          lhWarn("LH_UNIFIED_SINGLE_FETCH_INTERCEPTOR_20260726", e);
         }
         return "";
       }
@@ -5258,6 +5676,7 @@ ${E(val)}</pre>`;
           }
           if (init2 && init2.method) method = init2.method;
         } catch (e) {
+          lhWarn("LH_UNIFIED_SINGLE_FETCH_INTERCEPTOR_20260726", e);
         }
         var isApi = lhIsApi(urlStr);
         if (isApi) {
@@ -5283,12 +5702,15 @@ ${E(val)}</pre>`;
         }
         var promise = nativeFetch(input, init2);
         if (isApi && String(method).toUpperCase() === "POST" && urlStr.indexOf("/api/admin-action") !== -1) {
-          promise.then(function() {
-            if (typeof window.__invalidateAdminDashboardCache === "function") {
-              window.__invalidateAdminDashboardCache();
+          promise.then(
+            function() {
+              if (typeof window.__invalidateAdminDashboardCache === "function") {
+                window.__invalidateAdminDashboardCache();
+              }
+            },
+            function() {
             }
-          }, function() {
-          });
+          );
         }
         if (isApi && urlStr.indexOf("/api/version.json") === -1) {
           promise.then(function(res) {
@@ -5315,6 +5737,7 @@ ${E(val)}</pre>`;
           if (k.startsWith("admin_f5_micro_cache:") || k.startsWith("lh_f5_cache:")) sessionStorage.removeItem(k);
         });
       } catch (e) {
+        lhWarn("adminCore", e);
       }
     }
     window.clearAdminImageCaches = clearAdminImageCaches;
@@ -5337,10 +5760,12 @@ ${E(val)}</pre>`;
       try {
         loadAll = window.loadAll;
       } catch (e) {
+        lhWarn("adminCore", e);
       }
     }
     function patchRealtime() {
-      if (typeof window.startAdminRealtime !== "function" || window.startAdminRealtime.__imageRealtimeFinalPatched) return;
+      if (typeof window.startAdminRealtime !== "function" || window.startAdminRealtime.__imageRealtimeFinalPatched)
+        return;
       const oldStart = window.startAdminRealtime;
       window.startAdminRealtime = function() {
         clearAdminImageCaches();
@@ -5352,6 +5777,7 @@ ${E(val)}</pre>`;
             ch.__imageKeepPatched = true;
           });
         } catch (e) {
+          lhWarn("adminCore", e);
         }
         return out;
       };
@@ -5359,6 +5785,7 @@ ${E(val)}</pre>`;
       try {
         startAdminRealtime = window.startAdminRealtime;
       } catch (e) {
+        lhWarn("adminCore", e);
       }
     }
     function patchRefreshButton() {
@@ -5371,18 +5798,20 @@ ${E(val)}</pre>`;
     patchLoadAll();
     patchRealtime();
     patchRefreshButton();
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function() {
-      clearAdminImageCaches();
-      patchLoadAll();
-      patchRealtime();
-      patchRefreshButton();
-    });
-    else setTimeout(function() {
-      clearAdminImageCaches();
-      patchLoadAll();
-      patchRealtime();
-      patchRefreshButton();
-    }, 0);
+    if (document.readyState === "loading")
+      document.addEventListener("DOMContentLoaded", function() {
+        clearAdminImageCaches();
+        patchLoadAll();
+        patchRealtime();
+        patchRefreshButton();
+      });
+    else
+      setTimeout(function() {
+        clearAdminImageCaches();
+        patchLoadAll();
+        patchRealtime();
+        patchRefreshButton();
+      }, 0);
     setTimeout(function() {
       patchLoadAll();
       patchRealtime();
@@ -5422,14 +5851,35 @@ ${E(val)}</pre>`;
           approved: p.approved === 1 || p.approved === true || p.approved === "1",
           blocked: p.blocked === 1 || p.blocked === true || p.blocked === "1"
         }));
-        cache.questions = (dash.questions || []).map((q) => ({ ...q, options: pj(q.options, {}), images: pj(q.images, []) }));
-        cache.requests = (dash.requests || []).map((r) => ({ ...r, old_data: pj(r.old_data, {}), new_data: pj(r.new_data, {}) }));
-        cache.history = (dash.history || []).map((h) => ({ ...h, previous_data: pj(h.previous_data, {}), new_data: pj(h.new_data, {}) }));
+        cache.questions = (dash.questions || []).map((q) => ({
+          ...q,
+          options: pj(q.options, {}),
+          images: pj(q.images, [])
+        }));
+        cache.requests = (dash.requests || []).map((r) => ({
+          ...r,
+          old_data: pj(r.old_data, {}),
+          new_data: pj(r.new_data, {})
+        }));
+        cache.history = (dash.history || []).map((h) => ({
+          ...h,
+          previous_data: pj(h.previous_data, {}),
+          new_data: pj(h.new_data, {})
+        }));
         cache.logs = typeof isAdmin === "function" && isAdmin() ? (dash.logs || []).map((l) => ({ ...l, details: pj(l.details, {}) })) : [];
         cache.subjects = dash.subjects || [];
-        cache.subject_requests = (dash.subject_requests || []).map((s) => ({ ...s, questions_data: pj(s.questions_data, []) }));
-        cache.deleted_questions = (dash.deleted_questions || []).map((d) => ({ ...d, original_data: pj(d.original_data, {}) }));
-        cache.deleted_subjects = (dash.deleted_subjects || []).map((d) => ({ ...d, original_data: pj(d.original_data, {}) }));
+        cache.subject_requests = (dash.subject_requests || []).map((s) => ({
+          ...s,
+          questions_data: pj(s.questions_data, [])
+        }));
+        cache.deleted_questions = (dash.deleted_questions || []).map((d) => ({
+          ...d,
+          original_data: pj(d.original_data, {})
+        }));
+        cache.deleted_subjects = (dash.deleted_subjects || []).map((d) => ({
+          ...d,
+          original_data: pj(d.original_data, {})
+        }));
         if (typeof window.__adminSyncQuestionPage === "function") await window.__adminSyncQuestionPage();
         if (typeof render === "function") render();
         if (typeof renderApprovals === "function") renderApprovals();
@@ -5475,7 +5925,8 @@ ${E(val)}</pre>`;
         let devRaw = String(item.device || "Ch\u01B0a r\xF5").trim();
         let icon = "\u{1F4BB}";
         const lw = devRaw.toLowerCase();
-        if (lw.includes("iphone") || lw.includes("ios") || lw.includes("android") || lw.includes("mobile")) icon = "\u{1F4F1}";
+        if (lw.includes("iphone") || lw.includes("ios") || lw.includes("android") || lw.includes("mobile"))
+          icon = "\u{1F4F1}";
         else if (lw.includes("mac") || lw.includes("apple") || lw.includes("safari")) icon = "\u{1F5A5}\uFE0F";
         const cleanDev = devRaw.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\s]+/u, "").trim() || devRaw;
         const tagHTML = idx === 0 ? `<span class="badge approved" style="font-size:.7rem;padding:2px 8px;">\u0110ang s\u1EED d\u1EE5ng</span>` : `<span class="badge" style="font-size:.7rem;opacity:.75;padding:2px 8px;">Tr\u01B0\u1EDBc \u0111\xF3</span>`;
@@ -5494,7 +5945,9 @@ ${E(val)}</pre>`;
         </div>
       </div>`;
       }).join("") : '<p class="muted" style="padding:24px;text-align:center">Ch\u01B0a c\xF3 l\u1ECBch s\u1EED thi\u1EBFt b\u1ECB cho t\xE0i kho\u1EA3n n\xE0y.</p>';
-      openModal("\u{1F4F1} L\u1ECBch s\u1EED thi\u1EBFt b\u1ECB \u0111\u0103ng nh\u1EADp", `<div style="padding:4px 0">
+      openModal(
+        "\u{1F4F1} L\u1ECBch s\u1EED thi\u1EBFt b\u1ECB \u0111\u0103ng nh\u1EADp",
+        `<div style="padding:4px 0">
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.1)">
         <div style="width:46px;height:46px;min-width:46px;border-radius:50%;background:rgba(226,184,107,.15);border:1px solid rgba(226,184,107,.3);display:grid;place-items:center;font-weight:900;color:#f3e3b3;font-size:1.15rem">${esc((email[0] || "U").toUpperCase())}</div>
         <div style="min-width:0">
@@ -5503,7 +5956,8 @@ ${E(val)}</pre>`;
         </div>
       </div>
       <div style="max-height:380px;overflow-y:auto;padding-right:4px">${rowsHTML}</div>
-    </div>`);
+    </div>`
+      );
     };
     window.openUserActionMenuFinal = function(ev, uid) {
       ev?.preventDefault?.();
@@ -5542,16 +5996,22 @@ ${E(val)}</pre>`;
     window.forceLogoutUser = async function(uid) {
       const p = (cache.profiles || []).find((x) => String(x.id) === String(uid));
       const name = p ? p.email || p.full_name || uid : uid;
-      if (!confirm(`\u0110\u0103ng xu\u1EA5t b\u1EAFt bu\u1ED9c \u0111\u1ED1i v\u1EDBi ng\u01B0\u1EDDi d\xF9ng:
+      if (!confirm(
+        `\u0110\u0103ng xu\u1EA5t b\u1EAFt bu\u1ED9c \u0111\u1ED1i v\u1EDBi ng\u01B0\u1EDDi d\xF9ng:
 ${name}
 
-H\u1ECD s\u1EBD b\u1ECB \u0111\u0103ng xu\u1EA5t kh\u1ECFi h\u1EC7 th\u1ED1ng v\xE0 ph\u1EA3i \u0111\u0103ng nh\u1EADp l\u1EA1i \u0111\u1EC3 t\u1EA3i d\u1EEF li\u1EC7u m\u1EDBi.`)) return;
+H\u1ECD s\u1EBD b\u1ECB \u0111\u0103ng xu\u1EA5t kh\u1ECFi h\u1EC7 th\u1ED1ng v\xE0 ph\u1EA3i \u0111\u0103ng nh\u1EADp l\u1EA1i \u0111\u1EC3 t\u1EA3i d\u1EEF li\u1EC7u m\u1EDBi.`
+      ))
+        return;
       if (await adminAction("force_logout_user", { target_user_id: uid })) {
         alert(`\u2705 \u0110\xE3 y\xEAu c\u1EA7u \u0111\u0103ng xu\u1EA5t ng\u01B0\u1EDDi d\xF9ng ${name}.`);
       }
     };
     window.forceLogoutAllUsers = async function() {
-      if (!confirm("\u26A0\uFE0F B\u1EA0N C\xD3 CH\u1EAEC MU\u1ED0N \u0110\u0102NG XU\u1EA4T T\u1EA4T C\u1EA2 NG\u01AF\u1EDCI D\xD9NG?\n\nT\u1EA5t c\u1EA3 ng\u01B0\u1EDDi d\xF9ng (tr\u1EEB Admin) s\u1EBD b\u1ECB bu\u1ED9c \u0111\u0103ng xu\u1EA5t v\xE0 ph\u1EA3i \u0111\u0103ng nh\u1EADp l\u1EA1i \u0111\u1EC3 l\xE0m m\u1EDBi d\u1EEF li\u1EC7u.")) return;
+      if (!confirm(
+        "\u26A0\uFE0F B\u1EA0N C\xD3 CH\u1EAEC MU\u1ED0N \u0110\u0102NG XU\u1EA4T T\u1EA4T C\u1EA2 NG\u01AF\u1EDCI D\xD9NG?\n\nT\u1EA5t c\u1EA3 ng\u01B0\u1EDDi d\xF9ng (tr\u1EEB Admin) s\u1EBD b\u1ECB bu\u1ED9c \u0111\u0103ng xu\u1EA5t v\xE0 ph\u1EA3i \u0111\u0103ng nh\u1EADp l\u1EA1i \u0111\u1EC3 l\xE0m m\u1EDBi d\u1EEF li\u1EC7u."
+      ))
+        return;
       if (await adminAction("force_logout_all", {})) {
         alert("\u2705 \u0110\xE3 y\xEAu c\u1EA7u \u0111\u0103ng xu\u1EA5t T\u1EA4T C\u1EA2 ng\u01B0\u1EDDi d\xF9ng th\xE0nh c\xF4ng.");
       }
@@ -5570,10 +6030,14 @@ H\u1ECD s\u1EBD b\u1ECB \u0111\u0103ng xu\u1EA5t kh\u1ECFi h\u1EC7 th\u1ED1ng v\
         }
       };
     }
-    document.addEventListener("click", (e) => {
-      if (e.target.closest("#lhActionMenuFloat") || e.target.closest(".lhDotsBtn")) return;
-      closeUserActionMenuFinal();
-    }, true);
+    document.addEventListener(
+      "click",
+      (e) => {
+        if (e.target.closest("#lhActionMenuFloat") || e.target.closest(".lhDotsBtn")) return;
+        closeUserActionMenuFinal();
+      },
+      true
+    );
     window.addEventListener("resize", closeUserActionMenuFinal);
     window.addEventListener("scroll", closeUserActionMenuFinal, true);
     document.addEventListener("keydown", (e) => {
