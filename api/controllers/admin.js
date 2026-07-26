@@ -177,7 +177,7 @@ export async function handleAdminAction(req, authUser) {
 
   // OPTIM_TURSO_READS_20260726: Invalidate server cache khi có mutation.
   const _QUESTION_MUTATIONS = new Set(['approve_request', 'save_question_direct', 'add_question', 'delete_question', 'toggle_question', 'permanent_delete_question']);
-  const _SUBJECT_MUTATIONS = new Set(['add_subject', 'delete_subject', 'approve_subject_request', 'toggle_subject_new_badge']);
+  const _SUBJECT_MUTATIONS = new Set(['add_subject', 'delete_subject', 'approve_subject_request', 'toggle_subject_new_badge', 'reorder_subjects', 'move_subject', 'rename_subject_code', 'edit_subject']);
   function _invalidateCaches() {
     if (_QUESTION_MUTATIONS.has(act)) { clearQuestionsCache(); clearSubjectsCache(); clearAdminDashboardCache(); }
     if (_SUBJECT_MUTATIONS.has(act)) { clearSubjectsCache(); clearQuestionsCache(); clearAdminDashboardCache(); }
