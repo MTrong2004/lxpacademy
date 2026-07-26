@@ -1,8 +1,7 @@
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
-
+import { fileURLToPath, pathToFileURL } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const root = path.resolve(__dirname, '..');
@@ -62,9 +61,16 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       const bodyStr = Buffer.concat(bodyBuffer).toString();
       try {
-        const modulePath = `file://${filePath}`;
-        // Load dynamically and bypass cache in case files change during development
-        const { default: handler } = await import(`${modulePath}?v=${Date.now()}`);
+        let code = fs.readFileSync(filePath, 'utf8');
+        const now = Date.now();
+        const apiDir = path.dirname(filePath);
+        // Cache bust all relative sub-module imports in dev mode using absolute file URLs
+        code = code.replace(/from\s+['"](\.\/[^'"]+|\.\.\/[^'"]+)['"]/g, (m, p) => {
+          const absPath = path.resolve(apiDir, p);
+          return `from '${pathToFileURL(absPath).href}?v=${now}'`;
+        });
+        const dataUri = `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
+        const { default: handler } = await import(dataUri);
 
         const headers = new Headers();
         Object.entries(req.headers).forEach(([k, v]) => {

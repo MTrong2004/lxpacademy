@@ -12,6 +12,7 @@ create table if not exists profiles (
   last_activity text,
   current_subject text,
   device_info text,
+  device_history text default '[]',
   created_at text default (datetime('now'))
 );
 

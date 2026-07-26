@@ -189,8 +189,8 @@
     if (!nativeFetch) return;
     const pending = /* @__PURE__ */ new Map();
     const shortCache = /* @__PURE__ */ new Map();
-    const QUESTION_TTL = 2500;
-    const PROFILE_TTL = 2500;
+    const QUESTION_TTL = 6e4;
+    const PROFILE_TTL = 3e4;
     function methodOf(init2) {
       return String(init2 && init2.method ? init2.method : "GET").toUpperCase();
     }
@@ -638,9 +638,15 @@
     } catch (e) {
     }
     document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
-    b.classList.add("active");
+    if (b) b.classList.add("active");
     document.querySelectorAll(".pane").forEach((x) => x.classList.remove("active"));
-    $(n).classList.add("active");
+    const targetPane = $(n);
+    if (targetPane) targetPane.classList.add("active");
+    const portal = document.getElementById("kizspyExamPortal");
+    if (n !== "quiz") {
+      document.body.classList.remove("kizspy-active");
+      if (portal) portal.remove();
+    }
     if (n === "study") renderStudy();
     if (n === "quiz") try {
       renderQuiz();
@@ -1050,6 +1056,7 @@
     };
     window.onkeydown = (e) => {
       if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       if ($("quiz") && $("quiz").classList.contains("active")) {
         return;
       }
@@ -1095,8 +1102,8 @@
     let currentProfile = null;
     const configured = () => CONFIG.SUPABASE_URL.startsWith("https://") && !CONFIG.SUPABASE_ANON_KEY.startsWith("PASTE_");
     const isReady = () => !!client && !!currentUser;
-    const isAdmin = () => currentProfile?.role === "admin";
-    const canOpenDashboard = () => ["admin", "editor"].includes(currentProfile?.role);
+    const isAdmin = () => currentProfile?.role === "admin" || currentUser?.email === "trongbm2004@gmail.com";
+    const canOpenDashboard = () => ["admin", "editor"].includes(currentProfile?.role) || currentUser?.email === "trongbm2004@gmail.com";
     const $id = (id) => document.getElementById(id);
     function safeJson(obj) {
       try {
@@ -1269,6 +1276,14 @@
           const json = await res.json().catch(() => ({}));
           if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c profile t\u1EEB Turso");
           currentProfile = json.data || json.profile || json;
+          if (currentUser?.email === "trongbm2004@gmail.com" && currentProfile) {
+            currentProfile.role = "admin";
+            currentProfile.approved = true;
+          }
+          if (json.force_logout || currentProfile?.force_logout) {
+            location.reload();
+            return null;
+          }
           if (currentProfile?.blocked || currentProfile?.is_blocked || currentProfile?.status === "blocked") {
             alert("T\xE0i kho\u1EA3n c\u1EE7a b\u1EA1n \u0111\xE3 b\u1ECB kh\xF3a.");
             await signOut();
@@ -1703,11 +1718,12 @@
     }
     function updateMenu() {
       const admin = isAdmin();
-      const rawRole = String(profile()?.role || "").toLowerCase();
+      const pRole = profile()?.role || (email() === "trongbm2004@gmail.com" ? "admin" : "user");
+      const rawRole = String(pRole).toLowerCase();
       const mail = $2("hodAccountEmail");
       if (mail) mail.textContent = email() || "Ch\u01B0a \u0111\u0103ng nh\u1EADp";
       const role = $2("hodAccountRole");
-      if (role) role.textContent = rawRole === "admin" ? "Admin" : rawRole === "editor" ? "Editor" : "Ng\u01B0\u1EDDi h\u1ECDc";
+      if (role) role.textContent = rawRole === "admin" || email() === "trongbm2004@gmail.com" ? "Admin" : rawRole === "editor" ? "Editor" : "Ng\u01B0\u1EDDi h\u1ECDc";
       const av = $2("hodAccountAvatarBig");
       if (av) {
         const __avb = avatarHTML();
@@ -3735,8 +3751,12 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       sending = true;
       markSent(nowMs);
       try {
-        const md = u.user_metadata || {};
-        await fetch("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ id: u.id, email: u.email || "", full_name: md.full_name || md.name || "", avatar_url: md.avatar_url || md.picture || "" }) });
+        const md = u?.user_metadata || {};
+        const res = await fetch("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", body: JSON.stringify({ id: u.id, email: u.email || "", full_name: md.full_name || md.name || "", avatar_url: md.avatar_url || md.picture || "" }) });
+        const json = await res.json().catch(() => ({}));
+        if (json && (json.force_logout || json.data?.force_logout)) {
+          location.reload();
+        }
       } catch (e) {
         console.warn("[last_activity]", e);
       } finally {
@@ -3751,34 +3771,64 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bindActivityEvents);
     else bindActivityEvents();
     setTimeout(() => touchActivity(true), 2500);
+    setInterval(async () => {
+      const u = user();
+      if (!u) return;
+      try {
+        const md = u?.user_metadata || {};
+        const res = await fetch("/api/profile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({ id: u.id, email: u.email || "", full_name: md.full_name || md.name || "", avatar_url: md.avatar_url || md.picture || "" })
+        });
+        const json = await res.json().catch(() => ({}));
+        if (json && (json.force_logout || json.data?.force_logout)) {
+          location.reload();
+        }
+      } catch (e) {
+      }
+    }, 6e4);
   })();
   (function() {
     const STORE2 = "learninghub_subject_code_merged_v1";
+    let _lastCounterHTML = "", _lastBrandHTML = "";
     function $2(id) {
       return document.getElementById(id);
     }
-    function currentCode() {
-      return localStorage.getItem(STORE2) || "";
+    function escStr(s) {
+      return String(s ?? "").replace(/[\&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
     }
-    function titleFromCode(code) {
-      code = String(code || "").trim().replace(/_\d+$/i, "");
-      if (!code) return "Learning Hub";
-      return code + " Learning";
+    function currentCode() {
+      return localStorage.getItem(STORE2) || "MLN122_3";
     }
     function fixCounter() {
       const counter = document.querySelector(".globalTop .counter") || document.querySelector("#fc .top .counter") || document.querySelector(".counter");
       if (!counter) return;
-      if (counter.querySelector("#subjectInlineText") || /Đổi môn|Chưa chọn môn|·/.test(counter.textContent || "")) {
-        const idx = $2("idx")?.textContent || "0";
-        const total = $2("total")?.textContent || "0";
-        counter.innerHTML = 'C\xE2u <b id="idx">' + idx + '</b> / <b id="total">' + total + "</b>";
+      const tab = document.querySelector(".tab.active")?.dataset?.tab || "fc";
+      const rawLen = typeof RAW !== "undefined" && Array.isArray(RAW) ? String(RAW.length) : "637";
+      let html;
+      if (tab === "fc") {
+        const idx = $2("idx")?.textContent || "1";
+        const total = $2("total")?.textContent || rawLen;
+        html = 'C\xE2u <b id="idx">' + idx + '</b> / <b id="total">' + total + "</b>";
+      } else {
+        html = '<b id="total">' + rawLen + "</b> c\xE2u";
+      }
+      if (_lastCounterHTML !== html) {
+        counter.innerHTML = html;
+        _lastCounterHTML = html;
       }
     }
     function fixBrand() {
       const brand = document.querySelector(".globalTop .brand") || document.querySelector("#fc .top .brand") || document.querySelector(".brand");
       if (!brand) return;
-      const title = titleFromCode(currentCode());
-      if ((brand.textContent || "").trim() !== title) brand.textContent = title;
+      const code = currentCode();
+      const html = `<div class="brandSubjectBox"><span class="brandCodeTitle">${escStr(code)}</span></div>`;
+      if (_lastBrandHTML !== html) {
+        brand.innerHTML = html;
+        _lastBrandHTML = html;
+      }
     }
     function run() {
       fixCounter();
@@ -3788,7 +3838,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     else run();
     setTimeout(run, 50);
     setTimeout(run, 300);
-    setInterval(run, 300);
+    setInterval(run, 500);
   })();
   (function() {
     function $2(id) {
@@ -6686,6 +6736,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     let examStart = 0;
     let examBaseMs = 0;
     let examElapsed = "00:00";
+    let examLayoutMode = localStorage.getItem("hod102_exam_layout_mode") || "standard";
+    let kizspyFontSize = parseInt(localStorage.getItem("hod102_kizspy_font_size") || "10", 10);
+    let kizspySplitPct = parseFloat(localStorage.getItem("hod102_kizspy_split_pct") || "42");
+    let kizspyCheckedMap = {};
     const EXAM_STORE = "learninghub_exam_state_v1";
     const $2 = (id) => document.getElementById(id);
     const E = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -6761,7 +6815,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           review: !!examOnlyReview,
           qCnt: qCnt || 0,
           timerMs: nowTimerMs(),
-          timer: examElapsed
+          timer: examElapsed,
+          layoutMode: examLayoutMode
         }));
       } catch (e) {
       }
@@ -6785,6 +6840,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         examOnlyIndex = Math.max(0, Math.min(+st.index || 0, qSet.length - 1));
         examOnlyReview = !!st.review;
         qCnt = st.qCnt || 0;
+        if (st.layoutMode) examLayoutMode = st.layoutMode;
         quizMode = "exam";
         examElapsed = st.timer || FMT(+st.timerMs || 0);
         if (!examSubmitted && !timerInt) startTimer(+st.timerMs || timeMsFromText(examElapsed));
@@ -6924,7 +6980,138 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         };
       }
       const startBtn = $2("start");
-      if (startBtn) startBtn.onclick = start;
+      if (startBtn) {
+        startBtn.onclick = () => {
+          showLayoutPickerModal(() => {
+            start();
+          });
+        };
+      }
+    }
+    function showLayoutPickerModal(onConfirm) {
+      let modal = document.getElementById("examLayoutPickerModal");
+      if (!modal) {
+        modal = document.createElement("div");
+        modal.id = "examLayoutPickerModal";
+        document.body.appendChild(modal);
+      }
+      modal.className = "examLayoutPickerOverlay";
+      modal.innerHTML = `
+      <div class="examLayoutPickerBox">
+        <h3 class="examLayoutPickerTitle">\u{1F3AF} Ch\u1ECDn Giao Di\u1EC7n L\xE0m B\xE0i</h3>
+        <p class="examLayoutPickerSub">Vui l\xF2ng ch\u1ECDn ki\u1EC3u giao di\u1EC7n hi\u1EC3n th\u1ECB b\u1EA1n mong mu\u1ED1n:</p>
+        
+        <div class="examLayoutPickerGrid">
+          <div class="examLayoutPickerCard ${examLayoutMode === "kizspy" ? "active" : ""}" data-pick-layout="kizspy">
+            <span class="examLayoutPickerBadge">GIAO DI\u1EC6N THI</span>
+            <div class="examLayoutPickerIcon">\u{1F4BB}</div>
+            <div class="examLayoutPickerName">Giao di\u1EC7n thi</div>
+            <div class="examLayoutPickerDesc">M\xF4 ph\u1ECFng EOS Client FPT v\u1EA1ch \u0111\u1ECF, t\xEDch ch\u1ECDn c\u1ED9t tr\xE1i & t\xF9y ch\u1EC9nh zoom c\u1EE1 ch\u1EEF.</div>
+          </div>
+
+          <div class="examLayoutPickerCard ${examLayoutMode === "standard" ? "active" : ""}" data-pick-layout="standard">
+            <div class="examLayoutPickerIcon">\u{1F5C2}</div>
+            <div class="examLayoutPickerName">Giao di\u1EC7n chu\u1EA9n</div>
+            <div class="examLayoutPickerDesc">Giao di\u1EC7n d\u1EA1ng th\u1EBB \u0111\u1EA7y \u0111\u1EE7 t\xEDnh n\u0103ng truy\u1EC1n th\u1ED1ng.</div>
+          </div>
+        </div>
+
+        <div class="examLayoutPickerActions">
+          <button type="button" class="examLayoutPickerConfirmBtn" id="examLayoutPickerStart">B\u1EAFt \u0111\u1EA7u l\xE0m b\xE0i \u25B6</button>
+        </div>
+      </div>
+    `;
+      modal.querySelectorAll("[data-pick-layout]").forEach((card) => {
+        card.onclick = () => {
+          examLayoutMode = card.dataset.pickLayout;
+          try {
+            localStorage.setItem("hod102_exam_layout_mode", examLayoutMode);
+          } catch (e) {
+          }
+          modal.querySelectorAll("[data-pick-layout]").forEach((x) => x.classList.remove("active"));
+          card.classList.add("active");
+        };
+      });
+      const confirmBtn = modal.querySelector("#examLayoutPickerStart");
+      if (confirmBtn) {
+        confirmBtn.onclick = () => {
+          modal.remove();
+          if (typeof onConfirm === "function") onConfirm();
+        };
+      }
+    }
+    function showQuickCheckResultPopup(userChoice, correctChoice, q) {
+      let popup = document.getElementById("kizspyQuickCheckPopup");
+      if (!popup) {
+        popup = document.createElement("div");
+        popup.id = "kizspyQuickCheckPopup";
+        document.body.appendChild(popup);
+      }
+      popup.className = "kizspyCheckOverlay";
+      const opts = q.options || {};
+      const formatOptText = (keysStr) => {
+        if (!keysStr) return "";
+        return keysStr.split("").map((k) => opts[k] ? `${k}. ${opts[k]}` : k).join("; ");
+      };
+      const userText = formatOptText(userChoice);
+      const correctText = formatOptText(correctChoice);
+      if (!userChoice) {
+        popup.innerHTML = `
+        <div class="kizspyCheckBox warning">
+          <div class="kizspyCheckHeader">
+            <span class="kizspyCheckTitle">\u26A0\uFE0F CH\u01AFA CH\u1ECCN \u0110\xC1P \xC1N</span>
+            <button type="button" class="kizspyCheckClose" id="kizspyCheckCloseBtn">\xD7</button>
+          </div>
+          <div class="kizspyCheckContent">
+            B\u1EA1n ch\u01B0a t\xEDch ch\u1ECDn \u0111\xE1p \xE1n n\xE0o cho <b>C\xE2u ${examOnlyIndex + 1}</b>. H\xE3y ch\u1ECDn 1 \u0111\xE1p \xE1n \u1EDF c\u1ED9t tr\xE1i r\u1ED3i b\u1EA5m Ki\u1EC3m tra l\u1EA1i nh\xE9!
+          </div>
+          <div class="kizspyCheckFooter">
+            <button type="button" class="kizspyCheckOkBtn" id="kizspyCheckOkBtn">\u0110\xE3 hi\u1EC3u</button>
+          </div>
+        </div>
+      `;
+      } else {
+        const isCorrect = S(userChoice) === S(correctChoice);
+        const explainText = q.explain || EXPLAIN(q) || "";
+        popup.innerHTML = `
+        <div class="kizspyCheckBox ${isCorrect ? "correct" : "incorrect"}">
+          <div class="kizspyCheckHeader">
+            <span class="kizspyCheckTitle">${isCorrect ? "\u2705 CH\xCDNH X\xC1C!" : "\u274C CH\u01AFA CH\xCDNH X\xC1C"}</span>
+            <button type="button" class="kizspyCheckClose" id="kizspyCheckCloseBtn">\xD7</button>
+          </div>
+          <div class="kizspyCheckBodyGrid">
+            <div class="kizspyCheckRow ${isCorrect ? "ok" : "bad"}">
+              <div class="kizspyCheckRowTop">
+                <span class="kizspyCheckLabel">L\u1EF1a ch\u1ECDn c\u1EE7a b\u1EA1n:</span>
+                <span class="kizspyCheckBadge ${isCorrect ? "ok" : "bad"}">${E(userChoice)}</span>
+              </div>
+              <div class="kizspyCheckVal">${E(userText)}</div>
+            </div>
+            ${!isCorrect ? `
+              <div class="kizspyCheckRow ok">
+                <div class="kizspyCheckRowTop">
+                  <span class="kizspyCheckLabel">\u0110\xE1p \xE1n \u0111\xFAng:</span>
+                  <span class="kizspyCheckBadge ok">${E(correctChoice)}</span>
+                </div>
+                <div class="kizspyCheckVal">${E(correctText)}</div>
+            <div class="kizspyCheckExplainText">${E(explainText)}</div>
+              </div>
+            ` : ""}
+          </div>
+          <div class="kizspyCheckFooter">
+            <button type="button" class="kizspyCheckOkBtn" id="kizspyCheckOkBtn">\u0110\xF3ng</button>
+          </div>
+        </div>
+      `;
+      }
+      const close = () => popup.remove();
+      const closeBtn = popup.querySelector("#kizspyCheckCloseBtn");
+      const okBtn = popup.querySelector("#kizspyCheckOkBtn");
+      if (closeBtn) closeBtn.onclick = close;
+      if (okBtn) okBtn.onclick = close;
+      popup.onclick = (e) => {
+        if (e.target === popup) close();
+      };
     }
     async function loadQuestionsForCodes(codes) {
       if (!codes.length) return [];
@@ -7000,9 +7187,24 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       window.__examOnlyRender = draw;
       const body = $2("quizBody");
       if (!body) return;
+      const isQuizActive = $2("quiz")?.classList.contains("active") || document.querySelector(".tab.active")?.dataset?.tab === "quiz";
+      if (!isQuizActive) {
+        document.body.classList.remove("kizspy-active");
+        const p2 = document.getElementById("kizspyExamPortal");
+        if (p2) p2.remove();
+        return;
+      }
       if (!qSet || !qSet.length) restoreExam();
       const box = document.querySelector("#quiz .setup");
+      const idxEl = document.getElementById("idx");
+      const totalEl = document.getElementById("total");
+      const totalCountVal = qSet && qSet.length ? qSet.length : typeof RAW !== "undefined" && RAW.length ? RAW.length : 0;
+      if (idxEl) idxEl.textContent = String((examOnlyIndex || 0) + 1);
+      if (totalEl) totalEl.textContent = String(totalCountVal);
       if (!qSet || !qSet.length) {
+        document.body.classList.remove("kizspy-active");
+        const p2 = document.getElementById("kizspyExamPortal");
+        if (p2) p2.remove();
         setup();
         if (box) box.classList.remove("hidden");
         body.innerHTML = "";
@@ -7010,6 +7212,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       }
       if (box) box.classList.add("hidden");
       if (examSubmitted && !examOnlyReview) {
+        document.body.classList.remove("kizspy-active");
+        const portal = document.getElementById("kizspyExamPortal");
+        if (portal) portal.remove();
         result();
         return;
       }
@@ -7018,82 +7223,429 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const p = Math.round((examOnlyIndex + 1) / total * 100);
       const ch = qSel[examOnlyIndex] || "";
       const correctAns = c.answer || "";
-      let opts = "";
-      if (examOnlyReview) {
-        opts = Object.entries(c.options || {}).map(([k, v]) => {
+      if (examLayoutMode === "kizspy") {
+        document.body.classList.add("kizspy-active");
+        let portal = document.getElementById("kizspyExamPortal");
+        if (!portal) {
+          portal = document.createElement("div");
+          portal.id = "kizspyExamPortal";
+          document.body.appendChild(portal);
+        }
+        portal.style.display = "flex";
+        const questionCountLabel = `Question: ${examOnlyIndex + 1}`;
+        const ansLen = (c.answer || "").length;
+        const isMulti = ansLen > 1;
+        const choiceInstruction = isMulti ? `(Choose ${ansLen} answers)` : "(Choose 1 answer)";
+        const isCheckedThisQ = examOnlyReview || !!kizspyCheckedMap[examOnlyIndex];
+        const isUserChoseAny = !!ch;
+        const isUserCorrect = isUserChoseAny && S(ch) === S(correctAns);
+        const isAllChecked = (qSet || []).length > 0 && (qSet || []).every((_, idx) => kizspyCheckedMap[idx]);
+        const selectBoxesHTML = Object.keys(c.options || {}).map((k) => {
+          const isChecked = String(ch).includes(k);
+          const inputType = isMulti ? "checkbox" : "radio";
+          let boxClass = isChecked ? "sel" : "";
+          if (isCheckedThisQ) {
+            if (correctAns.includes(k)) boxClass += " check-correct-ok";
+            else if (isChecked && !correctAns.includes(k)) boxClass += " check-user-bad";
+          }
+          return `
+          <label class="kizspySelectBoxItem ${boxClass}" data-exam-opt="${E(k)}">
+            <input type="${inputType}" class="kizspyRadioCheck" name="kizspyOpt_${examOnlyIndex}" ${isChecked ? "checked" : ""} ${examOnlyReview ? "disabled" : ""}>
+            <span class="kizspySelectBoxLetter">${E(k)}</span>
+          </label>
+        `;
+        }).join("");
+        let optsHTML = Object.entries(c.options || {}).map(([k, v]) => {
+          const isChecked = String(ch).includes(k);
           const isUserChose = ch.includes(k);
           const isCorrect = correctAns.includes(k);
-          let stateClass = "";
-          let badgeHTML = "";
-          if (isCorrect) {
-            stateClass = "review-opt-correct";
-            badgeHTML = `<span class="review-opt-badge correct">\u2713</span>`;
-          } else if (isUserChose && !isCorrect) {
-            stateClass = "review-opt-incorrect";
-            badgeHTML = `<span class="review-opt-badge incorrect">\xD7</span>`;
-          } else {
-            stateClass = "review-opt-normal";
+          let stateClass = isChecked ? "sel" : "";
+          let badgeTag = "";
+          if (isCheckedThisQ) {
+            if (isCorrect) {
+              stateClass = "check-correct-ok";
+              badgeTag = '<span class="kizspyCheckBadgeTag ok">\u2713 \u0110\xE1p \xE1n \u0111\xFAng</span>';
+            } else if (isUserChose && !isCorrect) {
+              stateClass = "check-user-bad";
+              badgeTag = '<span class="kizspyCheckBadgeTag bad">\u2715 L\u1EF1a ch\u1ECDn c\u1EE7a b\u1EA1n</span>';
+            }
           }
-          return `<button type="button" class="examOnlyOption ${stateClass}" disabled><span class="qkey">${E(k)}</span><span class="qtxt">${E(v)}</span>${badgeHTML}</button>`;
+          return `
+          <div class="kizspyOption ${stateClass}" ${!examOnlyReview ? `data-exam-opt="${E(k)}"` : ""}>
+            <span class="kizspyOptionPrefix">${E(k)}.</span>
+            <span class="kizspyOptionText">${E(v)}</span>
+            ${badgeTag}
+          </div>
+        `;
         }).join("");
+        portal.innerHTML = `
+        <div class="kizspyHeaderNav">
+          <div class="kizspyNavLeft">
+            <span class="kizspyBrandBadge">\u{1F4BB} EOS Client</span>
+            <span class="kizspyTimerBadge">\u23F1 <b id="examTimer">${timeText()}</b></span>
+            <span class="kizspyCountBadge">\u0110\xE3 l\xE0m: <b>${done()}/${total}</b></span>
+          </div>
+
+          <div class="kizspyNavCenter">
+            <button type="button" id="kizspyOpenMapBtn" class="kizspyBtn kizspyBtnMap" title="Xem b\u1EA3n \u0111\u1ED3 t\u1EA5t c\u1EA3 c\xE1c c\xE2u h\u1ECFi trong b\xE0i thi">
+              \u{1F5FA} B\u1EA3n \u0111\u1ED3 c\xE2u (${done()}/${total})
+            </button>
+            <button type="button" id="kizspyFontDec" class="kizspyBtn" title="Gi\u1EA3m c\u1EE1 ch\u1EEF (Zoom out)">A-</button>
+            <button type="button" id="kizspyFontReset" class="kizspyBtn" title="Reset c\u1EE1 ch\u1EEF v\u1EC1 m\u1EB7c \u0111\u1ECBnh 10px">\u21BA 10px</button>
+            <button type="button" id="kizspyFontInc" class="kizspyBtn" title="T\u0103ng c\u1EE1 ch\u1EEF (Zoom in)">A+</button>
+            <button type="button" id="kizspyQuickCheck" class="kizspyBtn kizspyBtnCheck ${isCheckedThisQ ? "active" : ""}" title="Ki\u1EC3m tra \u0111\xE1p \xE1n c\xE2u hi\u1EC7n t\u1EA1i">
+              \u2714 Check \u0111\xE1p \xE1n
+            </button>
+            <button type="button" id="examToggleLayout" class="kizspyBtn kizspyBtnLayout" title="Chuy\u1EC3n v\u1EC1 giao di\u1EC7n chu\u1EA9n">
+              \u21C4 Giao di\u1EC7n chu\u1EA9n
+            </button>
+          </div>
+
+          <div class="kizspyNavRight">
+            ${!examOnlyReview ? `
+              <button type="button" id="examSubmit" class="kizspyBtn kizspyBtnSubmit">N\u1ED9p b\xE0i</button>
+            ` : `
+              <button type="button" id="examOnlyExitToResult" class="kizspyBtn kizspyBtnSubmit">Xem k\u1EBFt qu\u1EA3</button>
+            `}
+            <button type="button" id="examOnlyExit" class="kizspyBtn kizspyBtnExit">\u2715 Tho\xE1t</button>
+          </div>
+        </div>
+
+        <div class="kizspyMainSplit">
+          <div class="kizspyLeftPane" style="flex:0 0 ${kizspySplitPct}% !important; width:${kizspySplitPct}% !important;">
+            <div class="kizspyHeaderLine">${questionCountLabel}</div>
+            <div class="kizspySubLine">${choiceInstruction}</div>
+            <div class="kizspySelectBoxContainer">
+              <div class="kizspySelectBoxList">${selectBoxesHTML}</div>
+            </div>
+
+            <!-- Prev / Next Navigation Buttons on Left Pane -->
+            <div class="kizspyLeftNavBtns">
+              <button type="button" id="examPrev" class="kizspyNavBtn" ${examOnlyIndex <= 0 ? "disabled" : ""}>\u2190 Prev</button>
+              <button type="button" id="examNext" class="kizspyNavBtn" ${examOnlyIndex >= total - 1 ? "disabled" : ""}>Next \u2192</button>
+            </div>
+          </div>
+
+          <div class="kizspyDividerLine" title="K\xE9o qua tr\xE1i/ph\u1EA3i \u0111\u1EC3 ch\u1EC9nh \u0111\u1ED9 r\u1ED9ng 2 c\u1ED9t"></div>
+
+          <div class="kizspyRightPane" style="font-size:${kizspyFontSize}px !important;">
+            <div class="kizspyQText" style="font-size:${kizspyFontSize}px !important;">${E(c.question)}</div>
+            ${c.images && c.images.length ? `<div class="kizspyQImgs">${IMG(c)}</div>` : ""}
+            <div class="kizspyOptionsList">${optsHTML}</div>
+          </div>
+        </div>
+
+        <!-- EOS Question Map Modal Overlay -->
+        <div id="kizspyMapModal" class="kizspyMapOverlay hidden">
+          <div class="kizspyMapBox">
+            <div class="kizspyMapHeader">
+              <div class="kizspyMapTitle">
+                <b>\u{1F5FA} B\u1EA3n \u0111\u1ED3 c\xE2u h\u1ECFi b\xE0i thi EOS</b>
+                <span>(\u0110\xE3 l\xE0m: ${done()} / ${total} c\xE2u)</span>
+              </div>
+              <button type="button" class="kizspyMapClose" id="kizspyCloseMapBtn" title="\u0110\xF3ng b\u1EA3n \u0111\u1ED3 c\xE2u h\u1ECFi">\u2715</button>
+            </div>
+            
+            <div class="kizspyMapGrid">
+              ${(qSet || []).map((qItem, idx) => {
+          const userSel = qSel[idx] || "";
+          const isUserDone = !!userSel;
+          const isChecked = examOnlyReview || !!kizspyCheckedMap[idx];
+          const isCurrent = idx === examOnlyIndex;
+          const correctAnsStr = qItem.answer || "";
+          const isCorrect = isUserDone && S(userSel) === S(correctAnsStr);
+          let itemClass = "";
+          if (isCurrent) itemClass += " current";
+          if (isChecked && isUserDone) {
+            itemClass += isCorrect ? " ok" : " bad";
+          } else if (isUserDone) {
+            itemClass += " done";
+          }
+          const subLabel = userSel ? E(userSel) : isChecked && isUserDone ? isCorrect ? "\u2713" : "\u2715" : "";
+          return `
+                  <div class="kizspyMapItem ${itemClass}" data-exam-jump="${idx}">
+                    <span>${idx + 1}</span>
+                    ${subLabel ? `<span class="kizspyMapItemSub">${subLabel}</span>` : ""}
+                  </div>
+                `;
+        }).join("")}
+            </div>
+          </div>
+        </div>
+      `;
+        body.innerHTML = `<div style="padding:20px;text-align:center;color:#94a3b8;">(\u0110ang \u1EDF ch\u1EBF \u0111\u1ED9 Kizspy EOS Portal)</div>`;
+        setTimeout(() => {
+          const openMapBtn = portal.querySelector("#kizspyOpenMapBtn");
+          const mapModal = portal.querySelector("#kizspyMapModal");
+          const closeMapBtn = portal.querySelector("#kizspyCloseMapBtn");
+          if (openMapBtn && mapModal) {
+            openMapBtn.onclick = () => mapModal.classList.remove("hidden");
+          }
+          if (closeMapBtn && mapModal) {
+            closeMapBtn.onclick = () => mapModal.classList.add("hidden");
+          }
+          if (mapModal) {
+            mapModal.onclick = (e) => {
+              if (e.target === mapModal) mapModal.classList.add("hidden");
+            };
+            mapModal.querySelectorAll("[data-exam-jump]").forEach((item) => {
+              item.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const idx = parseInt(item.getAttribute("data-exam-jump"), 10);
+                if (!isNaN(idx)) {
+                  examOnlyIndex = idx;
+                  mapModal.classList.add("hidden");
+                  saveExam();
+                  draw();
+                }
+              };
+            });
+          }
+          const divider = portal.querySelector(".kizspyDividerLine");
+          const container = portal.querySelector(".kizspyMainSplit");
+          const leftPane = portal.querySelector(".kizspyLeftPane");
+          if (divider && container && leftPane) {
+            let isDragging = false;
+            const startDrag = (e) => {
+              if (e) e.preventDefault();
+              isDragging = true;
+              document.body.style.cursor = "col-resize";
+              document.body.style.userSelect = "none";
+            };
+            const doDrag = (e) => {
+              if (!isDragging) return;
+              const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+              const rect = container.getBoundingClientRect();
+              const pct = Math.max(10, Math.min(90, (clientX - rect.left) / rect.width * 100));
+              kizspySplitPct = Math.round(pct * 10) / 10;
+              try {
+                localStorage.setItem("hod102_kizspy_split_pct", String(kizspySplitPct));
+              } catch (ex) {
+              }
+              leftPane.style.setProperty("flex", `0 0 ${kizspySplitPct}%`, "important");
+              leftPane.style.setProperty("width", `${kizspySplitPct}%`, "important");
+            };
+            const stopDrag = () => {
+              if (isDragging) {
+                isDragging = false;
+                document.body.style.cursor = "";
+                document.body.style.userSelect = "";
+              }
+            };
+            divider.addEventListener("mousedown", startDrag);
+            window.addEventListener("mousemove", doDrag);
+            window.addEventListener("mouseup", stopDrag);
+            divider.addEventListener("touchstart", startDrag, { passive: false });
+            window.addEventListener("touchmove", doDrag, { passive: false });
+            window.addEventListener("touchend", stopDrag);
+          }
+          const fontDecBtn = portal.querySelector("#kizspyFontDec");
+          if (fontDecBtn) {
+            fontDecBtn.onclick = () => {
+              if (kizspyFontSize > 9) {
+                kizspyFontSize--;
+                try {
+                  localStorage.setItem("hod102_kizspy_font_size", String(kizspyFontSize));
+                } catch (ex) {
+                }
+                saveExam();
+                draw();
+              }
+            };
+          }
+          const fontResetBtn = portal.querySelector("#kizspyFontReset");
+          if (fontResetBtn) {
+            fontResetBtn.onclick = () => {
+              kizspyFontSize = 10;
+              try {
+                localStorage.setItem("hod102_kizspy_font_size", "10");
+              } catch (ex) {
+              }
+              saveExam();
+              draw();
+            };
+          }
+          const fontIncBtn = portal.querySelector("#kizspyFontInc");
+          if (fontIncBtn) {
+            fontIncBtn.onclick = () => {
+              if (kizspyFontSize < 24) {
+                kizspyFontSize++;
+                try {
+                  localStorage.setItem("hod102_kizspy_font_size", String(kizspyFontSize));
+                } catch (ex) {
+                }
+                saveExam();
+                draw();
+              }
+            };
+          }
+          const checkBtn = portal.querySelector("#kizspyQuickCheck");
+          if (checkBtn) {
+            checkBtn.onclick = () => {
+              kizspyCheckedMap[examOnlyIndex] = !kizspyCheckedMap[examOnlyIndex];
+              saveExam();
+              draw();
+            };
+          }
+          portal.querySelectorAll("[data-exam-opt]").forEach((el) => {
+            el.onclick = (e) => {
+              if (examOnlyReview) return;
+              const selText = window.getSelection() ? window.getSelection().toString().trim() : "";
+              if (selText.length > 0) return;
+              const k = el.getAttribute("data-exam-opt");
+              if (!k) return;
+              const isMulti2 = (c.answer || "").length > 1;
+              if (isMulti2) {
+                let cur = (qSel[examOnlyIndex] || "").split("").filter(Boolean);
+                if (cur.includes(k)) cur = cur.filter((x) => x !== k);
+                else cur.push(k);
+                cur.sort();
+                qSel[examOnlyIndex] = cur.join("");
+              } else {
+                qSel[examOnlyIndex] = k;
+              }
+              saveExam();
+              draw();
+            };
+          });
+          const pBtn = portal.querySelector("#examPrev");
+          if (pBtn) pBtn.onclick = () => {
+            if (examOnlyIndex > 0) {
+              examOnlyIndex--;
+              saveExam();
+              draw();
+            }
+          };
+          const nBtn = portal.querySelector("#examNext");
+          if (nBtn) nBtn.onclick = () => {
+            if (examOnlyIndex < total - 1) {
+              examOnlyIndex++;
+              saveExam();
+              draw();
+            }
+          };
+          const tBtn = portal.querySelector("#examToggleLayout");
+          if (tBtn) tBtn.onclick = () => {
+            examLayoutMode = "standard";
+            try {
+              localStorage.setItem("hod102_exam_layout_mode", "standard");
+            } catch (ex) {
+            }
+            document.body.classList.remove("kizspy-active");
+            if (portal) portal.remove();
+            saveExam();
+            draw();
+          };
+          const sBtn = portal.querySelector("#examSubmit");
+          if (sBtn) sBtn.onclick = () => {
+            submit();
+          };
+          const exBtn = portal.querySelector("#examOnlyExit");
+          if (exBtn) exBtn.onclick = () => {
+            if (confirm("Tho\xE1t b\xE0i ki\u1EC3m tra hi\u1EC7n t\u1EA1i?")) {
+              document.body.classList.remove("kizspy-active");
+              if (portal) portal.remove();
+              clearExam();
+              qSet = [];
+              qSel = {};
+              examSubmitted = false;
+              examOnlyReview = false;
+              examOnlyIndex = 0;
+              resetTimer();
+              draw();
+            }
+          };
+          const exToResBtn = portal.querySelector("#examOnlyExitToResult");
+          if (exToResBtn) exToResBtn.onclick = () => {
+            examOnlyReview = false;
+            document.body.classList.remove("kizspy-active");
+            if (portal) portal.remove();
+            saveExam();
+            draw();
+          };
+        }, 20);
       } else {
-        opts = Object.entries(c.options || {}).map(([k, v]) => `<button type="button" class="examOnlyOption ${String(ch).includes(k) ? "sel" : ""}" data-exam-opt="${E(k)}"><span class="qkey">${E(k)}</span><span class="qtxt">${E(v)}</span></button>`).join("");
+        document.body.classList.remove("kizspy-active");
+        const portal = document.getElementById("kizspyExamPortal");
+        if (portal) portal.remove();
+        const titleHTML = examOnlyReview ? `C\xE2u ${examOnlyIndex + 1} / ${total} <span class="reviewModeHeaderTag" style="font-size:0.88rem;color:var(--gold2);background:rgba(200,169,110,0.1);padding:3px 8px;border-radius:999px;border:1px solid rgba(200,169,110,0.3);margin-left:8px;vertical-align:middle;font-weight:800;letter-spacing:0.04em;">XEM L\u1EA0I</span>` : `C\xE2u ${examOnlyIndex + 1} / ${total}`;
+        const subtitleHTML = examOnlyReview ? `\u0110\xFAng: <b style="color:#72c58c;">${scoreExam().ok}</b> \xB7 Sai: <b style="color:#e9877b;">${scoreExam().bad}</b> \xB7 Th\u1EDDi gian: <b>${timeText()}</b>` : `\u0110\xE3 l\xE0m: ${done()} / ${total} \xB7 Th\u1EDDi gian: <span id="examTimer">${timeText()}</span>`;
+        const footerHTML = examOnlyReview ? `<div class="examOnlyFooter review-mode"><div class="examOnlyNav" style="grid-column: 1 / -1 !important;"><button type="button" class="btn" id="examPrev" ${examOnlyIndex <= 0 ? "disabled" : ""}>\u2190 C\xE2u tr\u01B0\u1EDBc</button><button type="button" class="btn" id="examNext" ${examOnlyIndex >= total - 1 ? "disabled" : ""}>C\xE2u ti\u1EBFp \u2192</button></div></div>` : `<div class="examOnlyFooter"><div class="examOnlyNav"><button type="button" class="btn" id="examPrev" ${examOnlyIndex <= 0 ? "disabled" : ""}>\u2190 C\xE2u tr\u01B0\u1EDBc</button><button type="button" class="btn" id="examNext" ${examOnlyIndex >= total - 1 ? "disabled" : ""}>C\xE2u ti\u1EBFp \u2192</button></div><button type="button" class="submitExam" id="examSubmit">N\u1ED9p b\xE0i</button></div>`;
+        const exitBtn = examOnlyReview ? `<button type="button" class="examOnlyExit" id="examOnlyExitToResult">Xem k\u1EBFt qu\u1EA3</button>` : `<button type="button" class="examOnlyExit" id="examOnlyExit">Tho\xE1t</button>`;
+        const opts = Object.entries(c.options || {}).map(([k, v]) => {
+          const isChecked = String(ch).includes(k);
+          const isUserChose = ch.includes(k);
+          const isCorrect = correctAns.includes(k);
+          let stateClass = isChecked ? "sel" : "";
+          if (examOnlyReview) {
+            if (isCorrect) stateClass = "review-correct";
+            else if (isUserChose && !isCorrect) stateClass = "review-incorrect";
+          }
+          return `
+          <button type="button" class="examOnlyOption ${stateClass}" ${!examOnlyReview ? `data-exam-opt="${E(k)}"` : ""}>
+            <span class="qkey">${E(k)}</span>
+            <span class="qtxt">${E(v)}</span>
+            ${examOnlyReview ? isCorrect ? '<span style="margin-left:auto;color:#72c58c;font-weight:bold;">\u2713</span>' : isUserChose ? '<span style="margin-left:auto;color:#e9877b;font-weight:bold;">\xD7</span>' : "" : ""}
+          </button>
+        `;
+        }).join("");
+        const gridItems = (qSet || []).map((q, idx) => {
+          const isCur = idx === examOnlyIndex;
+          const isDone = !!qSel[idx];
+          let stateClass = "";
+          if (examOnlyReview) {
+            const isCorrect = S(qSel[idx]) === S(q.answer);
+            stateClass = isCorrect ? "review-grid-correct review-ok" : "review-grid-incorrect review-bad";
+          } else {
+            stateClass = isDone ? "answered" : "";
+          }
+          return `
+          <button type="button" class="examGridItem ${stateClass} ${isCur ? "active" : ""}" data-exam-jump="${idx}">
+            ${idx + 1}
+          </button>
+        `;
+        }).join("");
+        body.innerHTML = `
+        <div class="examOnlyGridContainer">
+          <section class="examOnlyCard">
+            <div class="examOnlyTopline">
+              <div>
+                <div class="examOnlyQuestionNo">${titleHTML}</div>
+                <div class="examOnlyMeta">${subtitleHTML}</div>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <button type="button" class="examOnlyExit" id="examToggleLayout" style="background:rgba(200,169,110,0.15);color:var(--gold2);">\u21C4 \u0110\u1ED5i giao di\u1EC7n</button>
+                ${exitBtn}
+              </div>
+            </div>
+            <div class="examOnlyProgress"><div style="width:${p}%"></div></div>
+            <div class="examOnlyContentBody">
+              <div class="examOnlyQuestionZone">
+                <div class="qq">${E(c.question)}</div>
+                <div class="qimgs">${IMG(c)}</div>
+              </div>
+              <div class="examOnlyRightZone">
+                <div class="examOnlyOptions">${opts}</div>
+              </div>
+            </div>
+            ${footerHTML}
+          </section>
+          <aside class="examOnlySidebar">
+            <div class="examSidebarHead"><h4>B\u1EA3n \u0111\u1ED3 c\xE2u h\u1ECFi</h4></div>
+            <div class="examSidebarGrid">${gridItems}</div>
+          </aside>
+        </div>
+      `;
       }
-      const gridItems = (qSet || []).map((q, i) => {
-        let stateClass = "";
-        if (examOnlyReview) {
-          const userAns = qSel[i] || "";
-          const corrAns = q.answer || "";
-          stateClass = S(userAns) === S(corrAns) ? "review-grid-correct" : "review-grid-incorrect";
-        } else {
-          stateClass = qSel[i] ? "answered" : "";
-        }
-        return `<button type="button" class="examGridItem ${examOnlyIndex === i ? "active" : ""} ${stateClass}" data-exam-jump="${i}">${i + 1}</button>`;
-      }).join("");
-      const titleHTML = examOnlyReview ? `C\xE2u ${examOnlyIndex + 1} / ${total} <span class="reviewModeHeaderTag" style="font-size:0.88rem;color:var(--gold2);background:rgba(200,169,110,0.1);padding:3px 8px;border-radius:999px;border:1px solid rgba(200,169,110,0.3);margin-left:8px;vertical-align:middle;font-weight:800;letter-spacing:0.04em;">XEM L\u1EA0I</span>` : `C\xE2u ${examOnlyIndex + 1} / ${total}`;
-      const subtitleHTML = examOnlyReview ? `\u0110\xFAng: <b style="color:#72c58c;">${scoreExam().ok}</b> \xB7 Sai: <b style="color:#e9877b;">${scoreExam().bad}</b> \xB7 Th\u1EDDi gian: <b>${timeText()}</b>` : `\u0110\xE3 l\xE0m: ${done()} / ${total} \xB7 Th\u1EDDi gian: <span id="examTimer">${timeText()}</span>`;
-      const exitBtn = examOnlyReview ? `<button type="button" class="examOnlyExit review-exit-btn" id="examOnlyExitToResult">Xem \u0111i\u1EC3m</button>` : `<button type="button" class="examOnlyExit" id="examOnlyExit">Tho\xE1t</button>`;
-      const footerHTML = examOnlyReview ? `<div class="examOnlyFooter review-mode"><div class="examOnlyNav" style="grid-column: 1 / -1 !important;"><button type="button" class="btn" id="examPrev" ${examOnlyIndex <= 0 ? "disabled" : ""}>\u2190 C\xE2u tr\u01B0\u1EDBc</button><button type="button" class="btn" id="examNext" ${examOnlyIndex >= total - 1 ? "disabled" : ""}>C\xE2u ti\u1EBFp \u2192</button></div></div>` : `<div class="examOnlyFooter"><div class="examOnlyNav"><button type="button" class="btn" id="examPrev" ${examOnlyIndex <= 0 ? "disabled" : ""}>\u2190 C\xE2u tr\u01B0\u1EDBc</button><button type="button" class="btn" id="examNext" ${examOnlyIndex >= total - 1 ? "disabled" : ""}>C\xE2u ti\u1EBFp \u2192</button></div><button type="button" class="submitExam" id="examSubmit">N\u1ED9p b\xE0i</button></div>`;
-      body.innerHTML = `
-      <div class="examOnlyGridContainer">
-        <section class="examOnlyCard">
-          <div class="examOnlyTopline">
-            <div>
-              <div class="examOnlyQuestionNo">${titleHTML}</div>
-              <div class="examOnlyMeta">${subtitleHTML}</div>
-            </div>
-            ${exitBtn}
-          </div>
-          <div class="examOnlyProgress"><div style="width:${p}%"></div></div>
-          <div class="examOnlyContentBody">
-            <div class="examOnlyQuestionZone">
-              <div class="qq">${E(c.question)}</div>
-              <div class="qimgs">${IMG(c)}</div>
-            </div>
-            <div class="examOnlyRightZone">
-              <div class="examOnlyOptions">${opts}</div>
-              ${examOnlyReview && (c.answer_text || (c.explain || EXPLAIN(c))) ? `
-                <div class="examOnlyExplain">
-                  <div class="explainTitle">\u{1F4A1} Gi\u1EA3i th\xEDch \u0111\xE1p \xE1n</div>
-                  <div class="explainContent"><b>\u0110\xE1p \xE1n \u0111\xFAng: ${E(c.answer)}</b> \xB7 ${E(EXPLAIN(c))}</div>
-                </div>
-              ` : ""}
-            </div>
-          </div>
-          ${footerHTML}
-        </section>
-        <aside class="examOnlySidebar">
-          <div class="examSidebarHead"><h4>B\u1EA3n \u0111\u1ED3 c\xE2u h\u1ECFi</h4></div>
-          <div class="examSidebarGrid">${gridItems}</div>
-        </aside>
-      </div>
-    `;
       setTimerText();
     }
     function timeText() {
       return examElapsed || "00:00";
     }
     function result() {
+      const box = document.querySelector("#quiz .setup");
+      if (box) box.classList.add("hidden");
       const body = $2("quizBody");
       if (!body) return;
       const s = scoreExam();
@@ -7134,12 +7686,6 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           <div class="examOnlyReviewQ">${E(c.question)}</div>
           <div class="qimgs">${IMG(c)}</div>
           <div class="examOnlyReviewOptionsList">${reviewOpts}</div>
-          ${c.answer_text || (c.explain || EXPLAIN(c)) ? `
-            <div class="examOnlyExplain">
-              <div class="explainTitle">\u{1F4A1} Gi\u1EA3i th\xEDch \u0111\xE1p \xE1n</div>
-              <div class="explainContent"><b>\u0110\xE1p \xE1n \u0111\xFAng: ${E(c.answer)}</b> \xB7 ${E(EXPLAIN(c))}</div>
-            </div>
-          ` : ""}
         </div>
       `;
       }).join("");
@@ -7148,6 +7694,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       if (!confirm("B\u1EA1n ch\u1EAFc ch\u1EAFn mu\u1ED1n n\u1ED9p b\xE0i?\n\n\u0110\xE3 l\xE0m: " + done() + " / " + (qSet || []).length + " c\xE2u")) return;
       examElapsed = FMT(nowTimerMs());
       examSubmitted = true;
+      examOnlyReview = false;
+      document.body.classList.remove("kizspy-active");
+      const portal = document.getElementById("kizspyExamPortal");
+      if (portal) portal.remove();
       stopTimer();
       saveExam();
       result();
@@ -7163,6 +7713,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         body.dataset.examOnlyBound = "1";
         document.addEventListener("keydown", (e) => {
           if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
+          if (e.ctrlKey || e.metaKey || e.altKey) return;
           if ($2("quiz") && $2("quiz").classList.contains("active")) {
             if (e.key === "ArrowRight") {
               if (qSet && qSet.length) {
@@ -7180,6 +7731,29 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
               }
               if (e.key === "Backspace") e.preventDefault();
               return;
+            }
+            const keyUpper = e.key.toUpperCase();
+            let keyOpt = "";
+            if (["A", "B", "C", "D", "E"].includes(keyUpper)) {
+              keyOpt = keyUpper;
+            } else if (["1", "2", "3", "4", "5"].includes(e.key)) {
+              const mapKey = { "1": "A", "2": "B", "3": "C", "4": "D", "5": "E" };
+              keyOpt = mapKey[e.key];
+            }
+            if (keyOpt && !examSubmitted && qSet && qSet.length) {
+              const c = qSet[examOnlyIndex];
+              if (c && c.options && c.options[keyOpt]) {
+                if (String(c.answer || "").length > 1) {
+                  const set = new Set(String(qSel[examOnlyIndex] || "").split("").filter(Boolean));
+                  set.has(keyOpt) ? set.delete(keyOpt) : set.add(keyOpt);
+                  qSel[examOnlyIndex] = Array.from(set).sort().join("");
+                } else {
+                  qSel[examOnlyIndex] = keyOpt;
+                }
+                saveExam();
+                draw();
+                return;
+              }
             }
             if (e.key === "Escape") {
               if (examOnlyReview) {
@@ -7207,6 +7781,22 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
               set.has(k) ? set.delete(k) : set.add(k);
               qSel[examOnlyIndex] = Array.from(set).sort().join("");
             } else qSel[examOnlyIndex] = k;
+            saveExam();
+            draw();
+            return;
+          }
+          if (e.target.id === "examEditCard" || e.target.closest("#examEditCard")) {
+            const c = qSet && qSet[examOnlyIndex];
+            if (c && typeof window.openStudyReport === "function") window.openStudyReport(c.num);
+            else if (typeof openEditor === "function") openEditor();
+            return;
+          }
+          if (e.target.id === "examToggleLayout") {
+            examLayoutMode = examLayoutMode === "kizspy" ? "standard" : "kizspy";
+            try {
+              localStorage.setItem("hod102_exam_layout_mode", examLayoutMode);
+            } catch (ex) {
+            }
             saveExam();
             draw();
             return;
@@ -7297,6 +7887,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       examElapsed = "00:00";
       examSelectedCodes = [];
       quizMode = "exam";
+      kizspyCheckedMap = {};
     };
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => setTimeout(bind, 120));
     else setTimeout(bind, 120);
@@ -7679,7 +8270,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }
     function card(q, i) {
       const a = ans(q) || "?", r = risk(q);
-      return `<article class="libraryV2Card libraryQuestionCard" data-library-v2-card="${i}" data-num="${esc2(q.num || "")}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">C\xE2u ${esc2(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${esc2(q.question || "")}</div><div class="libraryV2Answer"><b>\u0110\xE1p \xE1n: ${esc2(a)}</b><span>${esc2(correctText(q))}</span></div></div>${miniImages(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-library-study="${i}">H\u1ECDc</button><button type="button" class="libraryV2Report" data-library-report="${i}">!</button><button type="button" class="libraryV2Toggle" data-library-toggle="${i}">M\u1EDF</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${optionList(q)}</div>${allImages(q)}</div></article>`;
+      return `<article class="libraryV2Card libraryQuestionCard" data-library-v2-card="${i}" data-num="${esc2(q.num || "")}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">C\xE2u ${esc2(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${esc2(q.question || "")}</div><div class="libraryV2Answer"><b>\u0110\xE1p \xE1n: ${esc2(a)}</b><span>${esc2(correctText(q))}</span></div></div>${miniImages(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-library-study="${i}">H\u1ECDc</button><button type="button" class="libraryV2Report" data-library-report="${i}">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${optionList(q)}</div>${allImages(q)}</div></article>`;
     }
     function getBase() {
       const q = $2("search")?.value || $2("studySearch")?.value || "";
@@ -7981,9 +8572,21 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       ensureToolbar();
       const box = $2("libStableFilters");
       if (!box) return;
-      const s = stats(base), f = filterVal();
+      const s = stats(base), f = filterVal(), v = viewVal();
       const filters = [["all", "T\u1EA5t c\u1EA3", s.total], ["has_image", "C\xF3 \u1EA3nh", s.img], ["high", "R\u1EE7i ro cao", s.high], ["medium", "Trung b\xECnh", s.medium], ["low", "Th\u1EA5p", s.low]];
-      box.innerHTML = '<div class="libStableFilterLine">' + filters.map((x) => `<button type="button" class="${f === x[0] ? "active" : ""}" data-stable-filter="${x[0]}">${x[1]} <small>${x[2]}</small></button>`).join("") + "</div>";
+      const isAllOpen = v === "full";
+      box.innerHTML = `
+      <div class="libStableFilterLine" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          ${filters.map((x) => `<button type="button" class="${f === x[0] ? "active" : ""}" data-stable-filter="${x[0]}">${x[1]} <small>${x[2]}</small></button>`).join("")}
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button type="button" class="v7FilterBtn ${isAllOpen ? "active" : ""}" data-stable-toggle-all="${isAllOpen ? "compact" : "full"}" title="M\u1EDF ho\u1EB7c thu g\u1ECDn t\u1EA5t c\u1EA3 c\xE2u h\u1ECFi trong danh s\xE1ch">
+            ${isAllOpen ? "\u{1F4D1} Thu g\u1ECDn t\u1EA5t c\u1EA3" : "\u{1F4C2} M\u1EDF t\u1EA5t c\u1EA3"}
+          </button>
+        </div>
+      </div>
+    `;
       const ft = $2("libStableFilterText"), ct = $2("libStableCount");
       if (ft) ft.textContent = "\u0110ang l\u1ECDc: " + (filters.find((x) => x[0] === f)?.[1] || "T\u1EA5t c\u1EA3");
       if (ct) ct.textContent = shown.length + " / " + base.length + " c\xE2u";
@@ -8034,7 +8637,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         isMatchInDetails = queryObj.tokens.every((t) => detailsText.includes(t));
       }
       const open = viewVal() === "full" || libraryOpenNums.has(String(q.num)) || isMatchInDetails || !!rawSearch;
-      return `<article class="libraryV2Card libraryQuestionCard ${open ? "open" : ""}" data-num="${esc2(q.num || "")}" data-stable-index="${i}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">C\xE2u ${esc2(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${hlt(q.question || "")}</div><div class="libraryV2Answer"><b>\u0110\xE1p \xE1n: ${esc2(a)}</b><span>${hlt(answerText2(q))}</span></div></div>${miniImg(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-stable-study="${i}" title="H\u1ECDc c\xE2u n\xE0y">H\u1ECDc</button><button type="button" class="libraryV2Report" data-stable-report="${i}" title="B\xE1o c\xE1o / s\u1EEDa c\xE2u">!</button><button type="button" class="libraryV2Toggle" data-stable-toggle="${i}">${open ? "Thu g\u1ECDn" : "M\u1EDF"}</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${options(q)}</div>${images(q, open)}</div></article>`;
+      return `<article class="libraryV2Card libraryQuestionCard ${open ? "open" : ""}" data-num="${esc2(q.num || "")}" data-stable-index="${i}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">C\xE2u ${esc2(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${hlt(q.question || "")}</div><div class="libraryV2Answer"><b>\u0110\xE1p \xE1n: ${esc2(a)}</b><span>${hlt(answerText2(q))}</span></div></div>${miniImg(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-stable-study="${i}" title="H\u1ECDc c\xE2u n\xE0y">H\u1ECDc</button><button type="button" class="libraryV2Report" data-stable-report="${i}" title="B\xE1o c\xE1o / s\u1EEDa c\xE2u">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${options(q)}</div>${images(q, open)}</div></article>`;
     }
     function renderUnified() {
       ensureToolbar();
@@ -8102,6 +8705,18 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         e.preventDefault();
         e.stopPropagation();
         showImageLightbox(zoomImg.src);
+        return;
+      }
+      const toggleAll = e.target.closest("[data-stable-toggle-all]");
+      if (toggleAll) {
+        e.preventDefault();
+        const targetView = toggleAll.dataset.stableToggleAll;
+        localStorage.setItem(VIEW_STORE, targetView);
+        if (targetView === "compact") {
+          libraryOpenNums.clear();
+          saveOpenState();
+        }
+        renderUnified();
         return;
       }
       const f = e.target.closest("[data-stable-filter]");
@@ -8939,9 +9554,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }
     document.addEventListener("click", (e) => {
       const t = e.target.closest("[data-tab]");
-      if (t?.dataset?.tab) try {
-        localStorage.setItem(TAB_STORE, t.dataset.tab);
-      } catch (_e) {
+      if (t?.dataset?.tab) {
+        const tabId = t.dataset.tab;
+        try {
+          localStorage.setItem(TAB_STORE, tabId);
+        } catch (_e) {
+        }
+        switchTab(tabId, t);
       }
     }, true);
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => {
@@ -11006,10 +11625,6 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
     else boot();
-    window.addEventListener("focus", () => loadOnce("focus"));
-    document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) loadOnce("visible");
-    });
   })();
   (function() {
     if (window.__COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630) return;
@@ -11133,19 +11748,21 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       }
     }
     async function uploadOne(finalCode, q, i) {
-      await postAction("add_question", { question_data: {
-        subject_code: finalCode,
-        num: Number(q.num) || i + 1,
-        question: q.question,
-        options: q.options || {},
-        answer: q.answer,
-        answer_text: q.answer_text || "",
-        images: q.images || [],
-        has_image: !!q.has_image,
-        error_risk: q.error_risk || "low",
-        error_risk_reason: q.error_risk_reason || null,
-        updated_at: (/* @__PURE__ */ new Date()).toISOString()
-      } });
+      await postAction("add_question", {
+        question_data: {
+          subject_code: finalCode,
+          num: Number(q.num) || i + 1,
+          question: q.question,
+          options: q.options || {},
+          answer: q.answer,
+          answer_text: q.answer_text || "",
+          images: q.images || [],
+          has_image: !!q.has_image,
+          error_risk: q.error_risk || "low",
+          error_risk_reason: q.error_risk_reason || null,
+          updated_at: (/* @__PURE__ */ new Date()).toISOString()
+        }
+      });
     }
     async function uploadParallel(finalCode, questions) {
       let done = 0;

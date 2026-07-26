@@ -2254,10 +2254,40 @@ body:not(.hod-is-admin-final) #adminOpenBtn,body:not(.hod-is-admin-final) #hodFl
 #quiz .examGridItem.answered{background:rgba(200,169,110,0.25) !important;border:1px solid rgba(232,212,168,0.6) !important;color:#ffffff !important;font-weight:800 !important}
 #quiz .examGridItem.answered:hover:not(.active){background:rgba(200,169,110,0.38) !important;border-color:rgba(232,212,168,0.9) !important}
 #quiz .examGridItem.active{background:linear-gradient(135deg,var(--gold2),var(--gold)) !important;color:#080605 !important;border-color:var(--gold) !important;box-shadow:0 0 15px rgba(232,212,168,0.35) !important;font-weight:900 !important}
-#quiz .examGridItem.review-grid-correct{background:rgba(114,197,140,0.15) !important;border:1px solid rgba(114,197,140,0.45) !important;color:#72c58c !important}
-#quiz .examGridItem.review-grid-correct:hover:not(.active){background:rgba(114,197,140,0.25) !important;border-color:rgba(114,197,140,0.6) !important}
-#quiz .examGridItem.review-grid-incorrect{background:rgba(233,135,123,0.15) !important;border:1px solid rgba(233,135,123,0.45) !important;color:#e9877b !important}
-#quiz .examGridItem.review-grid-incorrect:hover:not(.active){background:rgba(233,135,123,0.25) !important;border-color:rgba(233,135,123,0.6) !important}
+#quiz .examGridItem.review-grid-correct, #quiz .examGridItem.review-ok {
+  background: rgba(34, 197, 94, 0.22) !important;
+  border: 1px solid rgba(34, 197, 94, 0.6) !important;
+  color: #4ade80 !important;
+  font-weight: 800 !important;
+}
+#quiz .examGridItem.review-grid-correct:hover:not(.active), #quiz .examGridItem.review-ok:hover:not(.active) {
+  background: rgba(34, 197, 94, 0.35) !important;
+  border-color: rgba(34, 197, 94, 0.85) !important;
+}
+#quiz .examGridItem.review-grid-correct.active, #quiz .examGridItem.review-ok.active {
+  background: #16a34a !important;
+  border-color: #22c55e !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 14px rgba(34, 197, 94, 0.5) !important;
+  font-weight: 900 !important;
+}
+#quiz .examGridItem.review-grid-incorrect, #quiz .examGridItem.review-bad {
+  background: rgba(239, 68, 68, 0.22) !important;
+  border: 1px solid rgba(239, 68, 68, 0.6) !important;
+  color: #f87171 !important;
+  font-weight: 800 !important;
+}
+#quiz .examGridItem.review-grid-incorrect:hover:not(.active), #quiz .examGridItem.review-bad:hover:not(.active) {
+  background: rgba(239, 68, 68, 0.35) !important;
+  border-color: rgba(239, 68, 68, 0.85) !important;
+}
+#quiz .examGridItem.review-grid-incorrect.active, #quiz .examGridItem.review-bad.active {
+  background: #dc2626 !important;
+  border-color: #ef4444 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.5) !important;
+  font-weight: 900 !important;
+}
 #quiz .examOnlyResult{max-height:calc(100dvh - var(--headH,112px) - 30px) !important;overflow-y:auto !important;scrollbar-width:thin !important;margin:0 auto !important;width:100% !important;max-width:1080px !important;display:flex !important;flex-direction:column !important;align-items:center !important;padding:28px !important;box-sizing:border-box !important;background:rgba(20,16,15,0.65) !important;border:1px solid rgba(232,212,168,0.12) !important;backdrop-filter:blur(12px) !important;box-shadow:0 30px 80px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.05) !important;border-radius:28px !important}
 #quiz .examOnlyScore{background:linear-gradient(135deg,var(--gold2) 0%,var(--gold) 100%) !important;border:4px solid rgba(255,255,255,0.05) !important;box-shadow:0 0 35px rgba(232,212,168,0.3),inset 0 2px 10px rgba(255,255,255,0.35),0 10px 30px rgba(0,0,0,0.4) !important;transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1) !important}
 #quiz .examOnlyScore:hover{transform:scale(1.08) rotate(3deg) !important;box-shadow:0 0 45px rgba(232,212,168,0.45),0 15px 40px rgba(0,0,0,0.5) !important}
@@ -2505,3 +2535,1307 @@ body:not(.hod-is-admin-final) #adminOpenBtn,body:not(.hod-is-admin-final) #hodFl
   .face{box-shadow:0 14px 40px rgba(0,0,0,.45) !important}
 }
 /* ===== END PATCH_MOBILE_PERF_SHADOW_20260702 ===== */
+
+/* ===== KIZSPY_EXAM_LAYOUT_20260726 ===== */
+.examLayoutModeGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+@media (max-width: 650px) {
+  .examLayoutModeGrid {
+    grid-template-columns: 1fr;
+  }
+}
+.examLayoutBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(200,169,110,0.22);
+  background: rgba(255,255,255,0.03);
+  color: var(--fog, #e0e0e0);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+.examLayoutBtn:hover {
+  background: rgba(200,169,110,0.08);
+  border-color: rgba(200,169,110,0.4);
+}
+.examLayoutBtn.sel {
+  border-color: var(--gold2, #e8d4a8);
+  background: linear-gradient(135deg, rgba(200,169,110,0.18), rgba(200,169,110,0.08));
+  box-shadow: 0 0 16px rgba(200,169,110,0.15);
+}
+.examLayoutIcon {
+  font-size: 1.2rem;
+  color: var(--gold2, #e8d4a8);
+  font-weight: bold;
+}
+.examLayoutTitle {
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #fff;
+}
+.examLayoutSub {
+  font-size: 0.78rem;
+  color: var(--mist, #999);
+  line-height: 1.3;
+}
+
+/* Kizspy Fixed Overlay Container & Body Resets */
+body.kizspy-active #quiz,
+body.kizspy-active #app,
+body.kizspy-active .app-container,
+body.kizspy-active .pane {
+  transform: none !important;
+  perspective: none !important;
+  filter: none !important;
+  contain: none !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.kizspyExamContainer {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 99999999 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  font-family: Arial, Helvetica, sans-serif !important;
+}
+
+/* Top Control Header Bar - Streamlined 3-Section Nav */
+.kizspyHeaderNav {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  background: #f8fafc !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  padding: 6px 16px !important;
+  flex-shrink: 0 !important;
+  width: 100% !important;
+  z-index: 100 !important;
+}
+
+.kizspyNavLeft,
+.kizspyNavCenter,
+.kizspyNavRight {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.kizspyBrandBadge {
+  font-family: Arial, sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  color: #0f172a !important;
+  background: #e2e8f0 !important;
+  padding: 3px 8px !important;
+  border-radius: 4px !important;
+}
+
+.kizspyTimerBadge,
+.kizspyCountBadge {
+  font-family: Arial, sans-serif !important;
+  font-size: 11px !important;
+  color: #475569 !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  padding: 3px 8px !important;
+  border-radius: 4px !important;
+}
+
+.kizspyTimerBadge b {
+  color: #b91c1c !important;
+}
+
+.kizspyBtn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 6px !important;
+  padding: 4px 10px !important;
+  font-family: Arial, sans-serif !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #334155 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  white-space: nowrap !important;
+}
+
+.kizspyBtn:hover:not(:disabled) {
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+}
+
+.kizspyBtn:disabled {
+  opacity: 0.35 !important;
+  cursor: not-allowed !important;
+}
+
+.kizspyBtnCheck {
+  background: #eff6ff !important;
+  border-color: #3b82f6 !important;
+  color: #1d4ed8 !important;
+}
+.kizspyBtnCheck:hover {
+  background: #dbeafe !important;
+}
+
+.kizspyBtnLayout {
+  background: #f8fafc !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}
+
+.kizspyBtnSubmit {
+  background: #c01818 !important;
+  border-color: #b91c1c !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  margin: 0 !important;
+  margin-top: 0 !important;
+  position: static !important;
+  bottom: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  box-shadow: none !important;
+  transform: none !important;
+  width: auto !important;
+}
+.kizspyBtnSubmit:hover {
+  background: #991b1b !important;
+}
+
+body.kizspy-active .kizspyHeaderNav #examSubmit,
+.kizspyHeaderNav #examSubmit,
+.kizspyNavRight #examSubmit {
+  margin: 0 !important;
+  margin-top: 0 !important;
+  position: static !important;
+  bottom: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  box-shadow: none !important;
+  transform: none !important;
+  width: auto !important;
+  vertical-align: middle !important;
+  line-height: 1 !important;
+}
+
+.kizspyBtnExit {
+  background: #fff1f2 !important;
+  border-color: #fecdd3 !important;
+  color: #be123c !important;
+  font-weight: 800 !important;
+  margin: 0 !important;
+  margin-top: 0 !important;
+}
+.kizspyBtnExit:hover {
+  background: #ffe4e6 !important;
+}
+
+/* Main Split Area */
+.kizspyMainSplit {
+  display: flex !important;
+  flex: 1 !important;
+  width: 100% !important;
+  height: calc(100% - 44px) !important;
+  background: #ffffff !important;
+}
+
+.kizspyLeftPane {
+  flex: 0 0 42%;
+  display: flex !important;
+  flex-direction: column !important;
+  background: #ffffff !important;
+  padding: 10px 12px !important;
+  overflow: hidden !important;
+  min-width: 120px !important;
+}
+
+/* Draggable Red Line */
+.kizspyDividerLine {
+  position: relative !important;
+  width: 5px !important;
+  background: #c01818 !important;
+  flex-shrink: 0 !important;
+  height: 100% !important;
+  cursor: col-resize !important;
+  transition: background 0.15s ease !important;
+  z-index: 1000 !important;
+  touch-action: none !important;
+}
+
+.kizspyDividerLine::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: -8px !important;
+  right: -8px !important;
+  background: transparent !important;
+  cursor: col-resize !important;
+}
+
+.kizspyDividerLine:hover,
+.kizspyDividerLine:active {
+  background: #991b1b !important;
+  width: 6px !important;
+}
+
+.kizspyRightPane {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: #ffffff !important;
+  padding: 10px 14px !important;
+  overflow-y: auto !important;
+  color: #000000 !important;
+  min-width: 120px !important;
+}
+
+.kizspyQText {
+  font-family: Arial, Helvetica, sans-serif !important;
+  font-size: inherit !important;
+  font-weight: 400 !important;
+  color: #000000 !important;
+  line-height: 1.35 !important;
+  margin-bottom: 8px !important;
+}
+
+.kizspyQImgs {
+  margin-bottom: 8px !important;
+}
+.kizspyQImgs img {
+  max-width: 100% !important;
+  max-height: 260px !important;
+  border-radius: 4px !important;
+}
+
+.kizspyOptionsList {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+  font-size: inherit !important;
+}
+
+.kizspyOption {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 5px !important;
+  padding: 2px 0 !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 0 !important;
+  cursor: pointer !important;
+  text-align: left !important;
+  font-family: Arial, Helvetica, sans-serif !important;
+  font-size: inherit !important;
+  font-weight: 400 !important;
+  color: #000000 !important;
+  line-height: 1.35 !important;
+  width: 100% !important;
+}
+
+.kizspyOption:hover {
+  background: #f5f5f5 !important;
+}
+
+.kizspyOption.sel {
+  font-weight: 400 !important;
+  color: #000000 !important;
+  font-size: inherit !important;
+}
+
+.kizspyOptionPrefix {
+  font-family: Arial, Helvetica, sans-serif !important;
+  font-size: inherit !important;
+  font-weight: 400 !important;
+  color: #000000 !important;
+  min-width: 16px !important;
+  flex-shrink: 0 !important;
+}
+
+.kizspyOption.sel .kizspyOptionPrefix {
+  font-weight: 400 !important;
+  color: #000000 !important;
+  font-size: inherit !important;
+}
+
+.kizspyOptionText {
+  flex: 1 !important;
+  font-family: Arial, Helvetica, sans-serif !important;
+  font-size: inherit !important;
+  font-weight: 400 !important;
+  color: #000000 !important;
+}
+
+.kizspyOption.review-correct {
+  color: #15803d !important;
+  font-weight: 700 !important;
+}
+.kizspyOption.review-incorrect {
+  color: #b91c1c !important;
+}
+
+/* Left Pane Answer Selection Boxes */
+.kizspySelectBoxContainer {
+  margin-top: 14px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+}
+
+.kizspyLeftNavBtns {
+  margin-top: 18px !important;
+  display: flex !important;
+  gap: 8px !important;
+}
+
+.kizspyNavBtn {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 5px !important;
+  padding: 4px 14px !important;
+  font-family: Arial, sans-serif !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #1e293b !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+
+.kizspyNavBtn:hover:not(:disabled) {
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+}
+
+.kizspyNavBtn:disabled {
+  opacity: 0.35 !important;
+  cursor: not-allowed !important;
+}
+
+.kizspySelectBoxList {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+}
+
+.kizspySelectBoxItem {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 4px 8px !important;
+  border-radius: 4px !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  font-family: Arial, sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: #000000 !important;
+  transition: background 0.12s ease !important;
+}
+
+.kizspySelectBoxItem:hover {
+  background: #f1f5f9 !important;
+}
+
+.kizspySelectBoxItem.sel {
+  color: #c01818 !important;
+  font-weight: 800 !important;
+}
+
+.kizspyRadioCheck {
+  width: 14px !important;
+  height: 14px !important;
+  accent-color: #c01818 !important;
+  cursor: pointer !important;
+  margin: 0 !important;
+}
+
+.kizspySelectBoxLetter {
+  font-family: Arial, sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+}
+
+/* Keep Web App Global Top Bar & 3 Tabs visible above EOS Exam Portal */
+body.kizspy-active .globalTop {
+  z-index: 100000000 !important;
+  display: grid !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+body.kizspy-active .tabs {
+  z-index: 100000000 !important;
+  display: grid !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+body.kizspy-active .tab,
+body.kizspy-active .tabs button,
+body.kizspy-active .tabs * {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  z-index: 100000001 !important;
+}
+
+/* Keep main counter (Câu X / Y) visible in headline during exam portal mode */
+body.kizspy-active .globalTop .counter {
+  display: inline-block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+body.kizspy-active #kizspyExamPortal {
+  display: flex !important;
+}
+
+body:not(.kizspy-active) #kizspyExamPortal {
+  display: none !important;
+}
+
+#kizspyExamPortal {
+  position: fixed !important;
+  top: 112px !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: calc(100vh - 112px) !important;
+  z-index: 99999999 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  overflow: hidden !important;
+  flex-direction: column !important;
+  font-family: "Microsoft Sans Serif", MS Sans Serif, "Segoe UI", Arial, sans-serif !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+}
+
+#kizspyExamPortal .kizspyRightPane,
+#kizspyExamPortal .kizspyQText,
+#kizspyExamPortal .kizspyOption,
+#kizspyExamPortal .kizspyOptionText,
+#kizspyExamPortal .kizspyLeftPane {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+}
+
+#kizspyExamPortal * {
+  font-family: "Microsoft Sans Serif", MS Sans Serif, "Segoe UI", Arial, sans-serif !important;
+}
+
+@media (max-width: 760px) {
+  #kizspyExamPortal {
+    top: 98px !important;
+    height: calc(100vh - 98px) !important;
+  }
+}
+
+@media (max-width: 650px) {
+  .kizspyLeftPane {
+    flex: 0 0 35%;
+    padding: 8px 10px !important;
+  }
+  .kizspyRightPane {
+    padding: 8px 10px !important;
+  }
+}
+
+/* Layout Picker Modal Styling */
+.examLayoutPickerOverlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(0, 0, 0, 0.75) !important;
+  backdrop-filter: blur(8px) !important;
+  z-index: 999999999 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 20px !important;
+}
+
+.examLayoutPickerBox {
+  background: #1e1b18 !important;
+  border: 1px solid rgba(200, 169, 110, 0.3) !important;
+  border-radius: 16px !important;
+  padding: 24px 28px !important;
+  max-width: 520px !important;
+  width: 100% !important;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.6) !important;
+  color: #ffffff !important;
+  font-family: Arial, Helvetica, sans-serif !important;
+}
+
+.examLayoutPickerTitle {
+  font-size: 1.25rem !important;
+  font-weight: 800 !important;
+  color: #f3e5ca !important;
+  margin: 0 0 6px 0 !important;
+}
+
+.examLayoutPickerSub {
+  font-size: 0.88rem !important;
+  color: #a19582 !important;
+  margin: 0 0 18px 0 !important;
+}
+
+.examLayoutPickerGrid {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 14px !important;
+  margin-bottom: 22px !important;
+}
+
+.examLayoutPickerCard {
+  position: relative !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 2px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 12px !important;
+  padding: 16px 14px !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  text-align: center !important;
+}
+
+.examLayoutPickerCard:hover {
+  background: rgba(200, 169, 110, 0.08) !important;
+  border-color: rgba(200, 169, 110, 0.4) !important;
+}
+
+.examLayoutPickerCard.active {
+  background: rgba(200, 169, 110, 0.15) !important;
+  border-color: #c8a96e !important;
+  box-shadow: 0 0 16px rgba(200, 169, 110, 0.2) !important;
+}
+
+.examLayoutPickerBadge {
+  position: absolute !important;
+  top: -10px !important;
+  right: 10px !important;
+  background: #c8a96e !important;
+  color: #000000 !important;
+  font-size: 0.68rem !important;
+  font-weight: 900 !important;
+  padding: 2px 8px !important;
+  border-radius: 999px !important;
+  letter-spacing: 0.04em !important;
+}
+
+.examLayoutPickerIcon {
+  font-size: 2rem !important;
+  margin-bottom: 8px !important;
+}
+
+.examLayoutPickerName {
+  font-size: 0.98rem !important;
+  font-weight: 800 !important;
+  color: #ffffff !important;
+  margin-bottom: 4px !important;
+}
+
+.examLayoutPickerDesc {
+  font-size: 0.78rem !important;
+  color: #a19582 !important;
+  line-height: 1.35 !important;
+}
+
+.examLayoutPickerActions {
+  display: flex !important;
+  justify-content: flex-end !important;
+}
+
+.examLayoutPickerConfirmBtn {
+  background: linear-gradient(135deg, #d4af37 0%, #aa7c11 100%) !important;
+  color: #000000 !important;
+  border: none !important;
+  border-radius: 10px !important;
+  padding: 10px 24px !important;
+  font-size: 0.95rem !important;
+  font-weight: 800 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 4px 14px rgba(212, 175, 55, 0.3) !important;
+}
+
+.examLayoutPickerConfirmBtn:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 18px rgba(212, 175, 55, 0.45) !important;
+}
+
+/* Quick Check Answer Modal Popup */
+.kizspyCheckOverlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(0, 0, 0, 0.55) !important;
+  backdrop-filter: blur(4px) !important;
+  z-index: 1000000000 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 16px !important;
+}
+
+.kizspyCheckBox {
+  background: #ffffff !important;
+  border-radius: 14px !important;
+  width: 100% !important;
+  max-width: 440px !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28) !important;
+  padding: 20px 22px !important;
+  font-family: Arial, Helvetica, sans-serif !important;
+  color: #1e293b !important;
+  animation: kizspyPopIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  border-top: 5px solid #94a3b8 !important;
+}
+
+.kizspyCheckBox.correct {
+  border-top-color: #16a34a !important;
+}
+
+.kizspyCheckBox.incorrect {
+  border-top-color: #dc2626 !important;
+}
+
+.kizspyCheckBox.warning {
+  border-top-color: #d97706 !important;
+}
+
+@keyframes kizspyPopIn {
+  from { opacity: 0; transform: scale(0.94) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.kizspyCheckHeader {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  margin-bottom: 14px !important;
+}
+
+.kizspyCheckTitle {
+  font-size: 1.12rem !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.01em !important;
+}
+
+.correct .kizspyCheckTitle { color: #15803d !important; }
+.incorrect .kizspyCheckTitle { color: #b91c1c !important; }
+.warning .kizspyCheckTitle { color: #b45309 !important; }
+
+.kizspyCheckClose {
+  background: transparent !important;
+  border: none !important;
+  font-size: 1.5rem !important;
+  line-height: 1 !important;
+  color: #64748b !important;
+  cursor: pointer !important;
+  padding: 0 4px !important;
+}
+
+.kizspyCheckBodyGrid {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  margin-bottom: 16px !important;
+}
+
+.kizspyCheckRow {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  background: #f8fafc !important;
+  padding: 10px 14px !important;
+  border-radius: 10px !important;
+  font-size: 0.92rem !important;
+  border-left: 4px solid #cbd5e1 !important;
+}
+
+.kizspyCheckRow.ok {
+  background: #f0fdf4 !important;
+  border-left-color: #16a34a !important;
+}
+
+.kizspyCheckRow.bad {
+  background: #fef2f2 !important;
+  border-left-color: #dc2626 !important;
+}
+
+.kizspyCheckRowTop {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+}
+
+.kizspyCheckVal {
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  color: #0f172a !important;
+  line-height: 1.4 !important;
+  word-break: break-word !important;
+}
+
+/* Inline Check Answer Highlight on EOS Options & Checkboxes */
+.kizspyOption.check-correct-ok {
+  background: #dcfce7 !important;
+  border: 1px solid #22c55e !important;
+  color: #15803d !important;
+  font-weight: 700 !important;
+  border-radius: 4px !important;
+}
+.kizspyOption.check-correct-ok .kizspyOptionText,
+.kizspyOption.check-correct-ok .kizspyOptionPrefix {
+  color: #15803d !important;
+  font-weight: 700 !important;
+}
+
+.kizspyOption.check-user-bad {
+  background: #fee2e2 !important;
+  border: 1px solid #ef4444 !important;
+  color: #b91c1c !important;
+  font-weight: 700 !important;
+  border-radius: 4px !important;
+}
+.kizspyOption.check-user-bad .kizspyOptionText,
+.kizspyOption.check-user-bad .kizspyOptionPrefix {
+  color: #b91c1c !important;
+  font-weight: 700 !important;
+}
+
+.kizspySelectBoxItem.check-correct-ok {
+  background: #dcfce7 !important;
+  border: 1px solid #22c55e !important;
+  color: #15803d !important;
+}
+
+.kizspySelectBoxItem.check-user-bad {
+  background: #fee2e2 !important;
+  border: 1px solid #ef4444 !important;
+  color: #b91c1c !important;
+}
+
+/* EOS Check Answer Inline Banner */
+.kizspyCheckInlineBanner {
+  margin: 12px 0 16px 0 !important;
+  padding: 12px 16px !important;
+  border-radius: 8px !important;
+  font-family: Arial, Helvetica, sans-serif !important;
+}
+
+.kizspyCheckInlineBanner.correct {
+  background: #f0fdf4 !important;
+  border: 1.5px solid #22c55e !important;
+  color: #15803d !important;
+}
+
+.kizspyCheckInlineBanner.incorrect {
+  background: #fef2f2 !important;
+  border: 1.5px solid #ef4444 !important;
+  color: #b91c1c !important;
+}
+
+.kizspyCheckInlineBanner.warning {
+  background: #fffbeb !important;
+  border: 1.5px solid #f59e0b !important;
+  color: #b45309 !important;
+}
+
+.kizspyCheckInlineBanner .bannerTitle {
+  font-size: 0.98rem !important;
+  font-weight: 800 !important;
+  margin-bottom: 4px !important;
+}
+
+.kizspyCheckInlineBanner .bannerSub {
+  font-size: 0.9rem !important;
+  font-weight: 500 !important;
+  line-height: 1.4 !important;
+}
+
+/* Option Badges */
+.kizspyCheckBadgeTag {
+  margin-left: auto !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  padding: 2px 8px !important;
+  border-radius: 4px !important;
+  flex-shrink: 0 !important;
+}
+
+.kizspyCheckBadgeTag.ok {
+  background: #22c55e !important;
+  color: #ffffff !important;
+}
+
+.kizspyCheckBadgeTag.bad {
+  background: #ef4444 !important;
+  color: #ffffff !important;
+}
+
+.kizspyCheckLabel {
+  color: #475569 !important;
+  font-weight: 600 !important;
+}
+
+.kizspyCheckBadge {
+  font-weight: 800 !important;
+  padding: 2px 10px !important;
+  border-radius: 6px !important;
+  font-size: 0.95rem !important;
+}
+
+.kizspyCheckBadge.ok {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+  border: 1px solid #86efac !important;
+}
+
+.kizspyCheckBadge.bad {
+  background: #fee2e2 !important;
+  color: #b91c1c !important;
+  border: 1px solid #fca5a5 !important;
+}
+
+.kizspyCheckExplainBlock {
+  background: #f0fdf4 !important;
+  border: 1px solid #bbf7d0 !important;
+  border-radius: 8px !important;
+  padding: 10px 12px !important;
+  margin-top: 4px !important;
+}
+
+.incorrect .kizspyCheckExplainBlock {
+  background: #fff1f2 !important;
+  border-color: #fecdd3 !important;
+}
+
+.kizspyCheckExplainTitle {
+  font-size: 0.85rem !important;
+  font-weight: 700 !important;
+  color: #1e293b !important;
+  margin-bottom: 4px !important;
+}
+
+.kizspyCheckExplainText {
+  font-size: 0.86rem !important;
+  color: #334155 !important;
+  line-height: 1.4 !important;
+}
+
+.kizspyCheckContent {
+  font-size: 0.92rem !important;
+  color: #334155 !important;
+  line-height: 1.45 !important;
+  margin-bottom: 16px !important;
+}
+
+.kizspyCheckFooter {
+  display: flex !important;
+  justify-content: flex-end !important;
+}
+
+.kizspyCheckOkBtn {
+  background: #1e293b !important;
+  color: #ffffff !important;
+  border: none !important;
+  padding: 7px 18px !important;
+  border-radius: 7px !important;
+  font-weight: 700 !important;
+  font-size: 0.88rem !important;
+  cursor: pointer !important;
+  transition: background 0.15s ease !important;
+}
+
+.kizspyCheckOkBtn:hover {
+  background: #0f172a !important;
+}
+
+/* Hide summary answer text when Library Card is expanded (open) */
+.libraryV2Card.open .libraryV2Answer,
+.libraryQuestionCard.open .libraryV2Answer,
+.sitem.open .libraryV2Answer {
+  display: none !important;
+}
+
+/* EOS Question Map Modal */
+.kizspyMapOverlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background: rgba(15, 23, 42, 0.75) !important;
+  backdrop-filter: blur(4px) !important;
+  z-index: 100000005 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 20px !important;
+}
+
+.kizspyMapOverlay.hidden {
+  display: none !important;
+}
+
+.kizspyMapBox {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  width: min(680px, 92vw) !important;
+  max-height: 85vh !important;
+  border-radius: 14px !important;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.3) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  font-family: Arial, Helvetica, sans-serif !important;
+}
+
+.kizspyMapHeader {
+  padding: 16px 20px !important;
+  background: #0f172a !important;
+  color: #ffffff !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+
+.kizspyMapTitle {
+  display: flex !important;
+  align-items: baseline !important;
+  gap: 10px !important;
+}
+
+.kizspyMapTitle b {
+  font-size: 1.1rem !important;
+  font-weight: 800 !important;
+}
+
+.kizspyMapTitle span {
+  font-size: 0.88rem !important;
+  color: #cbd5e1 !important;
+}
+
+.kizspyMapClose {
+  background: transparent !important;
+  border: none !important;
+  color: #ffffff !important;
+  font-size: 1.3rem !important;
+  cursor: pointer !important;
+  padding: 4px 8px !important;
+  border-radius: 6px !important;
+}
+
+.kizspyMapClose:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+}
+
+.kizspyMapLegend {
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  padding: 12px 20px !important;
+  background: #f8fafc !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  font-size: 0.82rem !important;
+  font-weight: 600 !important;
+  flex-wrap: wrap !important;
+}
+
+.legendItem {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+.legendItem.current { color: #2563eb !important; }
+.legendItem.done { color: #475569 !important; }
+.legendItem.ok { color: #16a34a !important; }
+.legendItem.bad { color: #dc2626 !important; }
+
+.kizspyMapGrid {
+  padding: 20px !important;
+  overflow-y: auto !important;
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)) !important;
+  gap: 10px !important;
+  max-height: 60vh !important;
+}
+
+.kizspyMapItem {
+  aspect-ratio: 1 / 1 !important;
+  border-radius: 8px !important;
+  border: 1.5px solid #cbd5e1 !important;
+  background: #ffffff !important;
+  color: #334155 !important;
+  font-weight: 700 !important;
+  font-size: 0.9rem !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  user-select: none !important;
+}
+
+.kizspyMapItem:hover {
+  transform: translateY(-2px) !important;
+  border-color: #2563eb !important;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.15) !important;
+}
+
+.kizspyMapItem.current {
+  border: 2px solid #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25) !important;
+}
+
+.kizspyMapItem.done {
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}
+
+.kizspyMapItem.ok {
+  background: #dcfce7 !important;
+  border-color: #22c55e !important;
+  color: #15803d !important;
+}
+
+.kizspyMapItem.bad {
+  background: #fee2e2 !important;
+  border-color: #ef4444 !important;
+  color: #b91c1c !important;
+}
+
+.kizspyMapItemSub {
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  margin-top: 2px !important;
+  opacity: 0.9 !important;
+}
+
+/* Clean modern headline layout for Global Top Header */
+.globalTop > div:first-child {
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  flex-direction: row !important;
+  min-width: 0 !important;
+}
+
+.globalTop .brand {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-style: normal !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+  font-size: 1rem !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
+}
+
+.globalTop .brand * {
+  font-family: inherit !important;
+  font-style: normal !important;
+}
+
+.globalTop .brandSubjectBox {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 2px !important;
+}
+
+.globalTop .brandCodeTitle {
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace, sans-serif !important;
+  font-size: 1.05rem !important;
+  font-weight: 800 !important;
+  color: #f5d496 !important;
+  background: rgba(245, 212, 150, 0.12) !important;
+  border: 1px solid rgba(245, 212, 150, 0.25) !important;
+  padding: 1px 8px !important;
+  border-radius: 5px !important;
+  letter-spacing: 0.5px !important;
+  line-height: 1.2 !important;
+  display: inline-block !important;
+}
+
+.globalTop .brandNameSub {
+  font-size: 0.78rem !important;
+  color: #cbd5e1 !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  white-space: nowrap !important;
+  font-style: normal !important;
+  opacity: 0.9 !important;
+}
+
+.globalTop .counter {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  color: #f5d496 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  margin-left: 2px !important;
+  font-style: normal !important;
+  white-space: nowrap !important;
+}
+
+.globalTop .counter:before {
+  content: "·" !important;
+  margin-right: 10px !important;
+  color: #f5d496 !important;
+  font-weight: 900 !important;
+  font-size: 1.2rem !important;
+}
+
+.globalTop .counter b {
+  font-family: inherit !important;
+  font-style: normal !important;
+}
+
+.globalTop .counter b#idx {
+  color: #f5d496 !important;
+  font-weight: 800 !important;
+  font-size: 1.05rem !important;
+}
+
+.globalTop .counter b#total {
+  color: #f5d496 !important;
+  font-weight: 700 !important;
+}
+/* ===== END KIZSPY_EXAM_LAYOUT_20260726 ===== */
+
+/* ===== MOBILE HEADLINE OPTIMIZATIONS ===== */
+@media (max-width: 760px) {
+  /* Hide bell notification icon on mobile */
+  .globalTop #hodEditRequestBell {
+    display: none !important;
+  }
+
+  /* Tighter globalTop header on mobile */
+  .globalTop {
+    height: 56px !important;
+    padding: 8px 12px !important;
+    gap: 6px !important;
+  }
+
+  .globalTop > div:first-child {
+    gap: 8px !important;
+  }
+
+  /* Smaller brand code badge on mobile */
+  .globalTop .brandCodeTitle {
+    font-size: 0.88rem !important;
+    padding: 1px 6px !important;
+  }
+
+  /* Smaller counter text on mobile */
+  .globalTop .counter {
+    font-size: 0.82rem !important;
+    gap: 2px !important;
+    margin-left: 0 !important;
+  }
+
+  .globalTop .counter:before {
+    margin-right: 6px !important;
+    font-size: 1rem !important;
+  }
+
+  .globalTop .counter b#idx {
+    font-size: 0.9rem !important;
+  }
+
+  /* Smaller action buttons on mobile */
+  .globalTop .actions .btn,
+  .hodTopAvatar {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .globalTop {
+    height: 50px !important;
+    padding: 6px 8px !important;
+  }
+
+  .globalTop .brandCodeTitle {
+    font-size: 0.78rem !important;
+    padding: 1px 5px !important;
+    border-radius: 4px !important;
+  }
+
+  .globalTop .counter {
+    font-size: 0.75rem !important;
+  }
+
+  .globalTop .counter b#idx {
+    font-size: 0.82rem !important;
+  }
+
+  .globalTop .actions .btn,
+  .hodTopAvatar {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+  }
+}
+/* ===== END MOBILE HEADLINE OPTIMIZATIONS ===== */
+
+/* Hide Questions tab in Admin */
+.nav[data-page="questions"],
+.nav[data-nav-key="questions"],
+.nav[data-short="CH"],
+#questionsPage,
+#questionsSection,
+.adminSectionQuestions {
+  display: none !important;
+}

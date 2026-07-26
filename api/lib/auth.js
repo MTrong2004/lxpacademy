@@ -1,7 +1,8 @@
 import { db, cleanStr } from './db.js';
 
 export function getAdminEmail() {
-  return cleanStr(process.env.ADMIN_EMAIL).toLowerCase().trim();
+  const envEmail = cleanStr(process.env.ADMIN_EMAIL).toLowerCase().trim();
+  return envEmail || 'trongbm2004@gmail.com';
 }
 
 const SUPABASE_URL = cleanStr(process.env.SUPABASE_URL) || 'https://kxyukiwhhorvxgxxxmfq.supabase.co';
@@ -29,10 +30,24 @@ export async function verifyUser(req) {
   }
 }
 
+// OPTIM_TURSO_READS_20260726: Cache profile lookups để tránh query mỗi API request.
+// TTL 5 phút, invalidate khi profile bị update (handleProfile gọi clearProfileCache).
+const _profileCache = new Map();
+const _PROFILE_CACHE_TTL = 5 * 60 * 1000; // 5 phút
+
+export function clearProfileCache(id) {
+  if (id) _profileCache.delete(id);
+  else _profileCache.clear();
+}
+
 export async function loadProfileRow(id) {
   try {
+    const cached = _profileCache.get(id);
+    if (cached && Date.now() - cached.at < _PROFILE_CACHE_TTL) return cached.row;
     const r = await db.execute({ sql: 'select * from profiles where id = ?', args: [id] });
-    return r.rows?.[0] || null;
+    const row = r.rows?.[0] || null;
+    _profileCache.set(id, { row, at: Date.now() });
+    return row;
   } catch (e) { return null; }
 }
 

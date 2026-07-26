@@ -183,46 +183,46 @@ window.APP_CONFIG = window.APP_CONFIG || {
 // ===== APP_API_DEDUPE_QUESTIONS_PROFILE_20260630 =====
 // Chống gọi trùng /api/questions và /api/profile trong lúc app khởi động/chọn môn.
 // Giữ nguyên dữ liệu đang dùng, chỉ gộp các request giống nhau đang chạy cùng lúc.
-(function(){
-  if(window.__APP_API_DEDUPE_QUESTIONS_PROFILE_20260630) return;
+(function () {
+  if (window.__APP_API_DEDUPE_QUESTIONS_PROFILE_20260630) return;
   window.__APP_API_DEDUPE_QUESTIONS_PROFILE_20260630 = true;
 
   const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
-  if(!nativeFetch) return;
+  if (!nativeFetch) return;
 
   const pending = new Map();
   const shortCache = new Map();
-  const QUESTION_TTL = 2500;
-  const PROFILE_TTL = 2500;
+  const QUESTION_TTL = 60000;
+  const PROFILE_TTL = 30000;
 
-  function methodOf(init){
+  function methodOf(init) {
     return String(init && init.method ? init.method : 'GET').toUpperCase();
   }
 
-  function makeKey(input, init){
+  function makeKey(input, init) {
     let url;
     try { url = new URL(typeof input === 'string' ? input : input.url, location.href); }
-    catch(e){ return null; }
+    catch (e) { return null; }
 
     const method = methodOf(init);
     const path = url.pathname;
 
-    if(path === '/api/questions' && method === 'GET'){
+    if (path === '/api/questions' && method === 'GET') {
       const subject = url.searchParams.get('subject_code') || '';
-      if(!subject) return null;
+      if (!subject) return null;
       return { key: 'GET:/api/questions:' + subject, ttl: QUESTION_TTL };
     }
 
-    if(path === '/api/profile' && method === 'POST'){
+    if (path === '/api/profile' && method === 'POST') {
       let uid = '';
-      try { uid = JSON.parse(String(init && init.body || '{}')).id || ''; } catch(e) {}
+      try { uid = JSON.parse(String(init && init.body || '{}')).id || ''; } catch (e) { }
       return { key: 'POST:/api/profile:' + uid, ttl: PROFILE_TTL };
     }
 
     return null;
   }
 
-  async function packResponse(res){
+  async function packResponse(res) {
     const body = await res.clone().text();
     return {
       body,
@@ -233,7 +233,7 @@ window.APP_CONFIG = window.APP_CONFIG || {
     };
   }
 
-  function unpack(pack){
+  function unpack(pack) {
     return new Response(pack.body, {
       status: pack.status,
       statusText: pack.statusText,
@@ -241,16 +241,16 @@ window.APP_CONFIG = window.APP_CONFIG || {
     });
   }
 
-  window.fetch = async function(input, init){
+  window.fetch = async function (input, init) {
     const info = makeKey(input, init);
-    if(!info) return nativeFetch(input, init);
+    if (!info) return nativeFetch(input, init);
 
     const cached = shortCache.get(info.key);
-    if(cached && Date.now() - cached.exp < info.ttl){
+    if (cached && Date.now() - cached.exp < info.ttl) {
       return unpack(cached);
     }
 
-    if(pending.has(info.key)){
+    if (pending.has(info.key)) {
       const pack = await pending.get(info.key);
       return unpack(pack);
     }
@@ -292,12 +292,12 @@ if (location.protocol === 'file:') {
 // ===== APP_F5_SUPABASE_CACHE_20260629 =====
 // F5 giảm gọi Supabase: cache GET Supabase + chống gọi lặp questions/profiles.
 // Có realtime clear cache khi questions/subjects đổi.
-(function(){
-  if(window.__APP_F5_SUPABASE_CACHE_20260629) return;
+(function () {
+  if (window.__APP_F5_SUPABASE_CACHE_20260629) return;
   window.__APP_F5_SUPABASE_CACHE_20260629 = true;
 
   const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
-  if(!nativeFetch) return;
+  if (!nativeFetch) return;
 
   const PREFIX = 'lh_f5_cache:';
   const mem = new Map();
@@ -305,114 +305,114 @@ if (location.protocol === 'file:') {
   const MAX_BODY = 900 * 1024;
   const profilePatchLast = new Map();
 
-  function methodOf(init){ return String(init && init.method ? init.method : 'GET').toUpperCase(); }
-  function isSupabaseRest(url){ return /\/rest\/v1\//.test(url.pathname); }
-  function isCacheablePath(path){ return /\/(questions|subjects|profiles|site_settings)\b/.test(path); }
-  function ttlFor(url){
+  function methodOf(init) { return String(init && init.method ? init.method : 'GET').toUpperCase(); }
+  function isSupabaseRest(url) { return /\/rest\/v1\//.test(url.pathname); }
+  function isCacheablePath(path) { return /\/(questions|subjects|profiles|site_settings)\b/.test(path); }
+  function ttlFor(url) {
     const p = url.pathname;
     const q = url.search || '';
-    if(/\/questions\b/.test(p)) return 10 * 60 * 1000;
-    if(/\/subjects\b/.test(p)) return 10 * 60 * 1000;
-    if(/\/profiles\b/.test(p) && /id=eq\./.test(q)) return 10 * 60 * 1000;
-    if(/\/site_settings\b/.test(p)) return 10 * 60 * 1000;
+    if (/\/questions\b/.test(p)) return 10 * 60 * 1000;
+    if (/\/subjects\b/.test(p)) return 10 * 60 * 1000;
+    if (/\/profiles\b/.test(p) && /id=eq\./.test(q)) return 10 * 60 * 1000;
+    if (/\/site_settings\b/.test(p)) return 10 * 60 * 1000;
     return 0;
   }
-  function keyOf(url){ return url.origin + url.pathname + url.search; }
-  function headersObj(headers){
-    const o = {'x-learninghub-cache':'1'};
-    try{ headers.forEach((v,k)=>{ if(k.toLowerCase() !== 'content-length') o[k]=v; }); }catch(e){}
+  function keyOf(url) { return url.origin + url.pathname + url.search; }
+  function headersObj(headers) {
+    const o = { 'x-learninghub-cache': '1' };
+    try { headers.forEach((v, k) => { if (k.toLowerCase() !== 'content-length') o[k] = v; }); } catch (e) { }
     return o;
   }
-  function makeResponse(entry){
-    return new Response(entry.body, {status:entry.status || 200, statusText:entry.statusText || 'OK', headers:entry.headers || {'x-learninghub-cache':'1'}});
+  function makeResponse(entry) {
+    return new Response(entry.body, { status: entry.status || 200, statusText: entry.statusText || 'OK', headers: entry.headers || { 'x-learninghub-cache': '1' } });
   }
-  function readStore(key){
-    try{
+  function readStore(key) {
+    try {
       const raw = sessionStorage.getItem(PREFIX + key);
-      if(!raw) return null;
+      if (!raw) return null;
       const e = JSON.parse(raw);
-      if(!e || !e.exp || Date.now() > e.exp) return null;
+      if (!e || !e.exp || Date.now() > e.exp) return null;
       return e;
-    }catch(err){ return null; }
+    } catch (err) { return null; }
   }
-  function writeStore(key, entry){ try{ sessionStorage.setItem(PREFIX + key, JSON.stringify(entry)); }catch(err){} }
-  async function saveFromResponse(key, ttl, res){
-    try{
+  function writeStore(key, entry) { try { sessionStorage.setItem(PREFIX + key, JSON.stringify(entry)); } catch (err) { } }
+  async function saveFromResponse(key, ttl, res) {
+    try {
       const txt = await res.clone().text();
-      if(txt.length > MAX_BODY) return;
-      const entry = {body:txt, status:res.status, statusText:res.statusText, headers:headersObj(res.headers), exp:Date.now()+ttl};
+      if (txt.length > MAX_BODY) return;
+      const entry = { body: txt, status: res.status, statusText: res.statusText, headers: headersObj(res.headers), exp: Date.now() + ttl };
       mem.set(key, entry);
       writeStore(key, entry);
-    }catch(err){}
+    } catch (err) { }
   }
-  function matchKind(text, kind){
-    if(!kind || kind === 'all') return true;
-    if(kind === 'questions') return text.includes('/questions');
-    if(kind === 'subjects') return text.includes('/subjects');
-    if(kind === 'profiles') return text.includes('/profiles');
+  function matchKind(text, kind) {
+    if (!kind || kind === 'all') return true;
+    if (kind === 'questions') return text.includes('/questions');
+    if (kind === 'subjects') return text.includes('/subjects');
+    if (kind === 'profiles') return text.includes('/profiles');
     return text.includes('/' + kind);
   }
-  function clearCache(kind){
-    try{
+  function clearCache(kind) {
+    try {
       Object.keys(sessionStorage).forEach(k => {
-        if(k.startsWith(PREFIX) && matchKind(k, kind)) sessionStorage.removeItem(k);
+        if (k.startsWith(PREFIX) && matchKind(k, kind)) sessionStorage.removeItem(k);
       });
-      Array.from(mem.keys()).forEach(k => { if(matchKind(k, kind)) mem.delete(k); });
-      Array.from(pending.keys()).forEach(k => { if(matchKind(k, kind)) pending.delete(k); });
-      window.__LH_LAST_CACHE_CLEAR = {kind: kind || 'all', at: Date.now()};
-    }catch(e){}
+      Array.from(mem.keys()).forEach(k => { if (matchKind(k, kind)) mem.delete(k); });
+      Array.from(pending.keys()).forEach(k => { if (matchKind(k, kind)) pending.delete(k); });
+      window.__LH_LAST_CACHE_CLEAR = { kind: kind || 'all', at: Date.now() };
+    } catch (e) { }
   }
-  function shouldSkipProfilePatch(url, init){
+  function shouldSkipProfilePatch(url, init) {
     const method = methodOf(init);
-    if(method !== 'PATCH' && method !== 'PUT') return false;
-    if(!/\/profiles\b/.test(url.pathname)) return false;
+    if (method !== 'PATCH' && method !== 'PUT') return false;
+    if (!/\/profiles\b/.test(url.pathname)) return false;
     const body = String(init && init.body ? init.body : '');
     // Chỉ chặn các update hoạt động/avatar/email lặp, không chặn cập nhật quyền từ admin.
-    if(!/last_activity|last_login|avatar_url|email/.test(body)) return false;
-    if(/last_login/.test(body)) return false; // đăng nhập/mở web phải được ghi nhận
-    if(/role|approved|blocked|is_blocked|status/.test(body)) return false;
+    if (!/last_activity|last_login|avatar_url|email/.test(body)) return false;
+    if (/last_login/.test(body)) return false; // đăng nhập/mở web phải được ghi nhận
+    if (/role|approved|blocked|is_blocked|status/.test(body)) return false;
     const key = keyOf(url) + '|' + body.replace(/"last_activity"\s*:\s*"[^"]+"/g, '"last_activity":"TIME"');
     const last = profilePatchLast.get(key) || 0;
-    if(Date.now() - last < 5 * 60 * 1000) return true;
+    if (Date.now() - last < 5 * 60 * 1000) return true;
     profilePatchLast.set(key, Date.now());
     return false;
   }
 
-  window.clearLearningHubQuestionCache = function(){ clearCache('questions'); };
+  window.clearLearningHubQuestionCache = function () { clearCache('questions'); };
   window.clearLearningHubSupabaseCache = clearCache;
 
-  window.fetch = async function(input, init){
+  window.fetch = async function (input, init) {
     let url;
-    try{ url = new URL(typeof input === 'string' ? input : input.url, location.href); }catch(e){ return nativeFetch(input, init); }
+    try { url = new URL(typeof input === 'string' ? input : input.url, location.href); } catch (e) { return nativeFetch(input, init); }
 
     // Giảm profiles?id=... status 204 lặp lại do update hoạt động/avatar.
-    if(isSupabaseRest(url) && shouldSkipProfilePatch(url, init)){
-      return new Response(null, {status:204, statusText:'No Content', headers:{'x-learninghub-skip':'profile-patch-duplicate'}});
+    if (isSupabaseRest(url) && shouldSkipProfilePatch(url, init)) {
+      return new Response(null, { status: 204, statusText: 'No Content', headers: { 'x-learninghub-skip': 'profile-patch-duplicate' } });
     }
 
-    if(methodOf(init) !== 'GET' || !isSupabaseRest(url) || !isCacheablePath(url.pathname)) return nativeFetch(input, init);
+    if (methodOf(init) !== 'GET' || !isSupabaseRest(url) || !isCacheablePath(url.pathname)) return nativeFetch(input, init);
 
     const ttl = ttlFor(url);
-    if(!ttl) return nativeFetch(input, init);
+    if (!ttl) return nativeFetch(input, init);
     const key = keyOf(url);
 
     const m = mem.get(key);
-    if(m && Date.now() <= m.exp) return makeResponse(m);
+    if (m && Date.now() <= m.exp) return makeResponse(m);
     const s = readStore(key);
-    if(s){ mem.set(key, s); return makeResponse(s); }
+    if (s) { mem.set(key, s); return makeResponse(s); }
 
-    if(pending.has(key)){
-      const entry = await pending.get(key).catch(()=>null);
-      if(entry) return makeResponse(entry);
+    if (pending.has(key)) {
+      const entry = await pending.get(key).catch(() => null);
+      if (entry) return makeResponse(entry);
     }
 
     // Quan trọng: chỉ gọi network 1 lần. Bản cũ gọi nativeFetch 2 lần khi cache miss.
     const network = nativeFetch(input, init).then(async res => {
-      if(res && res.ok) await saveFromResponse(key, ttl, res);
+      if (res && res.ok) await saveFromResponse(key, ttl, res);
       return res;
-    }).finally(()=>pending.delete(key));
+    }).finally(() => pending.delete(key));
 
-    pending.set(key, network.then(()=>mem.get(key) || null));
+    pending.set(key, network.then(() => mem.get(key) || null));
     return network;
   };
 })();
@@ -457,15 +457,32 @@ function hideProgress() {
   if (el) el.classList.add('hidden');
 }
 
-let RAW = [], pool = [], ci = Math.max(0, Math.min(+localStorage.getItem('hod102_ci') || 0, BASE.length - 1)), flipped = false, flipDir = 'horizontal', cardFontSize = localStorage.getItem('hod102_card_font_size_v3') || '1', flipMode = localStorage.getItem('hod102_flip_mode') || 'single', hideOptions = false, randomActive = localStorage.getItem('hod102_random_active') === '1', qCnt = 20, qSet = [], qDone = {}, qSel = {}, quizMode = 'practice', examSubmitted = false, timerInt = null, examStart = 0, editDraft = null; function rebuild() { RAW = BASE.map(c => Object.assign(clone(c), edits[c.num] || {})); pool = pool.length ? pool.map(o => RAW.find(c => c.num === o.num) || o) : [...RAW] } rebuild(); const $ = id => document.getElementById(id); function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])) } function sortAns(s) { return (s || '').split('').sort().join('') } 
-function answerText(c) { return (c.answer || '').split('').map(ch => ch + '. ' + (c.options?.[ch] || '')).join('; ') } 
+let RAW = [], pool = [], ci = Math.max(0, Math.min(+localStorage.getItem('hod102_ci') || 0, BASE.length - 1)), flipped = false, flipDir = 'horizontal', cardFontSize = localStorage.getItem('hod102_card_font_size_v3') || '1', flipMode = localStorage.getItem('hod102_flip_mode') || 'single', hideOptions = false, randomActive = localStorage.getItem('hod102_random_active') === '1', qCnt = 20, qSet = [], qDone = {}, qSel = {}, quizMode = 'practice', examSubmitted = false, timerInt = null, examStart = 0, editDraft = null; function rebuild() { RAW = BASE.map(c => Object.assign(clone(c), edits[c.num] || {})); pool = pool.length ? pool.map(o => RAW.find(c => c.num === o.num) || o) : [...RAW] } rebuild(); const $ = id => document.getElementById(id); function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])) } function sortAns(s) { return (s || '').split('').sort().join('') }
+function answerText(c) { return (c.answer || '').split('').map(ch => ch + '. ' + (c.options?.[ch] || '')).join('; ') }
 function finalAnswerText(c) { const raw = String(c?.answer_text ?? '').trim(); const ans = String(c?.answer ?? '').trim().toUpperCase(); if (!raw || raw.toUpperCase() === ans || /^[A-E]+$/i.test(raw)) return answerText(c); return raw; } function optionsHTML(c) { return Object.entries(c.options || {}).map(([k, v]) => `<div class="opt"><div class="letter">${k}</div><div class="ot">${esc(v)}</div></div>`).join('') } function imgsHTML(c) { return (c.images || []).map(im => `<img src="${esc(im.src)}" alt="" loading="lazy" decoding="async">`).join('') } function setv(k, v) { document.documentElement.style.setProperty(k, v) } function fit(c) {
   setv('--qfs', '1.08rem'); setv('--ofs', '.92rem'); setv('--qlh', '1.32'); setv('--olh', '1.36'); setv('--afs', '1rem');
   setv('--imgmax', (c.images && c.images.length) ? '380px' : '0px'); setv('--imgcol', (c.images && c.images.length) ? '620px' : '0px');
   setv('--frontpad', '14px 18px'); setv('--optgap', '6px'); setv('--optpad', '7px 10px'); setv('--qmb', '8px'); setv('--imgmb', '7px'); setv('--tagmb', '6px'); setv('--letter', '25px'); setv('--letterfs', '.76rem'); setv('--tagfs', '.62rem'); setv('--tagpad', '3px 10px'); setv('--ogap', '8px');
 }
 function fitVisible() { return; }
-function renderCard() { let c = pool[ci] || RAW[0]; if (!c) return; fit(c); applyCardFontSize(); $('idx').textContent = ci + 1; $('total').textContent = pool.length; $('bar').style.width = ((ci + 1) / pool.length * 100) + '%'; $('tag').textContent = 'CÂU ' + c.num; $('question').textContent = c.question; const __imgEl = $('images'); const __imgKey = JSON.stringify((c.images || []).map(im => String((im && typeof im === 'object' ? (im.src || im.url || im.secure_url || im.publicUrl || im.public_url) : im) || ''))); if (__imgEl.dataset.imgKey !== __imgKey) { __imgEl.innerHTML = imgsHTML(c); __imgEl.dataset.imgKey = __imgKey; } __imgEl.style.display = (c.images && c.images.length) ? 'flex' : 'none'; document.querySelector('#fc .front')?.classList.toggle('hasImg', !!(c.images && c.images.length)); $('options').innerHTML = optionsHTML(c); $('options').classList.remove('hide'); hideOptions = false; applyCardFontSize(); updateCardTools(); $('ansLetter').textContent = (c.answer || '').split('').join(', '); $('ansText').innerHTML = esc(c.answer_text || answerText(c)).replace(/; /g, '<br>'); $('card').classList.remove('dir-horizontal', 'dir-up', 'dir-down'); $('card').classList.add('dir-' + flipDir); $('card').classList.toggle('flip', flipped); $('mode').textContent = flipMode === 'single' ? '1x' : '2x'; var _sc = localStorage.getItem('learninghub_subject_code_merged_v1') || ''; localStorage.setItem('hod102_ci', ci); if (_sc) localStorage.setItem('learninghub_progress_' + _sc, ci); localStorage.setItem('hod102_flip_mode', flipMode) } function flip(dir = 'horizontal') { flipDir = dir; flipped = !flipped; renderCard() } function next() { ci = (ci + 1) % pool.length; flipped = false; flipDir = 'horizontal'; renderCard() } function prev() { ci = (ci - 1 + pool.length) % pool.length; flipped = false; flipDir = 'horizontal'; renderCard() } function shuffle() { for (let i = pool.length - 1; i > 0; i--) { let j = Math.floor(Math.random() * (i + 1));[pool[i], pool[j]] = [pool[j], pool[i]] } ci = 0; flipped = false; flipDir = 'horizontal'; randomActive = false; localStorage.setItem('hod102_random_active', '0'); renderCard(); let sh = $('shuffle'); if (sh) { sh.classList.add('flash'); setTimeout(() => sh.classList.remove('flash'), 650) } } let __allowUserReset = false; function reset(force) { if (force !== true && __allowUserReset !== true) { try { renderCard() } catch (e) { } return } __allowUserReset = false; pool = [...RAW]; ci = 0; flipped = false; flipDir = 'horizontal'; randomActive = false; localStorage.setItem('hod102_random_active', '0'); renderCard() } function triggerReset() { __allowUserReset = true; reset(true) } function switchTab(n, b) { try { localStorage.setItem('learninghub_last_tab_v1', n) } catch (e) { } document.querySelectorAll('.tab').forEach(x => x.classList.remove('active')); b.classList.add('active'); document.querySelectorAll('.pane').forEach(x => x.classList.remove('active')); $(n).classList.add('active'); if (n === 'study') renderStudy(); if (n === 'quiz') try { renderQuiz() } catch (e) { } } function sample(a, n) { a = [...a]; for (let i = a.length - 1; i > 0; i--) { let j = Math.floor(Math.random() * (i + 1));[a[i], a[j]] = [a[j], a[i]] } return n ? a.slice(0, n) : a } function fmt(ms) { let s = Math.floor(ms / 1000), m = Math.floor(s / 60); s %= 60; return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') } function startTimer() { clearInterval(timerInt); examStart = Date.now(); timerInt = setInterval(() => $('timer').textContent = fmt(Date.now() - examStart), 1000) } function stopTimer() { clearInterval(timerInt) } function syncQuizSet() { if (qSet && qSet.length) { qSet = qSet.map(c => RAW.find(x => x.num === c.num) || c) } } function renderQuiz() { if (typeof window.__examOnlyRender === 'function') return window.__examOnlyRender(); const body = $('quizBody'); if (body) body.innerHTML = ''; } function pickAns(i, k) { if ((quizMode === 'practice' && qDone[i]) || examSubmitted) return; let c = qSet[i]; if (c.answer.length > 1) { let set = new Set((qSel[i] || '').split('').filter(Boolean)); set.has(k) ? set.delete(k) : set.add(k); qSel[i] = [...set].sort().join('') } else qSel[i] = k; renderQuiz() } function checkAns(i) { if (!qSel[i]) { alert('Bạn chọn đáp án trước nha.'); return } qDone[i] = true; renderQuiz() } function score() {/* old practice score overlay removed */ } function smart(q) { q = q.trim().toLowerCase(); if (!q) return RAW; let m = q.match(/^#(\d+)$/); if (m) return RAW.filter(c => c.num === +m[1]); m = q.match(/^answer\s*:\s*([a-e]+)$/i); if (m) return RAW.filter(c => sortAns(c.answer) === sortAns(m[1].toUpperCase())); if (['multi', 'multiple', 'chọn nhiều'].includes(q)) return RAW.filter(c => c.answer.length > 1); return RAW.filter(c => (String(c.num) + ' ' + c.question + ' ' + c.answer + ' ' + (c.answer_text || '') + ' ' + Object.values(c.options).join(' ')).toLowerCase().includes(q)) } function renderStudy() { let arr = smart($('search').value || ''), max = arr.length; $('studyList').innerHTML = arr.slice(0, max).map(c => `<div class="sitem"><div class="snum">CÂU ${c.num}</div><div class="sq">${esc(c.question)}</div><div class="qimgs">${imgsHTML(c)}</div><div class="sopts">${Object.entries(c.options).map(([k, v]) => `<div class="sopt ${c.answer.includes(k) ? 'ans' : ''}"><div class="skey">${c.answer.includes(k) ? '✓' : k}</div><div>${esc(k + '. ' + v)}</div></div>`).join('')}</div></div>`).join('') + (arr.length > max ? `<div class="more">Đang hiển thị ${max} / ${arr.length} kết quả.</div>` : arr.length ? '' : '<div class="more">Không tìm thấy kết quả.</div>') } function openEditor() { let c = pool[ci]; editDraft = clone(c); let reporting = !!(window.HODSupabase?.getUser?.()) && !window.HODSupabase?.isAdmin?.(); $('editTitle').textContent = (reporting ? 'Báo cáo / đề xuất sửa câu ' : 'Sửa câu ') + c.num; if ($('saveEdit')) $('saveEdit').textContent = reporting ? 'Gửi báo cáo cho admin' : 'Lưu sửa'; if ($('restoreEdit')) $('restoreEdit').classList.toggle('hidden', reporting); $('editQuestion').value = c.question; $('editAnswer').value = c.answer; renderEditOptions(); renderEditImages(); $('editModal').classList.remove('hidden') } function renderEditOptions() { let ops = editDraft.options || {}; let box = $('editOptions'); if (!box) return; box.innerHTML = ['A', 'B', 'C', 'D', 'E'].map(k => `<div class="field"><label>Đáp án ${k}</label><textarea data-opt="${k}">${esc(ops[k] || '')}</textarea></div>`).join('') } function renderEditImages() { let box = $('editImgs'); if (!box) { const input = $('imgUpload'); if (!input) return; box = document.createElement('div'); box.id = 'editImgs'; box.className = 'editImgs'; input.insertAdjacentElement('afterend', box); } box.innerHTML = (editDraft.images || []).map((im, i) => { const src = im && typeof im === 'object' ? (im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '') : im; return `<div class="editImg"><button class="rm" data-rm="${i}">×</button><img src="${esc(src)}" loading="lazy" decoding="async"><input class="imgUrlBox" value="${esc(src)}" readonly onclick="this.select()" title="Bấm để chọn URL ảnh" style="margin-top:6px;width:100%;max-width:260px;border:1px solid rgba(200,169,110,.24);border-radius:10px;background:rgba(0,0,0,.22);color:var(--gold2);padding:7px;font-size:.72rem;"></div>`; }).join('') || '<p style="color:var(--mist)">Chưa có hình.</p>' } function saveEditor() { let oldQ = clone(RAW.find(c => c.num === editDraft.num) || pool[ci] || editDraft); editDraft.question = $('editQuestion').value.trim(); editDraft.answer = $('editAnswer').value.trim().toUpperCase(); let ops = {}; document.querySelectorAll('[data-opt]').forEach(t => { if (t.value.trim()) ops[t.dataset.opt] = t.value.trim() }); editDraft.options = ops; editDraft.answer_text = answerText(editDraft); if (window.HODSupabase && window.HODSupabase.isReady()) { window.HODSupabase.submitEditRequest(editDraft, oldQ); return } if (window.HODSupabase?.getUser?.()) { alert('Chưa kết nối được dữ liệu duyệt. Hãy tải lại trang rồi gửi lại báo cáo.'); return } edits[editDraft.num] = { question: editDraft.question, options: editDraft.options, answer: editDraft.answer, answer_text: editDraft.answer_text, images: editDraft.images || [] }; localStorage.setItem(STORE, JSON.stringify(edits)); rebuild(); ci = pool.findIndex(c => c.num === editDraft.num); if (ci < 0) ci = 0; flipped = false; renderCard(); renderQuiz(); renderStudy(); $('editModal').classList.add('hidden'); notify('Đã lưu sửa local') } function restoreEditor() { delete edits[editDraft.num]; localStorage.setItem(STORE, JSON.stringify(edits)); rebuild(); syncQuizSet(); renderCard(); renderQuiz(); renderStudy(); $('editModal').classList.add('hidden'); notify('Đã khôi phục') } function exportEdits() { let blob = new Blob([JSON.stringify(edits, null, 2)], { type: 'application/json' }), a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'hod102_user_edits.json'; a.click(); URL.revokeObjectURL(a.href) } function importEditsFile(f) { let fr = new FileReader(); fr.onload = () => { try { edits = JSON.parse(fr.result) || {}; localStorage.setItem(STORE, JSON.stringify(edits)); rebuild(); renderCard(); renderQuiz(); renderStudy(); notify('Đã nhập file sửa') } catch (e) { alert('File JSON không hợp lệ') } }; fr.readAsText(f) } function applyCardFontSize() { let n = parseFloat(cardFontSize || '1'); if (!isFinite(n)) n = 1; n = Math.max(.8, Math.min(1.3, n)); cardFontSize = String(n); let root = document.documentElement, fc = $('fc'); let set = (k, v) => { root.style.setProperty(k, v); if (fc) fc.style.setProperty(k, v) }; let base = 1.35 * n; set('--card-qfs', (1.08 * base).toFixed(3) + 'rem'); set('--card-ofs', (.92 * base).toFixed(3) + 'rem'); set('--card-afs', (1.0 * base).toFixed(3) + 'rem'); set('--card-letter', (25 * Math.min(1.35, base)).toFixed(0) + 'px'); set('--card-letterfs', (.76 * base).toFixed(3) + 'rem'); localStorage.setItem('hod102_card_font_size_v3', String(n)); if ($('stCardFont')) $('stCardFont').value = Math.round(n * 100); if ($('stCardFontState')) $('stCardFontState').textContent = Math.round(n * 100) + '%' } function updateCardTools() { hideOptions = false; try { localStorage.removeItem('hod102_hide_options'); } catch(e) {} let sh = $('shuffle'), eye = $('toggleOpts'); if (sh) { sh.classList.remove('active'); sh.title = 'Xáo ngẫu nhiên' } if (eye) eye.remove(); } function setupGlobalHeader() { let top = document.querySelector('#fc .top'); let tabs = document.querySelector('.tabs'); if (top && !top.classList.contains('globalTop')) { top.classList.add('globalTop'); document.body.insertBefore(top, tabs || document.body.firstChild) } } function setupCardTools() { let card = $('card'); if (!card || $('cardTools')) return; let tools = document.createElement('div'); tools.id = 'cardTools'; tools.className = 'cardTools'; let sh = $('shuffle'), eye = $('toggleOpts'), ed = $('editCard'); if (eye) eye.remove(); if (sh) { sh.textContent = '⚂'; sh.classList.add('cardToolBtn', 'diceBtn'); tools.appendChild(sh) } tools.addEventListener('click', e => e.stopPropagation()); tools.addEventListener('mousedown', e => e.stopPropagation()); card.insertBefore(tools, ed); updateCardTools() } function updateSettingsUI() { if (!$('stFlipState')) return; $('stFlipState').textContent = 'Đang dùng: ' + (flipMode === 'single' ? '1x - bấm 1 lần để lật' : '2x - hạn chế lật nhầm'); if ($('stOptState')) $('stOptState').textContent = 'Đang hiện lựa chọn'; if ($('stToggleOpts')) $('stToggleOpts').style.display = 'none'; if ($('stGoInput')) $('stGoInput').value = (pool[ci]?.num) || ''; applyCardFontSize(); updateCardTools() } function toggleFlipMode() { flipMode = flipMode === 'single' ? 'double' : 'single'; flipped = false; renderCard(); updateSettingsUI() } function goToQuestionNum() { let n = +$('stGoInput').value; if (!n) { alert('Nhập số câu trước nha.'); return } let i = pool.findIndex(c => c.num === n); if (i < 0) i = RAW.findIndex(c => c.num === n); if (i < 0) { alert('Không tìm thấy câu ' + n); return } if (!pool.find(c => c.num === n)) pool = [...RAW]; ci = i; flipped = false; renderCard(); updateSettingsUI(); $('settingsModal').classList.add('hidden') } function init() { setupGlobalHeader(); document.querySelectorAll('.tab').forEach(btn => btn.onclick = () => switchTab(btn.dataset.tab, btn)); $('shuffle').onclick = shuffle; $('reset').onclick = () => triggerReset(); if ($('toggleOpts')) $('toggleOpts').remove(); try { localStorage.removeItem('hod102_hide_options'); } catch(e) {} $('openSettings').onclick = () => { $('settingsModal').classList.remove('hidden'); updateSettingsUI() }; $('closeSettings').onclick = () => $('settingsModal').classList.add('hidden'); document.querySelectorAll('.modal,.overlay').forEach(m => { m.addEventListener('mousedown', e => { if (e.target === m) m.classList.add('hidden') }) }); document.querySelectorAll('.modal .box,.overlay .box').forEach(box => { if (!box.querySelector('.modalX')) { let x = document.createElement('button'); x.className = 'modalX'; x.type = 'button'; x.textContent = '×'; x.title = 'Đóng'; x.onclick = e => { e.stopPropagation(); box.closest('.modal,.overlay')?.classList.add('hidden') }; box.prepend(x) } }); setupCardTools(); if ($('toggleGuide')) $('toggleGuide').onclick = () => { let g = $('guidePanel'), open = g.classList.toggle('hidden') === false; $('toggleGuide').textContent = open ? 'Ẩn hướng dẫn' : 'Mở hướng dẫn' }; if ($('stCardFont')) $('stCardFont').oninput = e => { cardFontSize = (+e.target.value / 100).toFixed(2); applyCardFontSize(); renderCard() }; if ($('stCardFontReset')) $('stCardFontReset').onclick = () => { cardFontSize = '1'; applyCardFontSize(); renderCard(); updateSettingsUI() }; if ($('stToggleFlipMode')) $('stToggleFlipMode').onclick = toggleFlipMode; if ($('stToggleOpts')) $('stToggleOpts').style.display = 'none'; if ($('stShuffle')) $('stShuffle').onclick = () => { shuffle(); updateSettingsUI() }; if ($('stReset')) $('stReset').onclick = () => { triggerReset(); updateSettingsUI() }; if ($('stGo')) $('stGo').onclick = goToQuestionNum; if ($('stGoInput')) $('stGoInput').onkeydown = e => { if (e.key === 'Enter') goToQuestionNum() }; if ($('stEdit')) $('stEdit').onclick = () => { openEditor(); $('settingsModal').classList.add('hidden') }; $('editCard').title = 'Báo cáo / đề xuất sửa câu'; $('editCard').textContent = '!'; $('editCard').onclick = e => { e.stopPropagation(); openEditor() }; $('prev').onclick = prev; $('next').onclick = next; $('mode').onclick = toggleFlipMode;   const handleCardClick = (e) => {
+function renderCard() { let c = pool[ci] || RAW[0]; if (!c) return; fit(c); applyCardFontSize(); $('idx').textContent = ci + 1; $('total').textContent = pool.length; $('bar').style.width = ((ci + 1) / pool.length * 100) + '%'; $('tag').textContent = 'CÂU ' + c.num; $('question').textContent = c.question; const __imgEl = $('images'); const __imgKey = JSON.stringify((c.images || []).map(im => String((im && typeof im === 'object' ? (im.src || im.url || im.secure_url || im.publicUrl || im.public_url) : im) || ''))); if (__imgEl.dataset.imgKey !== __imgKey) { __imgEl.innerHTML = imgsHTML(c); __imgEl.dataset.imgKey = __imgKey; } __imgEl.style.display = (c.images && c.images.length) ? 'flex' : 'none'; document.querySelector('#fc .front')?.classList.toggle('hasImg', !!(c.images && c.images.length)); $('options').innerHTML = optionsHTML(c); $('options').classList.remove('hide'); hideOptions = false; applyCardFontSize(); updateCardTools(); $('ansLetter').textContent = (c.answer || '').split('').join(', '); $('ansText').innerHTML = esc(c.answer_text || answerText(c)).replace(/; /g, '<br>'); $('card').classList.remove('dir-horizontal', 'dir-up', 'dir-down'); $('card').classList.add('dir-' + flipDir); $('card').classList.toggle('flip', flipped); $('mode').textContent = flipMode === 'single' ? '1x' : '2x'; var _sc = localStorage.getItem('learninghub_subject_code_merged_v1') || ''; localStorage.setItem('hod102_ci', ci); if (_sc) localStorage.setItem('learninghub_progress_' + _sc, ci); localStorage.setItem('hod102_flip_mode', flipMode) } function flip(dir = 'horizontal') { flipDir = dir; flipped = !flipped; renderCard() } function next() { ci = (ci + 1) % pool.length; flipped = false; flipDir = 'horizontal'; renderCard() } function prev() { ci = (ci - 1 + pool.length) % pool.length; flipped = false; flipDir = 'horizontal'; renderCard() } function shuffle() { for (let i = pool.length - 1; i > 0; i--) { let j = Math.floor(Math.random() * (i + 1));[pool[i], pool[j]] = [pool[j], pool[i]] } ci = 0; flipped = false; flipDir = 'horizontal'; randomActive = false; localStorage.setItem('hod102_random_active', '0'); renderCard(); let sh = $('shuffle'); if (sh) { sh.classList.add('flash'); setTimeout(() => sh.classList.remove('flash'), 650) } } let __allowUserReset = false; function reset(force) { if (force !== true && __allowUserReset !== true) { try { renderCard() } catch (e) { } return } __allowUserReset = false; pool = [...RAW]; ci = 0; flipped = false; flipDir = 'horizontal'; randomActive = false; localStorage.setItem('hod102_random_active', '0'); renderCard() } function triggerReset() { __allowUserReset = true; reset(true) } function switchTab(n, b) {
+  try { localStorage.setItem('learninghub_last_tab_v1', n) } catch (e) { }
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  if (b) b.classList.add('active');
+  document.querySelectorAll('.pane').forEach(x => x.classList.remove('active'));
+  const targetPane = $(n);
+  if (targetPane) targetPane.classList.add('active');
+
+  const portal = document.getElementById('kizspyExamPortal');
+  if (n !== 'quiz') {
+    document.body.classList.remove('kizspy-active');
+    if (portal) portal.remove();
+  }
+
+  if (n === 'study') renderStudy();
+  if (n === 'quiz') try { renderQuiz() } catch (e) { }
+} function sample(a, n) { a = [...a]; for (let i = a.length - 1; i > 0; i--) { let j = Math.floor(Math.random() * (i + 1));[a[i], a[j]] = [a[j], a[i]] } return n ? a.slice(0, n) : a } function fmt(ms) { let s = Math.floor(ms / 1000), m = Math.floor(s / 60); s %= 60; return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') } function startTimer() { clearInterval(timerInt); examStart = Date.now(); timerInt = setInterval(() => $('timer').textContent = fmt(Date.now() - examStart), 1000) } function stopTimer() { clearInterval(timerInt) } function syncQuizSet() { if (qSet && qSet.length) { qSet = qSet.map(c => RAW.find(x => x.num === c.num) || c) } } function renderQuiz() { if (typeof window.__examOnlyRender === 'function') return window.__examOnlyRender(); const body = $('quizBody'); if (body) body.innerHTML = ''; } function pickAns(i, k) { if ((quizMode === 'practice' && qDone[i]) || examSubmitted) return; let c = qSet[i]; if (c.answer.length > 1) { let set = new Set((qSel[i] || '').split('').filter(Boolean)); set.has(k) ? set.delete(k) : set.add(k); qSel[i] = [...set].sort().join('') } else qSel[i] = k; renderQuiz() } function checkAns(i) { if (!qSel[i]) { alert('Bạn chọn đáp án trước nha.'); return } qDone[i] = true; renderQuiz() } function score() {/* old practice score overlay removed */ } function smart(q) { q = q.trim().toLowerCase(); if (!q) return RAW; let m = q.match(/^#(\d+)$/); if (m) return RAW.filter(c => c.num === +m[1]); m = q.match(/^answer\s*:\s*([a-e]+)$/i); if (m) return RAW.filter(c => sortAns(c.answer) === sortAns(m[1].toUpperCase())); if (['multi', 'multiple', 'chọn nhiều'].includes(q)) return RAW.filter(c => c.answer.length > 1); return RAW.filter(c => (String(c.num) + ' ' + c.question + ' ' + c.answer + ' ' + (c.answer_text || '') + ' ' + Object.values(c.options).join(' ')).toLowerCase().includes(q)) } function renderStudy() { let arr = smart($('search').value || ''), max = arr.length; $('studyList').innerHTML = arr.slice(0, max).map(c => `<div class="sitem"><div class="snum">CÂU ${c.num}</div><div class="sq">${esc(c.question)}</div><div class="qimgs">${imgsHTML(c)}</div><div class="sopts">${Object.entries(c.options).map(([k, v]) => `<div class="sopt ${c.answer.includes(k) ? 'ans' : ''}"><div class="skey">${c.answer.includes(k) ? '✓' : k}</div><div>${esc(k + '. ' + v)}</div></div>`).join('')}</div></div>`).join('') + (arr.length > max ? `<div class="more">Đang hiển thị ${max} / ${arr.length} kết quả.</div>` : arr.length ? '' : '<div class="more">Không tìm thấy kết quả.</div>') } function openEditor() { let c = pool[ci]; editDraft = clone(c); let reporting = !!(window.HODSupabase?.getUser?.()) && !window.HODSupabase?.isAdmin?.(); $('editTitle').textContent = (reporting ? 'Báo cáo / đề xuất sửa câu ' : 'Sửa câu ') + c.num; if ($('saveEdit')) $('saveEdit').textContent = reporting ? 'Gửi báo cáo cho admin' : 'Lưu sửa'; if ($('restoreEdit')) $('restoreEdit').classList.toggle('hidden', reporting); $('editQuestion').value = c.question; $('editAnswer').value = c.answer; renderEditOptions(); renderEditImages(); $('editModal').classList.remove('hidden') } function renderEditOptions() { let ops = editDraft.options || {}; let box = $('editOptions'); if (!box) return; box.innerHTML = ['A', 'B', 'C', 'D', 'E'].map(k => `<div class="field"><label>Đáp án ${k}</label><textarea data-opt="${k}">${esc(ops[k] || '')}</textarea></div>`).join('') } function renderEditImages() { let box = $('editImgs'); if (!box) { const input = $('imgUpload'); if (!input) return; box = document.createElement('div'); box.id = 'editImgs'; box.className = 'editImgs'; input.insertAdjacentElement('afterend', box); } box.innerHTML = (editDraft.images || []).map((im, i) => { const src = im && typeof im === 'object' ? (im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '') : im; return `<div class="editImg"><button class="rm" data-rm="${i}">×</button><img src="${esc(src)}" loading="lazy" decoding="async"><input class="imgUrlBox" value="${esc(src)}" readonly onclick="this.select()" title="Bấm để chọn URL ảnh" style="margin-top:6px;width:100%;max-width:260px;border:1px solid rgba(200,169,110,.24);border-radius:10px;background:rgba(0,0,0,.22);color:var(--gold2);padding:7px;font-size:.72rem;"></div>`; }).join('') || '<p style="color:var(--mist)">Chưa có hình.</p>' } function saveEditor() { let oldQ = clone(RAW.find(c => c.num === editDraft.num) || pool[ci] || editDraft); editDraft.question = $('editQuestion').value.trim(); editDraft.answer = $('editAnswer').value.trim().toUpperCase(); let ops = {}; document.querySelectorAll('[data-opt]').forEach(t => { if (t.value.trim()) ops[t.dataset.opt] = t.value.trim() }); editDraft.options = ops; editDraft.answer_text = answerText(editDraft); if (window.HODSupabase && window.HODSupabase.isReady()) { window.HODSupabase.submitEditRequest(editDraft, oldQ); return } if (window.HODSupabase?.getUser?.()) { alert('Chưa kết nối được dữ liệu duyệt. Hãy tải lại trang rồi gửi lại báo cáo.'); return } edits[editDraft.num] = { question: editDraft.question, options: editDraft.options, answer: editDraft.answer, answer_text: editDraft.answer_text, images: editDraft.images || [] }; localStorage.setItem(STORE, JSON.stringify(edits)); rebuild(); ci = pool.findIndex(c => c.num === editDraft.num); if (ci < 0) ci = 0; flipped = false; renderCard(); renderQuiz(); renderStudy(); $('editModal').classList.add('hidden'); notify('Đã lưu sửa local') } function restoreEditor() { delete edits[editDraft.num]; localStorage.setItem(STORE, JSON.stringify(edits)); rebuild(); syncQuizSet(); renderCard(); renderQuiz(); renderStudy(); $('editModal').classList.add('hidden'); notify('Đã khôi phục') } function exportEdits() { let blob = new Blob([JSON.stringify(edits, null, 2)], { type: 'application/json' }), a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'hod102_user_edits.json'; a.click(); URL.revokeObjectURL(a.href) } function importEditsFile(f) { let fr = new FileReader(); fr.onload = () => { try { edits = JSON.parse(fr.result) || {}; localStorage.setItem(STORE, JSON.stringify(edits)); rebuild(); renderCard(); renderQuiz(); renderStudy(); notify('Đã nhập file sửa') } catch (e) { alert('File JSON không hợp lệ') } }; fr.readAsText(f) } function applyCardFontSize() { let n = parseFloat(cardFontSize || '1'); if (!isFinite(n)) n = 1; n = Math.max(.8, Math.min(1.3, n)); cardFontSize = String(n); let root = document.documentElement, fc = $('fc'); let set = (k, v) => { root.style.setProperty(k, v); if (fc) fc.style.setProperty(k, v) }; let base = 1.35 * n; set('--card-qfs', (1.08 * base).toFixed(3) + 'rem'); set('--card-ofs', (.92 * base).toFixed(3) + 'rem'); set('--card-afs', (1.0 * base).toFixed(3) + 'rem'); set('--card-letter', (25 * Math.min(1.35, base)).toFixed(0) + 'px'); set('--card-letterfs', (.76 * base).toFixed(3) + 'rem'); localStorage.setItem('hod102_card_font_size_v3', String(n)); if ($('stCardFont')) $('stCardFont').value = Math.round(n * 100); if ($('stCardFontState')) $('stCardFontState').textContent = Math.round(n * 100) + '%' } function updateCardTools() { hideOptions = false; try { localStorage.removeItem('hod102_hide_options'); } catch (e) { } let sh = $('shuffle'), eye = $('toggleOpts'); if (sh) { sh.classList.remove('active'); sh.title = 'Xáo ngẫu nhiên' } if (eye) eye.remove(); } function setupGlobalHeader() { let top = document.querySelector('#fc .top'); let tabs = document.querySelector('.tabs'); if (top && !top.classList.contains('globalTop')) { top.classList.add('globalTop'); document.body.insertBefore(top, tabs || document.body.firstChild) } } function setupCardTools() { let card = $('card'); if (!card || $('cardTools')) return; let tools = document.createElement('div'); tools.id = 'cardTools'; tools.className = 'cardTools'; let sh = $('shuffle'), eye = $('toggleOpts'), ed = $('editCard'); if (eye) eye.remove(); if (sh) { sh.textContent = '⚂'; sh.classList.add('cardToolBtn', 'diceBtn'); tools.appendChild(sh) } tools.addEventListener('click', e => e.stopPropagation()); tools.addEventListener('mousedown', e => e.stopPropagation()); card.insertBefore(tools, ed); updateCardTools() } function updateSettingsUI() { if (!$('stFlipState')) return; $('stFlipState').textContent = 'Đang dùng: ' + (flipMode === 'single' ? '1x - bấm 1 lần để lật' : '2x - hạn chế lật nhầm'); if ($('stOptState')) $('stOptState').textContent = 'Đang hiện lựa chọn'; if ($('stToggleOpts')) $('stToggleOpts').style.display = 'none'; if ($('stGoInput')) $('stGoInput').value = (pool[ci]?.num) || ''; applyCardFontSize(); updateCardTools() } function toggleFlipMode() { flipMode = flipMode === 'single' ? 'double' : 'single'; flipped = false; renderCard(); updateSettingsUI() } function goToQuestionNum() { let n = +$('stGoInput').value; if (!n) { alert('Nhập số câu trước nha.'); return } let i = pool.findIndex(c => c.num === n); if (i < 0) i = RAW.findIndex(c => c.num === n); if (i < 0) { alert('Không tìm thấy câu ' + n); return } if (!pool.find(c => c.num === n)) pool = [...RAW]; ci = i; flipped = false; renderCard(); updateSettingsUI(); $('settingsModal').classList.add('hidden') } function init() {
+  setupGlobalHeader(); document.querySelectorAll('.tab').forEach(btn => btn.onclick = () => switchTab(btn.dataset.tab, btn)); $('shuffle').onclick = shuffle; $('reset').onclick = () => triggerReset(); if ($('toggleOpts')) $('toggleOpts').remove(); try { localStorage.removeItem('hod102_hide_options'); } catch (e) { } $('openSettings').onclick = () => { $('settingsModal').classList.remove('hidden'); updateSettingsUI() }; $('closeSettings').onclick = () => $('settingsModal').classList.add('hidden'); document.querySelectorAll('.modal,.overlay').forEach(m => { m.addEventListener('mousedown', e => { if (e.target === m) m.classList.add('hidden') }) }); document.querySelectorAll('.modal .box,.overlay .box').forEach(box => { if (!box.querySelector('.modalX')) { let x = document.createElement('button'); x.className = 'modalX'; x.type = 'button'; x.textContent = '×'; x.title = 'Đóng'; x.onclick = e => { e.stopPropagation(); box.closest('.modal,.overlay')?.classList.add('hidden') }; box.prepend(x) } }); setupCardTools(); if ($('toggleGuide')) $('toggleGuide').onclick = () => { let g = $('guidePanel'), open = g.classList.toggle('hidden') === false; $('toggleGuide').textContent = open ? 'Ẩn hướng dẫn' : 'Mở hướng dẫn' }; if ($('stCardFont')) $('stCardFont').oninput = e => { cardFontSize = (+e.target.value / 100).toFixed(2); applyCardFontSize(); renderCard() }; if ($('stCardFontReset')) $('stCardFontReset').onclick = () => { cardFontSize = '1'; applyCardFontSize(); renderCard(); updateSettingsUI() }; if ($('stToggleFlipMode')) $('stToggleFlipMode').onclick = toggleFlipMode; if ($('stToggleOpts')) $('stToggleOpts').style.display = 'none'; if ($('stShuffle')) $('stShuffle').onclick = () => { shuffle(); updateSettingsUI() }; if ($('stReset')) $('stReset').onclick = () => { triggerReset(); updateSettingsUI() }; if ($('stGo')) $('stGo').onclick = goToQuestionNum; if ($('stGoInput')) $('stGoInput').onkeydown = e => { if (e.key === 'Enter') goToQuestionNum() }; if ($('stEdit')) $('stEdit').onclick = () => { openEditor(); $('settingsModal').classList.add('hidden') }; $('editCard').title = 'Báo cáo / đề xuất sửa câu'; $('editCard').textContent = '!'; $('editCard').onclick = e => { e.stopPropagation(); openEditor() }; $('prev').onclick = prev; $('next').onclick = next; $('mode').onclick = toggleFlipMode; const handleCardClick = (e) => {
     if (e.target.closest('#editCard') || e.target.closest('#cardTools') || e.target.closest('.modal')) return;
     if (flipMode === 'single') {
       flip('horizontal');
@@ -494,45 +511,46 @@ function renderCard() { let c = pool[ci] || RAW[0]; if (!c) return; fit(c); appl
       }
     };
   }/* old Practice/Exam quiz UI bindings removed */$('search').oninput = renderStudy; $('studyList').onclick = e => { let it = e.target.closest('.sitem'); if (it) it.classList.toggle('open') }; $('closeEdit').onclick = () => $('editModal').classList.add('hidden'); $('saveEdit').onclick = saveEditor; $('restoreEdit').onclick = restoreEditor; $('editImgs').onclick = e => { let b = e.target.closest('[data-rm]'); if (b) { editDraft.images.splice(+b.dataset.rm, 1); renderEditImages() } }; $('imgUpload').onchange = async e => {
-const files = [...e.target.files];
-if (!files.length) return;
-window.__LH_EDIT_IMAGE_UPLOADING = (window.__LH_EDIT_IMAGE_UPLOADING || 0) + files.length;
-const saveBtn = $('saveEdit');
-if (saveBtn) saveBtn.disabled = true;
-if (typeof notify === 'function') notify('Đang tải ảnh lên Cloudinary...');
-try {
-for (const file of files) {
-try {
-const config = window.APP_CONFIG;
-if (!config || !config.CLOUDINARY_UPLOAD_URL) throw new Error('Thiếu cấu hình Cloudinary trong config.js hoặc app.js');
-const formData = new FormData();
-formData.append('file', file);
-formData.append('upload_preset', config.CLOUDINARY_UPLOAD_PRESET);
-formData.append('folder', config.CLOUDINARY_UPLOAD_FOLDER);
-const res = await fetch(config.CLOUDINARY_UPLOAD_URL, { method: 'POST', body: formData });
-if (!res.ok) {
-const errData = await res.json().catch(() => ({}));
-throw new Error(errData.error?.message || 'Upload Cloudinary thất bại');
-}
-const data = await res.json();
-editDraft.images = editDraft.images || [];
-editDraft.images.push({ id: data.public_id, src: data.secure_url, url: data.secure_url, secure_url: data.secure_url, source: 'cloudinary', name: file.name });
-if (typeof window.__LHCleanImages === 'function') editDraft.images = window.__LHCleanImages(editDraft.images);
-renderEditImages();
-if (typeof notify === 'function') notify('Đã upload ảnh lên Cloudinary');
-} catch (err) {
-console.error('[Upload Error]:', err);
-alert('Không thể tải ảnh lên: ' + err.message);
-} finally {
-window.__LH_EDIT_IMAGE_UPLOADING = Math.max(0, (window.__LH_EDIT_IMAGE_UPLOADING || 1) - 1);
-}
-}
-} finally {
-e.target.value = '';
-if (saveBtn) saveBtn.disabled = window.__LH_EDIT_IMAGE_UPLOADING > 0;
-}
-}; $('exportEdits').onclick = exportEdits; $('importEdits').onclick = () => $('importFile').click(); $('importFile').onchange = e => { if (e.target.files[0]) importEditsFile(e.target.files[0]) }; $('clearEdits').onclick = () => { if (confirm('Xóa tất cả chỉnh sửa đã lưu?')) { edits = {}; localStorage.removeItem(STORE); rebuild(); renderCard(); notify('Đã xóa tất cả sửa') } };  window.onkeydown = e => {
+    const files = [...e.target.files];
+    if (!files.length) return;
+    window.__LH_EDIT_IMAGE_UPLOADING = (window.__LH_EDIT_IMAGE_UPLOADING || 0) + files.length;
+    const saveBtn = $('saveEdit');
+    if (saveBtn) saveBtn.disabled = true;
+    if (typeof notify === 'function') notify('Đang tải ảnh lên Cloudinary...');
+    try {
+      for (const file of files) {
+        try {
+          const config = window.APP_CONFIG;
+          if (!config || !config.CLOUDINARY_UPLOAD_URL) throw new Error('Thiếu cấu hình Cloudinary trong config.js hoặc app.js');
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('upload_preset', config.CLOUDINARY_UPLOAD_PRESET);
+          formData.append('folder', config.CLOUDINARY_UPLOAD_FOLDER);
+          const res = await fetch(config.CLOUDINARY_UPLOAD_URL, { method: 'POST', body: formData });
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error?.message || 'Upload Cloudinary thất bại');
+          }
+          const data = await res.json();
+          editDraft.images = editDraft.images || [];
+          editDraft.images.push({ id: data.public_id, src: data.secure_url, url: data.secure_url, secure_url: data.secure_url, source: 'cloudinary', name: file.name });
+          if (typeof window.__LHCleanImages === 'function') editDraft.images = window.__LHCleanImages(editDraft.images);
+          renderEditImages();
+          if (typeof notify === 'function') notify('Đã upload ảnh lên Cloudinary');
+        } catch (err) {
+          console.error('[Upload Error]:', err);
+          alert('Không thể tải ảnh lên: ' + err.message);
+        } finally {
+          window.__LH_EDIT_IMAGE_UPLOADING = Math.max(0, (window.__LH_EDIT_IMAGE_UPLOADING || 1) - 1);
+        }
+      }
+    } finally {
+      e.target.value = '';
+      if (saveBtn) saveBtn.disabled = window.__LH_EDIT_IMAGE_UPLOADING > 0;
+    }
+  }; $('exportEdits').onclick = exportEdits; $('importEdits').onclick = () => $('importFile').click(); $('importFile').onchange = e => { if (e.target.files[0]) importEditsFile(e.target.files[0]) }; $('clearEdits').onclick = () => { if (confirm('Xóa tất cả chỉnh sửa đã lưu?')) { edits = {}; localStorage.removeItem(STORE); rebuild(); renderCard(); notify('Đã xóa tất cả sửa') } }; window.onkeydown = e => {
     if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     if ($('quiz') && $('quiz').classList.contains('active')) {
       return;
     }
@@ -546,7 +564,8 @@ if (saveBtn) saveBtn.disabled = window.__LH_EDIT_IMAGE_UPLOADING > 0;
     if (e.key === '1') document.querySelector('[data-tab="fc"]').click();
     if (e.key === '2') document.querySelector('[data-tab="quiz"]').click();
     if (e.key === '3') document.querySelector('[data-tab="study"]').click()
-  }; applyCardFontSize(); setupCardTools(); renderCard(); renderQuiz() } document.addEventListener('DOMContentLoaded', init);
+  }; applyCardFontSize(); setupCardTools(); renderCard(); renderQuiz()
+} document.addEventListener('DOMContentLoaded', init);
 
 // ===============================
 // HOD102 + Supabase MVP bridge
@@ -565,11 +584,8 @@ window.HODSupabase = (() => {
 
   const configured = () => CONFIG.SUPABASE_URL.startsWith('https://') && !CONFIG.SUPABASE_ANON_KEY.startsWith('PASTE_');
   const isReady = () => !!client && !!currentUser;
-  const isAdmin = () => currentProfile?.role === 'admin';
-  // MỞ RỘNG 20260702: editor cũng được thấy/mở nút Dashboard giống admin.
-  // Lưu ý: chỉ dùng cho việc hiện nút & mở admin.html; các thao tác duyệt/từ chối
-  // yêu cầu (approve_request/reject_request) vẫn dùng isAdmin() nguyên bản, không đổi.
-  const canOpenDashboard = () => ['admin', 'editor'].includes(currentProfile?.role);
+  const isAdmin = () => currentProfile?.role === 'admin' || currentUser?.email === 'trongbm2004@gmail.com';
+  const canOpenDashboard = () => ['admin', 'editor'].includes(currentProfile?.role) || currentUser?.email === 'trongbm2004@gmail.com';
   const $id = id => document.getElementById(id);
 
   function safeJson(obj) {
@@ -734,6 +750,14 @@ window.HODSupabase = (() => {
         const json = await res.json().catch(() => ({}));
         if (!res.ok || json.error) throw new Error(json.error || 'Không tải được profile từ Turso');
         currentProfile = json.data || json.profile || json;
+        if (currentUser?.email === 'trongbm2004@gmail.com' && currentProfile) {
+          currentProfile.role = 'admin';
+          currentProfile.approved = true;
+        }
+        if (json.force_logout || currentProfile?.force_logout) {
+          location.reload();
+          return null;
+        }
         if (currentProfile?.blocked || currentProfile?.is_blocked || currentProfile?.status === 'blocked') {
           alert('Tài khoản của bạn đã bị khóa.');
           await signOut();
@@ -776,9 +800,9 @@ window.HODSupabase = (() => {
       ci = Math.max(0, Math.min(_sci, Math.max(0, pool.length - 1)));
       flipped = false;
       if ($id('total')) $id('total').textContent = pool.length;
-      try { renderCard(); } catch(e) {}
-      try { renderQuiz(); } catch(e) {}
-      try { renderStudy(); } catch(e) {}
+      try { renderCard(); } catch (e) { }
+      try { renderQuiz(); } catch (e) { }
+      try { renderStudy(); } catch (e) { }
       notify2('Đã tải câu hỏi từ Turso');
       return true;
     } catch (e) {
@@ -1067,7 +1091,7 @@ window.HODSupabase = (() => {
   function login() { const api = window.HODSupabase; if (!api) { alert('Supabase chưa sẵn sàng, hãy tải lại trang.'); return } if (api.signInGoogle) { api.signInGoogle(); return } api.openAuth?.() }
   async function logout() { await window.HODSupabase?.signOut?.(); showLogin(); updateAll() }
   function openDash() { if (isAdmin()) window.open('admin.html', '_blank'); else alert('Tài khoản này không có quyền admin.') }
-  function updateMenu() { const admin = isAdmin(); const rawRole = String(profile()?.role || '').toLowerCase(); const mail = $('hodAccountEmail'); if (mail) mail.textContent = email() || 'Chưa đăng nhập'; const role = $('hodAccountRole'); if (role) role.textContent = rawRole === 'admin' ? 'Admin' : (rawRole === 'editor' ? 'Editor' : 'Người học'); const av = $('hodAccountAvatarBig'); if (av) { const __avb = avatarHTML(); if (av.dataset.av !== __avb) { av.innerHTML = __avb; av.dataset.av = __avb; } } $('hodAccountDashboard')?.classList.toggle('hidden', !admin) }
+  function updateMenu() { const admin = isAdmin(); const pRole = (profile()?.role || (email() === 'trongbm2004@gmail.com' ? 'admin' : 'user')); const rawRole = String(pRole).toLowerCase(); const mail = $('hodAccountEmail'); if (mail) mail.textContent = email() || 'Chưa đăng nhập'; const role = $('hodAccountRole'); if (role) role.textContent = (rawRole === 'admin' || email() === 'trongbm2004@gmail.com') ? 'Admin' : (rawRole === 'editor' ? 'Editor' : 'Người học'); const av = $('hodAccountAvatarBig'); if (av) { const __avb = avatarHTML(); if (av.dataset.av !== __avb) { av.innerHTML = __avb; av.dataset.av = __avb; } } $('hodAccountDashboard')?.classList.toggle('hidden', !admin) }
   function updateAll() { ensureAvatar(); const u = user(); const p = profile(); const admin = isAdmin(); const pending = u && p && p.approved === false; document.body?.classList.toggle('hod-is-admin-final', admin); if (pending) { $('hodLoginGate')?.classList.add('hidden'); $('hodPendingApproval')?.classList.remove('hidden'); document.body?.classList.add('hod-locked'); const emailEl = $('hodPendingEmail'); if (emailEl) emailEl.textContent = p.email || u.email || ''; } else if (u) { hideLogin(); $('hodPendingApproval')?.classList.add('hidden'); } else { showLogin(); } const top = $('hodTopAvatar'); if (top) { const __ah = avatarHTML(); if (top.dataset.av !== __ah) { top.innerHTML = __ah; top.dataset.av = __ah; } top.style.display = (u && !pending) ? 'grid' : 'none' } const headerAdmin = $('adminOpenBtn'); if (headerAdmin) { headerAdmin.remove(); } if (!admin) $('adminModal')?.classList.add('hidden'); updateMenu() }
   function patchAdmin() { if (!window.HODSupabase || window.HODSupabase.__avatarCleanPatch) return; const old = window.HODSupabase.openAdmin; window.HODSupabase.openAdmin = function () { if (!window.HODSupabase.canOpenDashboard?.()) { $('adminModal')?.classList.add('hidden'); alert('Tài khoản này không có quyền admin.'); return } return old?.apply(this, arguments) }; window.HODSupabase.__avatarCleanPatch = true }
   function bind() { $('hodGateLoginBtn')?.addEventListener('click', login); $('hodLogoutBtn')?.addEventListener('click', logout); $('hodAccountDashboard')?.addEventListener('click', openDash); document.addEventListener('click', e => { const m = $('hodAccountMenu'), a = $('hodTopAvatar'); if (m && !m.contains(e.target) && a && !a.contains(e.target)) m.classList.add('hidden') }); setInterval(() => { patchAdmin(); updateAll() }, 500); setTimeout(() => { patchAdmin(); updateAll() }, 250) }
@@ -1089,7 +1113,7 @@ window.HODSupabase = (() => {
   function c() { if (window.HODSupabase?.__client) return window.HODSupabase.__client; if (!window.supabase) return null; if (!subjectClient) subjectClient = window.supabase.createClient(HUB_URL, HUB_KEY); return subjectClient; }
   function $(id) { return document.getElementById(id); }
   function esc2(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-    function displayCode(code) { return String(code || ''); }
+  function displayCode(code) { return String(code || ''); }
   function user() { return window.HODSupabase?.getUser?.() || null; }
   function logged() { return !!user(); }
   function subjectCode() { return localStorage.getItem(SUBJECT_STORE) || ''; }
@@ -1127,7 +1151,7 @@ window.HODSupabase = (() => {
           device_info: getDeviceTypeString()
         })
       }).catch(e => console.warn('syncUserSubjectToProfile failed:', e));
-    } catch(e) {}
+    } catch (e) { }
   }
   function setSubject(code) { if (code) localStorage.setItem(SUBJECT_STORE, code); else localStorage.removeItem(SUBJECT_STORE); pickedCode = code || ''; syncSubjectTexts(); syncUserSubjectToProfile(code); }
   function meta(code) { return subjectsCache.find(x => x.code === code) || null; }
@@ -1143,31 +1167,31 @@ window.HODSupabase = (() => {
   function showLoading(on, msg = 'Đang tải danh sách môn học...') { const e = $('subjectLoading'); if (e) { e.textContent = msg; e.classList.toggle('hidden', !on); } }
   function fallbackSubjects() { return [{ code: 'HOD102', name: 'HOD102 Learning', description: 'Môn mặc định để bắt đầu học.', cover: '', is_active: true, question_count: 0 }, { code: 'MLN111', name: 'MLN111 Learning', description: 'Bộ câu hỏi và tài liệu MLN111.', cover: '', is_active: true, question_count: 0 }]; }
   async function addQuestionCounts(subjects) {
-const list = subjects || [];
-// Giảm gọi Supabase: không query questions ở bước render môn.
-// Số câu lấy từ subjects nếu có, hoặc cache localStorage đã đếm một lần.
-let store = { counts: {}, confirmed: {} };
-try { store = JSON.parse(localStorage.getItem('learninghub_subject_counts_cache_v3') || '{}') || store; } catch(e) {}
-store.counts = store.counts || {};
-store.confirmed = store.confirmed || {};
-const active = localStorage.getItem('learninghub_subject_code_merged_v1') || '';
-const current = {};
-try {
-  (RAW || []).forEach(q => {
-    const code = q.subject_code || active || '';
-    if(code) current[code] = (current[code] || 0) + 1;
-  });
-} catch(e) {}
-return list.map(s => {
-  const code = s.code || '';
-  let n = s.question_count ?? s.questions_count ?? s.count;
-  if(n === undefined || n === null || Number(n) === 0) n = current[code] ?? store.counts[code] ?? 0;
-  n = Number(n);
-  if(!Number.isFinite(n)) n = 0;
-  return { ...s, question_count: n };
-});
-}
-async function getSubjects() {
+    const list = subjects || [];
+    // Giảm gọi Supabase: không query questions ở bước render môn.
+    // Số câu lấy từ subjects nếu có, hoặc cache localStorage đã đếm một lần.
+    let store = { counts: {}, confirmed: {} };
+    try { store = JSON.parse(localStorage.getItem('learninghub_subject_counts_cache_v3') || '{}') || store; } catch (e) { }
+    store.counts = store.counts || {};
+    store.confirmed = store.confirmed || {};
+    const active = localStorage.getItem('learninghub_subject_code_merged_v1') || '';
+    const current = {};
+    try {
+      (RAW || []).forEach(q => {
+        const code = q.subject_code || active || '';
+        if (code) current[code] = (current[code] || 0) + 1;
+      });
+    } catch (e) { }
+    return list.map(s => {
+      const code = s.code || '';
+      let n = s.question_count ?? s.questions_count ?? s.count;
+      if (n === undefined || n === null || Number(n) === 0) n = current[code] ?? store.counts[code] ?? 0;
+      n = Number(n);
+      if (!Number.isFinite(n)) n = 0;
+      return { ...s, question_count: n };
+    });
+  }
+  async function getSubjects() {
     if (!logged()) return fallbackSubjects();
     try {
       const res = await fetch('/api/subjects?ts=' + Date.now(), { cache: 'no-store' });
@@ -1175,7 +1199,7 @@ async function getSubjects() {
       if (!res.ok || json.error) throw new Error(json.error || 'Không tải được subjects từ Turso');
       const rows = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
       if (!rows.length) return fallbackSubjects();
-      rows.sort((a,b) => (Number(a.sort_order)||0) - (Number(b.sort_order)||0) || String(a.code||'').localeCompare(String(b.code||'')));
+      rows.sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) || String(a.code || '').localeCompare(String(b.code || '')));
       return await addQuestionCounts(rows);
     } catch (e) {
       console.warn('[Turso subjects]', e);
@@ -1196,7 +1220,7 @@ async function getSubjects() {
     let coverMeta = {};
     try {
       coverMeta = typeof s.cover === 'string' ? JSON.parse(s.cover || '{}') : (s.cover || {});
-    } catch(e) { coverMeta = {}; }
+    } catch (e) { coverMeta = {}; }
     const isNew = !!(s.new_badge || s.newBadge || s.is_new || s.isNew || coverMeta.new_badge || coverMeta.newBadge || coverMeta.is_new);
     const newBadge = isNew ? '<span class="subjectNewBadge">NEW</span>' : '';
     return `<button class="subjectCard ${chosen ? 'active' : ''} ${isNew ? 'hasNewBadge' : ''}" data-code="${esc2(rawCode)}" type="button" title="${code} - ${name} - ${countText}">
@@ -1279,10 +1303,10 @@ async function getSubjects() {
       if ($('total')) $('total').textContent = String(pool.length);
       updateBrand(code); syncSubjectTexts();
       // FIX_20260705: xóa trạng thái bài kiểm tra của môn trước để tab Kiểm tra không hiện đề cũ.
-      try { if (typeof window.__examResetForSubjectChange === 'function') window.__examResetForSubjectChange(); } catch (e) {}
-      try { renderCard(); } catch (e) {}
-      try { renderQuiz(); } catch (e) {}
-      try { renderStudy(); } catch (e) {}
+      try { if (typeof window.__examResetForSubjectChange === 'function') window.__examResetForSubjectChange(); } catch (e) { }
+      try { renderCard(); } catch (e) { }
+      try { renderQuiz(); } catch (e) { }
+      try { renderStudy(); } catch (e) { }
       notifyUX('Đã tải ' + label(code));
       return true;
     } catch (e) {
@@ -1321,7 +1345,7 @@ async function getSubjects() {
   }
   async function logoutGate() { closeGate(); setSubject(''); await window.HODSupabase?.signOut?.(); }
   function patchSubmit() { if (window.__hubPatchSubmitMerged || !window.HODSupabase?.submitEditRequest) return; window.__hubPatchSubmitMerged = true; const old = window.HODSupabase.submitEditRequest.bind(window.HODSupabase); window.HODSupabase.submitEditRequest = async function (newDraft, oldQ) { if (oldQ?.id) return old(newDraft, oldQ); const supa = c(); const code = oldQ?.subject_code || subjectCode(); const num = oldQ?.num; if (supa && code && num) { const { data, error } = await supa.from('questions').select('id,subject_code').eq('subject_code', code).eq('num', num).maybeSingle(); if (!error && data) oldQ = { ...oldQ, id: data.id, subject_code: data.subject_code || code }; } return old(newDraft, oldQ); }; }
-  function patchSave() { if (window.__hubPatchSaveMerged || typeof saveEditor !== 'function') return; window.__hubPatchSaveMerged = true; const old = saveEditor; saveEditor = async function () { let oldQ = clone(RAW.find(c => c.num === editDraft.num) || pool[ci] || editDraft); editDraft.question = $('editQuestion').value.trim(); editDraft.answer = $('editAnswer').value.trim().toUpperCase(); let ops = {}; document.querySelectorAll('[data-opt]').forEach(t => { if (t.value.trim()) ops[t.dataset.opt] = t.value.trim(); }); editDraft.options = ops; editDraft.answer_text = answerText(editDraft); editDraft.subject_code = subjectCode(); if (window.HODSupabase && window.HODSupabase.isReady()) { const _role = String(window.HODSupabase?.getProfile?.()?.role || '').trim().toLowerCase(); if (['admin', 'editor'].includes(_role)) { const _qid = oldQ?.id || editDraft?.id; if (!_qid) { alert('Không tìm thấy ID câu hỏi. Hãy tải lại trang rồi thử lại.'); return; } const _u = window.HODSupabase?.getUser?.(); if (!_u?.id) { alert('Chưa đăng nhập. Hãy đăng nhập lại.'); return; } const _list = editDraft.images || []; const _text = editDraft.question + ' ' + Object.values(editDraft.options || {}).join(' '); const _needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(_text); const _hasImg = !!(_list.length || oldQ?.has_image); const _risk = (editDraft.answer?.length || 0) > 1 ? 'medium' : 'low'; const _newData = { question: editDraft.question, options: editDraft.options || {}, answer: editDraft.answer, answer_text: editDraft.answer_text, images: _list, has_image: _hasImg || _needsImg, error_risk: _risk, error_risk_reason: null }; const _oldData = { question: oldQ.question, options: oldQ.options || {}, answer: oldQ.answer, answer_text: oldQ.answer_text, images: oldQ.images || [] }; if (typeof notify === 'function') notify('Đang lưu...'); try { const _res = await fetch('/api/admin-action', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ user_id: _u.id, action: 'save_question_direct', payload: { question_id: _qid, new_data: _newData, old_data: _oldData } }) }); const _json = await _res.json().catch(() => ({})); if (!_res.ok || _json.error) { alert('Lưu trực tiếp thất bại: ' + (_json.error || _res.status)); return; } } catch(_err) { alert('Lỗi kết nối khi lưu: ' + _err.message); return; } if (typeof window.clearLearningHubQuestionCache === 'function') window.clearLearningHubQuestionCache(); $('editModal')?.classList.add('hidden'); if (typeof notify === 'function') notify('Đã lưu trực tiếp ✓'); if (typeof window.loadCurrentSubjectOnly === 'function') await window.loadCurrentSubjectOnly(true); else if (window.HODSupabase?.loadQuestionsFromSupabase) await window.HODSupabase.loadQuestionsFromSupabase(true); return; } await window.HODSupabase.submitEditRequest(editDraft, oldQ); return; } return old(); }; const _saveBtn = $('saveEdit'); if (_saveBtn) _saveBtn.onclick = saveEditor; }
+  function patchSave() { if (window.__hubPatchSaveMerged || typeof saveEditor !== 'function') return; window.__hubPatchSaveMerged = true; const old = saveEditor; saveEditor = async function () { let oldQ = clone(RAW.find(c => c.num === editDraft.num) || pool[ci] || editDraft); editDraft.question = $('editQuestion').value.trim(); editDraft.answer = $('editAnswer').value.trim().toUpperCase(); let ops = {}; document.querySelectorAll('[data-opt]').forEach(t => { if (t.value.trim()) ops[t.dataset.opt] = t.value.trim(); }); editDraft.options = ops; editDraft.answer_text = answerText(editDraft); editDraft.subject_code = subjectCode(); if (window.HODSupabase && window.HODSupabase.isReady()) { const _role = String(window.HODSupabase?.getProfile?.()?.role || '').trim().toLowerCase(); if (['admin', 'editor'].includes(_role)) { const _qid = oldQ?.id || editDraft?.id; if (!_qid) { alert('Không tìm thấy ID câu hỏi. Hãy tải lại trang rồi thử lại.'); return; } const _u = window.HODSupabase?.getUser?.(); if (!_u?.id) { alert('Chưa đăng nhập. Hãy đăng nhập lại.'); return; } const _list = editDraft.images || []; const _text = editDraft.question + ' ' + Object.values(editDraft.options || {}).join(' '); const _needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(_text); const _hasImg = !!(_list.length || oldQ?.has_image); const _risk = (editDraft.answer?.length || 0) > 1 ? 'medium' : 'low'; const _newData = { question: editDraft.question, options: editDraft.options || {}, answer: editDraft.answer, answer_text: editDraft.answer_text, images: _list, has_image: _hasImg || _needsImg, error_risk: _risk, error_risk_reason: null }; const _oldData = { question: oldQ.question, options: oldQ.options || {}, answer: oldQ.answer, answer_text: oldQ.answer_text, images: oldQ.images || [] }; if (typeof notify === 'function') notify('Đang lưu...'); try { const _res = await fetch('/api/admin-action', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ user_id: _u.id, action: 'save_question_direct', payload: { question_id: _qid, new_data: _newData, old_data: _oldData } }) }); const _json = await _res.json().catch(() => ({})); if (!_res.ok || _json.error) { alert('Lưu trực tiếp thất bại: ' + (_json.error || _res.status)); return; } } catch (_err) { alert('Lỗi kết nối khi lưu: ' + _err.message); return; } if (typeof window.clearLearningHubQuestionCache === 'function') window.clearLearningHubQuestionCache(); $('editModal')?.classList.add('hidden'); if (typeof notify === 'function') notify('Đã lưu trực tiếp ✓'); if (typeof window.loadCurrentSubjectOnly === 'function') await window.loadCurrentSubjectOnly(true); else if (window.HODSupabase?.loadQuestionsFromSupabase) await window.HODSupabase.loadQuestionsFromSupabase(true); return; } await window.HODSupabase.submitEditRequest(editDraft, oldQ); return; } return old(); }; const _saveBtn = $('saveEdit'); if (_saveBtn) _saveBtn.onclick = saveEditor; }
   function patchSignOut() { if (window.__hubPatchSignoutMerged || !window.HODSupabase?.signOut) return; window.__hubPatchSignoutMerged = true; const old = window.HODSupabase.signOut.bind(window.HODSupabase); window.HODSupabase.signOut = async function () { setSubject(''); return old(); }; }
   function ensureChangeBtn() { if (!$('hodChangeSubjectBtn')) return; $('hodChangeSubjectBtn').onclick = e => { e?.preventDefault?.(); openGate(true); }; }
   function isApproved() { const p = window.HODSupabase?.getProfile?.() || null; return !p || p.approved !== false; }
@@ -1622,7 +1646,7 @@ Bắt đầu ngay từ câu 1.`;
       if (metaEl) metaEl.textContent = Math.max(1, Math.round(parseInt(fileSize || '0') / 1024)) + ' KB · Sẵn sàng xem trước';
       const pv = $('previewImportBtn');
       if (pv) { pv.classList.remove('hidden'); pv.disabled = false; }
-      
+
       const wasPreviewed = localStorage.getItem('learninghub_add_subject_file_previewed_v1') === 'true';
       if (wasPreviewed) {
         setTimeout(() => {
@@ -1881,20 +1905,20 @@ Bắt đầu ngay từ câu 1.`;
       var quizletData = window.__LHConvertQuizlet ? window.__LHConvertQuizlet(raw) : null;
       if (quizletData && quizletData.length) { data = quizletData; }
       else {
-      var jsonBlocks = raw.match(/```json\s*([\s\S]*?)```/g);
-      if (jsonBlocks && jsonBlocks.length > 0) {
-        data = [];
-        jsonBlocks.forEach(function (block) {
-          var cleaned = block.replace(/^```json\s*/, '').replace(/```\s*$/, '');
-          var parsed = JSON.parse(cleaned);
-          if (Array.isArray(parsed)) data = data.concat(parsed);
-          else if (parsed.questions && Array.isArray(parsed.questions)) data = data.concat(parsed.questions);
-        });
-      } else {
-        var cleaned = raw;
-        if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```\w*\s*/, '').replace(/```\s*$/, '');
-        data = JSON.parse(cleaned);
-      }
+        var jsonBlocks = raw.match(/```json\s*([\s\S]*?)```/g);
+        if (jsonBlocks && jsonBlocks.length > 0) {
+          data = [];
+          jsonBlocks.forEach(function (block) {
+            var cleaned = block.replace(/^```json\s*/, '').replace(/```\s*$/, '');
+            var parsed = JSON.parse(cleaned);
+            if (Array.isArray(parsed)) data = data.concat(parsed);
+            else if (parsed.questions && Array.isArray(parsed.questions)) data = data.concat(parsed.questions);
+          });
+        } else {
+          var cleaned = raw;
+          if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```\w*\s*/, '').replace(/```\s*$/, '');
+          data = JSON.parse(cleaned);
+        }
       }
     } catch (e) {
       localStorage.removeItem('learninghub_add_subject_file_previewed_v1');
@@ -1988,7 +2012,7 @@ Bắt đầu ngay từ câu 1.`;
           sessionStorage.removeItem('learninghub_subject_counts_cache_v1');
           window.clearLearningHubSupabaseCache?.('subjects');
           window.clearLearningHubSupabaseCache?.('questions');
-        } catch(e) {}
+        } catch (e) { }
         alert(successMsg);
         notify(successMsg);
         window.__switchSubjectGateTab('list');
@@ -1996,7 +2020,7 @@ Bắt đầu ngay từ câu 1.`;
           $('subjectRefresh')?.click();
           setTimeout(() => $('subjectRefresh')?.click(), 5600);
           setTimeout(() => window.refreshSubjectCountsOnce?.(), 6500);
-        } catch(e) {}
+        } catch (e) { }
       } else {
         // Học viên/User gửi request: Hiển thị thanh tiến trình khi upload tệp tin lớn
         showProgress('Đang gửi yêu cầu tạo môn học...', 50, 100, 'Đang tải dữ liệu câu hỏi lên máy chủ...');
@@ -2052,26 +2076,26 @@ Bắt đầu ngay từ câu 1.`;
     try { if ($('idx')) $('idx').textContent = '0'; if ($('total')) $('total').textContent = '0'; if ($('bar')) $('bar').style.width = '0%'; if ($('question')) $('question').textContent = msg || 'Chưa tải dữ liệu từ Supabase'; if ($('options')) $('options').innerHTML = ''; if ($('images')) $('images').innerHTML = ''; renderQuiz?.(); renderStudy?.(); } catch (e) { }
   }
   async function loadSubjectOnly() {
-  const subject = code();
-  if (!logged()) { empty('Đăng nhập để tải dữ liệu từ Turso'); return false; }
-  if (!subject) { empty('Chọn môn để tải dữ liệu từ Turso'); return false; }
-  const p = window.HODSupabase?.getProfile?.() || null;
-  if (p && (p.approved === false || p.approved === 0 || p.approved === '0')) { empty('Tài khoản đang chờ duyệt'); return false; }
-  try {
-    const res = await fetch('/api/questions?subject_code=' + encodeURIComponent(subject) + '&ts=' + Date.now(), { cache: 'no-store' });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || json.error) throw new Error(json.error || 'Không tải được questions từ Turso');
-    const data = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
-    RAW = data.map(r => ({ id: r.id, subject_code: r.subject_code || subject, num: r.num, question: r.question, options: r.options || {}, answer: r.answer, answer_text: r.answer_text, images: (typeof cleanImages === 'function' ? cleanImages(r.images || []) : r.images || []), has_image: !!(r.has_image || (r.images || []).length), error_risk: r.error_risk || 'low', error_risk_reason: r.error_risk_reason || '', __imagesChecked: true, __imagesLoaded: true }));
-    pool = [...RAW];
-    var _saved2 = +localStorage.getItem('learninghub_progress_' + subject) || 0;
-    ci = Math.max(0, Math.min(_saved2, Math.max(0, pool.length - 1)));
-    flipped = false; randomActive = false; localStorage.setItem('hod102_random_active', '0');
-    try { if ($('total')) $('total').textContent = String(RAW.length); renderCard(); renderQuiz(); renderStudy(); syncSubjectTexts?.(); updateCardTools?.(); } catch (e) { console.warn('[Turso render]', e); }
-    return true;
-  } catch (e) { console.warn('[Turso current subject]', e); empty('Không tải được dữ liệu Turso'); return false; }
-}
-window.loadCurrentSubjectOnly = loadSubjectOnly;
+    const subject = code();
+    if (!logged()) { empty('Đăng nhập để tải dữ liệu từ Turso'); return false; }
+    if (!subject) { empty('Chọn môn để tải dữ liệu từ Turso'); return false; }
+    const p = window.HODSupabase?.getProfile?.() || null;
+    if (p && (p.approved === false || p.approved === 0 || p.approved === '0')) { empty('Tài khoản đang chờ duyệt'); return false; }
+    try {
+      const res = await fetch('/api/questions?subject_code=' + encodeURIComponent(subject) + '&ts=' + Date.now(), { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.error) throw new Error(json.error || 'Không tải được questions từ Turso');
+      const data = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
+      RAW = data.map(r => ({ id: r.id, subject_code: r.subject_code || subject, num: r.num, question: r.question, options: r.options || {}, answer: r.answer, answer_text: r.answer_text, images: (typeof cleanImages === 'function' ? cleanImages(r.images || []) : r.images || []), has_image: !!(r.has_image || (r.images || []).length), error_risk: r.error_risk || 'low', error_risk_reason: r.error_risk_reason || '', __imagesChecked: true, __imagesLoaded: true }));
+      pool = [...RAW];
+      var _saved2 = +localStorage.getItem('learninghub_progress_' + subject) || 0;
+      ci = Math.max(0, Math.min(_saved2, Math.max(0, pool.length - 1)));
+      flipped = false; randomActive = false; localStorage.setItem('hod102_random_active', '0');
+      try { if ($('total')) $('total').textContent = String(RAW.length); renderCard(); renderQuiz(); renderStudy(); syncSubjectTexts?.(); updateCardTools?.(); } catch (e) { console.warn('[Turso render]', e); }
+      return true;
+    } catch (e) { console.warn('[Turso current subject]', e); empty('Không tải được dữ liệu Turso'); return false; }
+  }
+  window.loadCurrentSubjectOnly = loadSubjectOnly;
   function patchLoaders() {
     try { window.rebuild = function () { RAW = []; pool = []; return RAW } } catch (e) { }
     if (window.HODSupabase) {
@@ -2157,48 +2181,48 @@ if (typeof finalAnswerText !== 'function') { function finalAnswerText(c) { const
 })();
 (function () {
   const $ = id => document.getElementById(id); function prof() { return window.HODSupabase?.getProfile?.() || null } function can() { const p = prof(); return !!p && ['admin', 'editor'].includes(p.role) && !(p.blocked || p.is_blocked || p.status === 'blocked') } function cli() { return window.HODSupabase?.__client || null } function sc() { return localStorage.getItem('learninghub_subject_code_merged_v1') || '' } function build() { editDraft.question = ($('editQuestion')?.value || '').trim(); editDraft.answer = ($('editAnswer')?.value || '').trim().toUpperCase(); const ops = {}; document.querySelectorAll('[data-opt]').forEach(t => { if ((t.value || '').trim()) ops[t.dataset.opt] = t.value.trim() }); editDraft.options = ops; editDraft.answer_text = typeof answerText === 'function' ? answerText(editDraft) : ''; editDraft.subject_code = sc() || editDraft.subject_code || ''; editDraft.images = editDraft.images || []; return editDraft } async function qid(oldQ, draft) { if (oldQ?.id) return oldQ.id; const c = cli(); if (!c) return null; const code = oldQ?.subject_code || draft?.subject_code || sc(), num = oldQ?.num || draft?.num; if (!code || !num) return null; const { data, error } = await c.from('questions').select('id').eq('subject_code', code).eq('num', num).maybeSingle(); return (error || !data) ? null : data.id } async function direct() {
-if (window.__LH_EDIT_IMAGE_UPLOADING > 0) { alert('Ảnh đang upload, chờ xong rồi bấm Lưu.'); return true; }
-if (!window.HODSupabase?.isReady?.()) { alert('Bạn cần đăng nhập trước.'); return false; }
-if (!can()) return false;
-const u = window.HODSupabase?.getUser?.();
-const oldQ = clone(RAW.find(x => x.num === editDraft.num) || pool[ci] || editDraft);
-const d = build();
-const id = oldQ?.id || await qid(oldQ, d);
-if (!id) { alert('Không tìm thấy ID câu hỏi trên Turso. Hãy tải lại trang rồi thử lại.'); return true; }
-let list = d.images || [];
-if (typeof window.__LHCleanImages === 'function') list = window.__LHCleanImages(list);
-list = list.map(im => {
-if (typeof im === 'string') return { src: im, url: im, secure_url: im, source: im.includes('cloudinary.com') ? 'cloudinary' : 'url' };
-const src = im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '';
-return { ...im, src, url: im.url || src, secure_url: im.secure_url || src };
-}).filter(im => im && im.src && !String(im.src).startsWith('data:image/'));
-d.images = list;
-const localHasImg = !!(list.length || oldQ.has_image);
-const contentText = d.question + ' ' + Object.values(d.options || {}).join(' ');
-const needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(contentText);
-const hasPlaceholder = list.some(im => {
-const src = typeof im === 'string' ? im : (im.src || im.url || im.secure_url || '');
-return !src || src.includes('URL_') || src.includes('MÔ_TẢ') || src.includes('PLACEHOLDER');
-});
-let risk = 'low';
-let reason = '';
-if ((localHasImg && hasPlaceholder) || (needsImg && list.length === 0)) { risk = 'high'; reason = 'Cần hình vẽ/ảnh minh họa nhưng chưa có ảnh thực tế'; }
-else if (d.answer.length > 1) { risk = 'medium'; reason = 'Câu chọn nhiều đáp án đúng, cần rà soát kỹ'; }
-const payload = { id, subject_code: d.subject_code || oldQ.subject_code || sc(), num: d.num || oldQ.num, question: d.question, options: d.options || {}, answer: d.answer, answer_text: d.answer_text, images: list, updated_at: new Date().toISOString(), has_image: localHasImg || needsImg, error_risk: risk, error_risk_reason: reason || null };
-try {
-const res = await fetch('/api/admin-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ user_id: u?.id, action: 'save_question_direct', payload: { question_id: id, new_data: payload, old_data: oldQ } }) });
-const json = await res.json().catch(() => ({}));
-if (!res.ok || json.error) throw new Error(json.error || 'Không lưu được vào Turso');
-} catch (error) { alert('Sửa trực tiếp thất bại: ' + error.message); return true; }
-if (typeof window.clearLearningHubQuestionCache === 'function') window.clearLearningHubQuestionCache();
-if (typeof window.clearLearningHubSupabaseCache === 'function') window.clearLearningHubSupabaseCache('questions');
-try { RAW = (RAW || []).map(q => Number(q.id) === Number(id) || (q.subject_code === payload.subject_code && Number(q.num) === Number(payload.num)) ? { ...q, ...payload } : q); pool = (pool || []).map(q => Number(q.id) === Number(id) || (q.subject_code === payload.subject_code && Number(q.num) === Number(payload.num)) ? { ...q, ...payload } : q); } catch (e) {}
-$('editModal')?.classList.add('hidden');
-if (typeof notify === 'function') notify('Đã lưu ảnh vào Turso');
-if (typeof window.loadCurrentSubjectOnly === 'function') await window.loadCurrentSubjectOnly();
-else if (window.HODSupabase?.loadQuestionsFromSupabase) await window.HODSupabase.loadQuestionsFromSupabase();
-return true;
-}  const oldSave = typeof saveEditor === 'function' ? saveEditor : null; saveEditor = async function () { if (can()) { const h = await direct(); if (h) return } return oldSave ? oldSave.apply(this, arguments) : undefined }; window.saveEditor = saveEditor; const oldOpen = typeof openEditor === 'function' ? openEditor : null; openEditor = function () { if (oldOpen) oldOpen.apply(this, arguments); setTimeout(() => { if (can()) { if ($('editTitle')) $('editTitle').textContent = 'Sửa trực tiếp câu ' + ((pool && pool[ci]?.num) || ''); if ($('saveEdit')) $('saveEdit').textContent = 'Lưu trực tiếp'; if ($('restoreEdit')) $('restoreEdit').classList.remove('hidden') } }, 0) }; window.openEditor = openEditor
+    if (window.__LH_EDIT_IMAGE_UPLOADING > 0) { alert('Ảnh đang upload, chờ xong rồi bấm Lưu.'); return true; }
+    if (!window.HODSupabase?.isReady?.()) { alert('Bạn cần đăng nhập trước.'); return false; }
+    if (!can()) return false;
+    const u = window.HODSupabase?.getUser?.();
+    const oldQ = clone(RAW.find(x => x.num === editDraft.num) || pool[ci] || editDraft);
+    const d = build();
+    const id = oldQ?.id || await qid(oldQ, d);
+    if (!id) { alert('Không tìm thấy ID câu hỏi trên Turso. Hãy tải lại trang rồi thử lại.'); return true; }
+    let list = d.images || [];
+    if (typeof window.__LHCleanImages === 'function') list = window.__LHCleanImages(list);
+    list = list.map(im => {
+      if (typeof im === 'string') return { src: im, url: im, secure_url: im, source: im.includes('cloudinary.com') ? 'cloudinary' : 'url' };
+      const src = im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '';
+      return { ...im, src, url: im.url || src, secure_url: im.secure_url || src };
+    }).filter(im => im && im.src && !String(im.src).startsWith('data:image/'));
+    d.images = list;
+    const localHasImg = !!(list.length || oldQ.has_image);
+    const contentText = d.question + ' ' + Object.values(d.options || {}).join(' ');
+    const needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(contentText);
+    const hasPlaceholder = list.some(im => {
+      const src = typeof im === 'string' ? im : (im.src || im.url || im.secure_url || '');
+      return !src || src.includes('URL_') || src.includes('MÔ_TẢ') || src.includes('PLACEHOLDER');
+    });
+    let risk = 'low';
+    let reason = '';
+    if ((localHasImg && hasPlaceholder) || (needsImg && list.length === 0)) { risk = 'high'; reason = 'Cần hình vẽ/ảnh minh họa nhưng chưa có ảnh thực tế'; }
+    else if (d.answer.length > 1) { risk = 'medium'; reason = 'Câu chọn nhiều đáp án đúng, cần rà soát kỹ'; }
+    const payload = { id, subject_code: d.subject_code || oldQ.subject_code || sc(), num: d.num || oldQ.num, question: d.question, options: d.options || {}, answer: d.answer, answer_text: d.answer_text, images: list, updated_at: new Date().toISOString(), has_image: localHasImg || needsImg, error_risk: risk, error_risk_reason: reason || null };
+    try {
+      const res = await fetch('/api/admin-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ user_id: u?.id, action: 'save_question_direct', payload: { question_id: id, new_data: payload, old_data: oldQ } }) });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.error) throw new Error(json.error || 'Không lưu được vào Turso');
+    } catch (error) { alert('Sửa trực tiếp thất bại: ' + error.message); return true; }
+    if (typeof window.clearLearningHubQuestionCache === 'function') window.clearLearningHubQuestionCache();
+    if (typeof window.clearLearningHubSupabaseCache === 'function') window.clearLearningHubSupabaseCache('questions');
+    try { RAW = (RAW || []).map(q => Number(q.id) === Number(id) || (q.subject_code === payload.subject_code && Number(q.num) === Number(payload.num)) ? { ...q, ...payload } : q); pool = (pool || []).map(q => Number(q.id) === Number(id) || (q.subject_code === payload.subject_code && Number(q.num) === Number(payload.num)) ? { ...q, ...payload } : q); } catch (e) { }
+    $('editModal')?.classList.add('hidden');
+    if (typeof notify === 'function') notify('Đã lưu ảnh vào Turso');
+    if (typeof window.loadCurrentSubjectOnly === 'function') await window.loadCurrentSubjectOnly();
+    else if (window.HODSupabase?.loadQuestionsFromSupabase) await window.HODSupabase.loadQuestionsFromSupabase();
+    return true;
+  } const oldSave = typeof saveEditor === 'function' ? saveEditor : null; saveEditor = async function () { if (can()) { const h = await direct(); if (h) return } return oldSave ? oldSave.apply(this, arguments) : undefined }; window.saveEditor = saveEditor; const oldOpen = typeof openEditor === 'function' ? openEditor : null; openEditor = function () { if (oldOpen) oldOpen.apply(this, arguments); setTimeout(() => { if (can()) { if ($('editTitle')) $('editTitle').textContent = 'Sửa trực tiếp câu ' + ((pool && pool[ci]?.num) || ''); if ($('saveEdit')) $('saveEdit').textContent = 'Lưu trực tiếp'; if ($('restoreEdit')) $('restoreEdit').classList.remove('hidden') } }, 0) }; window.openEditor = openEditor
 })();
 
 
@@ -2566,9 +2590,12 @@ return true;
     sending = true;
     markSent(nowMs);
     try {
-      // Cập nhật last_activity trên Turso (POST /api/profile tự set last_activity).
-      const md = u.user_metadata || {};
-      await fetch('/api/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ id: u.id, email: u.email || '', full_name: md.full_name || md.name || '', avatar_url: md.avatar_url || md.picture || '' }) });
+      const md = u?.user_metadata || {};
+      const res = await fetch('/api/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ id: u.id, email: u.email || '', full_name: md.full_name || md.name || '', avatar_url: md.avatar_url || md.picture || '' }) });
+      const json = await res.json().catch(() => ({}));
+      if (json && (json.force_logout || json.data?.force_logout)) {
+        location.reload();
+      }
     } catch (e) {
       console.warn('[last_activity]', e);
     } finally {
@@ -2586,39 +2613,62 @@ return true;
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindActivityEvents);
   else bindActivityEvents();
   setTimeout(() => touchActivity(true), 2500);
+
+  // === Force-logout polling: check every 30s even if user idle ===
+  setInterval(async () => {
+    const u = user();
+    if (!u) return;
+    try {
+      const md = u?.user_metadata || {};
+      const res = await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({ id: u.id, email: u.email || '', full_name: md.full_name || md.name || '', avatar_url: md.avatar_url || md.picture || '' })
+      });
+      const json = await res.json().catch(() => ({}));
+      if (json && (json.force_logout || json.data?.force_logout)) {
+        location.reload();
+      }
+    } catch (e) { /* ignore */ }
+  }, 60000);
 })();
 
 // ===== FINAL_HEADER_SUBJECT_DYNAMIC_FIX_20260613 =====
-// Bỏ chữ "Đổi môn" bên trái, tiêu đề tự đổi theo môn đang chọn.
+// Mã môn + counter. Flashcard: "Câu X / Y". Kiểm tra & Thư viện: "Y câu" (Y = tổng câu của môn).
 (function () {
   const STORE = 'learninghub_subject_code_merged_v1';
+  let _lastCounterHTML = '', _lastBrandHTML = '';
   function $(id) { return document.getElementById(id) }
-  function currentCode() { return localStorage.getItem(STORE) || '' }
-  function titleFromCode(code) {
-    code = String(code || '').trim().replace(/_\d+$/i, '');
-    if (!code) return 'Learning Hub';
-    return code + ' Learning';
-  }
+  function escStr(s) { return String(s ?? '').replace(/[\&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])) }
+  function currentCode() { return localStorage.getItem(STORE) || 'MLN122_3' }
   function fixCounter() {
     const counter = document.querySelector('.globalTop .counter') || document.querySelector('#fc .top .counter') || document.querySelector('.counter');
     if (!counter) return;
-    if (counter.querySelector('#subjectInlineText') || /Đổi môn|Chưa chọn môn|·/.test(counter.textContent || '')) {
-      const idx = $('idx')?.textContent || '0';
-      const total = $('total')?.textContent || '0';
-      counter.innerHTML = 'Câu <b id="idx">' + idx + '</b> / <b id="total">' + total + '</b>';
+    const tab = document.querySelector('.tab.active')?.dataset?.tab || 'fc';
+    const rawLen = typeof RAW !== 'undefined' && Array.isArray(RAW) ? String(RAW.length) : '637';
+    let html;
+    if (tab === 'fc') {
+      const idx = $('idx')?.textContent || '1';
+      const total = $('total')?.textContent || rawLen;
+      html = 'Câu <b id="idx">' + idx + '</b> / <b id="total">' + total + '</b>';
+    } else {
+      html = '<b id="total">' + rawLen + '</b> câu';
     }
+    if (_lastCounterHTML !== html) { counter.innerHTML = html; _lastCounterHTML = html; }
   }
   function fixBrand() {
     const brand = document.querySelector('.globalTop .brand') || document.querySelector('#fc .top .brand') || document.querySelector('.brand');
     if (!brand) return;
-    const title = titleFromCode(currentCode());
-    if ((brand.textContent || '').trim() !== title) brand.textContent = title;
+    const code = currentCode();
+    const html = `<div class="brandSubjectBox"><span class="brandCodeTitle">${escStr(code)}</span></div>`;
+    if (_lastBrandHTML !== html) { brand.innerHTML = html; _lastBrandHTML = html; }
   }
   function run() { fixCounter(); fixBrand(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
   setTimeout(run, 50);
   setTimeout(run, 300);
-  setInterval(run, 300);
+  setInterval(run, 500);
 })();
 
 // ===== FINAL_MOVE_SUBJECT_BUTTON_LEFT_OF_SETTINGS_20260613 =====
@@ -3134,9 +3184,9 @@ return true;
   const profile = () => window.HODSupabase?.getProfile?.() || null;
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const ADD_IMG_DRAFT_KEY = 'learninghub_add_question_images_draft_v1';
-  function saveAddImagesDraft() { try { localStorage.setItem(ADD_IMG_DRAFT_KEY, JSON.stringify(addImages)); } catch (e) {} }
+  function saveAddImagesDraft() { try { localStorage.setItem(ADD_IMG_DRAFT_KEY, JSON.stringify(addImages)); } catch (e) { } }
   function loadAddImagesDraft() { try { return JSON.parse(localStorage.getItem(ADD_IMG_DRAFT_KEY) || '[]') || []; } catch (e) { return []; } }
-  function clearAddImagesDraft() { try { localStorage.removeItem(ADD_IMG_DRAFT_KEY); } catch (e) {} }
+  function clearAddImagesDraft() { try { localStorage.removeItem(ADD_IMG_DRAFT_KEY); } catch (e) { } }
   let addImages = loadAddImagesDraft();
   let addUploading = 0;
 
@@ -4613,6 +4663,10 @@ return true;
   let examStart = 0;
   let examBaseMs = 0;
   let examElapsed = '00:00';
+  let examLayoutMode = localStorage.getItem('hod102_exam_layout_mode') || 'standard';
+  let kizspyFontSize = parseInt(localStorage.getItem('hod102_kizspy_font_size') || '10', 10);
+  let kizspySplitPct = parseFloat(localStorage.getItem('hod102_kizspy_split_pct') || '42');
+  let kizspyCheckedMap = {};
 
   const EXAM_STORE = 'learninghub_exam_state_v1';
   const $ = id => document.getElementById(id);
@@ -4665,7 +4719,8 @@ return true;
         review: !!examOnlyReview,
         qCnt: qCnt || 0,
         timerMs: nowTimerMs(),
-        timer: examElapsed
+        timer: examElapsed,
+        layoutMode: examLayoutMode
       }));
     } catch (e) { }
   }
@@ -4683,6 +4738,7 @@ return true;
       examOnlyIndex = Math.max(0, Math.min(+st.index || 0, qSet.length - 1));
       examOnlyReview = !!st.review;
       qCnt = st.qCnt || 0;
+      if (st.layoutMode) examLayoutMode = st.layoutMode;
       quizMode = 'exam';
       examElapsed = st.timer || FMT(+st.timerMs || 0);
       if (!examSubmitted && !timerInt) startTimer(+st.timerMs || timeMsFromText(examElapsed));
@@ -4693,10 +4749,6 @@ return true;
   function markTab() { document.querySelectorAll('.tab').forEach(t => { if (t.dataset?.tab === 'quiz') t.textContent = 'Kiểm tra' }); }
   function removeOldQuizUI() { document.querySelectorAll('#quiz .modeRow,#quiz .cntGrid:not(.examOnlyCountGrid),#practiceMode,#examMode').forEach(x => x.remove()) }
 
-  // FIX_20260705: tab Kiểm tra phải TỰ tải danh sách môn từ /api/subjects khi cache trống.
-  // Trước đây chỉ đọc getSubjectsCache() (chỉ được nạp khi mở bảng chọn môn) + localStorage
-  // 'learninghub_subjects_cache_v1' (key CHẾT — không ai ghi), nên phần "Gộp thêm môn"
-  // không thấy môn cùng mã (vd HOD102 không thấy HOD102_1) cho tới khi user mở Môn học rồi quay lại.
   let examSubjectsData = [];
   let examSubjectsFetchedAt = 0;
   async function ensureExamSubjects() {
@@ -4713,7 +4765,6 @@ return true;
       if (res.ok && rows.length) {
         examSubjectsData = rows.filter(s => s && s.is_active !== false);
         examSubjectsFetchedAt = Date.now();
-        // Đang đứng ở màn cài đặt kiểm tra thì vẽ lại để chip "Gộp thêm môn" hiện ra ngay.
         if (document.querySelector('#quiz .setup .examOnlyStart')) setup();
       }
     } catch (e) { console.warn('[exam subjects]', e); }
@@ -4804,7 +4855,142 @@ return true;
       customInput.onkeydown = e => { if (e.key === 'Enter') applyCustom(); };
     }
     const startBtn = $('start');
-    if (startBtn) startBtn.onclick = start;
+    if (startBtn) {
+      startBtn.onclick = () => {
+        showLayoutPickerModal(() => {
+          start();
+        });
+      };
+    }
+  }
+
+  function showLayoutPickerModal(onConfirm) {
+    let modal = document.getElementById('examLayoutPickerModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'examLayoutPickerModal';
+      document.body.appendChild(modal);
+    }
+    modal.className = 'examLayoutPickerOverlay';
+    modal.innerHTML = `
+      <div class="examLayoutPickerBox">
+        <h3 class="examLayoutPickerTitle">🎯 Chọn Giao Diện Làm Bài</h3>
+        <p class="examLayoutPickerSub">Vui lòng chọn kiểu giao diện hiển thị bạn mong muốn:</p>
+        
+        <div class="examLayoutPickerGrid">
+          <div class="examLayoutPickerCard ${examLayoutMode === 'kizspy' ? 'active' : ''}" data-pick-layout="kizspy">
+            <span class="examLayoutPickerBadge">GIAO DIỆN THI</span>
+            <div class="examLayoutPickerIcon">💻</div>
+            <div class="examLayoutPickerName">Giao diện thi</div>
+            <div class="examLayoutPickerDesc">Mô phỏng EOS Client FPT vạch đỏ, tích chọn cột trái & tùy chỉnh zoom cỡ chữ.</div>
+          </div>
+
+          <div class="examLayoutPickerCard ${examLayoutMode === 'standard' ? 'active' : ''}" data-pick-layout="standard">
+            <div class="examLayoutPickerIcon">🗂</div>
+            <div class="examLayoutPickerName">Giao diện chuẩn</div>
+            <div class="examLayoutPickerDesc">Giao diện dạng thẻ đầy đủ tính năng truyền thống.</div>
+          </div>
+        </div>
+
+        <div class="examLayoutPickerActions">
+          <button type="button" class="examLayoutPickerConfirmBtn" id="examLayoutPickerStart">Bắt đầu làm bài ▶</button>
+        </div>
+      </div>
+    `;
+
+    modal.querySelectorAll('[data-pick-layout]').forEach(card => {
+      card.onclick = () => {
+        examLayoutMode = card.dataset.pickLayout;
+        try { localStorage.setItem('hod102_exam_layout_mode', examLayoutMode); } catch (e) { }
+        modal.querySelectorAll('[data-pick-layout]').forEach(x => x.classList.remove('active'));
+        card.classList.add('active');
+      };
+    });
+
+    const confirmBtn = modal.querySelector('#examLayoutPickerStart');
+    if (confirmBtn) {
+      confirmBtn.onclick = () => {
+        modal.remove();
+        if (typeof onConfirm === 'function') onConfirm();
+      };
+    }
+  }
+
+  function showQuickCheckResultPopup(userChoice, correctChoice, q) {
+    let popup = document.getElementById('kizspyQuickCheckPopup');
+    if (!popup) {
+      popup = document.createElement('div');
+      popup.id = 'kizspyQuickCheckPopup';
+      document.body.appendChild(popup);
+    }
+    popup.className = 'kizspyCheckOverlay';
+
+    const opts = q.options || {};
+    const formatOptText = (keysStr) => {
+      if (!keysStr) return '';
+      return keysStr.split('').map(k => opts[k] ? `${k}. ${opts[k]}` : k).join('; ');
+    };
+
+    const userText = formatOptText(userChoice);
+    const correctText = formatOptText(correctChoice);
+
+    if (!userChoice) {
+      popup.innerHTML = `
+        <div class="kizspyCheckBox warning">
+          <div class="kizspyCheckHeader">
+            <span class="kizspyCheckTitle">⚠️ CHƯA CHỌN ĐÁP ÁN</span>
+            <button type="button" class="kizspyCheckClose" id="kizspyCheckCloseBtn">×</button>
+          </div>
+          <div class="kizspyCheckContent">
+            Bạn chưa tích chọn đáp án nào cho <b>Câu ${examOnlyIndex + 1}</b>. Hãy chọn 1 đáp án ở cột trái rồi bấm Kiểm tra lại nhé!
+          </div>
+          <div class="kizspyCheckFooter">
+            <button type="button" class="kizspyCheckOkBtn" id="kizspyCheckOkBtn">Đã hiểu</button>
+          </div>
+        </div>
+      `;
+    } else {
+      const isCorrect = S(userChoice) === S(correctChoice);
+      const explainText = q.explain || EXPLAIN(q) || '';
+
+      popup.innerHTML = `
+        <div class="kizspyCheckBox ${isCorrect ? 'correct' : 'incorrect'}">
+          <div class="kizspyCheckHeader">
+            <span class="kizspyCheckTitle">${isCorrect ? '✅ CHÍNH XÁC!' : '❌ CHƯA CHÍNH XÁC'}</span>
+            <button type="button" class="kizspyCheckClose" id="kizspyCheckCloseBtn">×</button>
+          </div>
+          <div class="kizspyCheckBodyGrid">
+            <div class="kizspyCheckRow ${isCorrect ? 'ok' : 'bad'}">
+              <div class="kizspyCheckRowTop">
+                <span class="kizspyCheckLabel">Lựa chọn của bạn:</span>
+                <span class="kizspyCheckBadge ${isCorrect ? 'ok' : 'bad'}">${E(userChoice)}</span>
+              </div>
+              <div class="kizspyCheckVal">${E(userText)}</div>
+            </div>
+            ${!isCorrect ? `
+              <div class="kizspyCheckRow ok">
+                <div class="kizspyCheckRowTop">
+                  <span class="kizspyCheckLabel">Đáp án đúng:</span>
+                  <span class="kizspyCheckBadge ok">${E(correctChoice)}</span>
+                </div>
+                <div class="kizspyCheckVal">${E(correctText)}</div>
+            <div class="kizspyCheckExplainText">${E(explainText)}</div>
+              </div>
+            ` : ''}
+          </div>
+          <div class="kizspyCheckFooter">
+            <button type="button" class="kizspyCheckOkBtn" id="kizspyCheckOkBtn">Đóng</button>
+          </div>
+        </div>
+      `;
+    }
+
+    const close = () => popup.remove();
+    const closeBtn = popup.querySelector('#kizspyCheckCloseBtn');
+    const okBtn = popup.querySelector('#kizspyCheckOkBtn');
+    if (closeBtn) closeBtn.onclick = close;
+    if (okBtn) okBtn.onclick = close;
+    popup.onclick = (e) => { if (e.target === popup) close(); };
   }
 
   async function loadQuestionsForCodes(codes) {
@@ -4864,108 +5050,471 @@ return true;
     window.__examOnlyRender = draw;
     const body = $('quizBody');
     if (!body) return;
+
+    const isQuizActive = $('quiz')?.classList.contains('active') || document.querySelector('.tab.active')?.dataset?.tab === 'quiz';
+    if (!isQuizActive) {
+      document.body.classList.remove('kizspy-active');
+      const p = document.getElementById('kizspyExamPortal');
+      if (p) p.remove();
+      return;
+    }
     if (!qSet || !qSet.length) restoreExam();
     const box = document.querySelector('#quiz .setup');
-    if (!qSet || !qSet.length) { setup(); if (box) box.classList.remove('hidden'); body.innerHTML = ''; return; }
+    const idxEl = document.getElementById('idx');
+    const totalEl = document.getElementById('total');
+    const totalCountVal = (qSet && qSet.length) ? qSet.length : (typeof RAW !== 'undefined' && RAW.length ? RAW.length : 0);
+    if (idxEl) idxEl.textContent = String((examOnlyIndex || 0) + 1);
+    if (totalEl) totalEl.textContent = String(totalCountVal);
+
+    if (!qSet || !qSet.length) {
+      document.body.classList.remove('kizspy-active');
+      const p = document.getElementById('kizspyExamPortal');
+      if (p) p.remove();
+      setup();
+      if (box) box.classList.remove('hidden');
+      body.innerHTML = '';
+      return;
+    }
     if (box) box.classList.add('hidden');
-    if (examSubmitted && !examOnlyReview) { result(); return; }
-    
+    if (examSubmitted && !examOnlyReview) {
+      document.body.classList.remove('kizspy-active');
+      const portal = document.getElementById('kizspyExamPortal');
+      if (portal) portal.remove();
+      result();
+      return;
+    }
+
     const c = qSet[examOnlyIndex];
     const total = qSet.length;
     const p = Math.round((examOnlyIndex + 1) / total * 100);
-
     const ch = qSel[examOnlyIndex] || '';
     const correctAns = c.answer || '';
-    
-    let opts = '';
-    if (examOnlyReview) {
-      opts = Object.entries(c.options || {}).map(([k, v]) => {
+
+    if (examLayoutMode === 'kizspy') {
+      document.body.classList.add('kizspy-active');
+      let portal = document.getElementById('kizspyExamPortal');
+      if (!portal) {
+        portal = document.createElement('div');
+        portal.id = 'kizspyExamPortal';
+        document.body.appendChild(portal);
+      }
+      portal.style.display = 'flex';
+
+      const questionCountLabel = `Question: ${examOnlyIndex + 1}`;
+      const ansLen = (c.answer || '').length;
+      const isMulti = ansLen > 1;
+      const choiceInstruction = isMulti ? `(Choose ${ansLen} answers)` : '(Choose 1 answer)';
+
+      const isCheckedThisQ = examOnlyReview || !!kizspyCheckedMap[examOnlyIndex];
+      const isUserChoseAny = !!ch;
+      const isUserCorrect = isUserChoseAny && S(ch) === S(correctAns);
+
+      const isAllChecked = (qSet || []).length > 0 && (qSet || []).every((_, idx) => kizspyCheckedMap[idx]);
+
+      // Selection boxes for Left Pane
+      const selectBoxesHTML = Object.keys(c.options || {}).map(k => {
+        const isChecked = String(ch).includes(k);
+        const inputType = isMulti ? 'checkbox' : 'radio';
+        let boxClass = isChecked ? 'sel' : '';
+        if (isCheckedThisQ) {
+          if (correctAns.includes(k)) boxClass += ' check-correct-ok';
+          else if (isChecked && !correctAns.includes(k)) boxClass += ' check-user-bad';
+        }
+        return `
+          <label class="kizspySelectBoxItem ${boxClass}" data-exam-opt="${E(k)}">
+            <input type="${inputType}" class="kizspyRadioCheck" name="kizspyOpt_${examOnlyIndex}" ${isChecked ? 'checked' : ''} ${examOnlyReview ? 'disabled' : ''}>
+            <span class="kizspySelectBoxLetter">${E(k)}</span>
+          </label>
+        `;
+      }).join('');
+
+      // Display options text for Right Pane
+      let optsHTML = Object.entries(c.options || {}).map(([k, v]) => {
+        const isChecked = String(ch).includes(k);
         const isUserChose = ch.includes(k);
         const isCorrect = correctAns.includes(k);
-        let stateClass = '';
-        let badgeHTML = '';
-        if (isCorrect) {
-          stateClass = 'review-opt-correct';
-          badgeHTML = `<span class="review-opt-badge correct">✓</span>`;
-        } else if (isUserChose && !isCorrect) {
-          stateClass = 'review-opt-incorrect';
-          badgeHTML = `<span class="review-opt-badge incorrect">×</span>`;
-        } else {
-          stateClass = 'review-opt-normal';
+        let stateClass = isChecked ? 'sel' : '';
+        let badgeTag = '';
+        if (isCheckedThisQ) {
+          if (isCorrect) {
+            stateClass = 'check-correct-ok';
+            badgeTag = '<span class="kizspyCheckBadgeTag ok">✓ Đáp án đúng</span>';
+          } else if (isUserChose && !isCorrect) {
+            stateClass = 'check-user-bad';
+            badgeTag = '<span class="kizspyCheckBadgeTag bad">✕ Lựa chọn của bạn</span>';
+          }
         }
-        return `<button type="button" class="examOnlyOption ${stateClass}" disabled><span class="qkey">${E(k)}</span><span class="qtxt">${E(v)}</span>${badgeHTML}</button>`;
+        return `
+          <div class="kizspyOption ${stateClass}" ${!examOnlyReview ? `data-exam-opt="${E(k)}"` : ''}>
+            <span class="kizspyOptionPrefix">${E(k)}.</span>
+            <span class="kizspyOptionText">${E(v)}</span>
+            ${badgeTag}
+          </div>
+        `;
       }).join('');
+
+      portal.innerHTML = `
+        <div class="kizspyHeaderNav">
+          <div class="kizspyNavLeft">
+            <span class="kizspyBrandBadge">💻 EOS Client</span>
+            <span class="kizspyTimerBadge">⏱ <b id="examTimer">${timeText()}</b></span>
+            <span class="kizspyCountBadge">Đã làm: <b>${done()}/${total}</b></span>
+          </div>
+
+          <div class="kizspyNavCenter">
+            <button type="button" id="kizspyOpenMapBtn" class="kizspyBtn kizspyBtnMap" title="Xem bản đồ tất cả các câu hỏi trong bài thi">
+              🗺 Bản đồ câu (${done()}/${total})
+            </button>
+            <button type="button" id="kizspyFontDec" class="kizspyBtn" title="Giảm cỡ chữ (Zoom out)">A-</button>
+            <button type="button" id="kizspyFontReset" class="kizspyBtn" title="Reset cỡ chữ về mặc định 10px">↺ 10px</button>
+            <button type="button" id="kizspyFontInc" class="kizspyBtn" title="Tăng cỡ chữ (Zoom in)">A+</button>
+            <button type="button" id="kizspyQuickCheck" class="kizspyBtn kizspyBtnCheck ${isCheckedThisQ ? 'active' : ''}" title="Kiểm tra đáp án câu hiện tại">
+              ✔ Check đáp án
+            </button>
+            <button type="button" id="examToggleLayout" class="kizspyBtn kizspyBtnLayout" title="Chuyển về giao diện chuẩn">
+              ⇄ Giao diện chuẩn
+            </button>
+          </div>
+
+          <div class="kizspyNavRight">
+            ${!examOnlyReview ? `
+              <button type="button" id="examSubmit" class="kizspyBtn kizspyBtnSubmit">Nộp bài</button>
+            ` : `
+              <button type="button" id="examOnlyExitToResult" class="kizspyBtn kizspyBtnSubmit">Xem kết quả</button>
+            `}
+            <button type="button" id="examOnlyExit" class="kizspyBtn kizspyBtnExit">✕ Thoát</button>
+          </div>
+        </div>
+
+        <div class="kizspyMainSplit">
+          <div class="kizspyLeftPane" style="flex:0 0 ${kizspySplitPct}% !important; width:${kizspySplitPct}% !important;">
+            <div class="kizspyHeaderLine">${questionCountLabel}</div>
+            <div class="kizspySubLine">${choiceInstruction}</div>
+            <div class="kizspySelectBoxContainer">
+              <div class="kizspySelectBoxList">${selectBoxesHTML}</div>
+            </div>
+
+            <!-- Prev / Next Navigation Buttons on Left Pane -->
+            <div class="kizspyLeftNavBtns">
+              <button type="button" id="examPrev" class="kizspyNavBtn" ${examOnlyIndex <= 0 ? 'disabled' : ''}>← Prev</button>
+              <button type="button" id="examNext" class="kizspyNavBtn" ${examOnlyIndex >= total - 1 ? 'disabled' : ''}>Next →</button>
+            </div>
+          </div>
+
+          <div class="kizspyDividerLine" title="Kéo qua trái/phải để chỉnh độ rộng 2 cột"></div>
+
+          <div class="kizspyRightPane" style="font-size:${kizspyFontSize}px !important;">
+            <div class="kizspyQText" style="font-size:${kizspyFontSize}px !important;">${E(c.question)}</div>
+            ${(c.images && c.images.length) ? `<div class="kizspyQImgs">${IMG(c)}</div>` : ''}
+            <div class="kizspyOptionsList">${optsHTML}</div>
+          </div>
+        </div>
+
+        <!-- EOS Question Map Modal Overlay -->
+        <div id="kizspyMapModal" class="kizspyMapOverlay hidden">
+          <div class="kizspyMapBox">
+            <div class="kizspyMapHeader">
+              <div class="kizspyMapTitle">
+                <b>🗺 Bản đồ câu hỏi bài thi EOS</b>
+                <span>(Đã làm: ${done()} / ${total} câu)</span>
+              </div>
+              <button type="button" class="kizspyMapClose" id="kizspyCloseMapBtn" title="Đóng bản đồ câu hỏi">✕</button>
+            </div>
+            
+            <div class="kizspyMapGrid">
+              ${(qSet || []).map((qItem, idx) => {
+                const userSel = qSel[idx] || '';
+                const isUserDone = !!userSel;
+                const isChecked = examOnlyReview || !!kizspyCheckedMap[idx];
+                const isCurrent = idx === examOnlyIndex;
+                const correctAnsStr = qItem.answer || '';
+                const isCorrect = isUserDone && S(userSel) === S(correctAnsStr);
+
+                let itemClass = '';
+                if (isCurrent) itemClass += ' current';
+                if (isChecked && isUserDone) {
+                  itemClass += isCorrect ? ' ok' : ' bad';
+                } else if (isUserDone) {
+                  itemClass += ' done';
+                }
+
+                const subLabel = userSel ? E(userSel) : (isChecked && isUserDone ? (isCorrect ? '✓' : '✕') : '');
+
+                return `
+                  <div class="kizspyMapItem ${itemClass}" data-exam-jump="${idx}">
+                    <span>${idx + 1}</span>
+                    ${subLabel ? `<span class="kizspyMapItemSub">${subLabel}</span>` : ''}
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Clear main body to prevent duplicates behind portal
+      body.innerHTML = `<div style="padding:20px;text-align:center;color:#94a3b8;">(Đang ở chế độ Kizspy EOS Portal)</div>`;
+
+      setTimeout(() => {
+        const openMapBtn = portal.querySelector('#kizspyOpenMapBtn');
+        const mapModal = portal.querySelector('#kizspyMapModal');
+        const closeMapBtn = portal.querySelector('#kizspyCloseMapBtn');
+
+        if (openMapBtn && mapModal) {
+          openMapBtn.onclick = () => mapModal.classList.remove('hidden');
+        }
+        if (closeMapBtn && mapModal) {
+          closeMapBtn.onclick = () => mapModal.classList.add('hidden');
+        }
+        if (mapModal) {
+          mapModal.onclick = (e) => {
+            if (e.target === mapModal) mapModal.classList.add('hidden');
+          };
+          mapModal.querySelectorAll('[data-exam-jump]').forEach(item => {
+            item.onclick = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const idx = parseInt(item.getAttribute('data-exam-jump'), 10);
+              if (!isNaN(idx)) {
+                examOnlyIndex = idx;
+                mapModal.classList.add('hidden');
+                saveExam();
+                draw();
+              }
+            };
+          });
+        }
+        const divider = portal.querySelector('.kizspyDividerLine');
+        const container = portal.querySelector('.kizspyMainSplit');
+        const leftPane = portal.querySelector('.kizspyLeftPane');
+        if (divider && container && leftPane) {
+          let isDragging = false;
+          const startDrag = (e) => {
+            if (e) e.preventDefault();
+            isDragging = true;
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+          };
+          const doDrag = (e) => {
+            if (!isDragging) return;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const rect = container.getBoundingClientRect();
+            const pct = Math.max(10, Math.min(90, ((clientX - rect.left) / rect.width) * 100));
+            kizspySplitPct = Math.round(pct * 10) / 10;
+            try { localStorage.setItem('hod102_kizspy_split_pct', String(kizspySplitPct)); } catch (ex) { }
+            leftPane.style.setProperty('flex', `0 0 ${kizspySplitPct}%`, 'important');
+            leftPane.style.setProperty('width', `${kizspySplitPct}%`, 'important');
+          };
+          const stopDrag = () => {
+            if (isDragging) {
+              isDragging = false;
+              document.body.style.cursor = '';
+              document.body.style.userSelect = '';
+            }
+          };
+          divider.addEventListener('mousedown', startDrag);
+          window.addEventListener('mousemove', doDrag);
+          window.addEventListener('mouseup', stopDrag);
+          divider.addEventListener('touchstart', startDrag, { passive: false });
+          window.addEventListener('touchmove', doDrag, { passive: false });
+          window.addEventListener('touchend', stopDrag);
+        }
+
+        const fontDecBtn = portal.querySelector('#kizspyFontDec');
+        if (fontDecBtn) {
+          fontDecBtn.onclick = () => {
+            if (kizspyFontSize > 9) {
+              kizspyFontSize--;
+              try { localStorage.setItem('hod102_kizspy_font_size', String(kizspyFontSize)); } catch (ex) { }
+              saveExam(); draw();
+            }
+          };
+        }
+
+        const fontResetBtn = portal.querySelector('#kizspyFontReset');
+        if (fontResetBtn) {
+          fontResetBtn.onclick = () => {
+            kizspyFontSize = 10;
+            try { localStorage.setItem('hod102_kizspy_font_size', '10'); } catch (ex) { }
+            saveExam(); draw();
+          };
+        }
+
+        const fontIncBtn = portal.querySelector('#kizspyFontInc');
+        if (fontIncBtn) {
+          fontIncBtn.onclick = () => {
+            if (kizspyFontSize < 24) {
+              kizspyFontSize++;
+              try { localStorage.setItem('hod102_kizspy_font_size', String(kizspyFontSize)); } catch (ex) { }
+              saveExam(); draw();
+            }
+          };
+        }
+
+        const checkBtn = portal.querySelector('#kizspyQuickCheck');
+        if (checkBtn) {
+          checkBtn.onclick = () => {
+            kizspyCheckedMap[examOnlyIndex] = !kizspyCheckedMap[examOnlyIndex];
+            saveExam();
+            draw();
+          };
+        }
+
+        // Option click handlers inside Portal (both Left Pane boxes & Right Pane text)
+        portal.querySelectorAll('[data-exam-opt]').forEach(el => {
+          el.onclick = (e) => {
+            if (examOnlyReview) return;
+            const selText = window.getSelection() ? window.getSelection().toString().trim() : '';
+            if (selText.length > 0) return;
+            const k = el.getAttribute('data-exam-opt');
+            if (!k) return;
+            const isMulti = (c.answer || '').length > 1;
+            if (isMulti) {
+              let cur = (qSel[examOnlyIndex] || '').split('').filter(Boolean);
+              if (cur.includes(k)) cur = cur.filter(x => x !== k);
+              else cur.push(k);
+              cur.sort();
+              qSel[examOnlyIndex] = cur.join('');
+            } else {
+              qSel[examOnlyIndex] = k;
+            }
+            saveExam();
+            draw();
+          };
+        });
+
+        // Prev / Next / Layout Toggle / Submit / Exit buttons inside Portal
+        const pBtn = portal.querySelector('#examPrev');
+        if (pBtn) pBtn.onclick = () => { if (examOnlyIndex > 0) { examOnlyIndex--; saveExam(); draw(); } };
+
+        const nBtn = portal.querySelector('#examNext');
+        if (nBtn) nBtn.onclick = () => { if (examOnlyIndex < total - 1) { examOnlyIndex++; saveExam(); draw(); } };
+
+        const tBtn = portal.querySelector('#examToggleLayout');
+        if (tBtn) tBtn.onclick = () => {
+          examLayoutMode = 'standard';
+          try { localStorage.setItem('hod102_exam_layout_mode', 'standard'); } catch (ex) { }
+          document.body.classList.remove('kizspy-active');
+          if (portal) portal.remove();
+          saveExam();
+          draw();
+        };
+
+        const sBtn = portal.querySelector('#examSubmit');
+        if (sBtn) sBtn.onclick = () => { submit(); };
+
+        const exBtn = portal.querySelector('#examOnlyExit');
+        if (exBtn) exBtn.onclick = () => {
+          if (confirm('Thoát bài kiểm tra hiện tại?')) {
+            document.body.classList.remove('kizspy-active');
+            if (portal) portal.remove();
+            clearExam(); qSet = []; qSel = {}; examSubmitted = false; examOnlyReview = false; examOnlyIndex = 0; resetTimer(); draw();
+          }
+        };
+
+        const exToResBtn = portal.querySelector('#examOnlyExitToResult');
+        if (exToResBtn) exToResBtn.onclick = () => {
+          examOnlyReview = false;
+          document.body.classList.remove('kizspy-active');
+          if (portal) portal.remove();
+          saveExam();
+          draw();
+        };
+      }, 20);
     } else {
-      opts = Object.entries(c.options || {}).map(([k, v]) => `<button type="button" class="examOnlyOption ${String(ch).includes(k) ? 'sel' : ''}" data-exam-opt="${E(k)}"><span class="qkey">${E(k)}</span><span class="qtxt">${E(v)}</span></button>`).join('');
+      document.body.classList.remove('kizspy-active');
+      const portal = document.getElementById('kizspyExamPortal');
+      if (portal) portal.remove();
+      const titleHTML = examOnlyReview
+        ? `Câu ${examOnlyIndex + 1} / ${total} <span class="reviewModeHeaderTag" style="font-size:0.88rem;color:var(--gold2);background:rgba(200,169,110,0.1);padding:3px 8px;border-radius:999px;border:1px solid rgba(200,169,110,0.3);margin-left:8px;vertical-align:middle;font-weight:800;letter-spacing:0.04em;">XEM LẠI</span>`
+        : `Câu ${examOnlyIndex + 1} / ${total}`;
+
+      const subtitleHTML = examOnlyReview
+        ? `Đúng: <b style="color:#72c58c;">${scoreExam().ok}</b> · Sai: <b style="color:#e9877b;">${scoreExam().bad}</b> · Thời gian: <b>${timeText()}</b>`
+        : `Đã làm: ${done()} / ${total} · Thời gian: <span id="examTimer">${timeText()}</span>`;
+
+      const footerHTML = examOnlyReview
+        ? `<div class="examOnlyFooter review-mode"><div class="examOnlyNav" style="grid-column: 1 / -1 !important;"><button type="button" class="btn" id="examPrev" ${examOnlyIndex <= 0 ? 'disabled' : ''}>← Câu trước</button><button type="button" class="btn" id="examNext" ${examOnlyIndex >= total - 1 ? 'disabled' : ''}>Câu tiếp →</button></div></div>`
+        : `<div class="examOnlyFooter"><div class="examOnlyNav"><button type="button" class="btn" id="examPrev" ${examOnlyIndex <= 0 ? 'disabled' : ''}>← Câu trước</button><button type="button" class="btn" id="examNext" ${examOnlyIndex >= total - 1 ? 'disabled' : ''}>Câu tiếp →</button></div><button type="button" class="submitExam" id="examSubmit">Nộp bài</button></div>`;
+
+      const exitBtn = examOnlyReview
+        ? `<button type="button" class="examOnlyExit" id="examOnlyExitToResult">Xem kết quả</button>`
+        : `<button type="button" class="examOnlyExit" id="examOnlyExit">Thoát</button>`;
+
+      const opts = Object.entries(c.options || {}).map(([k, v]) => {
+        const isChecked = String(ch).includes(k);
+        const isUserChose = ch.includes(k);
+        const isCorrect = correctAns.includes(k);
+        let stateClass = isChecked ? 'sel' : '';
+        if (examOnlyReview) {
+          if (isCorrect) stateClass = 'review-correct';
+          else if (isUserChose && !isCorrect) stateClass = 'review-incorrect';
+        }
+        return `
+          <button type="button" class="examOnlyOption ${stateClass}" ${!examOnlyReview ? `data-exam-opt="${E(k)}"` : ''}>
+            <span class="qkey">${E(k)}</span>
+            <span class="qtxt">${E(v)}</span>
+            ${examOnlyReview ? (isCorrect ? '<span style="margin-left:auto;color:#72c58c;font-weight:bold;">✓</span>' : (isUserChose ? '<span style="margin-left:auto;color:#e9877b;font-weight:bold;">×</span>' : '')) : ''}
+          </button>
+        `;
+      }).join('');
+
+      const gridItems = (qSet || []).map((q, idx) => {
+        const isCur = idx === examOnlyIndex;
+        const isDone = !!qSel[idx];
+        let stateClass = '';
+        if (examOnlyReview) {
+          const isCorrect = S(qSel[idx]) === S(q.answer);
+          stateClass = isCorrect ? 'review-grid-correct review-ok' : 'review-grid-incorrect review-bad';
+        } else {
+          stateClass = isDone ? 'answered' : '';
+        }
+        return `
+          <button type="button" class="examGridItem ${stateClass} ${isCur ? 'active' : ''}" data-exam-jump="${idx}">
+            ${idx + 1}
+          </button>
+        `;
+      }).join('');
+
+      body.innerHTML = `
+        <div class="examOnlyGridContainer">
+          <section class="examOnlyCard">
+            <div class="examOnlyTopline">
+              <div>
+                <div class="examOnlyQuestionNo">${titleHTML}</div>
+                <div class="examOnlyMeta">${subtitleHTML}</div>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <button type="button" class="examOnlyExit" id="examToggleLayout" style="background:rgba(200,169,110,0.15);color:var(--gold2);">⇄ Đổi giao diện</button>
+                ${exitBtn}
+              </div>
+            </div>
+            <div class="examOnlyProgress"><div style="width:${p}%"></div></div>
+            <div class="examOnlyContentBody">
+              <div class="examOnlyQuestionZone">
+                <div class="qq">${E(c.question)}</div>
+                <div class="qimgs">${IMG(c)}</div>
+              </div>
+              <div class="examOnlyRightZone">
+                <div class="examOnlyOptions">${opts}</div>
+              </div>
+            </div>
+            ${footerHTML}
+          </section>
+          <aside class="examOnlySidebar">
+            <div class="examSidebarHead"><h4>Bản đồ câu hỏi</h4></div>
+            <div class="examSidebarGrid">${gridItems}</div>
+          </aside>
+        </div>
+      `;
     }
-
-    const gridItems = (qSet || []).map((q, i) => {
-      let stateClass = '';
-      if (examOnlyReview) {
-        const userAns = qSel[i] || '';
-        const corrAns = q.answer || '';
-        stateClass = (S(userAns) === S(corrAns)) ? 'review-grid-correct' : 'review-grid-incorrect';
-      } else {
-        stateClass = qSel[i] ? 'answered' : '';
-      }
-      return `<button type="button" class="examGridItem ${examOnlyIndex === i ? 'active' : ''} ${stateClass}" data-exam-jump="${i}">${i + 1}</button>`;
-    }).join('');
-
-    const titleHTML = examOnlyReview 
-      ? `Câu ${examOnlyIndex + 1} / ${total} <span class="reviewModeHeaderTag" style="font-size:0.88rem;color:var(--gold2);background:rgba(200,169,110,0.1);padding:3px 8px;border-radius:999px;border:1px solid rgba(200,169,110,0.3);margin-left:8px;vertical-align:middle;font-weight:800;letter-spacing:0.04em;">XEM LẠI</span>`
-      : `Câu ${examOnlyIndex + 1} / ${total}`;
-
-    const subtitleHTML = examOnlyReview
-      ? `Đúng: <b style="color:#72c58c;">${scoreExam().ok}</b> · Sai: <b style="color:#e9877b;">${scoreExam().bad}</b> · Thời gian: <b>${timeText()}</b>`
-      : `Đã làm: ${done()} / ${total} · Thời gian: <span id="examTimer">${timeText()}</span>`;
-
-    const exitBtn = examOnlyReview
-      ? `<button type="button" class="examOnlyExit review-exit-btn" id="examOnlyExitToResult">Xem điểm</button>`
-      : `<button type="button" class="examOnlyExit" id="examOnlyExit">Thoát</button>`;
-
-    const footerHTML = examOnlyReview
-      ? `<div class="examOnlyFooter review-mode"><div class="examOnlyNav" style="grid-column: 1 / -1 !important;"><button type="button" class="btn" id="examPrev" ${examOnlyIndex <= 0 ? 'disabled' : ''}>← Câu trước</button><button type="button" class="btn" id="examNext" ${examOnlyIndex >= total - 1 ? 'disabled' : ''}>Câu tiếp →</button></div></div>`
-      : `<div class="examOnlyFooter"><div class="examOnlyNav"><button type="button" class="btn" id="examPrev" ${examOnlyIndex <= 0 ? 'disabled' : ''}>← Câu trước</button><button type="button" class="btn" id="examNext" ${examOnlyIndex >= total - 1 ? 'disabled' : ''}>Câu tiếp →</button></div><button type="button" class="submitExam" id="examSubmit">Nộp bài</button></div>`;
-
-    body.innerHTML = `
-      <div class="examOnlyGridContainer">
-        <section class="examOnlyCard">
-          <div class="examOnlyTopline">
-            <div>
-              <div class="examOnlyQuestionNo">${titleHTML}</div>
-              <div class="examOnlyMeta">${subtitleHTML}</div>
-            </div>
-            ${exitBtn}
-          </div>
-          <div class="examOnlyProgress"><div style="width:${p}%"></div></div>
-          <div class="examOnlyContentBody">
-            <div class="examOnlyQuestionZone">
-              <div class="qq">${E(c.question)}</div>
-              <div class="qimgs">${IMG(c)}</div>
-            </div>
-            <div class="examOnlyRightZone">
-              <div class="examOnlyOptions">${opts}</div>
-              ${examOnlyReview && (c.answer_text || (c.explain || EXPLAIN(c))) ? `
-                <div class="examOnlyExplain">
-                  <div class="explainTitle">💡 Giải thích đáp án</div>
-                  <div class="explainContent"><b>Đáp án đúng: ${E(c.answer)}</b> · ${E(EXPLAIN(c))}</div>
-                </div>
-              ` : ''}
-            </div>
-          </div>
-          ${footerHTML}
-        </section>
-        <aside class="examOnlySidebar">
-          <div class="examSidebarHead"><h4>Bản đồ câu hỏi</h4></div>
-          <div class="examSidebarGrid">${gridItems}</div>
-        </aside>
-      </div>
-    `;
     setTimerText();
   }
   function timeText() { return examElapsed || '00:00'; }
 
   function result() {
+    const box = document.querySelector('#quiz .setup');
+    if (box) box.classList.add('hidden');
     const body = $('quizBody');
     if (!body) return;
     const s = scoreExam();
@@ -4982,14 +5531,12 @@ return true;
       const ch = qSel[i] || '';
       const correctAns = c.answer || '';
       const ok = S(ch) === S(correctAns);
-      
+
       const reviewOpts = Object.entries(c.options || {}).map(([k, v]) => {
         const isUserChose = ch.includes(k);
         const isCorrect = correctAns.includes(k);
-        
         let stateClass = '';
         let badgeHTML = '';
-        
         if (isCorrect) {
           stateClass = 'review-opt-correct';
           badgeHTML = `<span class="review-opt-badge correct">✓</span>`;
@@ -4999,7 +5546,6 @@ return true;
         } else {
           stateClass = 'review-opt-normal';
         }
-        
         return `<div class="examReviewOpt ${stateClass}"><span class="qkey">${k}</span><span class="qtxt">${E(v)}</span>${badgeHTML}</div>`;
       }).join('');
 
@@ -5012,12 +5558,6 @@ return true;
           <div class="examOnlyReviewQ">${E(c.question)}</div>
           <div class="qimgs">${IMG(c)}</div>
           <div class="examOnlyReviewOptionsList">${reviewOpts}</div>
-          ${c.answer_text || (c.explain || EXPLAIN(c)) ? `
-            <div class="examOnlyExplain">
-              <div class="explainTitle">💡 Giải thích đáp án</div>
-              <div class="explainContent"><b>Đáp án đúng: ${E(c.answer)}</b> · ${E(EXPLAIN(c))}</div>
-            </div>
-          ` : ''}
         </div>
       `;
     }).join('');
@@ -5027,6 +5567,10 @@ return true;
     if (!confirm('Bạn chắc chắn muốn nộp bài?\n\nĐã làm: ' + done() + ' / ' + (qSet || []).length + ' câu')) return;
     examElapsed = FMT(nowTimerMs());
     examSubmitted = true;
+    examOnlyReview = false;
+    document.body.classList.remove('kizspy-active');
+    const portal = document.getElementById('kizspyExamPortal');
+    if (portal) portal.remove();
     stopTimer();
     saveExam();
     result();
@@ -5042,9 +5586,9 @@ return true;
     if (body && body.dataset.examOnlyBound !== '1') {
       body.dataset.examOnlyBound = '1';
 
-      // KEYDOWN EVENT LISTENER FOR EXAM PANE (IN CLOSURE SCOPE)
       document.addEventListener('keydown', e => {
         if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
         if ($('quiz') && $('quiz').classList.contains('active')) {
           if (e.key === 'ArrowRight') {
             if (qSet && qSet.length) {
@@ -5061,6 +5605,31 @@ return true;
             if (e.key === 'Backspace') e.preventDefault();
             return;
           }
+
+          // Keyboard shortcut for choosing options A, B, C, D, E or 1, 2, 3, 4, 5
+          const keyUpper = e.key.toUpperCase();
+          let keyOpt = '';
+          if (['A', 'B', 'C', 'D', 'E'].includes(keyUpper)) {
+            keyOpt = keyUpper;
+          } else if (['1', '2', '3', '4', '5'].includes(e.key)) {
+            const mapKey = { '1': 'A', '2': 'B', '3': 'C', '4': 'D', '5': 'E' };
+            keyOpt = mapKey[e.key];
+          }
+          if (keyOpt && !examSubmitted && qSet && qSet.length) {
+            const c = qSet[examOnlyIndex];
+            if (c && c.options && c.options[keyOpt]) {
+              if (String(c.answer || '').length > 1) {
+                const set = new Set(String(qSel[examOnlyIndex] || '').split('').filter(Boolean));
+                set.has(keyOpt) ? set.delete(keyOpt) : set.add(keyOpt);
+                qSel[examOnlyIndex] = Array.from(set).sort().join('');
+              } else {
+                qSel[examOnlyIndex] = keyOpt;
+              }
+              saveExam(); draw();
+              return;
+            }
+          }
+
           if (e.key === 'Escape') {
             if (examOnlyReview) {
               examOnlyReview = false;
@@ -5089,6 +5658,17 @@ return true;
           } else qSel[examOnlyIndex] = k;
           saveExam(); draw(); return;
         }
+        if (e.target.id === 'examEditCard' || e.target.closest('#examEditCard')) {
+          const c = qSet && qSet[examOnlyIndex];
+          if (c && typeof window.openStudyReport === 'function') window.openStudyReport(c.num);
+          else if (typeof openEditor === 'function') openEditor();
+          return;
+        }
+        if (e.target.id === 'examToggleLayout') {
+          examLayoutMode = (examLayoutMode === 'kizspy') ? 'standard' : 'kizspy';
+          try { localStorage.setItem('hod102_exam_layout_mode', examLayoutMode); } catch (ex) { }
+          saveExam(); draw(); return;
+        }
         if (e.target.id === 'examPrev') { examOnlyIndex = Math.max(0, examOnlyIndex - 1); saveExam(); draw(); return; }
         if (e.target.id === 'examNext') { examOnlyIndex = Math.min((qSet || []).length - 1, examOnlyIndex + 1); saveExam(); draw(); return; }
         if (e.target.id === 'examSubmit') { submit(); return; }
@@ -5109,16 +5689,14 @@ return true;
 
   try { renderQuiz = function () { setup(); draw(); } } catch (e) { window.renderQuiz = function () { setup(); draw(); } }
 
-  // FIX_20260705: đổi môn phải RESET trạng thái bài kiểm tra đang giữ trong bộ nhớ (qSet/qSel/...),
-  // nếu không tab Kiểm tra của môn mới sẽ hiện lại đề của môn cũ. KHÔNG xóa EXAM_STORE (đã gắn subject),
-  // để khi quay lại đúng môn cũ thì restoreExam() vẫn resume được bài đang dở.
   window.__examResetForSubjectChange = function () {
-    try { stopTimer(); } catch (e) {}
+    try { stopTimer(); } catch (e) { }
     qSet = []; qSel = {}; qDone = {};
     examSubmitted = false; examOnlyReview = false; examOnlyIndex = 0;
     examElapsed = '00:00';
     examSelectedCodes = [];
     quizMode = 'exam';
+    kizspyCheckedMap = {};
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(bind, 120)); else setTimeout(bind, 120);
@@ -5211,7 +5789,7 @@ return true;
     box.innerHTML = `<div class="v7StatLine"><span class="v7StatItem">${s.total} câu</span><span class="v7StatItem" style="color:#3498db">${s.img} có ảnh</span><span class="v7StatItem" style="color:#e74c3c">${s.high} rủi ro cao</span><span class="v7StatItem" style="color:#f39c12">${s.medium} trung bình</span><span class="v7StatItem" style="color:#27ae60">${s.low} thấp</span></div><div class="v7FilterLine">${filters.map(x => `<button type="button" class="v7FilterBtn ${f === x[0] ? 'active' : ''}" data-library-filter="${x[0]}">${x[1]}</button>`).join('')}</div>`;
   }
   function optionList(q) { const a = ans(q); return Object.entries(q.options || {}).map(([k, v]) => `<div class="libraryOption ${a.includes(String(k).toUpperCase()) ? 'correct' : ''}"><b>${esc2(k)}</b><span>${esc2(v)}</span></div>`).join('') }
-  function card(q, i) { const a = ans(q) || '?', r = risk(q); return `<article class="libraryV2Card libraryQuestionCard" data-library-v2-card="${i}" data-num="${esc2(q.num || '')}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">Câu ${esc2(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${esc2(q.question || '')}</div><div class="libraryV2Answer"><b>Đáp án: ${esc2(a)}</b><span>${esc2(correctText(q))}</span></div></div>${miniImages(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-library-study="${i}">Học</button><button type="button" class="libraryV2Report" data-library-report="${i}">!</button><button type="button" class="libraryV2Toggle" data-library-toggle="${i}">Mở</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${optionList(q)}</div>${allImages(q)}</div></article>` }
+  function card(q, i) { const a = ans(q) || '?', r = risk(q); return `<article class="libraryV2Card libraryQuestionCard" data-library-v2-card="${i}" data-num="${esc2(q.num || '')}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">Câu ${esc2(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${esc2(q.question || '')}</div><div class="libraryV2Answer"><b>Đáp án: ${esc2(a)}</b><span>${esc2(correctText(q))}</span></div></div>${miniImages(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-library-study="${i}">Học</button><button type="button" class="libraryV2Report" data-library-report="${i}">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${optionList(q)}</div>${allImages(q)}</div></article>` }
   function getBase() { const q = ($('search')?.value || $('studySearch')?.value || ''); try { return (typeof smart === 'function' ? smart(q) : (typeof RAW !== 'undefined' ? RAW : [])) || [] } catch (e) { return typeof RAW !== 'undefined' ? RAW : [] } }
   function render() { const base = getBase(); renderStats(base); const arr = base.filter(pass); const list = $('studyList'); if (!list) return; list.innerHTML = arr.length ? arr.map(card).join('') : '<div class="v7Empty libraryV2Empty">Không có câu nào phù hợp bộ lọc.</div>'; setTimeout(() => { try { document.dispatchEvent(new CustomEvent('library-v2-rendered')) } catch (e) { } }, 0) }
   function goStudy(i) { const q = getBase().filter(pass)[i] || getBase()[i]; if (!q) return; let idx = (pool || []).findIndex(x => Number(x.num) === Number(q.num)); if (idx < 0) { pool = [...RAW]; idx = pool.findIndex(x => Number(x.num) === Number(q.num)) } if (idx >= 0) { ci = idx; flipped = false; flipDir = 'horizontal'; try { renderCard() } catch (e) { } document.querySelector('[data-tab="fc"]')?.click?.(); } }
@@ -5287,7 +5865,30 @@ return true;
   function passFilter(q) { const f = filterVal(); if (f === 'all') return true; if (f === 'has_image') return hasImg(q); return risk(q) === f }
   function stats(data) { return { total: data.length, img: data.filter(hasImg).length, high: data.filter(q => risk(q) === 'high').length, medium: data.filter(q => risk(q) === 'medium').length, low: data.filter(q => risk(q) === 'low').length } }
   function ensureToolbar() { const list = $('studyList'); if (!list) return; let tool = $('libraryStableToolbar'); if (!tool) { tool = document.createElement('section'); tool.id = 'libraryStableToolbar'; tool.className = 'libraryStableToolbar'; tool.innerHTML = '<div class="libStableHead libStableHeadCompact"><div class="libStableInfo"><b id="libStableFilterText">Tất cả</b><em id="libStableCount">0 câu</em></div></div><div id="libStableSearchSlot"></div><div id="libStableFilters"></div>'; const searchBox = ($('search') || $('studySearch'))?.closest('.search'); (searchBox?.parentNode || list.parentNode).insertBefore(tool, searchBox || list) } const searchBox = ($('search') || $('studySearch'))?.closest('.search'); if (searchBox && $('libStableSearchSlot') && searchBox.parentNode !== $('libStableSearchSlot')) $('libStableSearchSlot').appendChild(searchBox); const input = $('search') || $('studySearch'); if (input) { input.placeholder = 'Tìm câu hoặc #12...'; if (!input.value) { try { input.value = localStorage.getItem(SEARCH_STORE) || '' } catch (e) { } } if (!$('libStableClear')) { const b = document.createElement('button'); b.id = 'libStableClear'; b.type = 'button'; b.textContent = '×'; b.title = 'Xóa tìm kiếm'; b.onclick = function () { input.value = ''; try { localStorage.removeItem(SEARCH_STORE) } catch (e) { } renderUnified(); input.focus() }; input.insertAdjacentElement('afterend', b) } input.oninput = function () { try { localStorage.setItem(SEARCH_STORE, input.value || '') } catch (e) { } renderUnified() }; $('libStableClear')?.classList.toggle('show', !!input.value.trim()) } }
-  function renderFilters(base, shown) { ensureToolbar(); const box = $('libStableFilters'); if (!box) return; const s = stats(base), f = filterVal(); const filters = [['all', 'Tất cả', s.total], ['has_image', 'Có ảnh', s.img], ['high', 'Rủi ro cao', s.high], ['medium', 'Trung bình', s.medium], ['low', 'Thấp', s.low]]; box.innerHTML = '<div class="libStableFilterLine">' + filters.map(x => `<button type="button" class="${f === x[0] ? 'active' : ''}" data-stable-filter="${x[0]}">${x[1]} <small>${x[2]}</small></button>`).join('') + '</div>'; const ft = $('libStableFilterText'), ct = $('libStableCount'); if (ft) ft.textContent = 'Đang lọc: ' + (filters.find(x => x[0] === f)?.[1] || 'Tất cả'); if (ct) ct.textContent = shown.length + ' / ' + base.length + ' câu'; }
+  function renderFilters(base, shown) {
+    ensureToolbar();
+    const box = $('libStableFilters');
+    if (!box) return;
+    const s = stats(base), f = filterVal(), v = viewVal();
+    const filters = [['all', 'Tất cả', s.total], ['has_image', 'Có ảnh', s.img], ['high', 'Rủi ro cao', s.high], ['medium', 'Trung bình', s.medium], ['low', 'Thấp', s.low]];
+    const isAllOpen = v === 'full';
+
+    box.innerHTML = `
+      <div class="libStableFilterLine" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          ${filters.map(x => `<button type="button" class="${f === x[0] ? 'active' : ''}" data-stable-filter="${x[0]}">${x[1]} <small>${x[2]}</small></button>`).join('')}
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button type="button" class="v7FilterBtn ${isAllOpen ? 'active' : ''}" data-stable-toggle-all="${isAllOpen ? 'compact' : 'full'}" title="Mở hoặc thu gọn tất cả câu hỏi trong danh sách">
+            ${isAllOpen ? '📑 Thu gọn tất cả' : '📂 Mở tất cả'}
+          </button>
+        </div>
+      </div>
+    `;
+    const ft = $('libStableFilterText'), ct = $('libStableCount');
+    if (ft) ft.textContent = 'Đang lọc: ' + (filters.find(x => x[0] === f)?.[1] || 'Tất cả');
+    if (ct) ct.textContent = shown.length + ' / ' + base.length + ' câu';
+  }
   function miniImg(q) {
     const imgs = (q.images || []).map(imgSrc).filter(Boolean);
     if (imgs.length) {
@@ -5331,7 +5932,7 @@ return true;
       isMatchInDetails = queryObj.tokens.every(t => detailsText.includes(t));
     }
     const open = viewVal() === 'full' || libraryOpenNums.has(String(q.num)) || isMatchInDetails || !!rawSearch;
-    return `<article class="libraryV2Card libraryQuestionCard ${open ? 'open' : ''}" data-num="${esc(q.num || '')}" data-stable-index="${i}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">Câu ${esc(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${hlt(q.question || '')}</div><div class="libraryV2Answer"><b>Đáp án: ${esc(a)}</b><span>${hlt(answerText(q))}</span></div></div>${miniImg(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-stable-study="${i}" title="Học câu này">Học</button><button type="button" class="libraryV2Report" data-stable-report="${i}" title="Báo cáo / sửa câu">!</button><button type="button" class="libraryV2Toggle" data-stable-toggle="${i}">${open ? 'Thu gọn' : 'Mở'}</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${options(q)}</div>${images(q, open)}</div></article>`
+    return `<article class="libraryV2Card libraryQuestionCard ${open ? 'open' : ''}" data-num="${esc(q.num || '')}" data-stable-index="${i}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">Câu ${esc(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${hlt(q.question || '')}</div><div class="libraryV2Answer"><b>Đáp án: ${esc(a)}</b><span>${hlt(answerText(q))}</span></div></div>${miniImg(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-stable-study="${i}" title="Học câu này">Học</button><button type="button" class="libraryV2Report" data-stable-report="${i}" title="Báo cáo / sửa câu">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${options(q)}</div>${images(q, open)}</div></article>`
   }
   function renderUnified() { ensureToolbar(); const base = searchList(); lastList = base.filter(passFilter); renderFilters(base, lastList); const list = $('studyList'); if (!list) return; list.innerHTML = lastList.length ? lastList.map(card).join('') : '<div class="libraryStableEmpty"><b>Không có câu phù hợp.</b><button type="button" data-stable-clear-all>Xóa tìm kiếm & bộ lọc</button></div>'; if ($('libStableClear')) $('libStableClear').classList.toggle('show', !!(($('search') || $('studySearch'))?.value || '').trim()) }
   function setCurrent(q) { let idx = (pool || []).findIndex(x => Number(x.num) === Number(q.num)); if (idx < 0) { pool = [...RAW]; idx = pool.findIndex(x => Number(x.num) === Number(q.num)) } if (idx >= 0) { ci = idx; flipped = false; flipDir = 'horizontal'; try { renderCard() } catch (e) { } return true } return false }
@@ -5376,6 +5977,19 @@ return true;
       e.preventDefault();
       e.stopPropagation();
       showImageLightbox(zoomImg.src);
+      return;
+    }
+
+    const toggleAll = e.target.closest('[data-stable-toggle-all]');
+    if (toggleAll) {
+      e.preventDefault();
+      const targetView = toggleAll.dataset.stableToggleAll;
+      localStorage.setItem(VIEW_STORE, targetView);
+      if (targetView === 'compact') {
+        libraryOpenNums.clear();
+        saveOpenState();
+      }
+      renderUnified();
       return;
     }
 
@@ -6142,7 +6756,11 @@ return true;
   }
   document.addEventListener('click', e => {
     const t = e.target.closest('[data-tab]');
-    if (t?.dataset?.tab) try { localStorage.setItem(TAB_STORE, t.dataset.tab) } catch (_e) { }
+    if (t?.dataset?.tab) {
+      const tabId = t.dataset.tab;
+      try { localStorage.setItem(TAB_STORE, tabId); } catch (_e) { }
+      switchTab(tabId, t);
+    }
   }, true);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => { setTimeout(restoreLastTab, 250); setTimeout(restoreLastTab, 1200); setTimeout(restoreLastTab, 2500); });
   else { setTimeout(restoreLastTab, 250); setTimeout(restoreLastTab, 1200); setTimeout(restoreLastTab, 2500); }
@@ -6609,7 +7227,7 @@ window.clearLearningHubQuestionCache = function () {
 
 // ===== COPILOT_CLEAN_RUNTIME_GUARD_20260628 =====
 // Bản sạch: cache request Supabase + chống spam profile/question/image. Đã xóa ghi thống kê băng thông.
-(function(){
+(function () {
   if (window.__COPILOT_CLEAN_RUNTIME_GUARD_20260628) return;
   window.__COPILOT_CLEAN_RUNTIME_GUARD_20260628 = true;
   if (!window.fetch) return;
@@ -6620,7 +7238,7 @@ window.clearLearningHubQuestionCache = function () {
   const pending = new Map();
 
   function supabaseOrigin() {
-    try { return new URL(window.APP_CONFIG?.SUPABASE_URL || '').origin; } catch(e) { return ''; }
+    try { return new URL(window.APP_CONFIG?.SUPABASE_URL || '').origin; } catch (e) { return ''; }
   }
   function methodOf(init) {
     return String(init?.method || 'GET').toUpperCase();
@@ -6629,7 +7247,7 @@ window.clearLearningHubQuestionCache = function () {
     try {
       const raw = typeof input === 'string' ? input : (input && input.url ? input.url : '');
       return new URL(raw, location.href);
-    } catch(e) { return null; }
+    } catch (e) { return null; }
   }
   function isSupabase(url) {
     const origin = supabaseOrigin();
@@ -6669,7 +7287,7 @@ window.clearLearningHubQuestionCache = function () {
     return 0;
   }
   function cacheKey(method, url) {
-    const params = Array.from(url.searchParams.entries()).sort((a,b) => (a[0]+'='+a[1]).localeCompare(b[0]+'='+b[1]));
+    const params = Array.from(url.searchParams.entries()).sort((a, b) => (a[0] + '=' + a[1]).localeCompare(b[0] + '=' + b[1]));
     return method + ' ' + url.origin + url.pathname + '?' + params.map(x => x[0] + '=' + x[1]).join('&');
   }
   async function packResponse(res) {
@@ -6689,7 +7307,7 @@ window.clearLearningHubQuestionCache = function () {
     });
   }
 
-  window.fetch = async function(input, init) {
+  window.fetch = async function (input, init) {
     let url = urlOf(input);
     const method = methodOf(init);
     if (!url) return nativeFetch(input, init);
@@ -6723,18 +7341,18 @@ window.clearLearningHubQuestionCache = function () {
     return unpack(await job);
   };
 
-  window.clearLearningHubSupabaseRuntimeCache = function(){
+  window.clearLearningHubSupabaseRuntimeCache = function () {
     cache.clear();
     pending.clear();
   };
 
   // Cache mềm getProfile để các interval UI không gây kiểm tra quyền quá dày.
-  setTimeout(function patchProfileGetter(){
+  setTimeout(function patchProfileGetter() {
     const api = window.HODSupabase;
     if (!api || !api.getProfile || api.__cleanProfileCached) return;
     const oldGetProfile = api.getProfile.bind(api);
     let last = null, at = 0;
-    api.getProfile = function(){
+    api.getProfile = function () {
       const now = Date.now();
       const p = oldGetProfile();
       if (p) { last = p; at = now; return p; }
@@ -6749,85 +7367,85 @@ window.clearLearningHubQuestionCache = function () {
 // ===== COPILOT_FIX_EDIT_IMAGE_VISIBLE_AFTER_SAVE_20260628 =====
 // Fix: thêm ảnh trong form sửa xong không thấy hiện do reload bị cache / cột tải nhẹ thiếu images.
 // Lưu xong cập nhật local ngay, không chờ reload toàn bộ môn.
-(function(){
-  if(window.__COPILOT_FIX_EDIT_IMAGE_VISIBLE_AFTER_SAVE_20260628) return;
+(function () {
+  if (window.__COPILOT_FIX_EDIT_IMAGE_VISIBLE_AFTER_SAVE_20260628) return;
   window.__COPILOT_FIX_EDIT_IMAGE_VISIBLE_AFTER_SAVE_20260628 = true;
 
-  function $(id){ return document.getElementById(id); }
-  function db(){ return window.HODSupabase?.__client || null; }
-  function user(){ return window.HODSupabase?.getUser?.() || null; }
-  function profile(){ return window.HODSupabase?.getProfile?.() || null; }
-  function canDirect(){
+  function $(id) { return document.getElementById(id); }
+  function db() { return window.HODSupabase?.__client || null; }
+  function user() { return window.HODSupabase?.getUser?.() || null; }
+  function profile() { return window.HODSupabase?.getProfile?.() || null; }
+  function canDirect() {
     const r = String(profile()?.role || '').toLowerCase();
     return !!user() && (r === 'admin' || r === 'editor');
   }
-  function subjectCode(){ return localStorage.getItem('learninghub_subject_code_merged_v1') || ''; }
-  function currentDraft(){ try { return window.editDraft || editDraft || null; } catch(e){ return window.editDraft || null; } }
-  function imgUrl(im){
-    if(!im) return '';
-    if(typeof im === 'string') return im;
+  function subjectCode() { return localStorage.getItem('learninghub_subject_code_merged_v1') || ''; }
+  function currentDraft() { try { return window.editDraft || editDraft || null; } catch (e) { return window.editDraft || null; } }
+  function imgUrl(im) {
+    if (!im) return '';
+    if (typeof im === 'string') return im;
     return im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '';
   }
-  function cleanImgs(list){
+  function cleanImgs(list) {
     return (list || []).map(im => {
       const src = imgUrl(im);
-      if(!src || !/^https?:\/\//i.test(src)) return null;
-      return typeof im === 'string' ? {src, url:src} : Object.assign({}, im, {src, url:src});
+      if (!src || !/^https?:\/\//i.test(src)) return null;
+      return typeof im === 'string' ? { src, url: src } : Object.assign({}, im, { src, url: src });
     }).filter(Boolean);
   }
-  function collectDraft(){
+  function collectDraft() {
     const d = currentDraft();
-    if(!d) return null;
+    if (!d) return null;
     const qEl = $('editQuestion') || document.querySelector('[data-edit-question]');
     const aEl = $('editAnswer') || document.querySelector('[data-edit-answer]');
     d.question = (qEl?.value || d.question || '').trim();
-    d.answer = (aEl?.value || d.answer || '').trim().toUpperCase().replace(/[^A-Z]/g,'');
+    d.answer = (aEl?.value || d.answer || '').trim().toUpperCase().replace(/[^A-Z]/g, '');
     const opts = {};
     document.querySelectorAll('[data-opt],[data-edit-opt]').forEach(inp => {
       const k = String(inp.dataset.opt || inp.dataset.editOpt || '').toUpperCase();
       const v = String(inp.value || '').trim();
-      if(k && v) opts[k] = v;
+      if (k && v) opts[k] = v;
     });
-    if(Object.keys(opts).length) d.options = opts;
+    if (Object.keys(opts).length) d.options = opts;
     d.answer_text = typeof answerText === 'function' ? answerText(d) : (d.answer_text || '');
     d.subject_code = d.subject_code || subjectCode();
     d.images = cleanImgs(d.images);
     return d;
   }
-  async function getQuestionId(d){
-    if(d.id) return d.id;
+  async function getQuestionId(d) {
+    if (d.id) return d.id;
     const c = db();
-    if(!c || !d.num) return null;
+    if (!c || !d.num) return null;
     const r = await c.from('questions').select('id').eq('subject_code', d.subject_code || subjectCode()).eq('num', d.num).maybeSingle();
     return r.error || !r.data ? null : r.data.id;
   }
-  function updateLocal(d, id){
-    const patch = Object.assign({}, d, { id, images: cleanImgs(d.images), has_image: !!(d.images && d.images.length), __imagesChecked:true, __imagesLoaded:true });
+  function updateLocal(d, id) {
+    const patch = Object.assign({}, d, { id, images: cleanImgs(d.images), has_image: !!(d.images && d.images.length), __imagesChecked: true, __imagesLoaded: true });
     try {
-      if(Array.isArray(RAW)) {
+      if (Array.isArray(RAW)) {
         const i = RAW.findIndex(q => String(q.id) === String(id) || Number(q.num) === Number(patch.num));
-        if(i >= 0) RAW[i] = Object.assign({}, RAW[i], patch);
+        if (i >= 0) RAW[i] = Object.assign({}, RAW[i], patch);
       }
-      if(Array.isArray(pool)) {
+      if (Array.isArray(pool)) {
         const j = pool.findIndex(q => String(q.id) === String(id) || Number(q.num) === Number(patch.num));
-        if(j >= 0) pool[j] = Object.assign({}, pool[j], patch);
+        if (j >= 0) pool[j] = Object.assign({}, pool[j], patch);
       }
       const active = (pool && pool[ci]) || null;
-      if(active && (String(active.id) === String(id) || Number(active.num) === Number(patch.num))) {
+      if (active && (String(active.id) === String(id) || Number(active.num) === Number(patch.num))) {
         Object.assign(active, patch);
       }
-      if(typeof renderCard === 'function') renderCard();
-      if(typeof renderQuiz === 'function') renderQuiz();
-      if(typeof renderStudy === 'function') renderStudy();
-    } catch(e) { console.warn('[edit image local update]', e); }
+      if (typeof renderCard === 'function') renderCard();
+      if (typeof renderQuiz === 'function') renderQuiz();
+      if (typeof renderStudy === 'function') renderStudy();
+    } catch (e) { console.warn('[edit image local update]', e); }
   }
-  async function saveDirectNoReload(){
-    if(!canDirect()) return false;
+  async function saveDirectNoReload() {
+    if (!canDirect()) return false;
     const c = db();
     const d = collectDraft();
-    if(!c || !d) return false;
+    if (!c || !d) return false;
     const id = await getQuestionId(d);
-    if(!id) { alert('Không tìm thấy ID câu hỏi trên Supabase.'); return true; }
+    if (!id) { alert('Không tìm thấy ID câu hỏi trên Supabase.'); return true; }
     const payload = {
       question: d.question,
       options: d.options || {},
@@ -6839,8 +7457,8 @@ window.clearLearningHubQuestionCache = function () {
     };
     const u = window.HODSupabase?.getUser?.();
     const oldQ = (RAW || []).find(x => String(x.id) === String(id) || Number(x.num) === Number(d.num))
-                 || (pool || []).find(x => String(x.id) === String(id) || Number(x.num) === Number(d.num))
-                 || d;
+      || (pool || []).find(x => String(x.id) === String(id) || Number(x.num) === Number(d.num))
+      || d;
     const old_data = {
       question: oldQ.question || '',
       options: oldQ.options || {},
@@ -6850,21 +7468,21 @@ window.clearLearningHubQuestionCache = function () {
     };
     const res = await fetch('/api/admin-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ user_id: u?.id, action: 'save_question_direct', payload: { question_id: id, new_data: Object.assign({ id, subject_code: d.subject_code, num: d.num }, payload), old_data } }) });
     const out = await res.json().catch(() => ({}));
-    if(!res.ok || out.error) { alert('Lưu trực tiếp thất bại: ' + (out.error || res.status)); return true; }
+    if (!res.ok || out.error) { alert('Lưu trực tiếp thất bại: ' + (out.error || res.status)); return true; }
     if (typeof window.clearLearningHubQuestionCache === 'function') {
       window.clearLearningHubQuestionCache();
     }
     d.images = payload.images;
     $('editModal')?.classList.add('hidden');
     updateLocal(Object.assign({}, d, payload), id);
-    if(typeof notify === 'function') notify('Đã lưu ảnh và cập nhật câu hiện tại');
+    if (typeof notify === 'function') notify('Đã lưu ảnh và cập nhật câu hiện tại');
     return true;
   }
 
-  document.addEventListener('click', async function(e){
+  document.addEventListener('click', async function (e) {
     const btn = e.target.closest?.('#saveEdit,[data-edit-preview-save]');
-    if(!btn || !btn.closest?.('#editModal')) return;
-    if(!canDirect()) return;
+    if (!btn || !btn.closest?.('#editModal')) return;
+    if (!canDirect()) return;
     e.preventDefault?.();
     e.stopPropagation?.();
     e.stopImmediatePropagation?.();
@@ -6881,74 +7499,74 @@ window.clearLearningHubQuestionCache = function () {
 
 // ===== APP_REALTIME_CACHE_INVALIDATE_20260629 =====
 // Khi Supabase questions/subjects đổi, tự xóa cache để F5 lần sau nhận dữ liệu mới.
-(function(){
-  if(window.__APP_REALTIME_CACHE_INVALIDATE_20260629) return;
+(function () {
+  if (window.__APP_REALTIME_CACHE_INVALIDATE_20260629) return;
   window.__APP_REALTIME_CACHE_INVALIDATE_20260629 = true;
 
   let channel = null;
   let tries = 0;
 
-  function getClient(){
-    try{
-      if(window.HODSupabase && window.HODSupabase.__client) return window.HODSupabase.__client;
-      if(window.supabase && window.APP_CONFIG?.SUPABASE_URL && window.APP_CONFIG?.SUPABASE_ANON_KEY){
-        if(!window.__lhCacheRealtimeClient){
+  function getClient() {
+    try {
+      if (window.HODSupabase && window.HODSupabase.__client) return window.HODSupabase.__client;
+      if (window.supabase && window.APP_CONFIG?.SUPABASE_URL && window.APP_CONFIG?.SUPABASE_ANON_KEY) {
+        if (!window.__lhCacheRealtimeClient) {
           window.__lhCacheRealtimeClient = window.supabase.createClient(window.APP_CONFIG.SUPABASE_URL, window.APP_CONFIG.SUPABASE_ANON_KEY);
         }
         return window.__lhCacheRealtimeClient;
       }
-    }catch(e){}
+    } catch (e) { }
     return null;
   }
-  function clear(kind){
-    try{
-      if(typeof window.clearLearningHubSupabaseCache === 'function') window.clearLearningHubSupabaseCache(kind);
-      else if(kind === 'questions' && typeof window.clearLearningHubQuestionCache === 'function') window.clearLearningHubQuestionCache();
-      if(kind === 'questions' && typeof window.loadCurrentSubjectOnly === 'function'){
+  function clear(kind) {
+    try {
+      if (typeof window.clearLearningHubSupabaseCache === 'function') window.clearLearningHubSupabaseCache(kind);
+      else if (kind === 'questions' && typeof window.clearLearningHubQuestionCache === 'function') window.clearLearningHubQuestionCache();
+      if (kind === 'questions' && typeof window.loadCurrentSubjectOnly === 'function') {
         window.loadCurrentSubjectOnly(true);
       }
       console.info('[LearningHub cache] cleared:', kind);
-    }catch(e){}
+    } catch (e) { }
   }
-  function stop(){
-    if(channel){
-      try{ channel.unsubscribe(); }catch(e){}
+  function stop() {
+    if (channel) {
+      try { channel.unsubscribe(); } catch (e) { }
       channel = null;
     }
   }
-  function start(){
+  function start() {
     return; // Supabase Realtime disabled as internal database uses Turso APIs.
-    if(document.hidden) return;
-    if(channel) return;
+    if (document.hidden) return;
+    if (channel) return;
     const c = getClient();
-    if(!c){
-      if(tries++ < 30) setTimeout(start, 500);
+    if (!c) {
+      if (tries++ < 30) setTimeout(start, 500);
       return;
     }
-    try{
+    try {
       channel = c.channel('learninghub-cache-invalidate-v1')
-        .on('postgres_changes', {event:'*', schema:'public', table:'questions'}, function(){ clear('questions'); })
-        .on('postgres_changes', {event:'*', schema:'public', table:'subjects'}, function(){ clear('subjects'); clear('questions'); })
-        .subscribe(function(status){
-          if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED'){
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, function () { clear('questions'); })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'subjects' }, function () { clear('subjects'); clear('questions'); })
+        .subscribe(function (status) {
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
             channel = null;
-            if(!document.hidden) setTimeout(start, 1500);
+            if (!document.hidden) setTimeout(start, 1500);
           }
         });
-    }catch(e){
+    } catch (e) {
       channel = null;
-      if(tries++ < 30 && !document.hidden) setTimeout(start, 1000);
+      if (tries++ < 30 && !document.hidden) setTimeout(start, 1000);
     }
   }
 
-  document.addEventListener('visibilitychange', function(){
-    if(document.hidden){
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
       stop();
     } else {
       start();
     }
   });
-  document.addEventListener('DOMContentLoaded', function(){ setTimeout(start, 1200); });
+  document.addEventListener('DOMContentLoaded', function () { setTimeout(start, 1200); });
   setTimeout(start, 2000);
 })();
 // ===== END APP_REALTIME_CACHE_INVALIDATE_20260629 =====
@@ -6956,33 +7574,33 @@ window.clearLearningHubQuestionCache = function () {
 
 // ===== FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629 =====
 // Fix warning: Blocked aria-hidden because focused button stayed inside #subjectGate.
-(function(){
-  if(window.__FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629) return;
+(function () {
+  if (window.__FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629) return;
   window.__FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629 = true;
-  function blurInsideGate(){
+  function blurInsideGate() {
     const gate = document.getElementById('subjectGate');
     const active = document.activeElement;
-    if(gate && active && gate.contains(active)){
-      try{ active.blur(); }catch(e){}
+    if (gate && active && gate.contains(active)) {
+      try { active.blur(); } catch (e) { }
     }
   }
-  function patchGate(){
+  function patchGate() {
     const gate = document.getElementById('subjectGate');
-    if(!gate || gate.__ariaFocusPatch) return;
+    if (!gate || gate.__ariaFocusPatch) return;
     gate.__ariaFocusPatch = true;
     const obs = new MutationObserver(() => {
-      if(gate.classList.contains('hidden') || gate.getAttribute('aria-hidden') === 'true') blurInsideGate();
+      if (gate.classList.contains('hidden') || gate.getAttribute('aria-hidden') === 'true') blurInsideGate();
     });
-    obs.observe(gate, {attributes:true, attributeFilter:['class','aria-hidden']});
+    obs.observe(gate, { attributes: true, attributeFilter: ['class', 'aria-hidden'] });
   }
-  ['click','pointerdown','mousedown','touchstart'].forEach(ev => {
+  ['click', 'pointerdown', 'mousedown', 'touchstart'].forEach(ev => {
     document.addEventListener(ev, e => {
-      if(e.target && e.target.closest && e.target.closest('#subjectEnter,#subjectLogout,#subjectGate .close,#subjectGate [data-close]')){
+      if (e.target && e.target.closest && e.target.closest('#subjectEnter,#subjectLogout,#subjectGate .close,#subjectGate [data-close]')) {
         setTimeout(blurInsideGate, 0);
       }
     }, true);
   });
-  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', patchGate); else patchGate();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', patchGate); else patchGate();
   setTimeout(patchGate, 500);
 })();
 // ===== END FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629 =====
@@ -6995,89 +7613,89 @@ window.clearLearningHubQuestionCache = function () {
 // - Lần đầu trong trình duyệt mới đếm các môn chưa có cache.
 // - F5/load lại dùng localStorage, không query lại.
 // - Khi realtime báo questions/subjects đổi thì đánh dấu dirty, lần sau mới cập nhật lại.
-(function(){
-  if(window.__SUBJECT_COUNTS_ONCE_CACHE_20260629) return;
+(function () {
+  if (window.__SUBJECT_COUNTS_ONCE_CACHE_20260629) return;
   window.__SUBJECT_COUNTS_ONCE_CACHE_20260629 = true;
 
   const STORE = 'learninghub_subject_counts_cache_v3';
   const DIRTY = 'learninghub_subject_counts_dirty_v3';
   const pending = new Set();
 
-  function client(){ return window.HODSupabase?.__client || null; }
-  function user(){ return window.HODSupabase?.getUser?.() || null; }
-  function activeSubject(){ return localStorage.getItem('learninghub_subject_code_merged_v1') || ''; }
-  function cssEscape(s){ try { return CSS.escape(String(s)); } catch(e) { return String(s).replace(/"/g,'\\"'); } }
-  function read(){
-    try { return JSON.parse(localStorage.getItem(STORE) || '{}') || {}; } catch(e) { return {}; }
+  function client() { return window.HODSupabase?.__client || null; }
+  function user() { return window.HODSupabase?.getUser?.() || null; }
+  function activeSubject() { return localStorage.getItem('learninghub_subject_code_merged_v1') || ''; }
+  function cssEscape(s) { try { return CSS.escape(String(s)); } catch (e) { return String(s).replace(/"/g, '\\"'); } }
+  function read() {
+    try { return JSON.parse(localStorage.getItem(STORE) || '{}') || {}; } catch (e) { return {}; }
   }
-  function write(data){
-    try { localStorage.setItem(STORE, JSON.stringify(data || {})); } catch(e) {}
+  function write(data) {
+    try { localStorage.setItem(STORE, JSON.stringify(data || {})); } catch (e) { }
   }
-  function dirty(){ return localStorage.getItem(DIRTY) === '1'; }
-  function setDirty(on=true){ try { on ? localStorage.setItem(DIRTY,'1') : localStorage.removeItem(DIRTY); } catch(e) {} }
-  function ensureStore(){
+  function dirty() { return localStorage.getItem(DIRTY) === '1'; }
+  function setDirty(on = true) { try { on ? localStorage.setItem(DIRTY, '1') : localStorage.removeItem(DIRTY); } catch (e) { } }
+  function ensureStore() {
     const x = read();
     x.counts = x.counts || {};
     x.confirmed = x.confirmed || {};
     x.updated_at = x.updated_at || '';
     return x;
   }
-  function localCount(code){
-    try{
+  function localCount(code) {
+    try {
       const active = activeSubject();
-      if(active === code && Array.isArray(RAW) && RAW.length) return RAW.length;
-      if(Array.isArray(RAW)){
+      if (active === code && Array.isArray(RAW) && RAW.length) return RAW.length;
+      if (Array.isArray(RAW)) {
         const n = RAW.filter(q => (q.subject_code || active) === code).length;
         return n > 0 ? n : null;
       }
-    }catch(e){}
+    } catch (e) { }
     return null;
   }
-  function setCardCount(code, n){
+  function setCardCount(code, n) {
     const count = Number(n || 0);
-    document.querySelectorAll('.subjectCard[data-code="'+cssEscape(code)+'"]').forEach(card => {
+    document.querySelectorAll('.subjectCard[data-code="' + cssEscape(code) + '"]').forEach(card => {
       const meta = card.querySelector('.subjectMeta span:first-child');
-      if(meta) meta.textContent = count + ' câu';
+      if (meta) meta.textContent = count + ' câu';
       card.title = (card.title || code).replace(/(?:\d+|—) câu/g, count + ' câu');
     });
   }
-  function paint(){
+  function paint() {
     const store = ensureStore();
     document.querySelectorAll('.subjectCard[data-code]').forEach(card => {
       const code = card.dataset.code;
       const n = localCount(code);
-      if(Number.isFinite(Number(n)) && Number(n) > 0) {
+      if (Number.isFinite(Number(n)) && Number(n) > 0) {
         setCardCount(code, Number(n));
         return;
       }
-      if(store.confirmed[code]) setCardCount(code, Number(store.counts[code] || 0));
+      if (store.confirmed[code]) setCardCount(code, Number(store.counts[code] || 0));
     });
   }
   let _countsMap = null, _countsAt = 0;
-  async function tursoCounts(force){
+  async function tursoCounts(force) {
     const now = Date.now();
-    if(!force && _countsMap && (now - _countsAt) < 60000) return _countsMap;
-    try{
-      const res = await fetch('/api/subjects?ts=' + now, { cache:'no-store' });
+    if (!force && _countsMap && (now - _countsAt) < 60000) return _countsMap;
+    try {
+      const res = await fetch('/api/subjects?ts=' + now, { cache: 'no-store' });
       const j = await res.json().catch(() => ({}));
       const map = {};
       (j.data || []).forEach(r => { map[String(r.code || '').toUpperCase()] = Number(r.question_count ?? r.questions_count ?? r.count ?? 0); });
       _countsMap = map; _countsAt = now;
       return map;
-    }catch(e){ console.warn('[subject count Turso]', e); return _countsMap || {}; }
+    } catch (e) { console.warn('[subject count Turso]', e); return _countsMap || {}; }
   }
-  async function countOne(code){
-    if(!code) return null;
+  async function countOne(code) {
+    if (!code) return null;
     const map = await tursoCounts();
     const v = map[String(code).toUpperCase()];
     return (v === undefined || v === null) ? null : Number(v);
   }
-  async function refresh(force=false){
-    if(!user()) return;
+  async function refresh(force = false) {
+    if (!user()) return;
     const prof = window.HODSupabase?.getProfile?.() || null;
-    if(prof && (prof.approved === false || prof.approved === 0 || prof.approved === '0')) return;
+    if (prof && (prof.approved === false || prof.approved === 0 || prof.approved === '0')) return;
     const cards = [...document.querySelectorAll('.subjectCard[data-code]')];
-    if(!cards.length) return;
+    if (!cards.length) return;
     const store = ensureStore();
     const must = force || dirty();
 
@@ -7086,16 +7704,16 @@ window.clearLearningHubQuestionCache = function () {
     const codes = cards.map(card => card.dataset.code).filter(Boolean);
     const need = codes.filter(code => {
       const n = localCount(code);
-      if(Number.isFinite(Number(n)) && Number(n) > 0) return false;
+      if (Number.isFinite(Number(n)) && Number(n) > 0) return false;
       return must || !store.confirmed[code];
     });
-    if(!need.length) return;
+    if (!need.length) return;
 
-    for(const code of need){
-      if(pending.has(code)) continue;
+    for (const code of need) {
+      if (pending.has(code)) continue;
       pending.add(code);
       const n = await countOne(code);
-      if(n !== null){
+      if (n !== null) {
         store.counts[code] = n;
         store.confirmed[code] = true;
         store.updated_at = new Date().toISOString();
@@ -7108,12 +7726,12 @@ window.clearLearningHubQuestionCache = function () {
   }
 
   const oldClear = window.clearLearningHubSupabaseCache;
-  window.clearLearningHubSupabaseCache = function(kind){
-    if(!kind || kind === 'all' || kind === 'questions' || kind === 'subjects') setDirty(true);
+  window.clearLearningHubSupabaseCache = function (kind) {
+    if (!kind || kind === 'all' || kind === 'questions' || kind === 'subjects') setDirty(true);
     return typeof oldClear === 'function' ? oldClear.apply(this, arguments) : undefined;
   };
 
-  window.refreshSubjectCountsOnce = function(){ return refresh(true); };
+  window.refreshSubjectCountsOnce = function () { return refresh(true); };
 
   document.addEventListener('DOMContentLoaded', () => {
     setTimeout(paint, 300);
@@ -7121,8 +7739,8 @@ window.clearLearningHubQuestionCache = function () {
     setTimeout(() => refresh(false), 2600);
   });
   document.addEventListener('click', e => {
-    if(e.target.closest('#subjectRefresh')) setTimeout(() => refresh(true), 600);
-    if(e.target.closest('#hodChangeSubjectBtn,#subjectTopChip')){
+    if (e.target.closest('#subjectRefresh')) setTimeout(() => refresh(true), 600);
+    if (e.target.closest('#hodChangeSubjectBtn,#subjectTopChip')) {
       setTimeout(paint, 300);
       setTimeout(() => refresh(false), 1200);
       setTimeout(() => refresh(false), 2600);
@@ -7134,30 +7752,30 @@ window.clearLearningHubQuestionCache = function () {
 
 // ===== ACTIVE_SUBJECT_COUNT_SYNC_20260629 =====
 // Nếu môn đang chọn đã load câu hỏi, số câu trên thẻ môn phải lấy từ RAW/pool ngay, không để cache 0 đè lên.
-(function(){
-  if(window.__ACTIVE_SUBJECT_COUNT_SYNC_20260629) return;
+(function () {
+  if (window.__ACTIVE_SUBJECT_COUNT_SYNC_20260629) return;
   window.__ACTIVE_SUBJECT_COUNT_SYNC_20260629 = true;
 
   const STORE = 'learninghub_subject_counts_cache_v3';
   const SUBJECT_STORE = 'learninghub_subject_code_merged_v1';
 
-  function code(){ return localStorage.getItem(SUBJECT_STORE) || ''; }
-  function read(){ try{return JSON.parse(localStorage.getItem(STORE) || '{}') || {};}catch(e){return {};} }
-  function write(x){ try{localStorage.setItem(STORE, JSON.stringify(x || {}));}catch(e){} }
-  function cssEscape(s){ try{return CSS.escape(String(s));}catch(e){return String(s).replace(/"/g,'\\"');} }
-  function loadedCount(){
-    try{
-      if(Array.isArray(RAW) && RAW.length) return RAW.length;
-      if(Array.isArray(pool) && pool.length) return pool.length;
-    }catch(e){}
+  function code() { return localStorage.getItem(SUBJECT_STORE) || ''; }
+  function read() { try { return JSON.parse(localStorage.getItem(STORE) || '{}') || {}; } catch (e) { return {}; } }
+  function write(x) { try { localStorage.setItem(STORE, JSON.stringify(x || {})); } catch (e) { } }
+  function cssEscape(s) { try { return CSS.escape(String(s)); } catch (e) { return String(s).replace(/"/g, '\\"'); } }
+  function loadedCount() {
+    try {
+      if (Array.isArray(RAW) && RAW.length) return RAW.length;
+      if (Array.isArray(pool) && pool.length) return pool.length;
+    } catch (e) { }
     return 0;
   }
-  function setCardCount(subject, n){
-    if(!subject || !Number.isFinite(Number(n)) || Number(n) <= 0) return;
+  function setCardCount(subject, n) {
+    if (!subject || !Number.isFinite(Number(n)) || Number(n) <= 0) return;
     const count = Number(n);
-    document.querySelectorAll('.subjectCard[data-code="'+cssEscape(subject)+'"]').forEach(card => {
+    document.querySelectorAll('.subjectCard[data-code="' + cssEscape(subject) + '"]').forEach(card => {
       const meta = card.querySelector('.subjectMeta span:first-child');
-      if(meta) meta.textContent = count + ' câu';
+      if (meta) meta.textContent = count + ' câu';
       card.title = (card.title || subject).replace(/(?:\d+|—|0) câu/g, count + ' câu');
     });
     const store = read();
@@ -7168,17 +7786,17 @@ window.clearLearningHubQuestionCache = function () {
     store.updated_at = new Date().toISOString();
     write(store);
   }
-  function syncActiveSubjectCount(){
+  function syncActiveSubjectCount() {
     const subject = code();
     const n = loadedCount();
-    if(subject && n > 0) setCardCount(subject, n);
+    if (subject && n > 0) setCardCount(subject, n);
   }
 
   window.syncActiveSubjectCount = syncActiveSubjectCount;
 
   const oldLoadCurrent = window.loadCurrentSubjectOnly;
-  if(typeof oldLoadCurrent === 'function' && !oldLoadCurrent.__activeCountPatched){
-    window.loadCurrentSubjectOnly = async function(){
+  if (typeof oldLoadCurrent === 'function' && !oldLoadCurrent.__activeCountPatched) {
+    window.loadCurrentSubjectOnly = async function () {
       const out = await oldLoadCurrent.apply(this, arguments);
       setTimeout(syncActiveSubjectCount, 50);
       setTimeout(syncActiveSubjectCount, 300);
@@ -7188,8 +7806,8 @@ window.clearLearningHubQuestionCache = function () {
   }
 
   const oldLoadBySubject = window.loadBySubject;
-  if(typeof oldLoadBySubject === 'function' && !oldLoadBySubject.__activeCountPatched){
-    window.loadBySubject = async function(){
+  if (typeof oldLoadBySubject === 'function' && !oldLoadBySubject.__activeCountPatched) {
+    window.loadBySubject = async function () {
       const out = await oldLoadBySubject.apply(this, arguments);
       setTimeout(syncActiveSubjectCount, 50);
       setTimeout(syncActiveSubjectCount, 300);
@@ -7199,9 +7817,9 @@ window.clearLearningHubQuestionCache = function () {
   }
 
   const oldRenderCard = typeof renderCard === 'function' ? renderCard : null;
-  if(oldRenderCard && !window.__renderCardActiveCountPatched){
+  if (oldRenderCard && !window.__renderCardActiveCountPatched) {
     window.__renderCardActiveCountPatched = true;
-    renderCard = function(){
+    renderCard = function () {
       const out = oldRenderCard.apply(this, arguments);
       setTimeout(syncActiveSubjectCount, 0);
       return out;
@@ -7215,7 +7833,7 @@ window.clearLearningHubQuestionCache = function () {
   });
   setInterval(() => {
     const gate = document.getElementById('subjectGate');
-    if(gate && !gate.classList.contains('hidden')) syncActiveSubjectCount();
+    if (gate && !gate.classList.contains('hidden')) syncActiveSubjectCount();
   }, 800);
 })();
 // ===== END ACTIVE_SUBJECT_COUNT_SYNC_20260629 =====
@@ -7232,9 +7850,9 @@ window.clearLearningHubQuestionCache = function () {
 
 // ===== REMOVE_EYE_HIDE_OPTIONS_20260629 =====
 // Xóa nút con mắt và tắt hẳn chức năng ẩn/hiện lựa chọn.
-(function(){
-  function apply(){
-    try { localStorage.removeItem('hod102_hide_options'); } catch(e) {}
+(function () {
+  function apply() {
+    try { localStorage.removeItem('hod102_hide_options'); } catch (e) { }
     var opt = document.getElementById('options');
     if (opt) opt.classList.remove('hide');
     var eye = document.getElementById('toggleOpts');
@@ -7255,8 +7873,8 @@ window.clearLearningHubQuestionCache = function () {
 // FIX_EXAM_CENTER_LAYOUT, FIX_EXAM_SHIFT_RIGHT_SMALLER_Q — tất cả 20260629) thành 1 khối.
 // Giữ nguyên đúng giá trị cuối cùng theo thứ tự cascade gốc (patch sau đè patch trước),
 // không đổi bất kỳ giá trị hiển thị nào — chỉ gộp code, giao diện y hệt trước khi gộp.
-(function(){
-  function injectExamStyle(){
+(function () {
+  function injectExamStyle() {
     if (document.getElementById('examUiStyleMerged')) return;
     var style = document.createElement('style');
     style.id = 'examUiStyleMerged';
@@ -7404,7 +8022,7 @@ window.clearLearningHubQuestionCache = function () {
 
 // ===== CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629 =====
 // Phiên đăng nhập mới: xóa toàn bộ dữ liệu nháp ở phần Thêm môn để người dùng điền lại từ đầu.
-(function(){
+(function () {
   const KEYS = [
     'learninghub_add_subject_code_v1',
     'learninghub_add_subject_name_v1',
@@ -7417,12 +8035,12 @@ window.clearLearningHubQuestionCache = function () {
   ];
   const SESSION_KEY = 'learninghub_add_subject_draft_cleared_for_user_v1';
 
-  function clearAddSubjectDraft(){
-    try { KEYS.forEach(k => localStorage.removeItem(k)); } catch(e) {}
-    try { localStorage.setItem('learninghub_subject_gate_tab_v1', 'list'); } catch(e) {}
+  function clearAddSubjectDraft() {
+    try { KEYS.forEach(k => localStorage.removeItem(k)); } catch (e) { }
+    try { localStorage.setItem('learninghub_subject_gate_tab_v1', 'list'); } catch (e) { }
 
     const ids = [
-      'addSubjectCode','addSubjectName','addSubjectDesc','userImportData','userImportFile'
+      'addSubjectCode', 'addSubjectName', 'addSubjectDesc', 'userImportData', 'userImportFile'
     ];
     ids.forEach(id => {
       const el = document.getElementById(id);
@@ -7439,38 +8057,38 @@ window.clearLearningHubQuestionCache = function () {
     if (preview) preview.innerHTML = '';
   }
 
-  function currentUserId(){
-    try { return window.HODSupabase?.getUser?.()?.id || ''; } catch(e) { return ''; }
+  function currentUserId() {
+    try { return window.HODSupabase?.getUser?.()?.id || ''; } catch (e) { return ''; }
   }
 
-  function clearOnceForCurrentLogin(){
+  function clearOnceForCurrentLogin() {
     const uid = currentUserId();
     if (!uid) return;
     let cleared = '';
-    try { cleared = sessionStorage.getItem(SESSION_KEY) || ''; } catch(e) {}
+    try { cleared = sessionStorage.getItem(SESSION_KEY) || ''; } catch (e) { }
     if (cleared === uid) return;
     clearAddSubjectDraft();
-    try { sessionStorage.setItem(SESSION_KEY, uid); } catch(e) {}
+    try { sessionStorage.setItem(SESSION_KEY, uid); } catch (e) { }
   }
 
-  function patchAuthMethods(){
+  function patchAuthMethods() {
     const api = window.HODSupabase;
     if (!api || api.__clearAddSubjectDraftPatched) return;
 
     if (typeof api.signInGoogle === 'function') {
       const oldGoogle = api.signInGoogle.bind(api);
-      api.signInGoogle = async function(){
+      api.signInGoogle = async function () {
         clearAddSubjectDraft();
-        try { sessionStorage.removeItem(SESSION_KEY); } catch(e) {}
+        try { sessionStorage.removeItem(SESSION_KEY); } catch (e) { }
         return oldGoogle.apply(this, arguments);
       };
     }
 
     if (typeof api.signOut === 'function') {
       const oldSignOut = api.signOut.bind(api);
-      api.signOut = async function(){
+      api.signOut = async function () {
         clearAddSubjectDraft();
-        try { sessionStorage.removeItem(SESSION_KEY); } catch(e) {}
+        try { sessionStorage.removeItem(SESSION_KEY); } catch (e) { }
         return oldSignOut.apply(this, arguments);
       };
     }
@@ -7478,7 +8096,7 @@ window.clearLearningHubQuestionCache = function () {
     api.__clearAddSubjectDraftPatched = true;
   }
 
-  function tick(){
+  function tick() {
     patchAuthMethods();
     clearOnceForCurrentLogin();
   }
@@ -7716,73 +8334,73 @@ window.APP_CONFIG.USE_TURSO_API = true;
 
 // ===== TURSO_SUBJECT_COUNTS_FALLBACK_20260630 =====
 // Fix: user mới chưa có cache thì thẻ môn không bị hiện 0 câu; nếu /api/subjects thiếu count sẽ tự đếm từ /api/questions một lần.
-(function(){
-  if(window.__TURSO_SUBJECT_COUNTS_FALLBACK_20260630) return;
+(function () {
+  if (window.__TURSO_SUBJECT_COUNTS_FALLBACK_20260630) return;
   window.__TURSO_SUBJECT_COUNTS_FALLBACK_20260630 = true;
 
   const STORE = 'learninghub_subject_counts_cache_v3';
   let loading = false;
 
-  function readStore(){
+  function readStore() {
     try { return JSON.parse(localStorage.getItem(STORE) || '{}') || {}; }
-    catch(e){ return {}; }
+    catch (e) { return {}; }
   }
-  function writeCounts(counts){
+  function writeCounts(counts) {
     try { localStorage.setItem(STORE, JSON.stringify({ counts: counts || {}, confirmed: counts || {}, at: Date.now() })); }
-    catch(e){}
+    catch (e) { }
   }
-  function norm(code){ return String(code || '').trim().toUpperCase(); }
+  function norm(code) { return String(code || '').trim().toUpperCase(); }
 
-  async function fetchCounts(){
-    if(loading) return null;
-    if(!window.HODSupabase?.getUser?.()) return null;
+  async function fetchCounts() {
+    if (loading) return null;
+    if (!window.HODSupabase?.getUser?.()) return null;
     const prof = window.HODSupabase?.getProfile?.();
-    if(prof && (prof.approved === false || prof.approved === 0 || prof.approved === '0')) return null;
+    if (prof && (prof.approved === false || prof.approved === 0 || prof.approved === '0')) return null;
     loading = true;
-    try{
-      const res = await fetch('/api/questions?count_only=1&ts=' + Date.now(), { cache:'no-store' });
+    try {
+      const res = await fetch('/api/questions?count_only=1&ts=' + Date.now(), { cache: 'no-store' });
       const json = await res.json().catch(() => ({}));
       const rows = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
       const counts = {};
       rows.forEach(q => {
         const code = norm(q.subject_code);
         const n = Number(q.question_count ?? q.questions_count ?? q.count ?? 1);
-        if(code) counts[code] = (counts[code] || 0) + (Number.isFinite(n) && n > 0 ? n : 1);
+        if (code) counts[code] = (counts[code] || 0) + (Number.isFinite(n) && n > 0 ? n : 1);
       });
       writeCounts(counts);
       return counts;
-    }catch(e){
+    } catch (e) {
       console.warn('[Turso counts fallback]', e);
       return null;
-    }finally{
+    } finally {
       loading = false;
     }
   }
 
-  function applyCountsToCards(counts){
-    if(!counts) return;
+  function applyCountsToCards(counts) {
+    if (!counts) return;
     document.querySelectorAll('.subjectCard').forEach(card => {
       const code = norm(card.dataset.code || card.getAttribute('data-code'));
-      if(!code || counts[code] == null) return;
+      if (!code || counts[code] == null) return;
       const meta = card.querySelector('.subjectMeta span');
-      if(meta) meta.textContent = Number(counts[code] || 0) + ' câu';
+      if (meta) meta.textContent = Number(counts[code] || 0) + ' câu';
     });
   }
 
-  async function refreshZeroCounts(){
+  async function refreshZeroCounts() {
     const cards = Array.from(document.querySelectorAll('.subjectCard'));
-    if(!cards.length) return;
+    if (!cards.length) return;
     const hasZero = cards.some(card => /(^|\s)0\s*câu/i.test(card.textContent || ''));
-    if(!hasZero) return;
+    if (!hasZero) return;
     const store = readStore();
-    if(store.counts) applyCountsToCards(store.counts);
+    if (store.counts) applyCountsToCards(store.counts);
     const counts = await fetchCounts();
     applyCountsToCards(counts);
   }
 
   const oldRenderSubjects = typeof renderSubjects === 'function' ? renderSubjects : null;
-  if(oldRenderSubjects && !oldRenderSubjects.__tursoCountsFallback){
-    const fn = function(){
+  if (oldRenderSubjects && !oldRenderSubjects.__tursoCountsFallback) {
+    const fn = function () {
       const out = oldRenderSubjects.apply(this, arguments);
       setTimeout(refreshZeroCounts, 80);
       return out;
@@ -7791,7 +8409,7 @@ window.APP_CONFIG.USE_TURSO_API = true;
     window.renderSubjects = renderSubjects = fn;
   }
 
-  document.addEventListener('DOMContentLoaded', function(){
+  document.addEventListener('DOMContentLoaded', function () {
     setTimeout(refreshZeroCounts, 600);
     setTimeout(refreshZeroCounts, 1800);
   });
@@ -7800,30 +8418,30 @@ window.APP_CONFIG.USE_TURSO_API = true;
 
 // ===== APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630 =====
 // Fix nhẹ: mới vào web tự tải câu hỏi + thư viện, không cần F5. Không chạy vòng lặp dài.
-(function(){
+(function () {
   if (window.__APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630) return;
   window.__APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630 = true;
 
   const SUBJECT_STORE = 'learninghub_subject_code_merged_v1';
   let running = false;
   let doneFor = '';
-  function subject(){ return localStorage.getItem(SUBJECT_STORE) || ''; }
-  function user(){ return window.HODSupabase?.getUser?.() || null; }
-  function profile(){ return window.HODSupabase?.getProfile?.() || null; }
-  function approved(){
+  function subject() { return localStorage.getItem(SUBJECT_STORE) || ''; }
+  function user() { return window.HODSupabase?.getUser?.() || null; }
+  function profile() { return window.HODSupabase?.getProfile?.() || null; }
+  function approved() {
     const p = profile();
     return !p || !(p.approved === false || p.approved === 0 || p.approved === '0');
   }
-  function dataOk(code){
+  function dataOk(code) {
     try { return !!code && Array.isArray(RAW) && RAW.length > 0 && RAW.some(q => String(q.subject_code || code).toUpperCase() === String(code).toUpperCase()); }
-    catch(e){ return false; }
+    catch (e) { return false; }
   }
-  function renderAll(){
-    try { renderCard?.(); } catch(e) {}
-    try { renderQuiz?.(); } catch(e) {}
-    try { renderStudy?.(); } catch(e) {}
+  function renderAll() {
+    try { renderCard?.(); } catch (e) { }
+    try { renderQuiz?.(); } catch (e) { }
+    try { renderStudy?.(); } catch (e) { }
   }
-  async function loadOnce(reason){
+  async function loadOnce(reason) {
     const code = subject();
     if (!code || !user() || !approved() || running) return false;
     if (dataOk(code)) { doneFor = code; renderAll(); return true; }
@@ -7834,12 +8452,12 @@ window.APP_CONFIG.USE_TURSO_API = true;
       if (typeof window.loadCurrentSubjectOnly === 'function') ok = await window.loadCurrentSubjectOnly(false);
       else if (window.HODSupabase?.loadQuestionsFromSupabase) ok = await window.HODSupabase.loadQuestionsFromSupabase();
       if (ok || dataOk(code)) { doneFor = code; renderAll(); return true; }
-    } catch(e) { console.warn('[startup auto load]', reason, e); }
+    } catch (e) { console.warn('[startup auto load]', reason, e); }
     finally { running = false; }
     return false;
   }
-  function schedule(reason){ [300, 1300, 3500].forEach(ms => setTimeout(() => loadOnce(reason + ':' + ms), ms)); }
-  function boot(){
+  function schedule(reason) { [300, 1300, 3500].forEach(ms => setTimeout(() => loadOnce(reason + ':' + ms), ms)); }
+  function boot() {
     schedule('boot');
     document.querySelectorAll('.tab').forEach(btn => {
       if (btn.__startupAutoLoadBound) return;
@@ -7848,51 +8466,52 @@ window.APP_CONFIG.USE_TURSO_API = true;
     });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
-  window.addEventListener('focus', () => loadOnce('focus'));
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadOnce('visible'); });
+  // OPTIM_TURSO_READS_20260726: Bỏ reload khi focus/visible.
+  // Data đã cache trong RAM (RAW), không cần gọi API lại mỗi lần đổi tab.
+  // Giữ boot retry 3 lần khi mới mở trang là đủ.
 })();
 // ===== END APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630 =====
 
 
 
 // ===== COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630 =====
-(function(){
-if(window.__COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630) return;
-window.__COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630 = true;
-try {
-  imgsHTML = function(c){
-    return (c?.images || []).map(im => {
-      const src = typeof im === 'string' ? im : (im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '');
-      if(!src || String(src).startsWith('data:image/')) return '';
-      return '<img src="' + esc(src) + '" alt="" loading="lazy" decoding="async">';
-    }).join('');
-  };
-  window.imgsHTML = imgsHTML;
-} catch(e) {}
+(function () {
+  if (window.__COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630) return;
+  window.__COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630 = true;
+  try {
+    imgsHTML = function (c) {
+      return (c?.images || []).map(im => {
+        const src = typeof im === 'string' ? im : (im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '');
+        if (!src || String(src).startsWith('data:image/')) return '';
+        return '<img src="' + esc(src) + '" alt="" loading="lazy" decoding="async">';
+      }).join('');
+    };
+    window.imgsHTML = imgsHTML;
+  } catch (e) { }
 })();
 // ===== END COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630 =====
 
 // ===== FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701 =====
 // Tăng tốc upload môn lớn: vẫn tránh 504 nhưng gửi nhiều câu song song có giới hạn.
-(function(){
-  if(window.__FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701) return;
+(function () {
+  if (window.__FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701) return;
   window.__FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701 = true;
 
   const $ = id => document.getElementById(id);
   const LARGE_LIMIT = 80;
   const CONCURRENCY = 8; // số câu gửi cùng lúc; đủ nhanh nhưng không ép server quá mạnh
 
-  function user(){ return window.HODSupabase?.getUser?.() || null; }
-  function profile(){ return window.HODSupabase?.getProfile?.() || null; }
-  function canManage(){
+  function user() { return window.HODSupabase?.getUser?.() || null; }
+  function profile() { return window.HODSupabase?.getProfile?.() || null; }
+  function canManage() {
     const role = String(profile()?.role || '').toLowerCase();
     return !!user() && (window.HODSupabase?.isAdmin?.() || role === 'admin' || role === 'editor');
   }
-  function toast(msg){ try{ if(typeof notify === 'function') notify(msg); }catch(e){} }
-  function prog(title, current, total, detail){ try{ if(typeof showProgress === 'function') showProgress(title, current, total, detail || ''); }catch(e){} }
-  function hideProg(){ try{ if(typeof hideProgress === 'function') hideProgress(); }catch(e){} }
+  function toast(msg) { try { if (typeof notify === 'function') notify(msg); } catch (e) { } }
+  function prog(title, current, total, detail) { try { if (typeof showProgress === 'function') showProgress(title, current, total, detail || ''); } catch (e) { } }
+  function hideProg() { try { if (typeof hideProgress === 'function') hideProgress(); } catch (e) { } }
 
-  function cleanQuestions(arr){
+  function cleanQuestions(arr) {
     return (Array.isArray(arr) ? arr : []).map((q, i) => {
       const opts = (q && typeof q.options === 'object' && !Array.isArray(q.options)) ? q.options : {};
       const answer = String(q?.answer || '').toUpperCase().replace(/[^A-Z]/g, '');
@@ -7911,41 +8530,41 @@ try {
     }).filter(q => q.question && q.answer && q.options);
   }
 
-  function readQuestions(){
+  function readQuestions() {
     let arr = window.__previewImportData || window.__LH_LAST_PREVIEW_IMPORT_DATA || [];
-    if(!Array.isArray(arr) || !arr.length){
-      try{
+    if (!Array.isArray(arr) || !arr.length) {
+      try {
         let s = String($('userImportData')?.value || localStorage.getItem('learninghub_add_subject_file_data_v1') || '').trim();
         const m = s.match(/```json\s*([\s\S]*?)```/i) || s.match(/```\s*([\s\S]*?)```/);
-        if(m) s = m[1].trim();
+        if (m) s = m[1].trim();
         const j = JSON.parse(s);
         arr = Array.isArray(j) ? j : (Array.isArray(j?.questions) ? j.questions : []);
-      }catch(e){ arr = []; }
+      } catch (e) { arr = []; }
     }
     return cleanQuestions(arr);
   }
 
-  async function postAction(action, payload){
+  async function postAction(action, payload) {
     const res = await fetch('/api/admin-action', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      cache:'no-store',
-      body: JSON.stringify({ user_id:user()?.id, action, payload })
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ user_id: user()?.id, action, payload })
     });
     const out = await res.json().catch(() => ({}));
-    if(!res.ok || out.error) throw new Error(out.error || ('HTTP ' + res.status));
+    if (!res.ok || out.error) throw new Error(out.error || ('HTTP ' + res.status));
     return out;
   }
 
-  function cacheCount(code, count){
-    try{
-      const key='learninghub_subject_counts_cache_v3';
-      const store=JSON.parse(localStorage.getItem(key)||'{}')||{};
-      store.counts=store.counts||{};
-      store.confirmed=store.confirmed||{};
-      store.counts[code]=count;
-      store.confirmed[code]=true;
-      store.updated_at=new Date().toISOString();
+  function cacheCount(code, count) {
+    try {
+      const key = 'learninghub_subject_counts_cache_v3';
+      const store = JSON.parse(localStorage.getItem(key) || '{}') || {};
+      store.counts = store.counts || {};
+      store.confirmed = store.confirmed || {};
+      store.counts[code] = count;
+      store.confirmed[code] = true;
+      store.updated_at = new Date().toISOString();
       localStorage.setItem(key, JSON.stringify(store));
       localStorage.setItem('learninghub_subjects_dirty_v3', String(Date.now()));
       localStorage.removeItem('learninghub_subjects_cache_v1');
@@ -7953,47 +8572,49 @@ try {
       window.clearLearningHubSupabaseCache?.('subjects');
       window.clearLearningHubSupabaseCache?.('questions');
       window.clearLearningHubQuestionCache?.();
-    }catch(e){}
+    } catch (e) { }
   }
 
-  function clearState(){
-    try{
-      window.__previewImportData=[];
-      window.__LH_LAST_PREVIEW_IMPORT_DATA=[];
+  function clearState() {
+    try {
+      window.__previewImportData = [];
+      window.__LH_LAST_PREVIEW_IMPORT_DATA = [];
       $('importPreviewModal')?.classList.add('hidden');
-      ['learninghub_add_subject_file_name_v1','learninghub_add_subject_file_size_v1','learninghub_add_subject_file_data_v1','learninghub_add_subject_file_previewed_v1'].forEach(k => localStorage.removeItem(k));
-    }catch(e){}
+      ['learninghub_add_subject_file_name_v1', 'learninghub_add_subject_file_size_v1', 'learninghub_add_subject_file_data_v1', 'learninghub_add_subject_file_previewed_v1'].forEach(k => localStorage.removeItem(k));
+    } catch (e) { }
   }
 
-  async function uploadOne(finalCode, q, i){
-    await postAction('add_question', { question_data: {
-      subject_code: finalCode,
-      num: Number(q.num) || (i + 1),
-      question: q.question,
-      options: q.options || {},
-      answer: q.answer,
-      answer_text: q.answer_text || '',
-      images: q.images || [],
-      has_image: !!q.has_image,
-      error_risk: q.error_risk || 'low',
-      error_risk_reason: q.error_risk_reason || null,
-      updated_at: new Date().toISOString()
-    }});
+  async function uploadOne(finalCode, q, i) {
+    await postAction('add_question', {
+      question_data: {
+        subject_code: finalCode,
+        num: Number(q.num) || (i + 1),
+        question: q.question,
+        options: q.options || {},
+        answer: q.answer,
+        answer_text: q.answer_text || '',
+        images: q.images || [],
+        has_image: !!q.has_image,
+        error_risk: q.error_risk || 'low',
+        error_risk_reason: q.error_risk_reason || null,
+        updated_at: new Date().toISOString()
+      }
+    });
   }
 
-  async function uploadParallel(finalCode, questions){
+  async function uploadParallel(finalCode, questions) {
     let done = 0;
     let next = 0;
     const total = questions.length;
     const errors = [];
     prog('Đang upload câu hỏi...', 0, total, 'Upload nhanh: gửi ' + CONCURRENCY + ' câu cùng lúc');
 
-    async function worker(){
-      while(next < total && !errors.length){
+    async function worker() {
+      while (next < total && !errors.length) {
         const i = next++;
-        try{
+        try {
           await uploadOne(finalCode, questions[i], i);
-        }catch(e){
+        } catch (e) {
           errors.push('Câu ' + (questions[i].num || (i + 1)) + ': ' + (e?.message || e));
           break;
         }
@@ -8002,48 +8623,48 @@ try {
       }
     }
 
-    const workers = Array.from({length: Math.min(CONCURRENCY, total)}, () => worker());
+    const workers = Array.from({ length: Math.min(CONCURRENCY, total) }, () => worker());
     await Promise.all(workers);
-    if(errors.length) throw new Error(errors[0]);
+    if (errors.length) throw new Error(errors[0]);
     return done;
   }
 
-  async function createLarge(code, name, desc, questions){
+  async function createLarge(code, name, desc, questions) {
     prog('Đang tạo môn học...', 0, questions.length, 'Tạo môn trước, rồi upload nhiều câu song song...');
-    const created = await postAction('add_subject', { code, name:name || code, description:desc || '', questions:[] });
+    const created = await postAction('add_subject', { code, name: name || code, description: desc || '', questions: [] });
     const finalCode = created.code || created.subject_code || code;
     const success = await uploadParallel(finalCode, questions);
     cacheCount(finalCode, success);
     return { finalCode, success };
   }
 
-  async function createSmall(code, name, desc, questions){
+  async function createSmall(code, name, desc, questions) {
     prog('Đang lưu môn học...', 0, 100, 'Đang tạo môn và nhập câu hỏi...');
-    const out = await postAction('add_subject', { code, name:name || code, description:desc || '', questions });
+    const out = await postAction('add_subject', { code, name: name || code, description: desc || '', questions });
     const finalCode = out.code || out.subject_code || code;
     cacheCount(finalCode, questions.length);
     prog('Đang lưu môn học...', 100, 100, 'Hoàn tất');
-    return { finalCode, success:questions.length };
+    return { finalCode, success: questions.length };
   }
 
-  window.__submitSubjectRequest = async function(){
+  window.__submitSubjectRequest = async function () {
     const code = ($('addSubjectCode')?.value || '').trim().toUpperCase();
     const name = ($('addSubjectName')?.value || '').trim();
     const desc = ($('addSubjectDesc')?.value || '').trim();
     const questions = readQuestions();
 
-    if(!code){ alert('Vui lòng nhập mã môn'); $('addSubjectCode')?.focus(); return; }
-    if(!/^[A-Z0-9_]{2,20}$/.test(code)){ alert('Mã môn chỉ gồm chữ, số, gạch dưới (2-20 ký tự)'); $('addSubjectCode')?.focus(); return; }
-    if(!name){ alert('Vui lòng nhập tên môn'); $('addSubjectName')?.focus(); return; }
-    if(!questions.length){ alert('Bạn cần chọn file và bấm Xem trước trước khi lưu môn học.'); return; }
-    if(!user()){ alert('Bạn cần đăng nhập trước khi lưu môn học.'); return; }
+    if (!code) { alert('Vui lòng nhập mã môn'); $('addSubjectCode')?.focus(); return; }
+    if (!/^[A-Z0-9_]{2,20}$/.test(code)) { alert('Mã môn chỉ gồm chữ, số, gạch dưới (2-20 ký tự)'); $('addSubjectCode')?.focus(); return; }
+    if (!name) { alert('Vui lòng nhập tên môn'); $('addSubjectName')?.focus(); return; }
+    if (!questions.length) { alert('Bạn cần chọn file và bấm Xem trước trước khi lưu môn học.'); return; }
+    if (!user()) { alert('Bạn cần đăng nhập trước khi lưu môn học.'); return; }
 
     const btn = $('userImportBtn');
     const old = btn ? btn.textContent : '';
-    if(btn){ btn.disabled = true; btn.textContent = 'Đang lưu...'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Đang lưu...'; }
 
-    try{
-      if(canManage()){
+    try {
+      if (canManage()) {
         const rs = questions.length > LARGE_LIMIT
           ? await createLarge(code, name, desc, questions)
           : await createSmall(code, name, desc, questions);
@@ -8053,27 +8674,27 @@ try {
         toast(ok);
         clearState();
         window.__switchSubjectGateTab?.('list');
-        try{
+        try {
           $('subjectRefresh')?.click();
           setTimeout(() => $('subjectRefresh')?.click(), 5600);
           setTimeout(() => window.refreshSubjectCountsOnce?.(), 6500);
-        }catch(e){}
-      }else{
+        } catch (e) { }
+      } else {
         prog('Đang gửi yêu cầu tạo môn học...', 0, 100, 'Đang tải dữ liệu câu hỏi...');
-        await postAction('add_subject_request', { code, name, description:desc || '', questions_data:questions });
+        await postAction('add_subject_request', { code, name, description: desc || '', questions_data: questions });
         prog('Hoàn tất', 100, 100, 'Đã gửi yêu cầu');
-        const ok='Đã gửi yêu cầu thêm môn ' + code + '. Vui lòng chờ admin duyệt.';
+        const ok = 'Đã gửi yêu cầu thêm môn ' + code + '. Vui lòng chờ admin duyệt.';
         alert(ok);
         toast(ok);
         clearState();
         window.__switchSubjectGateTab?.('list');
       }
-    }catch(e){
+    } catch (e) {
       console.warn('Fast add subject upload error:', e);
       alert('Lỗi tạo môn: ' + (e?.message || e));
       toast('Lỗi tạo môn');
-    }finally{
-      if(btn){ btn.disabled = false; btn.textContent = old || 'Lưu Môn Học'; }
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = old || 'Lưu Môn Học'; }
       setTimeout(hideProg, 450);
     }
   };
@@ -8087,14 +8708,14 @@ try {
 // Server (api/index.js, AUTH_20260705) verify token này để lấy danh tính thật. Đặt cuối file để là
 // lớp fetch NGOÀI CÙNG: chạy trước các wrapper cache/dedupe khác nên header luôn được gắn trước.
 // Token đọc trực tiếp từ localStorage phiên Supabase (key sb-<ref>-auth-token) để lấy đồng bộ, không await.
-(function(){
+(function () {
   if (window.__LH_AUTH_FETCH_20260705) return;
   window.__LH_AUTH_FETCH_20260705 = true;
   var prevFetch = window.fetch ? window.fetch.bind(window) : null;
   if (!prevFetch) return;
 
-  function lhToken(){
-    try{
+  function lhToken() {
+    try {
       var url = window.APP_CONFIG?.SUPABASE_URL || '';
       var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
       var ref = m ? m[1] : '';
@@ -8112,9 +8733,9 @@ try {
         }
       }
       // Fallback
-      for (var i = 0; i < localStorage.length; i++){
+      for (var i = 0; i < localStorage.length; i++) {
         var k = localStorage.key(i);
-        if (k && k.slice(0,3) === 'sb-' && k.slice(-11) === '-auth-token'){
+        if (k && k.slice(0, 3) === 'sb-' && k.slice(-11) === '-auth-token') {
           var raw = localStorage.getItem(k);
           if (!raw) continue;
           var v = JSON.parse(raw);
@@ -8126,26 +8747,26 @@ try {
           }
         }
       }
-    }catch(e){}
+    } catch (e) { }
     return '';
   }
   window.__lhAccessToken = lhToken;
 
-  function lhIsApi(u){
-    try{
+  function lhIsApi(u) {
+    try {
       var url = new URL(u, location.href);
       return url.origin === location.origin && url.pathname.indexOf('/api/') === 0;
-    }catch(e){ return false; }
+    } catch (e) { return false; }
   }
 
-  window.fetch = function(input, init){
-    try{
+  window.fetch = function (input, init) {
+    try {
       var url = typeof input === 'string' ? input : (input && input.url) || '';
-      if (lhIsApi(url)){
+      if (lhIsApi(url)) {
         var tok = lhToken();
-        if (tok){
-          if (input instanceof Request){
-            if (!input.headers.has('Authorization')){
+        if (tok) {
+          if (input instanceof Request) {
+            if (!input.headers.has('Authorization')) {
               var h = new Headers(input.headers);
               h.set('Authorization', 'Bearer ' + tok);
               input = new Request(input, { headers: h });
@@ -8158,7 +8779,7 @@ try {
           }
         }
       }
-    }catch(e){}
+    } catch (e) { }
     return prevFetch(input, init);
   };
 })();
@@ -8179,7 +8800,7 @@ try {
   function isStaff() { return ['admin', 'editor'].includes(String(window.HODSupabase?.getProfile?.()?.role || '').toLowerCase()); }
   function storageKey() { return `learninghub_edit_request_seen_v1_${isStaff() ? 'staff' : 'user'}_${currentUserId()}`; }
   function seenMap() { try { return JSON.parse(localStorage.getItem(storageKey()) || '{}') || {}; } catch { return {}; } }
-  function saveSeen(value) { try { localStorage.setItem(storageKey(), JSON.stringify(value)); } catch {} }
+  function saveSeen(value) { try { localStorage.setItem(storageKey(), JSON.stringify(value)); } catch { } }
   function statusText(status) { return ({ pending: 'Đang chờ duyệt', approved: 'Đã được chấp nhận', rejected: 'Đã bị từ chối' }[status] || status || 'Không rõ'); }
   function questionText(row) {
     const text = String(row?.new_data?.question || '').trim();

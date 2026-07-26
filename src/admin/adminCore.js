@@ -2411,7 +2411,7 @@ Bắt đầu ngay từ câu 1.`;
   const STORE_KEY = 'admin_sidebar_tree_collapsed_v4';
   const GROUPS = [
     { title: 'Duyệt', icon: '✓', keys: ['approvals', 'requests', 'subjectRequests'] },
-    { title: 'Nội dung', icon: '□', keys: ['subjectsAdmin', 'questions', 'trash'] },
+    { title: 'Nội dung', icon: '□', keys: ['subjectsAdmin', 'trash'] },
     { title: 'Hệ thống', icon: '⚙', keys: ['users', 'history', 'logs'] }
   ];
   const SHORT = {
@@ -2489,7 +2489,16 @@ Bắt đầu ngay từ câu 1.`;
     const state = collapsedMap();
     side.classList.add('adminTreeReady');
 
-    const overview = navs.find(n => navKey(n) === 'overview');
+    // Hide Questions tab
+    navs.forEach(n => {
+      if (navKey(n) === 'questions') {
+        used.add(n);
+        n.style.display = 'none';
+        n.remove();
+      }
+    });
+
+    const overview = navs.find(n => !used.has(n) && navKey(n) === 'overview');
     if (overview) {
       used.add(overview);
       applyNav(overview, 'overview', true);
@@ -3020,10 +3029,15 @@ async function sendLoginToDiscord(email, role) {
           <div class="thCol thActions">THAO TÁC</div>
         </div>`;
 
+    const bulkLogoutBar = `<div class="userAdminBulkBar" style="display:flex;justify-space-between;align-items:center;margin-bottom:12px;padding:8px 14px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid rgba(255,255,255,0.08);">
+      <span style="font-size:0.86rem;color:var(--mist);">Quản lý phiên làm việc &amp; Yêu cầu đăng xuất lại:</span>
+      <button type="button" class="btn bad" style="background:#dc2626;color:#ffffff;border:none;border-radius:6px;padding:6px 14px;font-weight:700;font-size:0.82rem;cursor:pointer;" onclick="forceLogoutAllUsers()">🚪 Đăng xuất tất cả người dùng</button>
+    </div>`;
+
     const helpers = { actText, actTime, date, isBlocked, badge, roleBadgeFinal, avatarButton, esc };
     const rowFn = typeof renderUserRowSaaS === 'function' ? renderUserRowSaaS : null;
 
-    $('userList').innerHTML = headHTML + (arr.map(p => {
+    $('userList').innerHTML = bulkLogoutBar + headHTML + (arr.map(p => {
       if (rowFn) return rowFn(p, helpers);
       const activeText = actText(p);
       const activeClass = activeText === 'Đang hoạt động' ? 'activityNow' : '';
@@ -5503,6 +5517,7 @@ ${E(val)}</pre>`;
     menu.id = 'lhActionMenuFloat';
     menu.innerHTML = isAdmin()
       ? `<button class="act" onclick="viewUserEdits('${p.id}');closeUserActionMenuFinal();">Lịch sử sửa câu</button>
+         <button class="act bad" onclick="forceLogoutUser('${p.id}');closeUserActionMenuFinal();">🚪 Đăng xuất người này</button>
          <button class="act ${isBlocked(p) ? 'ok' : 'bad'}" onclick="toggleBlock('${p.id}',${!isBlocked(p)});closeUserActionMenuFinal();">${isBlocked(p) ? 'Unblock' : 'Block'}</button>
          <button class="act warn" onclick="setRole('${p.id}','${p.role === 'editor' ? 'user' : 'editor'}');closeUserActionMenuFinal();">${p.role === 'editor' ? 'Gỡ editor' : 'Cho editor'}</button>
          <button class="act warn" onclick="setRole('${p.id}','${p.role === 'admin' ? 'user' : 'admin'}');closeUserActionMenuFinal();">${p.role === 'admin' ? 'Gỡ admin' : 'Cho admin'}</button>
@@ -5518,6 +5533,24 @@ ${E(val)}</pre>`;
     if (top + mh > window.innerHeight - 14) top = Math.max(14, r.top - mh - 8);
     menu.style.left = left + 'px';
     menu.style.top = top + 'px';
+  };
+
+  window.forceLogoutUser = async function (uid) {
+    const p = (cache.profiles || []).find(x => String(x.id) === String(uid));
+    const name = p ? (p.email || p.full_name || uid) : uid;
+    if (!confirm(`Đăng xuất bắt buộc đối với người dùng:\n${name}\n\nHọ sẽ bị đăng xuất khỏi hệ thống và phải đăng nhập lại để tải dữ liệu mới.`)) return;
+
+    if (await adminAction('force_logout_user', { target_user_id: uid })) {
+      alert(`✅ Đã yêu cầu đăng xuất người dùng ${name}.`);
+    }
+  };
+
+  window.forceLogoutAllUsers = async function () {
+    if (!confirm('⚠️ BẠN CÓ CHẮC MUỐN ĐĂNG XUẤT TẤT CẢ NGƯỜI DÙNG?\n\nTất cả người dùng (trừ Admin) sẽ bị buộc đăng xuất và phải đăng nhập lại để làm mới dữ liệu.')) return;
+
+    if (await adminAction('force_logout_all', {})) {
+      alert('✅ Đã yêu cầu đăng xuất TẤT CẢ người dùng thành công.');
+    }
   };
 
   // Fix sendLoginToDiscord in case it was broken

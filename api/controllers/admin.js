@@ -1,5 +1,7 @@
 import { db, json } from '../lib/db.js';
-import { isStaff, getAdminEmail, roleColor } from '../lib/auth.js';
+import { isStaff, getAdminEmail, roleColor, clearProfileCache } from '../lib/auth.js';
+import { clearQuestionsCache } from './questions.js';
+import { clearSubjectsCache } from './subjects.js';
 
 function parseJson(v, fallback) {
   if (v === null || v === undefined || v === '') return fallback;
@@ -43,9 +45,24 @@ function subjectCoverWithNewBadge(cover, enabled) {
   return JSON.stringify(meta);
 }
 
+// OPTIM_TURSO_READS_20260726: Cache admin dashboard.
+// SELECT * 9 bảng rất tốn reads. TTL 2 phút (admin cần data tương đối mới).
+let _adminDashCache = null;
+let _adminDashCacheAt = 0;
+const _ADMIN_DASH_CACHE_TTL = 2 * 60 * 1000; // 2 phút
+
+export function clearAdminDashboardCache() {
+  _adminDashCache = null;
+  _adminDashCacheAt = 0;
+}
+
 export async function handleAdminDashboard(req, authUser) {
   if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
   if (!await isStaff(authUser)) return json({ error: 'Chỉ admin/editor được xem.' }, 403);
+
+  if (_adminDashCache && Date.now() - _adminDashCacheAt < _ADMIN_DASH_CACHE_TTL) {
+    return json(_adminDashCache);
+  }
 
   const [profiles, questions, requests, history, logs, subjects, subject_requests, deleted_questions, deleted_subjects] = await Promise.all([
     db.execute('select * from profiles order by created_at desc'),
@@ -59,7 +76,7 @@ export async function handleAdminDashboard(req, authUser) {
     db.execute('select * from deleted_subjects order by deleted_at desc')
   ]);
 
-  return json({
+  const data = {
     profiles: profiles.rows || [],
     questions: questions.rows || [],
     requests: requests.rows || [],
@@ -69,7 +86,11 @@ export async function handleAdminDashboard(req, authUser) {
     subject_requests: subject_requests.rows || [],
     deleted_questions: deleted_questions.rows || [],
     deleted_subjects: deleted_subjects.rows || []
-  });
+  };
+
+  _adminDashCache = data;
+  _adminDashCacheAt = Date.now();
+  return json(data);
 }
 
 export async function handleAdminAction(req, authUser) {
@@ -103,6 +124,8 @@ export async function handleAdminAction(req, authUser) {
     'approve_user_registration',
     'reject_user_registration',
     'revoke_user_approval',
+    'force_logout_user',
+    'force_logout_all',
     'set_registration_mode',
     'approve_subject_request',
     'reject_subject_request',
@@ -150,7 +173,19 @@ export async function handleAdminAction(req, authUser) {
     }
   };
 
-  switch (action) {
+  const act = String(action || '').toLowerCase().trim();
+
+  // OPTIM_TURSO_READS_20260726: Invalidate server cache khi có mutation.
+  const _QUESTION_MUTATIONS = new Set(['approve_request', 'save_question_direct', 'add_question', 'delete_question', 'toggle_question', 'permanent_delete_question']);
+  const _SUBJECT_MUTATIONS = new Set(['add_subject', 'delete_subject', 'approve_subject_request', 'toggle_subject_new_badge']);
+  function _invalidateCaches() {
+    if (_QUESTION_MUTATIONS.has(act)) { clearQuestionsCache(); clearSubjectsCache(); clearAdminDashboardCache(); }
+    if (_SUBJECT_MUTATIONS.has(act)) { clearSubjectsCache(); clearQuestionsCache(); clearAdminDashboardCache(); }
+  }
+
+  try {
+
+  switch (act) {
     case 'approve_request': {
       const { request_id } = payload;
       const reqRes = await db.execute({
@@ -724,6 +759,7 @@ export async function handleAdminAction(req, authUser) {
       });
 
       await logAdminAction(blocked ? 'block_user' : 'unblock_user', 'profiles', target_user_id);
+      clearProfileCache(target_user_id);
       return json({ ok: true });
     }
 
@@ -736,6 +772,7 @@ export async function handleAdminAction(req, authUser) {
       });
 
       await logAdminAction('set_user_role', 'profiles', target_user_id, { role });
+      clearProfileCache(target_user_id);
       return json({ ok: true });
     }
 
@@ -747,6 +784,7 @@ export async function handleAdminAction(req, authUser) {
       });
 
       await logAdminAction('approve_user_registration', 'profiles', target_user_id);
+      clearProfileCache(target_user_id);
       return json({ ok: true });
     }
 
@@ -758,6 +796,7 @@ export async function handleAdminAction(req, authUser) {
       });
 
       await logAdminAction('reject_user_registration', 'profiles', target_user_id);
+      clearProfileCache(target_user_id);
       return json({ ok: true });
     }
 
@@ -768,6 +807,44 @@ export async function handleAdminAction(req, authUser) {
         args: [target_user_id]
       });
       await logAdminAction('revoke_user_approval', 'profiles', target_user_id);
+      clearProfileCache(target_user_id);
+      return json({ ok: true });
+    }
+
+    case 'force_logout_user': {
+      const { target_user_id } = payload;
+      const targetId = String(target_user_id || '').trim();
+      if (!targetId) return json({ error: 'Missing target_user_id' }, 400);
+
+      const targetRes = await db.execute({
+        sql: 'select email from profiles where id = ?',
+        args: [targetId]
+      });
+      const targetProfile = targetRes.rows?.[0];
+      const targetIsAdmin = adminEmail && targetProfile?.email &&
+        String(targetProfile.email).toLowerCase().trim() === adminEmail;
+      if (targetIsAdmin) {
+        return json({ error: 'Không thể đăng xuất tài khoản admin gốc.' }, 403);
+      }
+
+      await db.execute({
+        sql: 'update profiles set force_logout = 1 where id = ?',
+        args: [targetId]
+      });
+
+      await logAdminAction('force_logout_user', 'profiles', targetId);
+      clearProfileCache(targetId);
+      return json({ ok: true });
+    }
+
+    case 'force_logout_all': {
+      await db.execute({
+        sql: 'update profiles set force_logout = 1 where email != ?',
+        args: [adminEmail || '']
+      });
+
+      await logAdminAction('force_logout_all', 'profiles', 'all');
+      clearProfileCache(); // clear toàn bộ cache
       return json({ ok: true });
     }
 
@@ -816,5 +893,9 @@ export async function handleAdminAction(req, authUser) {
 
     default:
       return json({ error: `Action '${action}' not supported` }, 400);
+  }
+
+  } finally {
+    _invalidateCaches();
   }
 }

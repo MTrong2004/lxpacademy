@@ -2251,7 +2251,7 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
     const STORE_KEY = "admin_sidebar_tree_collapsed_v4";
     const GROUPS = [
       { title: "Duy\u1EC7t", icon: "\u2713", keys: ["approvals", "requests", "subjectRequests"] },
-      { title: "N\u1ED9i dung", icon: "\u25A1", keys: ["subjectsAdmin", "questions", "trash"] },
+      { title: "N\u1ED9i dung", icon: "\u25A1", keys: ["subjectsAdmin", "trash"] },
       { title: "H\u1EC7 th\u1ED1ng", icon: "\u2699", keys: ["users", "history", "logs"] }
     ];
     const SHORT = {
@@ -2359,7 +2359,14 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
       const used = /* @__PURE__ */ new Set();
       const state = collapsedMap();
       side.classList.add("adminTreeReady");
-      const overview = navs.find((n) => navKey(n) === "overview");
+      navs.forEach((n) => {
+        if (navKey(n) === "questions") {
+          used.add(n);
+          n.style.display = "none";
+          n.remove();
+        }
+      });
+      const overview = navs.find((n) => !used.has(n) && navKey(n) === "overview");
       if (overview) {
         used.add(overview);
         applyNav(overview, "overview", true);
@@ -2849,9 +2856,13 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`)) return;
           <div class="thCol">TR\u1EA0NG TH\xC1I & HO\u1EA0T \u0110\u1ED8NG</div>
           <div class="thCol thActions">THAO T\xC1C</div>
         </div>`;
+      const bulkLogoutBar = `<div class="userAdminBulkBar" style="display:flex;justify-space-between;align-items:center;margin-bottom:12px;padding:8px 14px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid rgba(255,255,255,0.08);">
+      <span style="font-size:0.86rem;color:var(--mist);">Qu\u1EA3n l\xFD phi\xEAn l\xE0m vi\u1EC7c &amp; Y\xEAu c\u1EA7u \u0111\u0103ng xu\u1EA5t l\u1EA1i:</span>
+      <button type="button" class="btn bad" style="background:#dc2626;color:#ffffff;border:none;border-radius:6px;padding:6px 14px;font-weight:700;font-size:0.82rem;cursor:pointer;" onclick="forceLogoutAllUsers()">\u{1F6AA} \u0110\u0103ng xu\u1EA5t t\u1EA5t c\u1EA3 ng\u01B0\u1EDDi d\xF9ng</button>
+    </div>`;
       const helpers = { actText, actTime, date, isBlocked, badge, roleBadgeFinal, avatarButton, esc };
       const rowFn = typeof renderUserRowSaaS === "function" ? renderUserRowSaaS : null;
-      $("userList").innerHTML = headHTML + (arr.map((p) => {
+      $("userList").innerHTML = bulkLogoutBar + headHTML + (arr.map((p) => {
         if (rowFn) return rowFn(p, helpers);
         const activeText = actText(p);
         const activeClass = activeText === "\u0110ang ho\u1EA1t \u0111\u1ED9ng" ? "activityNow" : "";
@@ -5241,6 +5252,7 @@ ${E(val)}</pre>`;
       const menu = document.createElement("div");
       menu.id = "lhActionMenuFloat";
       menu.innerHTML = isAdmin() ? `<button class="act" onclick="viewUserEdits('${p.id}');closeUserActionMenuFinal();">L\u1ECBch s\u1EED s\u1EEDa c\xE2u</button>
+         <button class="act bad" onclick="forceLogoutUser('${p.id}');closeUserActionMenuFinal();">\u{1F6AA} \u0110\u0103ng xu\u1EA5t ng\u01B0\u1EDDi n\xE0y</button>
          <button class="act ${isBlocked(p) ? "ok" : "bad"}" onclick="toggleBlock('${p.id}',${!isBlocked(p)});closeUserActionMenuFinal();">${isBlocked(p) ? "Unblock" : "Block"}</button>
          <button class="act warn" onclick="setRole('${p.id}','${p.role === "editor" ? "user" : "editor"}');closeUserActionMenuFinal();">${p.role === "editor" ? "G\u1EE1 editor" : "Cho editor"}</button>
          <button class="act warn" onclick="setRole('${p.id}','${p.role === "admin" ? "user" : "admin"}');closeUserActionMenuFinal();">${p.role === "admin" ? "G\u1EE1 admin" : "Cho admin"}</button>
@@ -5254,6 +5266,23 @@ ${E(val)}</pre>`;
       if (top + mh > window.innerHeight - 14) top = Math.max(14, r.top - mh - 8);
       menu.style.left = left + "px";
       menu.style.top = top + "px";
+    };
+    window.forceLogoutUser = async function(uid) {
+      const p = (cache.profiles || []).find((x) => String(x.id) === String(uid));
+      const name = p ? p.email || p.full_name || uid : uid;
+      if (!confirm(`\u0110\u0103ng xu\u1EA5t b\u1EAFt bu\u1ED9c \u0111\u1ED1i v\u1EDBi ng\u01B0\u1EDDi d\xF9ng:
+${name}
+
+H\u1ECD s\u1EBD b\u1ECB \u0111\u0103ng xu\u1EA5t kh\u1ECFi h\u1EC7 th\u1ED1ng v\xE0 ph\u1EA3i \u0111\u0103ng nh\u1EADp l\u1EA1i \u0111\u1EC3 t\u1EA3i d\u1EEF li\u1EC7u m\u1EDBi.`)) return;
+      if (await adminAction("force_logout_user", { target_user_id: uid })) {
+        alert(`\u2705 \u0110\xE3 y\xEAu c\u1EA7u \u0111\u0103ng xu\u1EA5t ng\u01B0\u1EDDi d\xF9ng ${name}.`);
+      }
+    };
+    window.forceLogoutAllUsers = async function() {
+      if (!confirm("\u26A0\uFE0F B\u1EA0N C\xD3 CH\u1EAEC MU\u1ED0N \u0110\u0102NG XU\u1EA4T T\u1EA4T C\u1EA2 NG\u01AF\u1EDCI D\xD9NG?\n\nT\u1EA5t c\u1EA3 ng\u01B0\u1EDDi d\xF9ng (tr\u1EEB Admin) s\u1EBD b\u1ECB bu\u1ED9c \u0111\u0103ng xu\u1EA5t v\xE0 ph\u1EA3i \u0111\u0103ng nh\u1EADp l\u1EA1i \u0111\u1EC3 l\xE0m m\u1EDBi d\u1EEF li\u1EC7u.")) return;
+      if (await adminAction("force_logout_all", {})) {
+        alert("\u2705 \u0110\xE3 y\xEAu c\u1EA7u \u0111\u0103ng xu\u1EA5t T\u1EA4T C\u1EA2 ng\u01B0\u1EDDi d\xF9ng th\xE0nh c\xF4ng.");
+      }
     };
     if (typeof sendLoginToDiscord !== "function") {
       window.sendLoginToDiscord = async function(email, role) {
