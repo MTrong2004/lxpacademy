@@ -88,7 +88,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "8fc66a0" : null;
+  var currentVersion = true ? "0cc0a24" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -5054,6 +5054,9 @@ ${E(val)}</pre>`;
     }
     function canOpenPage(pageId) {
       pageId = String(pageId || "overview");
+      if (pageId === "discordSettings") {
+        return typeof window.isSystemAdmin === "function" && window.isSystemAdmin();
+      }
       if (isAdmin()) return true;
       if (roleName() === "editor" && !isBlocked(profile)) {
         return EDITOR_ALLOWED_PAGES.has(pageId) && !ADMIN_ONLY_PAGES.has(pageId);
@@ -5100,6 +5103,7 @@ ${E(val)}</pre>`;
         if (typeof setPage === "function") setPage("overview", "T\u1ED5ng quan");
       }
     }
+    window.hideDeniedMenus = hideDeniedMenus;
     document.addEventListener(
       "click",
       function(e) {
@@ -5888,6 +5892,11 @@ H\u1ECD KH\xD4NG b\u1ECB \u0111\u0103ng xu\u1EA5t.`)) return;
       document.body.classList.toggle("role-system-admin", TIER.isSystem);
     }
     function ensureDiscordPage() {
+      if (!window.isSystemAdmin || !window.isSystemAdmin()) {
+        const navBtn = $id("discordSettingsNav");
+        if (navBtn) navBtn.classList.add("accessHidden");
+        return;
+      }
       if (!$id("discordSettingsNav")) {
         const side = document.querySelector(".side");
         const foot = document.querySelector(".foot");
@@ -5899,12 +5908,18 @@ H\u1ECD KH\xD4NG b\u1ECB \u0111\u0103ng xu\u1EA5t.`)) return;
           btn.dataset.page = "discordSettings";
           btn.textContent = "Th\xF4ng b\xE1o Discord";
           btn.onclick = () => {
+            if (!window.isSystemAdmin || !window.isSystemAdmin()) {
+              if (typeof setPage === "function") setPage("overview", "T\u1ED5ng quan");
+              return;
+            }
             setPage("discordSettings", "Th\xF4ng b\xE1o Discord");
             renderDiscordSettings();
           };
           side.insertBefore(btn, foot || null);
           if (typeof window.organizeAdminSidebarTree === "function") window.organizeAdminSidebarTree();
         }
+      } else {
+        $id("discordSettingsNav").classList.remove("accessHidden");
       }
       if (!$id("discordSettings")) {
         const ws = document.querySelector(".workspace");
@@ -5939,19 +5954,20 @@ H\u1ECD KH\xD4NG b\u1ECB \u0111\u0103ng xu\u1EA5t.`)) return;
     </div>`;
     }
     function renderDiscordSettings() {
+      if (!window.isSystemAdmin || !window.isSystemAdmin()) {
+        if (typeof setPage === "function") setPage("overview", "T\u1ED5ng quan");
+        return;
+      }
       ensureDiscordPage();
       const box = $id("discordToggleList");
       if (!box) return;
       if (!isAdmin()) {
-        box.innerHTML = '<p class="muted">Ch\u1EC9 admin m\u1EDBi xem \u0111\u01B0\u1EE3c m\u1EE5c n\xE0y.</p>';
+        box.innerHTML = '<p class="muted">Ch\u1EC9 admin h\u1EC7 th\u1ED1ng m\u1EDBi xem \u0111\u01B0\u1EE3c m\u1EE5c n\xE0y.</p>';
         return;
       }
       const note = $id("discordTierNote");
       if (note) {
-        note.classList.toggle("hidden", TIER.isSystem);
-        if (!TIER.isSystem) {
-          note.textContent = "B\u1EA1n l\xE0 admin th\u01B0\u1EDDng: ch\u1EC9 xem \u0111\u01B0\u1EE3c tr\u1EA1ng th\xE1i. Mu\u1ED1n b\u1EADt/t\u1EAFt th\xEC c\u1EA7n t\xE0i kho\u1EA3n admin h\u1EC7 th\u1ED1ng.";
-        }
+        note.classList.add("hidden");
       }
       const kinds = TIER.kinds.length ? TIER.kinds : Object.keys(TIER.settings).map((k) => ({ key: k, label: k, description: "" }));
       box.innerHTML = kinds.length ? kinds.map(toggleRowHTML).join("") : '<p class="muted">Ch\u01B0a t\u1EA3i \u0111\u01B0\u1EE3c danh s\xE1ch lo\u1EA1i th\xF4ng b\xE1o. B\u1EA5m "T\u1EA3i l\u1EA1i" \u1EDF thanh tr\xEAn.</p>';
@@ -5974,12 +5990,17 @@ H\u1ECD KH\xD4NG b\u1ECB \u0111\u0103ng xu\u1EA5t.`)) return;
     window.__lhReadAdminTierFromDashboard = function(dash) {
       readDashboard(dash);
       renderAdminTierChip();
-      if ($id("discordSettings")?.classList.contains("active")) renderDiscordSettings();
+      if (TIER.isSystem) ensureDiscordPage();
+      if (typeof window.hideDeniedMenus === "function") window.hideDeniedMenus();
+      if (TIER.isSystem && $id("discordSettings")?.classList.contains("active")) renderDiscordSettings();
     };
     function ensureWhenAdmin() {
       if (typeof isAdmin === "function" && isAdmin()) {
-        ensureDiscordPage();
+        if (window.isSystemAdmin && window.isSystemAdmin()) {
+          ensureDiscordPage();
+        }
         renderAdminTierChip();
+        if (typeof window.hideDeniedMenus === "function") window.hideDeniedMenus();
       }
     }
     document.addEventListener("DOMContentLoaded", () => {

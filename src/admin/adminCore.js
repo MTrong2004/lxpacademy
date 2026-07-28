@@ -5207,6 +5207,9 @@ ${E(val)}</pre>`;
 
   function canOpenPage(pageId) {
     pageId = String(pageId || 'overview');
+    if (pageId === 'discordSettings') {
+      return typeof window.isSystemAdmin === 'function' && window.isSystemAdmin();
+    }
     if (isAdmin()) return true;
     if (roleName() === 'editor' && !isBlocked(profile)) {
       return EDITOR_ALLOWED_PAGES.has(pageId) && !ADMIN_ONLY_PAGES.has(pageId);
@@ -5265,6 +5268,8 @@ ${E(val)}</pre>`;
       if (typeof setPage === 'function') setPage('overview', 'Tổng quan');
     }
   }
+
+  window.hideDeniedMenus = hideDeniedMenus;
 
   // Chặn click trước khi vào handler cũ.
   document.addEventListener(
@@ -6261,6 +6266,12 @@ ${E(val)}</pre>`;
   }
 
   function ensureDiscordPage() {
+    if (!window.isSystemAdmin || !window.isSystemAdmin()) {
+      const navBtn = $id('discordSettingsNav');
+      if (navBtn) navBtn.classList.add('accessHidden');
+      return;
+    }
+
     if (!$id('discordSettingsNav')) {
       const side = document.querySelector('.side');
       const foot = document.querySelector('.foot');
@@ -6272,6 +6283,10 @@ ${E(val)}</pre>`;
         btn.dataset.page = 'discordSettings';
         btn.textContent = 'Thông báo Discord';
         btn.onclick = () => {
+          if (!window.isSystemAdmin || !window.isSystemAdmin()) {
+            if (typeof setPage === 'function') setPage('overview', 'Tổng quan');
+            return;
+          }
           setPage('discordSettings', 'Thông báo Discord');
           renderDiscordSettings();
         };
@@ -6280,6 +6295,8 @@ ${E(val)}</pre>`;
         // sinh ra sau nên phải nhờ nó xếp lại, không thì nút nằm lạc ngoài mọi nhóm.
         if (typeof window.organizeAdminSidebarTree === 'function') window.organizeAdminSidebarTree();
       }
+    } else {
+      $id('discordSettingsNav').classList.remove('accessHidden');
     }
 
     if (!$id('discordSettings')) {
@@ -6317,20 +6334,20 @@ ${E(val)}</pre>`;
   }
 
   function renderDiscordSettings() {
+    if (!window.isSystemAdmin || !window.isSystemAdmin()) {
+      if (typeof setPage === 'function') setPage('overview', 'Tổng quan');
+      return;
+    }
     ensureDiscordPage();
     const box = $id('discordToggleList');
     if (!box) return;
     if (!isAdmin()) {
-      box.innerHTML = '<p class="muted">Chỉ admin mới xem được mục này.</p>';
+      box.innerHTML = '<p class="muted">Chỉ admin hệ thống mới xem được mục này.</p>';
       return;
     }
     const note = $id('discordTierNote');
     if (note) {
-      note.classList.toggle('hidden', TIER.isSystem);
-      if (!TIER.isSystem) {
-        note.textContent =
-          'Bạn là admin thường: chỉ xem được trạng thái. Muốn bật/tắt thì cần tài khoản admin hệ thống.';
-      }
+      note.classList.add('hidden');
     }
     const kinds = TIER.kinds.length
       ? TIER.kinds
@@ -6360,14 +6377,19 @@ ${E(val)}</pre>`;
   window.__lhReadAdminTierFromDashboard = function (dash) {
     readDashboard(dash);
     renderAdminTierChip();
-    if ($id('discordSettings')?.classList.contains('active')) renderDiscordSettings();
+    if (TIER.isSystem) ensureDiscordPage();
+    if (typeof window.hideDeniedMenus === 'function') window.hideDeniedMenus();
+    if (TIER.isSystem && $id('discordSettings')?.classList.contains('active')) renderDiscordSettings();
   };
 
   // Trang chỉ dựng khi đã biết là admin — dựng sớm thì editor thấy nút rồi mới bị ẩn, nháy.
   function ensureWhenAdmin() {
     if (typeof isAdmin === 'function' && isAdmin()) {
-      ensureDiscordPage();
+      if (window.isSystemAdmin && window.isSystemAdmin()) {
+        ensureDiscordPage();
+      }
       renderAdminTierChip();
+      if (typeof window.hideDeniedMenus === 'function') window.hideDeniedMenus();
     }
   }
   document.addEventListener('DOMContentLoaded', () => {

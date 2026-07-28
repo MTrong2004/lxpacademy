@@ -171,7 +171,7 @@ Không cần DB, không cần Google login, không ghi gì thật (`admin-action
 | `localhost:3000/?mock=1` | Thư viện / Flashcard / Kiểm tra với môn MOCK1 (4 câu), MOCK2 (2 câu) + 4 môn "chương" MOCK1_C1…C4 (34/12/8/20 câu) để test khối **"Gộp thêm môn"** và **khoảng câu** của tab Kiểm tra (MOCK2 khác mã gốc nên không hiện trong khối gộp) |
 | `?mock=1&role=admin` (hoặc `editor`) | Quyền mở dashboard |
 | `admin.html?mock=1&role=admin` | Trang admin **dùng được thật** — mock cấp phiên giả nên `isEditor()` đúng, `cache.*` có dữ liệu (Quản lý môn học, Câu hỏi, Người dùng…) |
-| `admin.html?mock=1&role=admin&sysadmin=0` | Giả lập **admin thường**: trang "Thông báo Discord" chỉ xem, công tắc bị khoá (mặc định vai admin trong mock là admin hệ thống) |
+| `admin.html?mock=1&role=admin&sysadmin=0` | Giả lập **admin thường**: trang "Thông báo Discord" bị ẩn khỏi menu sidebar (mặc định vai admin trong mock là admin hệ thống) |
 | `?mock=1&reload_notice=1` | Banner "Hệ thống vừa cập nhật — Cập nhật ngay" (nhắc tải lại). Banner hiện ở lần xác minh quyền, không phải ngay lúc mở trang — gọi `lhRevalidateAccess('test')` trong Console cho nhanh |
 | `?mock=1&pending=1` / `&blocked=1` | Đúng hai màn 403 khác nhau: "Chờ phê duyệt" vs "Tài khoản bị khóa" |
 | `?mock=1&fail=500` | 500 phải ra fallback "thử lại", KHÔNG được coi là mất quyền |
