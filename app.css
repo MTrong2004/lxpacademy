@@ -24,10 +24,17 @@ AI_APP_CSS_MAP_END */
   padding: 0
 }
 
+html {
+  color-scheme: dark;
+  background-color: #080605;
+}
+
 html,
 body {
   height: 100%;
-  overflow: hidden
+  overflow: hidden;
+  background-color: #080605;
+  color-scheme: dark;
 }
 
 button,
@@ -4020,6 +4027,7 @@ button:active,
 }
 
 :root {
+  color-scheme: dark;
   --bg: #080605;
   --fog: #f5f0e8;
   --mist: #c9bfaa;
@@ -9107,6 +9115,7 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
 }
 
 @media (max-width:760px) {
+
   /* Hàng tab cuộn ngang trên mobile: để nguyên thứ tự thì "← Tất cả môn" nằm ngoài màn hình,
      phải kéo ngang mới bấm được. Đẩy nó lên đầu hàng. */
   #subjectFolderCrumb {
@@ -18852,21 +18861,186 @@ body:not(.kizspy-active) #kizspyExamPortal {
   font-family: "Microsoft Sans Serif", MS Sans Serif, "Segoe UI", Arial, sans-serif !important;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   #kizspyExamPortal {
     top: 98px !important;
     height: calc(100vh - 98px) !important;
   }
-}
 
-@media (max-width: 650px) {
-  .kizspyLeftPane {
-    flex: 0 0 35%;
-    padding: 8px 10px !important;
+  /* Header Navigation: 2-Row Wrap & Mobile Scrollability */
+  .kizspyHeaderNav {
+    flex-wrap: wrap !important;
+    padding: 6px 10px !important;
+    gap: 6px 8px !important;
+    justify-content: space-between !important;
+    background: #f8fafc !important;
   }
 
-  .kizspyRightPane {
+  .kizspyNavLeft {
+    order: 1 !important;
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .kizspyNavRight {
+    order: 2 !important;
+    gap: 4px !important;
+    margin-left: auto !important;
+    flex-shrink: 0 !important;
+  }
+
+  .kizspyNavCenter {
+    order: 3 !important;
+    width: 100% !important;
+    justify-content: flex-start !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-x !important;
+    padding-top: 5px !important;
+    border-top: 1px dashed #cbd5e1 !important;
+    gap: 4px !important;
+    scrollbar-width: thin !important;
+  }
+
+  .kizspyNavCenter::-webkit-scrollbar {
+    height: 3px !important;
+  }
+
+  .kizspyNavCenter::-webkit-scrollbar-thumb {
+    background: #cbd5e1 !important;
+    border-radius: 3px !important;
+  }
+
+  .kizspyBrandBadge {
+    display: inline-flex !important;
+    font-size: 11px !important;
+    padding: 2px 6px !important;
+  }
+
+  .kizspyTimerBadge,
+  .kizspyCountBadge {
+    font-size: 10px !important;
+    padding: 2px 6px !important;
+    white-space: nowrap !important;
+  }
+
+  .kizspyBtn {
+    padding: 5px 8px !important;
+    font-size: 11px !important;
+    min-height: 32px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  .kizspyBtnSubmit,
+  .kizspyBtnExit {
+    padding: 5px 10px !important;
+    font-size: 11px !important;
+    min-height: 32px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Main Split View: Stacked Column Layout on Mobile */
+  #kizspyExamPortal .kizspyMainSplit {
+    flex-direction: column !important;
+    height: calc(100% - 74px) !important;
+  }
+
+  #kizspyExamPortal .kizspyRightPane {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    order: 1 !important;
+    overflow-y: auto !important;
+    padding: 12px 14px !important;
+  }
+
+  #kizspyExamPortal .kizspyDividerLine {
+    display: block !important;
+    width: 100% !important;
+    height: 3px !important;
+    flex-shrink: 0 !important;
+    cursor: default !important;
+    order: 2 !important;
+    background: #c01818 !important;
+  }
+
+  #kizspyExamPortal .kizspyLeftPane {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    max-height: 220px !important;
+    order: 3 !important;
+    background: #f8fafc !important;
+    border-top: 1px solid #e2e8f0 !important;
+    padding: 8px 12px 12px 12px !important;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.06) !important;
+    overflow-y: auto !important;
+  }
+
+  #kizspyExamPortal .kizspySelectBoxContainer {
+    margin-top: 8px !important;
+    gap: 6px !important;
+  }
+
+  #kizspyExamPortal .kizspySelectBoxList {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  #kizspyExamPortal .kizspySelectBoxItem {
+    flex: 1 1 45% !important;
+    min-width: 60px !important;
+    justify-content: center !important;
     padding: 8px 10px !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    border: 1px solid #cbd5e1 !important;
+    background: #ffffff !important;
+    border-radius: 6px !important;
+    min-height: 38px !important;
+  }
+
+  #kizspyExamPortal .kizspyLeftNavBtns {
+    margin-top: 8px !important;
+    display: flex !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  #kizspyExamPortal .kizspyNavBtn {
+    flex: 1 !important;
+    text-align: center !important;
+    justify-content: center !important;
+    padding: 8px 14px !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    min-height: 38px !important;
+  }
+
+  /* Question Map Modal Overlay on Mobile */
+  .kizspyMapBox {
+    width: 95vw !important;
+    max-height: 85vh !important;
+  }
+
+  .kizspyMapHeader {
+    padding: 12px 14px !important;
+  }
+
+  .kizspyMapGrid {
+    padding: 12px 14px !important;
+    gap: 6px !important;
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)) !important;
+    max-height: 60vh !important;
+    overflow-y: auto !important;
+  }
+
+  .kizspyMapItem {
+    height: 44px !important;
+    font-size: 12px !important;
   }
 }
 

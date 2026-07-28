@@ -203,7 +203,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "0cc0a24" : null;
+  var currentVersion = true ? "df52fbe" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -1673,7 +1673,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         </div>
 
         <div class="kizspyMainSplit">
-          <div class="kizspyLeftPane" style="flex:0 0 ${kizspySplitPct}% !important; width:${kizspySplitPct}% !important;">
+          <div class="kizspyLeftPane" style="flex:0 0 ${kizspySplitPct}%; width:${kizspySplitPct}%;">
             <div class="kizspyHeaderLine">${questionCountLabel}</div>
             <div class="kizspySubLine">${choiceInstruction}</div>
             <div class="kizspySelectBoxContainer">
@@ -1776,6 +1776,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
             };
             const doDrag = (e) => {
               if (!isDragging) return;
+              if (window.innerWidth <= 768) return;
               const clientX = e.touches ? e.touches[0].clientX : e.clientX;
               const rect = container.getBoundingClientRect();
               const pct = Math.max(10, Math.min(90, (clientX - rect.left) / rect.width * 100));
