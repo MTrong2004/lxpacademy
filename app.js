@@ -203,7 +203,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "caf87f9" : null;
+  var currentVersion = true ? "667a2c1" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -3778,6 +3778,24 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         chip.textContent = code ? label(code) : "Ch\u1ECDn m\xF4n";
         chip.classList.toggle("hidden", !logged());
       }
+      syncGateUserInfo();
+    }
+    function syncGateUserInfo() {
+      const u = user();
+      const emailEl = $2("subjectUserEmail");
+      if (emailEl) emailEl.textContent = u?.email || "Ch\u01B0a \u0111\u0103ng nh\u1EADp";
+      const avatarEl = $2("subjectUserAvatar");
+      if (avatarEl) {
+        const md = u?.user_metadata || {};
+        const avatarUrl = md.avatar_url || md.picture || "";
+        const nameStr = md.full_name || md.name || u?.email || "U";
+        const initial = nameStr.charAt(0).toUpperCase();
+        if (avatarUrl) {
+          avatarEl.innerHTML = `<img src="${esc2(avatarUrl)}" alt="Avatar" class="subjectAvatarImg">`;
+        } else {
+          avatarEl.innerHTML = `<div class="subjectAvatarInitial">${esc2(initial)}</div>`;
+        }
+      }
     }
     function ensureChip() {
       const actions = document.querySelector("#fc .actions") || document.querySelector(".actions");
@@ -4034,7 +4052,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       lastOpenGateTime = now;
       if (!logged()) return;
       localStorage.setItem("learninghub_subject_gate_open_v1", "true");
-      if ($2("subjectUserEmail")) $2("subjectUserEmail").textContent = user()?.email || "Ch\u01B0a \u0111\u0103ng nh\u1EADp";
+      syncGateUserInfo();
       gateOn(true);
       closeAccountMenu();
       refreshSubjects(true);
@@ -6388,10 +6406,21 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       style.textContent = `
       .subjectGateTabs {
         display: flex;
-        gap: 6px;
-        margin: -5px 0 15px 0;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin: -5px 0 6px 0;
         border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        padding-bottom: 0;
+        padding-bottom: 8px;
+        flex-wrap: wrap;
+      }
+      .subjectList.inFolder {
+        padding-top: 4px !important;
+      }
+      .subjectGateTabsLeft {
+        display: flex;
+        align-items: center;
+        gap: 6px;
       }
       .subjectGateTab {
         background: none;
@@ -6410,6 +6439,29 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       .subjectGateTab.active {
         color: var(--gold, #e8d4a8);
         border-bottom: 2px solid var(--gold, #e8d4a8);
+      }
+      .subjectGateSearchWrap {
+        flex: 1;
+        min-width: 220px;
+        max-width: 480px;
+        display: flex;
+        align-items: center;
+      }
+      .subjectGateSearchWrap input, #subjectSearch {
+        width: 100%;
+        background: rgba(0, 0, 0, 0.25);
+        border: 1px solid rgba(200, 169, 110, 0.22);
+        border-radius: 12px;
+        padding: 8px 16px;
+        color: #fff;
+        font-size: 0.88rem;
+        outline: none;
+        transition: all 0.2s ease;
+      }
+      .subjectGateSearchWrap input:focus, #subjectSearch:focus {
+        border-color: var(--gold2, #e8d4a8);
+        box-shadow: 0 0 12px rgba(232, 212, 168, 0.2);
+        background: rgba(0, 0, 0, 0.4);
       }
       .userAddSubjectWrap {
         animation: fadeInPane 0.25s ease-out;
@@ -6431,6 +6483,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       const listElements = [
         document.querySelector(".subjectGateSubline"),
         document.querySelector(".subjectGateTools"),
+        $2("subjectGateSearchWrap"),
         $2("subjectList"),
         $2("subjectLoading"),
         $2("subjectError"),
@@ -6459,10 +6512,22 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       tabsBar.id = "subjectGateTabsBar";
       tabsBar.className = "subjectGateTabs";
       tabsBar.innerHTML = `
-      <button type="button" class="subjectGateTab active" data-sgtab="list">Danh s\xE1ch m\xF4n h\u1ECDc</button>
-      <button type="button" class="subjectGateTab" id="subjectGateTabAdd" data-sgtab="add" style="display:none;">Th\xEAm m\xF4n m\u1EDBi</button>
+      <div class="subjectGateTabsLeft">
+        <button type="button" class="subjectGateTab active" data-sgtab="list">Danh s\xE1ch m\xF4n h\u1ECDc</button>
+        <button type="button" class="subjectGateTab" id="subjectGateTabAdd" data-sgtab="add" style="display:none;">Th\xEAm m\xF4n m\u1EDBi</button>
+      </div>
+      <div class="subjectGateSearchWrap" id="subjectGateSearchWrap"></div>
     `;
       header.insertAdjacentElement("afterend", tabsBar);
+      const searchInput = $2("subjectSearch");
+      const searchWrap = $2("subjectGateSearchWrap");
+      if (searchInput && searchWrap) {
+        searchWrap.appendChild(searchInput);
+      }
+      const searchTools = document.querySelector(".subjectGateTools");
+      if (searchTools) searchTools.style.display = "none";
+      const addBtn = $2("addSubjectBtn");
+      if (addBtn) addBtn.remove();
       tabsBar.querySelectorAll(".subjectGateTab").forEach((btn) => {
         btn.onclick = () => window.__switchSubjectGateTab(btn.dataset.sgtab);
       });

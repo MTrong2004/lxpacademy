@@ -84,11 +84,16 @@
         <div class="subjectGateIntroBlock">
           <div class="subjectGateLabel">CHỌN MÔN HỌC</div>
           <h2>Chọn môn để tiếp tục</h2>
-          <p id="subjectUserEmail">Chưa đăng nhập</p>
         </div>
-        <div class="subjectGateTopActions">
-          <button id="subjectRefresh" class="btn" type="button">Tải lại</button>
-          <button id="subjectLogout" class="btn" type="button">Đăng xuất</button>
+        <div class="subjectGateUserBlock">
+          <div class="subjectGateUserInfo">
+            <div id="subjectUserAvatar" class="subjectUserAvatar"></div>
+            <p id="subjectUserEmail">Chưa đăng nhập</p>
+          </div>
+          <div class="subjectGateTopActions">
+            <button id="subjectRefresh" class="btn" type="button">Tải lại</button>
+            <button id="subjectLogout" class="btn" type="button">Đăng xuất</button>
+          </div>
         </div>
       </div>
       <div class="subjectGateSubline">
@@ -96,8 +101,7 @@
         <span>Có thể tìm theo mã hoặc tên môn</span>
       </div>
       <div class="subjectGateTools">
-        <input id="subjectSearch" type="text" placeholder="Tìm mã môn hoặc tên môn...">
-        <button id="addSubjectBtn" class="btn addSubjectBtn hidden" type="button">+ Thêm môn</button>
+        <input id="subjectSearch" type="text" placeholder="Tìm môn học...">
       </div>
       <div id="addSubjectForm" class="addSubjectForm hidden"></div>
       <div id="subjectLoading" class="subjectState subjectLoading hidden">Đang tải danh sách môn học...</div>

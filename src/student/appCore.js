@@ -1402,7 +1402,7 @@ window.HODSupabase = (() => {
               if (name.includes('questions') || name.includes('learninghub')) caches.delete(name);
             });
           })
-          .catch(() => {});
+          .catch(() => { });
       }
       if (typeof indexedDB !== 'undefined' && indexedDB.databases) {
         indexedDB
@@ -1412,7 +1412,7 @@ window.HODSupabase = (() => {
               if (dbInfo.name && dbInfo.name.includes('learninghub')) indexedDB.deleteDatabase(dbInfo.name);
             });
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     } catch (e) {
       console.warn('purgeOfflineQuestionCache error:', e);
@@ -1477,7 +1477,7 @@ window.HODSupabase = (() => {
       } catch (e) {
         lhWarn('APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627', e);
       }
-      if (typeof signOut === 'function') signOut().catch(() => {});
+      if (typeof signOut === 'function') signOut().catch(() => { });
     }
 
     updateAuthUI();
@@ -1602,15 +1602,15 @@ window.HODSupabase = (() => {
         const body = checkOnly
           ? { check_only: true }
           : {
-              id: currentUser.id,
-              email: currentUser.email || '',
-              full_name: currentUser.user_metadata?.full_name || '',
-              avatar_url: currentUser.user_metadata?.avatar_url || currentUser.user_metadata?.picture || '',
-              current_subject: activeSubjectCode,
-              device_info: typeof getDeviceTypeString === 'function' ? getDeviceTypeString() : undefined,
-              last_login: new Date().toISOString(),
-              last_activity: new Date().toISOString(),
-            };
+            id: currentUser.id,
+            email: currentUser.email || '',
+            full_name: currentUser.user_metadata?.full_name || '',
+            avatar_url: currentUser.user_metadata?.avatar_url || currentUser.user_metadata?.picture || '',
+            current_subject: activeSubjectCode,
+            device_info: typeof getDeviceTypeString === 'function' ? getDeviceTypeString() : undefined,
+            last_login: new Date().toISOString(),
+            last_activity: new Date().toISOString(),
+          };
         const res = await fetch('/api/profile?turso=1&ts=' + Date.now(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1894,8 +1894,8 @@ window.HODSupabase = (() => {
     if (!list) return;
     list.innerHTML = data.length
       ? data
-          .map(
-            r => `
+        .map(
+          r => `
       <div class="adminReq" data-request-id="${r.id}">
         <div class="adminReqHead"><span>Request #${r.id} · Câu ${r.question_num || r.question_id}</span><span>${new Date(r.created_at).toLocaleString()}</span></div>
         <div class="compareGrid">
@@ -1907,16 +1907,16 @@ window.HODSupabase = (() => {
           <button class="btn rejectBtn" data-reject="${r.id}">Từ chối</button>
         </div>
       </div>`,
-          )
-          .join('')
+        )
+        .join('')
       : '<div class="more">Không có yêu cầu chờ duyệt.</div>';
     list.querySelectorAll('[data-approve]').forEach(
       btn =>
-        (btn.onclick = () =>
-          approveRequest(
-            Number(btn.dataset.approve),
-            data.find(x => x.id === Number(btn.dataset.approve)),
-          )),
+      (btn.onclick = () =>
+        approveRequest(
+          Number(btn.dataset.approve),
+          data.find(x => x.id === Number(btn.dataset.approve)),
+        )),
     );
     list
       .querySelectorAll('[data-reject]')
@@ -2397,10 +2397,18 @@ installSubjectGate();
     style.textContent = `
       .subjectGateTabs {
         display: flex;
-        gap: 6px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
         margin: -5px 0 15px 0;
         border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        padding-bottom: 0;
+        padding-bottom: 8px;
+        flex-wrap: wrap;
+      }
+      .subjectGateTabsLeft {
+        display: flex;
+        align-items: center;
+        gap: 6px;
       }
       .subjectGateTab {
         background: none;
@@ -2419,6 +2427,29 @@ installSubjectGate();
       .subjectGateTab.active {
         color: var(--gold, #e8d4a8);
         border-bottom: 2px solid var(--gold, #e8d4a8);
+      }
+      .subjectGateSearchWrap {
+        flex: 1;
+        min-width: 220px;
+        max-width: 480px;
+        display: flex;
+        align-items: center;
+      }
+      .subjectGateSearchWrap input, #subjectSearch {
+        width: 100%;
+        background: rgba(0, 0, 0, 0.25);
+        border: 1px solid rgba(200, 169, 110, 0.22);
+        border-radius: 12px;
+        padding: 8px 16px;
+        color: #fff;
+        font-size: 0.88rem;
+        outline: none;
+        transition: all 0.2s ease;
+      }
+      .subjectGateSearchWrap input:focus, #subjectSearch:focus {
+        border-color: var(--gold2, #e8d4a8);
+        box-shadow: 0 0 12px rgba(232, 212, 168, 0.2);
+        background: rgba(0, 0, 0, 0.4);
       }
       .userAddSubjectWrap {
         animation: fadeInPane 0.25s ease-out;
@@ -2446,6 +2477,7 @@ installSubjectGate();
     const listElements = [
       document.querySelector('.subjectGateSubline'),
       document.querySelector('.subjectGateTools'),
+      $('subjectGateSearchWrap'),
       $('subjectList'),
       $('subjectLoading'),
       $('subjectError'),
@@ -2481,11 +2513,27 @@ installSubjectGate();
     tabsBar.id = 'subjectGateTabsBar';
     tabsBar.className = 'subjectGateTabs';
     tabsBar.innerHTML = `
-      <button type="button" class="subjectGateTab active" data-sgtab="list">Danh sách môn học</button>
-      <button type="button" class="subjectGateTab" id="subjectGateTabAdd" data-sgtab="add" style="display:none;">Thêm môn mới</button>
+      <div class="subjectGateTabsLeft">
+        <button type="button" class="subjectGateTab active" data-sgtab="list">Danh sách môn học</button>
+        <button type="button" class="subjectGateTab" id="subjectGateTabAdd" data-sgtab="add" style="display:none;">Thêm môn mới</button>
+      </div>
+      <div class="subjectGateSearchWrap" id="subjectGateSearchWrap"></div>
     `;
 
     header.insertAdjacentElement('afterend', tabsBar);
+
+    // Di chuyển ô tìm kiếm vào thanh Tab
+    const searchInput = $('subjectSearch');
+    const searchWrap = $('subjectGateSearchWrap');
+    if (searchInput && searchWrap) {
+      searchWrap.appendChild(searchInput);
+    }
+    const searchTools = document.querySelector('.subjectGateTools');
+    if (searchTools) searchTools.style.display = 'none';
+
+    // Bỏ nút + Thêm môn cũ bên phải ô tìm kiếm
+    const addBtn = $('addSubjectBtn');
+    if (addBtn) addBtn.remove();
 
     tabsBar.querySelectorAll('.subjectGateTab').forEach(btn => {
       btn.onclick = () => window.__switchSubjectGateTab(btn.dataset.sgtab);
@@ -2897,8 +2945,8 @@ Bắt đầu ngay từ câu 1.`;
       var answer = ams.length
         ? Array.from(new Set(ams)).join('')
         : String(def || '')
-            .toUpperCase()
-            .replace(/[^A-F]/g, '');
+          .toUpperCase()
+          .replace(/[^A-F]/g, '');
       answer = Array.from(answer)
         .filter(function (a) {
           return options[a];
@@ -5227,15 +5275,15 @@ if (typeof finalAnswerText !== 'function') {
     if (!box) return;
     box.innerHTML = addImages.length
       ? addImages
-          .map(
-            (im, i) => `
+        .map(
+          (im, i) => `
       <div class="editImg addPreviewImg">
         <button type="button" class="rm" data-add-rm="${i}">×</button>
         <img src="${esc(im.src)}" alt="" loading="lazy" decoding="async">
         <input class="imgUrlBox" value="${esc(im.src)}" readonly onclick="this.select()" title="Bấm để chọn URL ảnh" style="margin-top:6px;width:100%;max-width:260px;border:1px solid rgba(200,169,110,.24);border-radius:10px;background:rgba(0,0,0,.22);color:var(--gold2);padding:7px;font-size:.72rem;">
       </div>`,
-          )
-          .join('')
+        )
+        .join('')
       : 'Chưa có hình.';
   }
 
@@ -7770,11 +7818,11 @@ installLibrary();
     LHState.editDraft.images = cleanImages(LHState.editDraft.images);
     box.innerHTML = LHState.editDraft.images.length
       ? LHState.editDraft.images
-          .map(
-            (im, i) =>
-              `<div class="editImg"><button class="rm" data-rm="${i}">×</button><img src="${esc(im.src)}" loading="lazy" decoding="async"></div>`,
-          )
-          .join('')
+        .map(
+          (im, i) =>
+            `<div class="editImg"><button class="rm" data-rm="${i}">×</button><img src="${esc(im.src)}" loading="lazy" decoding="async"></div>`,
+        )
+        .join('')
       : '<p style="color:var(--mist)">Chưa có hình.</p>';
   };
 

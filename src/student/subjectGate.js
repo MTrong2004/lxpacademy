@@ -166,6 +166,24 @@ export function installSubjectGate() {
       chip.textContent = code ? label(code) : 'Chọn môn';
       chip.classList.toggle('hidden', !logged());
     }
+    syncGateUserInfo();
+  }
+  function syncGateUserInfo() {
+    const u = user();
+    const emailEl = $('subjectUserEmail');
+    if (emailEl) emailEl.textContent = u?.email || 'Chưa đăng nhập';
+    const avatarEl = $('subjectUserAvatar');
+    if (avatarEl) {
+      const md = u?.user_metadata || {};
+      const avatarUrl = md.avatar_url || md.picture || '';
+      const nameStr = md.full_name || md.name || u?.email || 'U';
+      const initial = nameStr.charAt(0).toUpperCase();
+      if (avatarUrl) {
+        avatarEl.innerHTML = `<img src="${esc2(avatarUrl)}" alt="Avatar" class="subjectAvatarImg">`;
+      } else {
+        avatarEl.innerHTML = `<div class="subjectAvatarInitial">${esc2(initial)}</div>`;
+      }
+    }
   }
   function ensureChip() {
     const actions = document.querySelector('#fc .actions') || document.querySelector('.actions');
@@ -461,7 +479,7 @@ export function installSubjectGate() {
     lastOpenGateTime = now;
     if (!logged()) return;
     localStorage.setItem('learninghub_subject_gate_open_v1', 'true');
-    if ($('subjectUserEmail')) $('subjectUserEmail').textContent = user()?.email || 'Chưa đăng nhập';
+    syncGateUserInfo();
     gateOn(true);
     closeAccountMenu();
     refreshSubjects(true);
