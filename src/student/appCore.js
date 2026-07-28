@@ -1402,7 +1402,7 @@ window.HODSupabase = (() => {
               if (name.includes('questions') || name.includes('learninghub')) caches.delete(name);
             });
           })
-          .catch(() => { });
+          .catch(() => {});
       }
       if (typeof indexedDB !== 'undefined' && indexedDB.databases) {
         indexedDB
@@ -1412,7 +1412,7 @@ window.HODSupabase = (() => {
               if (dbInfo.name && dbInfo.name.includes('learninghub')) indexedDB.deleteDatabase(dbInfo.name);
             });
           })
-          .catch(() => { });
+          .catch(() => {});
       }
     } catch (e) {
       console.warn('purgeOfflineQuestionCache error:', e);
@@ -1477,7 +1477,7 @@ window.HODSupabase = (() => {
       } catch (e) {
         lhWarn('APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627', e);
       }
-      if (typeof signOut === 'function') signOut().catch(() => { });
+      if (typeof signOut === 'function') signOut().catch(() => {});
     }
 
     updateAuthUI();
@@ -1602,15 +1602,15 @@ window.HODSupabase = (() => {
         const body = checkOnly
           ? { check_only: true }
           : {
-            id: currentUser.id,
-            email: currentUser.email || '',
-            full_name: currentUser.user_metadata?.full_name || '',
-            avatar_url: currentUser.user_metadata?.avatar_url || currentUser.user_metadata?.picture || '',
-            current_subject: activeSubjectCode,
-            device_info: typeof getDeviceTypeString === 'function' ? getDeviceTypeString() : undefined,
-            last_login: new Date().toISOString(),
-            last_activity: new Date().toISOString(),
-          };
+              id: currentUser.id,
+              email: currentUser.email || '',
+              full_name: currentUser.user_metadata?.full_name || '',
+              avatar_url: currentUser.user_metadata?.avatar_url || currentUser.user_metadata?.picture || '',
+              current_subject: activeSubjectCode,
+              device_info: typeof getDeviceTypeString === 'function' ? getDeviceTypeString() : undefined,
+              last_login: new Date().toISOString(),
+              last_activity: new Date().toISOString(),
+            };
         const res = await fetch('/api/profile?turso=1&ts=' + Date.now(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1894,8 +1894,8 @@ window.HODSupabase = (() => {
     if (!list) return;
     list.innerHTML = data.length
       ? data
-        .map(
-          r => `
+          .map(
+            r => `
       <div class="adminReq" data-request-id="${r.id}">
         <div class="adminReqHead"><span>Request #${r.id} · Câu ${r.question_num || r.question_id}</span><span>${new Date(r.created_at).toLocaleString()}</span></div>
         <div class="compareGrid">
@@ -1907,16 +1907,16 @@ window.HODSupabase = (() => {
           <button class="btn rejectBtn" data-reject="${r.id}">Từ chối</button>
         </div>
       </div>`,
-        )
-        .join('')
+          )
+          .join('')
       : '<div class="more">Không có yêu cầu chờ duyệt.</div>';
     list.querySelectorAll('[data-approve]').forEach(
       btn =>
-      (btn.onclick = () =>
-        approveRequest(
-          Number(btn.dataset.approve),
-          data.find(x => x.id === Number(btn.dataset.approve)),
-        )),
+        (btn.onclick = () =>
+          approveRequest(
+            Number(btn.dataset.approve),
+            data.find(x => x.id === Number(btn.dataset.approve)),
+          )),
     );
     list
       .querySelectorAll('[data-reject]')
@@ -2391,19 +2391,60 @@ installSubjectGate();
 
   // Tiêm CSS động cho cấu trúc Tab mới trong bảng Chọn môn học
   function injectStyles() {
-    if ($('subjectTabsStyle')) return;
-    const style = document.createElement('style');
-    style.id = 'subjectTabsStyle';
+    let style = $('subjectTabsStyle');
+    if (!style) {
+      style = document.createElement('style');
+      style.id = 'subjectTabsStyle';
+      document.head.appendChild(style);
+    }
     style.textContent = `
       .subjectGateTabs {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 16px;
-        margin: -5px 0 15px 0;
+        margin: -5px 0 0 0;
         border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         padding-bottom: 8px;
         flex-wrap: wrap;
+      }
+      body .polishedSubjectPanel > #subjectList {
+        margin-top: -8px !important;
+        padding-top: 12px !important;
+      }
+      body .polishedSubjectPanel > #subjectList.inFolder {
+        margin-top: -10px !important;
+        padding-top: 4px !important;
+      }
+      body .polishedSubjectPanel > #subjectList.inFolder .subjectFolderBar {
+        margin-top: 0 !important;
+      }
+      body .polishedSubjectPanel .subjectGateFooter {
+        margin-top: 4px !important;
+        padding: 8px 14px !important;
+        border-radius: 16px !important;
+      }
+      body .polishedSubjectPanel .subjectSelectedBox {
+        padding: 2px 0 2px 42px !important;
+      }
+      body .polishedSubjectPanel .subjectSelectedBox::before {
+        width: 28px !important;
+        height: 28px !important;
+        border-radius: 10px !important;
+      }
+      body .polishedSubjectPanel .subjectSelectedBox span {
+        font-size: 0.68rem !important;
+      }
+      body .polishedSubjectPanel .subjectSelectedBox b,
+      body .polishedSubjectPanel .subjectSelectedBox strong {
+        font-size: 0.95rem !important;
+      }
+      body .polishedSubjectPanel #subjectEnter {
+        height: 42px !important;
+        min-height: 42px !important;
+        border-radius: 12px !important;
+        padding: 0 20px !important;
+        font-size: 0.88rem !important;
       }
       .subjectGateTabsLeft {
         display: flex;
@@ -2427,6 +2468,57 @@ installSubjectGate();
       .subjectGateTab.active {
         color: var(--gold, #e8d4a8);
         border-bottom: 2px solid var(--gold, #e8d4a8);
+      }
+      #subjectGateTabAdd {
+        position: relative;
+        overflow: hidden;
+        background: rgba(200, 169, 110, 0.07);
+        border: 1px solid rgba(232, 212, 168, 0.3);
+        border-radius: 999px;
+        padding: 7px 18px;
+        color: var(--gold, #e8d4a8);
+        font-size: 0.88rem;
+        font-weight: 750;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: all 0.25s ease;
+      }
+      #subjectGateTabAdd::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -110%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(
+          120deg,
+          transparent 0%,
+          rgba(255, 235, 180, 0) 25%,
+          rgba(255, 235, 180, 0.45) 46%,
+          rgba(255, 255, 255, 0.85) 50%,
+          rgba(255, 235, 180, 0.45) 54%,
+          transparent 75%
+        );
+        animation: glitterShimmer 2.8s infinite ease-in-out;
+        pointer-events: none;
+      }
+      #subjectGateTabAdd:hover {
+        background: rgba(200, 169, 110, 0.15);
+        border-color: rgba(232, 212, 168, 0.65);
+        color: #fff;
+        box-shadow: 0 0 14px rgba(232, 212, 168, 0.25);
+      }
+      #subjectGateTabAdd.active {
+        color: var(--gold, #e8d4a8);
+        border: 1px solid var(--gold, #e8d4a8);
+        background: rgba(200, 169, 110, 0.2);
+        box-shadow: 0 0 16px rgba(232, 212, 168, 0.35);
+      }
+      @keyframes glitterShimmer {
+        0% { left: -110%; }
+        32% { left: 140%; }
+        100% { left: 140%; }
       }
       .subjectGateSearchWrap {
         flex: 1;
@@ -2460,7 +2552,6 @@ installSubjectGate();
         to { opacity: 1; transform: translateY(0); }
       }
     `;
-    document.head.appendChild(style);
   }
 
   // Hàm chuyển đổi Tab thông minh chuyên biệt
@@ -2945,8 +3036,8 @@ Bắt đầu ngay từ câu 1.`;
       var answer = ams.length
         ? Array.from(new Set(ams)).join('')
         : String(def || '')
-          .toUpperCase()
-          .replace(/[^A-F]/g, '');
+            .toUpperCase()
+            .replace(/[^A-F]/g, '');
       answer = Array.from(answer)
         .filter(function (a) {
           return options[a];
@@ -5275,15 +5366,15 @@ if (typeof finalAnswerText !== 'function') {
     if (!box) return;
     box.innerHTML = addImages.length
       ? addImages
-        .map(
-          (im, i) => `
+          .map(
+            (im, i) => `
       <div class="editImg addPreviewImg">
         <button type="button" class="rm" data-add-rm="${i}">×</button>
         <img src="${esc(im.src)}" alt="" loading="lazy" decoding="async">
         <input class="imgUrlBox" value="${esc(im.src)}" readonly onclick="this.select()" title="Bấm để chọn URL ảnh" style="margin-top:6px;width:100%;max-width:260px;border:1px solid rgba(200,169,110,.24);border-radius:10px;background:rgba(0,0,0,.22);color:var(--gold2);padding:7px;font-size:.72rem;">
       </div>`,
-        )
-        .join('')
+          )
+          .join('')
       : 'Chưa có hình.';
   }
 
@@ -7818,11 +7909,11 @@ installLibrary();
     LHState.editDraft.images = cleanImages(LHState.editDraft.images);
     box.innerHTML = LHState.editDraft.images.length
       ? LHState.editDraft.images
-        .map(
-          (im, i) =>
-            `<div class="editImg"><button class="rm" data-rm="${i}">×</button><img src="${esc(im.src)}" loading="lazy" decoding="async"></div>`,
-        )
-        .join('')
+          .map(
+            (im, i) =>
+              `<div class="editImg"><button class="rm" data-rm="${i}">×</button><img src="${esc(im.src)}" loading="lazy" decoding="async"></div>`,
+          )
+          .join('')
       : '<p style="color:var(--mist)">Chưa có hình.</p>';
   };
 

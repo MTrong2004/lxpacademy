@@ -203,7 +203,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "667a2c1" : null;
+  var currentVersion = true ? "8a039a5" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -6400,22 +6400,60 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       return isLoggedIn() && !(p?.blocked || p?.is_blocked || p?.status === "blocked");
     }
     function injectStyles() {
-      if ($2("subjectTabsStyle")) return;
-      const style = document.createElement("style");
-      style.id = "subjectTabsStyle";
+      let style = $2("subjectTabsStyle");
+      if (!style) {
+        style = document.createElement("style");
+        style.id = "subjectTabsStyle";
+        document.head.appendChild(style);
+      }
       style.textContent = `
       .subjectGateTabs {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 16px;
-        margin: -5px 0 6px 0;
+        margin: -5px 0 0 0;
         border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         padding-bottom: 8px;
         flex-wrap: wrap;
       }
-      .subjectList.inFolder {
+      body .polishedSubjectPanel > #subjectList {
+        margin-top: -8px !important;
+        padding-top: 12px !important;
+      }
+      body .polishedSubjectPanel > #subjectList.inFolder {
+        margin-top: -10px !important;
         padding-top: 4px !important;
+      }
+      body .polishedSubjectPanel > #subjectList.inFolder .subjectFolderBar {
+        margin-top: 0 !important;
+      }
+      body .polishedSubjectPanel .subjectGateFooter {
+        margin-top: 4px !important;
+        padding: 8px 14px !important;
+        border-radius: 16px !important;
+      }
+      body .polishedSubjectPanel .subjectSelectedBox {
+        padding: 2px 0 2px 42px !important;
+      }
+      body .polishedSubjectPanel .subjectSelectedBox::before {
+        width: 28px !important;
+        height: 28px !important;
+        border-radius: 10px !important;
+      }
+      body .polishedSubjectPanel .subjectSelectedBox span {
+        font-size: 0.68rem !important;
+      }
+      body .polishedSubjectPanel .subjectSelectedBox b,
+      body .polishedSubjectPanel .subjectSelectedBox strong {
+        font-size: 0.95rem !important;
+      }
+      body .polishedSubjectPanel #subjectEnter {
+        height: 42px !important;
+        min-height: 42px !important;
+        border-radius: 12px !important;
+        padding: 0 20px !important;
+        font-size: 0.88rem !important;
       }
       .subjectGateTabsLeft {
         display: flex;
@@ -6439,6 +6477,57 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       .subjectGateTab.active {
         color: var(--gold, #e8d4a8);
         border-bottom: 2px solid var(--gold, #e8d4a8);
+      }
+      #subjectGateTabAdd {
+        position: relative;
+        overflow: hidden;
+        background: rgba(200, 169, 110, 0.07);
+        border: 1px solid rgba(232, 212, 168, 0.3);
+        border-radius: 999px;
+        padding: 7px 18px;
+        color: var(--gold, #e8d4a8);
+        font-size: 0.88rem;
+        font-weight: 750;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: all 0.25s ease;
+      }
+      #subjectGateTabAdd::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -110%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(
+          120deg,
+          transparent 0%,
+          rgba(255, 235, 180, 0) 25%,
+          rgba(255, 235, 180, 0.45) 46%,
+          rgba(255, 255, 255, 0.85) 50%,
+          rgba(255, 235, 180, 0.45) 54%,
+          transparent 75%
+        );
+        animation: glitterShimmer 2.8s infinite ease-in-out;
+        pointer-events: none;
+      }
+      #subjectGateTabAdd:hover {
+        background: rgba(200, 169, 110, 0.15);
+        border-color: rgba(232, 212, 168, 0.65);
+        color: #fff;
+        box-shadow: 0 0 14px rgba(232, 212, 168, 0.25);
+      }
+      #subjectGateTabAdd.active {
+        color: var(--gold, #e8d4a8);
+        border: 1px solid var(--gold, #e8d4a8);
+        background: rgba(200, 169, 110, 0.2);
+        box-shadow: 0 0 16px rgba(232, 212, 168, 0.35);
+      }
+      @keyframes glitterShimmer {
+        0% { left: -110%; }
+        32% { left: 140%; }
+        100% { left: 140%; }
       }
       .subjectGateSearchWrap {
         flex: 1;
@@ -6472,7 +6561,6 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         to { opacity: 1; transform: translateY(0); }
       }
     `;
-      document.head.appendChild(style);
     }
     window.__switchSubjectGateTab = function(mode) {
       const isAdd = mode === "add";
