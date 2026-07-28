@@ -24,17 +24,10 @@ AI_APP_CSS_MAP_END */
   padding: 0
 }
 
-html {
-  color-scheme: dark;
-  background-color: #080605;
-}
-
 html,
 body {
   height: 100%;
-  overflow: hidden;
-  background-color: #080605;
-  color-scheme: dark;
+  overflow: hidden
 }
 
 button,
@@ -4027,7 +4020,6 @@ button:active,
 }
 
 :root {
-  color-scheme: dark;
   --bg: #080605;
   --fog: #f5f0e8;
   --mist: #c9bfaa;
