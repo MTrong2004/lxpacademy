@@ -88,7 +88,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "48ac2c2" : null;
+  var currentVersion = true ? "caf87f9" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -369,6 +369,371 @@
     window.lhClearErrors = lhClearErrors;
     window.addEventListener("error", (e) => lhWarn("window.onerror", e?.error || e?.message || e));
     window.addEventListener("unhandledrejection", (e) => lhWarn("unhandledRejection", e?.reason || e));
+  }
+
+  // src/core/mock.js
+  var LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]", "::1"];
+  function isMockMode() {
+    try {
+      const params = new URLSearchParams(location.search);
+      if (params.get("mock") !== "1") return false;
+      if (!LOCAL_HOSTS.includes(location.hostname)) {
+        console.warn("[MOCK] ?mock=1 ch\u1EC9 ho\u1EA1t \u0111\u1ED9ng tr\xEAn localhost \u2014 b\u1ECF qua.");
+        return false;
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  function readOptions() {
+    const p = new URLSearchParams(location.search);
+    const role = ["admin", "editor", "user"].includes(p.get("role")) ? p.get("role") : "user";
+    return {
+      role,
+      pending: p.get("pending") === "1",
+      blocked: p.get("blocked") === "1",
+      fail: p.get("fail") || "",
+      // '500' | '401' | '403' | ''
+      subject: (p.get("subject") || "MOCK1").toUpperCase()
+    };
+  }
+  var MOCK_USER = {
+    id: "mock-user-0000-0000",
+    email: "mock@localhost",
+    user_metadata: { full_name: "Ng\u01B0\u1EDDi D\xF9ng Mock", avatar_url: "" }
+  };
+  function mockProfile(opts) {
+    return {
+      id: MOCK_USER.id,
+      user_id: MOCK_USER.id,
+      email: MOCK_USER.email,
+      full_name: "Ng\u01B0\u1EDDi D\xF9ng Mock",
+      avatar_url: "",
+      role: opts.role,
+      current_subject: opts.subject,
+      approved: !opts.pending,
+      blocked: opts.blocked,
+      force_logout: false
+    };
+  }
+  var MOCK_CHAPTERS = [
+    ["MOCK1_C1", "Ch\u01B0\u01A1ng 1", 34],
+    ["MOCK1_C2", "Ch\u01B0\u01A1ng 2", 12],
+    ["MOCK1_C3", "Ch\u01B0\u01A1ng 3", 8],
+    ["MOCK1_C4", "Ch\u01B0\u01A1ng 4 t\xEAn r\u1EA5t d\xE0i \u0111\u1EC3 ki\u1EC3m tra tr\xE0n ch\u1EEF", 20]
+  ];
+  function mockSubjects() {
+    const make = (id, code, name, count) => ({
+      id,
+      code,
+      name,
+      description: `M\xF4n gi\u1EA3 l\u1EADp ${code} \u2014 d\u1EEF li\u1EC7u kh\xF4ng c\xF3 th\u1EADt`,
+      cover: "",
+      sort_order: id,
+      is_active: true,
+      created_at: "2026-01-01T00:00:00.000Z",
+      question_count: count,
+      questions_count: count,
+      count
+    });
+    return {
+      data: [
+        make(1, "MOCK1", "M\xF4n Mock M\u1ED9t", 4),
+        make(2, "MOCK2", "M\xF4n Mock Hai", 2),
+        ...MOCK_CHAPTERS.map(([code, name, count], i) => make(3 + i, code, name, count))
+      ]
+    };
+  }
+  function mockQuestions(subjectCode) {
+    const code = (subjectCode || "MOCK1").toUpperCase();
+    const base = (num, question, options, answer, extra = {}) => ({
+      id: `${code}-${num}`,
+      subject_code: code,
+      num,
+      question,
+      options,
+      answer,
+      answer_text: options[answer] || "",
+      images: [],
+      is_active: true,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      has_image: false,
+      error_risk: "low",
+      error_risk_reason: "",
+      ...extra
+    });
+    const all = {
+      MOCK1: [
+        base(1, "Th\u1EE7 \u0111\xF4 c\u1EE7a Vi\u1EC7t Nam l\xE0 g\xEC?", { A: "H\xE0 N\u1ED9i", B: "Hu\u1EBF", C: "\u0110\xE0 N\u1EB5ng", D: "C\u1EA7n Th\u01A1" }, "A"),
+        base(2, "2 + 2 = ?", { A: "3", B: "4", C: "5", D: "22" }, "B"),
+        base(3, "C\xE2u n\xE0y c\xF3 \u0111\xE1nh d\u1EA5u r\u1EE7i ro cao \u2014 d\xF9ng \u0111\u1EC3 ki\u1EC3m hi\u1EC3n th\u1ECB c\u1EA3nh b\xE1o.", { A: "\u0110\xFAng", B: "Sai" }, "A", {
+          error_risk: "high",
+          error_risk_reason: "C\xE2u gi\u1EA3 l\u1EADp \u0111\u1EC3 test giao di\u1EC7n c\u1EA3nh b\xE1o"
+        }),
+        base(4, "C\xE2u d\xE0i \u0111\u1EC3 ki\u1EC3m xu\u1ED1ng d\xF2ng: " + "n\u1ED9i dung l\u1EB7p l\u1EA1i nhi\u1EC1u l\u1EA7n. ".repeat(12), { A: "A", B: "B" }, "B")
+      ],
+      MOCK2: [
+        base(1, "N\u01B0\u1EDBc s\xF4i \u1EDF bao nhi\xEAu \u0111\u1ED9 C (\xE1p su\u1EA5t th\u01B0\u1EDDng)?", { A: "90", B: "100", C: "110", D: "120" }, "B"),
+        base(2, "HTML l\xE0 vi\u1EBFt t\u1EAFt c\u1EE7a g\xEC?", { A: "HyperText Markup Language", B: "Hot Mail" }, "A")
+      ]
+    };
+    const chapter = MOCK_CHAPTERS.find(([c]) => c === code);
+    if (chapter) {
+      const n = chapter[2];
+      return {
+        data: Array.from(
+          { length: n },
+          (_, i) => base(
+            i + 1,
+            `[${code}] C\xE2u s\u1ED1 ${i + 1} \u2014 c\xE2u gi\u1EA3 l\u1EADp c\u1EE7a ${chapter[1]}.`,
+            { A: "\u0110\xFAng", B: "Sai" },
+            i % 2 ? "B" : "A"
+          )
+        )
+      };
+    }
+    return { data: all[code] || [] };
+  }
+  function mockAdminDashboard(opts) {
+    const subjects = mockSubjects().data;
+    const questions = subjects.flatMap((s) => mockQuestions(s.code).data);
+    return {
+      profiles: [
+        mockProfile({ ...opts, role: "admin" }),
+        { ...mockProfile({ ...opts, role: "user" }), id: "mock-user-2", email: "user2@localhost" }
+      ],
+      questions,
+      requests: [],
+      history: [],
+      logs: [],
+      subjects,
+      subject_requests: [],
+      deleted_questions: [],
+      deleted_subjects: []
+    };
+  }
+  var SUBJECT_KEY = "learninghub_subject_code_merged_v1";
+  var QCACHE_PREFIX = "learninghub_questions_cache_v2_";
+  function seedMockSubject(opts) {
+    try {
+      localStorage.setItem(SUBJECT_KEY, opts.subject);
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(QCACHE_PREFIX) && k.slice(QCACHE_PREFIX.length).startsWith("MOCK")) {
+          localStorage.removeItem(k);
+        }
+      }
+    } catch (e) {
+      lhWarn("MOCK:seedSubject", e);
+    }
+  }
+  function clearMockLeftovers() {
+    try {
+      if ((localStorage.getItem(SUBJECT_KEY) || "").startsWith("MOCK")) {
+        localStorage.removeItem(SUBJECT_KEY);
+        console.warn("[MOCK] \u0110\xE3 x\xF3a m\xF4n MOCK* c\xF2n s\xF3t trong localStorage.");
+      }
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(QCACHE_PREFIX) && k.slice(QCACHE_PREFIX.length).startsWith("MOCK")) {
+          localStorage.removeItem(k);
+        }
+      }
+    } catch (e) {
+      lhWarn("MOCK:cleanup", e);
+    }
+  }
+  function forceAdminAppVisible() {
+    const apply = () => {
+      document.getElementById("loginBox")?.classList.add("hidden");
+      document.getElementById("denyBox")?.classList.add("hidden");
+      document.getElementById("appBox")?.classList.remove("hidden");
+    };
+    const start = () => {
+      if (!document.getElementById("appBox")) return;
+      apply();
+      const obs = new MutationObserver((muts) => {
+        for (const m of muts) {
+          const id = m.target.id;
+          if (id === "loginBox" || id === "denyBox") {
+            if (!m.target.classList.contains("hidden")) apply();
+          } else if (id === "appBox" && m.target.classList.contains("hidden")) {
+            apply();
+          }
+        }
+      });
+      for (const id of ["loginBox", "denyBox", "appBox"]) {
+        const el = document.getElementById(id);
+        if (el) obs.observe(el, { attributes: true, attributeFilter: ["class"] });
+      }
+      window.__LH_MOCK_ADMIN_OBSERVER = obs;
+    };
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
+    else start();
+  }
+  function fakeAdminAuthSession() {
+    const sdk = window.supabase;
+    if (!sdk || typeof sdk.createClient !== "function" || sdk.__lhMockAuth) return;
+    if (!document.getElementById("appBox")) return;
+    const realCreate = sdk.createClient.bind(sdk);
+    const session = { access_token: "mock-token", token_type: "bearer", user: MOCK_USER };
+    sdk.createClient = function() {
+      const c = realCreate.apply(null, arguments);
+      try {
+        c.auth.getSession = async () => ({ data: { session }, error: null });
+        c.auth.getUser = async () => ({ data: { user: MOCK_USER }, error: null });
+        c.auth.onAuthStateChange = () => ({ data: { subscription: { unsubscribe() {
+        } } } });
+      } catch (e) {
+        lhWarn("MOCK:adminAuth", e);
+      }
+      return c;
+    };
+    sdk.__lhMockAuth = true;
+  }
+  function jsonResponse(body, status = 200) {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+  function mockApiResponse(pathname, query, opts) {
+    if (opts.fail === "500") {
+      return jsonResponse({ error: "L\u1ED7i gi\u1EA3 l\u1EADp", code: "INTERNAL_ERROR" }, 500);
+    }
+    if (opts.fail === "401") {
+      return jsonResponse({ error: "Phi\xEAn \u0111\u0103ng nh\u1EADp kh\xF4ng h\u1EE3p l\u1EC7", code: "UNAUTHORIZED" }, 401);
+    }
+    if (opts.blocked) {
+      return jsonResponse({ error: "T\xE0i kho\u1EA3n \u0111\xE3 b\u1ECB kh\xF3a", code: "BLOCKED" }, 403);
+    }
+    if (opts.pending) {
+      return jsonResponse({ error: "T\xE0i kho\u1EA3n ch\u01B0a \u0111\u01B0\u1EE3c ph\xEA duy\u1EC7t", code: "PENDING_APPROVAL" }, 403);
+    }
+    const route = pathname.replace(/^\/api\/?/, "").split("/")[0];
+    switch (route) {
+      case "subjects":
+        return jsonResponse(mockSubjects());
+      case "questions": {
+        const subject = query.get("subject_code") || opts.subject;
+        return jsonResponse(mockQuestions(subject));
+      }
+      case "profile":
+        return jsonResponse({ data: mockProfile(opts) });
+      case "settings":
+        return jsonResponse({ data: { maintenance: false, announcement: "" } });
+      case "my-edit-requests":
+      case "edit-requests":
+      case "staff-edit-requests":
+        return jsonResponse({ data: [] });
+      case "admin-dashboard":
+        return jsonResponse(mockAdminDashboard(opts));
+      case "notify":
+        return jsonResponse({ ok: true });
+      case "admin-action":
+        return jsonResponse({ ok: true, data: null, mock: true });
+      default:
+        return jsonResponse({ error: `Route gi\u1EA3 l\u1EADp ch\u01B0a h\u1ED7 tr\u1EE3: ${route}`, code: "NOT_FOUND" }, 404);
+    }
+  }
+  function fakeSupabase(opts) {
+    const profile2 = mockProfile(opts);
+    const noop = () => {
+    };
+    return {
+      init: async () => profile2,
+      isReady: () => true,
+      isAdmin: () => opts.role === "admin",
+      canOpenDashboard: () => ["admin", "editor"].includes(opts.role),
+      submitEditRequest: async () => ({ ok: true, mock: true }),
+      loadQuestionsFromSupabase: async () => mockQuestions(opts.subject).data,
+      openAuth: noop,
+      openAdmin: () => {
+        if (["admin", "editor"].includes(opts.role)) location.href = "admin.html?mock=1&role=" + opts.role;
+        else alert("[MOCK] Vai hi\u1EC7n t\u1EA1i kh\xF4ng m\u1EDF \u0111\u01B0\u1EE3c dashboard. Th\u1EED ?mock=1&role=admin");
+      },
+      signOut: async () => {
+        alert("[MOCK] signOut kh\xF4ng l\xE0m g\xEC trong ch\u1EBF \u0111\u1ED9 mock.");
+      },
+      signInGoogle: async () => {
+        alert('[MOCK] \u0110\xE3 \u0111\u0103ng nh\u1EADp s\u1EB5n d\u01B0\u1EDBi vai "' + opts.role + '".');
+      },
+      getUser: () => MOCK_USER,
+      getProfile: () => profile2,
+      getSession: () => ({ access_token: "mock-token" }),
+      __client: null,
+      __mock: true
+    };
+  }
+  var networkInstalled = false;
+  function installMockNetwork() {
+    if (networkInstalled) return;
+    networkInstalled = true;
+    const opts = readOptions();
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (input, init2) => {
+      let pathname = "";
+      let query = new URLSearchParams();
+      try {
+        const u = new URL(typeof input === "string" ? input : input.url, location.origin);
+        pathname = u.pathname;
+        query = u.searchParams;
+      } catch (e) {
+        lhWarn("MOCK:url", e);
+      }
+      if (!pathname.startsWith("/api")) return realFetch(input, init2);
+      const method = (init2?.method || "GET").toUpperCase();
+      const label = query.get("subject_code") ? ` (${query.get("subject_code")})` : "";
+      console.log(`[MOCK] ${method} ${pathname}${label} -> d\u1EEF li\u1EC7u gi\u1EA3`);
+      return mockApiResponse(pathname, query, opts);
+    };
+  }
+  if (isMockMode()) installMockNetwork();
+  function installMock() {
+    if (!isMockMode()) return false;
+    const opts = readOptions();
+    seedMockSubject(opts);
+    fakeAdminAuthSession();
+    forceAdminAppVisible();
+    try {
+      Object.defineProperty(window, "__LH_ACCESS_OK", {
+        get: () => true,
+        set: () => {
+        },
+        configurable: true
+      });
+    } catch (e) {
+      lhWarn("MOCK:gate", e);
+      window.__LH_ACCESS_OK = true;
+    }
+    try {
+      window.HODSupabase = fakeSupabase(opts);
+    } catch (e) {
+      lhWarn("MOCK:supabase", e);
+    }
+    window.__LH_MOCK = { ...opts, subjects: mockSubjects().data.map((s) => s.code) };
+    const applySubject = () => {
+      try {
+        if (typeof window.setSubject === "function") window.setSubject(opts.subject);
+        else if (typeof window.setSubjectHelper === "function") window.setSubjectHelper(opts.subject);
+      } catch (e) {
+        lhWarn("MOCK:setSubject", e);
+      }
+    };
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", () => setTimeout(applySubject, 0));
+    } else {
+      setTimeout(applySubject, 0);
+    }
+    console.log(
+      `%c[MOCK] \u0110ang ch\u1EA1y d\u1EEF li\u1EC7u GI\u1EA2 \u2014 kh\xF4ng c\xF3 DB, kh\xF4ng c\xF3 \u0111\u0103ng nh\u1EADp.
+vai=${opts.role} approved=${!opts.pending} blocked=${opts.blocked}` + (opts.fail ? ` fail=${opts.fail}` : "") + `
+M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?mock=1 kh\u1ECFi URL.`,
+      "background:#7c2d12;color:#fff;padding:2px 6px;border-radius:3px"
+    );
+    return true;
   }
 
   // src/admin/adminCore.js
@@ -2633,7 +2998,10 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`))
         </div>
         <div class="field">
           <label>N\u1ED9i dung / m\xF4 t\u1EA3 m\xF4n</label>
-          <textarea id="editSubjectDesc" rows="5" maxlength="600" placeholder="M\xF4 t\u1EA3 ng\u1EAFn hi\u1EC3n th\u1ECB \u1EDF th\u1EBB m\xF4n...">${esc(s.description || "")}</textarea>
+          <!-- B\u1EA3n CH\u1EBET: openEditSubjectAdmin c\u1EE7a block n\xE0y b\u1ECB block
+               COPILOT_ADMIN_SUBJECT_NEW_BADGE_TOGGLE_20260630 (~5017) g\xE1n \u0111\xE8. Gi\u1EEF maxlength kh\u1EDBp
+               \u0111\u1EC3 hai b\u1EA3n kh\xF4ng l\u1EC7ch n\u1EBFu c\xF3 ng\xE0y b\u1EA3n n\xE0y s\u1ED1ng l\u1EA1i. Xem SUBJECT_DESC_LIMIT_20260728. -->
+          <textarea id="editSubjectDesc" rows="3" maxlength="160" placeholder="M\xF4 t\u1EA3 ng\u1EAFn hi\u1EC3n th\u1ECB \u1EDF th\u1EBB m\xF4n (t\u1ED1i \u0111a 160 k\xFD t\u1EF1)...">${esc(s.description || "")}</textarea>
         </div>
         <div class="editSubjectMeta">
           <span>Tr\u1EA1ng th\xE1i: ${s.is_active === false ? "\u0110ang \u1EA9n" : "\u0110ang hi\u1EC7n"}</span>
@@ -4214,6 +4582,7 @@ ${E(val)}</pre>`;
     window.__COPILOT_COMPACT_DRAG_SUBJECT_ORDER_20260630 = true;
     let dragSubjectCache = [];
     let dragFromIndex = -1;
+    let openBase = "";
     function injectCompactSubjectStyle() {
       if (document.getElementById("compactDragSubjectStyle")) return;
       const style = document.createElement("style");
@@ -4295,8 +4664,36 @@ ${E(val)}</pre>`;
       const code = String(s?.code || "");
       return Number(s?.__question_count || s?.question_count || s?.questions_count || (code ? 0 : 0)) || 0;
     }
+    function baseOf(code) {
+      return String(code || "").split(/[_\-\s]/)[0].toUpperCase();
+    }
+    function groupsOf(arr) {
+      const byBase = /* @__PURE__ */ new Map();
+      const order = [];
+      (arr || []).forEach((s) => {
+        const b = baseOf(s.code);
+        if (!byBase.has(b)) {
+          byBase.set(b, []);
+          order.push(b);
+        }
+        byBase.get(b).push(s);
+      });
+      return order.map((b) => ({ base: b, items: byBase.get(b) }));
+    }
+    function commitGroupOrder(groups) {
+      dragSubjectCache = groups.flatMap((g) => g.items);
+      dragSubjectCache.forEach((s, i) => {
+        s.sort_order = i + 1;
+      });
+    }
+    function searchText() {
+      return String(document.getElementById("search")?.value || "").trim().toLowerCase();
+    }
+    function countQuestions(items) {
+      return items.reduce((n, s) => n + getSubjectQuestionCount(s), 0);
+    }
     function filteredSubjects() {
-      const q = String(document.getElementById("search")?.value || "").trim().toLowerCase();
+      const q = searchText();
       const arr = dragSubjectCache.filter(isActiveSubjectRow).slice().sort(
         (a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) || String(a.code || "").localeCompare(String(b.code || ""))
       );
@@ -4331,20 +4728,10 @@ ${E(val)}</pre>`;
         alert("Kh\xF4ng l\u01B0u \u0111\u01B0\u1EE3c th\u1EE9 t\u1EF1 m\xF4n: " + (e.message || e));
       }
     }
-    window.renderSubjectAdminList = function() {
-      injectCompactSubjectStyle();
-      const list = document.getElementById("subjectAdminList");
-      if (!list) return;
-      const arr = filteredSubjects();
-      if (!arr.length) {
-        list.innerHTML = '<p class="muted">Kh\xF4ng c\xF3 m\xF4n h\u1ECDc ph\xF9 h\u1EE3p.</p>';
-        return;
-      }
-      const totalQuestions = arr.reduce((sum, s) => sum + getSubjectQuestionCount(s), 0);
-      list.innerHTML = `<p class="subjectOrderHint">T\u1ED5ng: <b>${arr.length}</b> m\xF4n \xB7 <b>${totalQuestions}</b> c\xE2u. K\xE9o d\u1EA5u \u2630 \u0111\u1EC3 \u0111\u1ED5i v\u1ECB tr\xED.</p>` + arr.map(
-        (s, idx) => `
-      <div class="subjectAdminItem" draggable="true" data-subject-key="${esc(subjectKey(s))}" data-visible-index="${idx}">
-        <div class="subjectDragHandle" title="K\xE9o \u0111\u1EC3 \u0111\u1ED5i v\u1ECB tr\xED">\u2630</div>
+    function subjectRowHTML(s, idx, draggable) {
+      return `
+      <div class="subjectAdminItem" draggable="${draggable ? "true" : "false"}" data-subject-key="${esc(subjectKey(s))}" data-visible-index="${idx}">
+        <div class="subjectDragHandle" title="${draggable ? "K\xE9o \u0111\u1EC3 \u0111\u1ED5i v\u1ECB tr\xED" : "X\xF3a \xF4 t\xECm ki\u1EBFm \u0111\u1EC3 k\xE9o \u0111\u1ED5i v\u1ECB tr\xED"}">\u2630</div>
         <div class="subjectAdminCode">${esc(s.code || "")}</div>
         <div class="subjectAdminInfo">
           <b>${idx + 1}. ${esc(s.name || s.code || "Ch\u01B0a c\xF3 t\xEAn m\xF4n")}</b>
@@ -4355,36 +4742,117 @@ ${E(val)}</pre>`;
           <button class="act warn" type="button" onclick="openEditSubjectAdmin('${escJs(s.code)}')">S\u1EEDa</button>
           ${isAdmin() ? `<button class="act bad" type="button" onclick="deleteSubjectAdmin('${escJs(s.code)}')">X\xF3a</button>` : ""}
         </div>
-      </div>`
-      ).join("");
-      bindSubjectDragEvents();
+      </div>`;
+    }
+    function folderRowHTML(g, idx, draggable) {
+      const codes = g.items.map((s) => String(s.code || "")).join(" \xB7 ");
+      return `
+      <div class="subjectAdminFolder" draggable="${draggable ? "true" : "false"}" data-folder-base="${esc(g.base)}" data-visible-index="${idx}">
+        <div class="subjectDragHandle" title="${draggable ? "K\xE9o \u0111\u1EC3 \u0111\u1ED5i v\u1ECB tr\xED" : "X\xF3a \xF4 t\xECm ki\u1EBFm \u0111\u1EC3 k\xE9o \u0111\u1ED5i v\u1ECB tr\xED"}">\u2630</div>
+        <div class="subjectAdminCode subjectFolderCode">${esc(g.base)}</div>
+        <div class="subjectAdminInfo">
+          <b>${idx + 1}. Th\u01B0 m\u1EE5c ${esc(g.base)}</b>
+          <p>${esc(codes)}</p>
+          <div class="subjectFolderChips">
+            <span class="subjectFolderChip">${g.items.length} m\xF4n</span>
+            <span class="subjectQuestionCount">T\u1ED5ng s\u1ED1 c\xE2u: <b>${countQuestions(g.items)}</b> c\xE2u</span>
+          </div>
+        </div>
+        <div class="subjectAdminActions">
+          <button class="act ok subjectFolderOpenBtn" type="button" onclick="openSubjectFolderAdmin('${escJs(g.base)}')">M\u1EDF \u25B8</button>
+        </div>
+      </div>`;
+    }
+    function overviewHTML(groups, flatCount, mode) {
+      const folders = groups.filter((g) => g.items.length > 1).length;
+      const total = countQuestions(groups.flatMap((g) => g.items));
+      const where = mode === "search" ? "K\u1EBFt qu\u1EA3 t\xECm ki\u1EBFm" : mode === "folder" ? `Th\u01B0 m\u1EE5c <b>${esc(openBase)}</b>` : `<b>${folders}</b> th\u01B0 m\u1EE5c \xB7 <b>${groups.length - folders}</b> m\xF4n l\u1EBB`;
+      const hint = mode === "search" ? "X\xF3a \xF4 t\xECm ki\u1EBFm \u0111\u1EC3 quay l\u1EA1i d\u1EA1ng th\u01B0 m\u1EE5c." : "K\xE9o d\u1EA5u \u2630 \u0111\u1EC3 \u0111\u1ED5i v\u1ECB tr\xED.";
+      return `<p class="subjectOrderHint">${where} \u2014 <b>${flatCount}</b> m\xF4n \xB7 <b>${total}</b> c\xE2u. ${hint}</p>`;
+    }
+    function folderBackHTML(g) {
+      return `<div class="subjectAdminBackBar">
+      <button class="act subjectAdminBack" type="button" onclick="openSubjectFolderAdmin('')">\u2190 T\u1EA5t c\u1EA3 m\xF4n</button>
+      <span class="subjectAdminCode subjectFolderCode">${esc(g.base)}</span>
+      <span class="subjectAdminBackMeta">${g.items.length} m\xF4n \xB7 ${countQuestions(g.items)} c\xE2u</span>
+    </div>`;
+    }
+    window.openSubjectFolderAdmin = function(base) {
+      openBase = String(base || "");
+      renderSubjectAdminList();
+      const list = document.getElementById("subjectAdminList");
+      if (list) list.scrollTop = 0;
     };
-    function bindSubjectDragEvents() {
+    window.renderSubjectAdminList = function() {
+      injectCompactSubjectStyle();
       const list = document.getElementById("subjectAdminList");
       if (!list) return;
-      list.querySelectorAll(".subjectAdminItem").forEach((item) => {
+      const q = searchText();
+      const arr = filteredSubjects();
+      const groups = groupsOf(arr);
+      const openGroup = q ? null : groups.find((g) => g.base === openBase && g.items.length > 1) || null;
+      if (!q && !openGroup) openBase = "";
+      if (!arr.length) {
+        openBase = "";
+        list.innerHTML = '<p class="muted">Kh\xF4ng c\xF3 m\xF4n h\u1ECDc ph\xF9 h\u1EE3p.</p>';
+        return;
+      }
+      list.classList.toggle("inFolder", !!openGroup);
+      if (q) {
+        list.innerHTML = overviewHTML(groups, arr.length, "search") + arr.map((s, i) => subjectRowHTML(s, i, false)).join("");
+      } else if (openGroup) {
+        list.innerHTML = overviewHTML([openGroup], openGroup.items.length, "folder") + folderBackHTML(openGroup) + openGroup.items.map((s, i) => subjectRowHTML(s, i, true)).join("");
+      } else {
+        list.innerHTML = overviewHTML(groups, arr.length, "root") + groups.map((g, i) => g.items.length < 2 ? subjectRowHTML(g.items[0], i, true) : folderRowHTML(g, i, true)).join("");
+      }
+      bindSubjectDragEvents(!!openGroup);
+    };
+    function bindSubjectDragEvents(inFolder) {
+      const list = document.getElementById("subjectAdminList");
+      if (!list) return;
+      const rows = [...list.querySelectorAll('[draggable="true"]')];
+      if (!rows.length) return;
+      const keyOf = (el) => el.dataset.folderBase ? "F:" + el.dataset.folderBase : "S:" + el.dataset.subjectKey;
+      const indexOf = (key2) => {
+        const groups = groupsOf(dragSubjectCache);
+        if (inFolder) {
+          const g = groups.find((x) => x.base === openBase);
+          return g ? g.items.findIndex((s) => "S:" + subjectKey(s) === key2) : -1;
+        }
+        return groups.findIndex((g) => (g.items.length < 2 ? "S:" + subjectKey(g.items[0]) : "F:" + g.base) === key2);
+      };
+      let fromKey = "";
+      rows.forEach((item) => {
         item.addEventListener("dragstart", (e) => {
-          const key2 = item.dataset.subjectKey;
-          dragFromIndex = dragSubjectCache.findIndex((s) => subjectKey(s) === key2);
+          fromKey = keyOf(item);
+          dragFromIndex = indexOf(fromKey);
           item.classList.add("dragging");
           e.dataTransfer.effectAllowed = "move";
         });
         item.addEventListener("dragend", () => {
           item.classList.remove("dragging");
           dragFromIndex = -1;
+          fromKey = "";
         });
         item.addEventListener("dragover", (e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = "move";
         });
-        item.addEventListener("drop", async (e) => {
+        item.addEventListener("drop", (e) => {
           e.preventDefault();
-          const targetKey = item.dataset.subjectKey;
-          const toIndex = dragSubjectCache.findIndex((s) => subjectKey(s) === targetKey);
+          const toIndex = indexOf(keyOf(item));
           if (dragFromIndex < 0 || toIndex < 0 || dragFromIndex === toIndex) return;
-          const [moved] = dragSubjectCache.splice(dragFromIndex, 1);
-          dragSubjectCache.splice(toIndex, 0, moved);
-          dragSubjectCache.forEach((s, i) => s.sort_order = i + 1);
+          const groups = groupsOf(dragSubjectCache);
+          if (inFolder) {
+            const g = groups.find((x) => x.base === openBase);
+            if (!g) return;
+            const [moved] = g.items.splice(dragFromIndex, 1);
+            g.items.splice(toIndex, 0, moved);
+          } else {
+            const [moved] = groups.splice(dragFromIndex, 1);
+            groups.splice(toIndex, 0, moved);
+          }
+          commitGroupOrder(groups);
           renderSubjectAdminList();
           saveSubjectOrder();
         });
@@ -4469,8 +4937,8 @@ ${E(val)}</pre>`;
           </div>
         </div>
         <div class="field">
-          <label>N\u1ED9i dung / m\xF4 t\u1EA3 m\xF4n</label>
-          <textarea id="editSubjectDesc" rows="5" maxlength="600" placeholder="M\xF4 t\u1EA3 ng\u1EAFn hi\u1EC3n th\u1ECB \u1EDF th\u1EBB m\xF4n...">${esc(s.description || "")}</textarea>
+          <label>N\u1ED9i dung / m\xF4 t\u1EA3 m\xF4n <span class="descCounter" id="editSubjectDescCount">0/160</span></label>
+          <textarea id="editSubjectDesc" rows="3" maxlength="160" placeholder="M\xF4 t\u1EA3 ng\u1EAFn hi\u1EC3n th\u1ECB \u1EDF th\u1EBB m\xF4n (t\u1ED1i \u0111a 160 k\xFD t\u1EF1)...">${esc(s.description || "")}</textarea>
         </div>
         <label class="newBadgeToggleBox" style="display:flex;align-items:center;gap:10px;border:1px solid rgba(200,169,110,.22);border-radius:14px;padding:11px 13px;background:rgba(255,255,255,.035);cursor:pointer;">
           <input id="editSubjectNewBadge" type="checkbox" ${hasNewBadge(s) ? "checked" : ""} style="width:18px;height:18px;">
@@ -4493,6 +4961,18 @@ ${E(val)}</pre>`;
             this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, "");
           };
           input.focus();
+        }
+        const desc = document.getElementById("editSubjectDesc");
+        const count = document.getElementById("editSubjectDescCount");
+        if (desc && count) {
+          const sync = () => {
+            const n = desc.value.length;
+            count.textContent = n + "/160";
+            count.classList.toggle("nearLimit", n >= 140 && n <= 160);
+            count.classList.toggle("overLimit", n > 160);
+          };
+          desc.oninput = sync;
+          sync();
         }
       }, 0);
     };
@@ -4589,6 +5069,33 @@ ${E(val)}</pre>`;
         btn.setAttribute("onclick", "toggleSubjectNewBadgeFromCard('" + escJs(code) + "')");
         actions.insertBefore(btn, actions.firstChild);
       });
+      enhanceFolderRows();
+    }
+    function baseOf(code) {
+      return String(code || "").split(/[_\-\s]/)[0].toUpperCase();
+    }
+    function folderItems(base) {
+      const src = cardSubjectCache.length ? cardSubjectCache : cache.subjects || [];
+      return src.filter((s) => baseOf(s.code) === String(base || "").toUpperCase());
+    }
+    function enhanceFolderRows() {
+      const list = document.getElementById("subjectAdminList");
+      if (!list) return;
+      list.querySelectorAll(".subjectAdminFolder").forEach((row) => {
+        const base = row.dataset.folderBase || "";
+        if (!base || row.querySelector(".subjectNewToggle")) return;
+        const actions = row.querySelector(".subjectAdminActions");
+        if (!actions) return;
+        const items = folderItems(base);
+        const on = items.filter(hasNewBadge).length;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "act subjectNewToggle" + (items.length && on === items.length ? " isOn" : on ? " isPartial" : "");
+        btn.textContent = `NEW ${on}/${items.length}`;
+        btn.title = on ? "B\u1EA5m \u0111\u1EC3 t\u1EAFt NEW cho c\u1EA3 th\u01B0 m\u1EE5c" : "B\u1EA5m \u0111\u1EC3 b\u1EADt NEW cho c\u1EA3 th\u01B0 m\u1EE5c";
+        btn.setAttribute("onclick", "toggleSubjectFolderNewBadge('" + escJs(base) + "')");
+        actions.insertBefore(btn, actions.firstChild);
+      });
     }
     let lastCardSubjectFetchAt = 0;
     let cardSubjectFetchPromise = null;
@@ -4639,6 +5146,25 @@ ${E(val)}</pre>`;
         await window.loadSubjectsAdmin?.();
       } finally {
         if (btn) btn.classList.remove("isBusy");
+      }
+    };
+    window.toggleSubjectFolderNewBadge = async function(base) {
+      if (!isEditor()) return alert("Admin ho\u1EB7c Editor m\u1EDBi \u0111\u01B0\u1EE3c s\u1EEDa m\xF4n h\u1ECDc.");
+      const items = folderItems(base);
+      if (!items.length) return alert("Kh\xF4ng t\xECm th\u1EA5y m\xF4n h\u1ECDc trong th\u01B0 m\u1EE5c " + base + ".");
+      const next = !items.every(hasNewBadge);
+      const changed = items.filter((s) => hasNewBadge(s) !== next);
+      if (!changed.length) return;
+      setBusy(true, next ? "\u0110ang b\u1EADt NEW cho th\u01B0 m\u1EE5c..." : "\u0110ang t\u1EAFt NEW cho th\u01B0 m\u1EE5c...");
+      try {
+        for (const s of changed) {
+          if (!await adminAction("set_subject_new_badge", { id: s.id, enabled: next })) return;
+          s.cover = makeCover(s.cover || "", next);
+        }
+        toast((next ? "\u0110\xE3 b\u1EADt NEW cho " : "\u0110\xE3 t\u1EAFt NEW cho ") + changed.length + " m\xF4n trong " + base);
+        await window.loadSubjectsAdmin?.();
+      } finally {
+        setBusy(false);
       }
     };
     const previousSaveSubjectAdmin = window.saveSubjectAdmin;
@@ -5123,7 +5649,41 @@ ${E(val)}</pre>`;
       body #subjectsAdmin .subjectAdminActions .act,
       body #subjectsAdmin .subjectAdminActions button{min-height:38px!important;height:38px!important;padding:0 14px!important;border-radius:999px!important;font-size:.86rem!important;line-height:1!important;white-space:nowrap!important;}
       body #subjectsAdmin .subjectNewToggle{min-width:96px!important;height:38px!important;}
+      body #subjectsAdmin .subjectNewToggle.isPartial{background:linear-gradient(135deg,rgba(255,231,168,.30),rgba(232,196,110,.16))!important;color:#ffe9b8!important;border-color:rgba(232,212,168,.52)!important;}
       body #subjectsAdmin .subjectOrderHint{margin:0 0 10px!important;padding:10px 14px!important;border-radius:16px!important;background:rgba(0,0,0,.18)!important;border:1px solid rgba(200,169,110,.12)!important;}
+      /* SUBJECT_FOLDER_DRILLDOWN_20260728 \u2014 h\xE0ng th\u01B0 m\u1EE5c + thanh l\xF9i ra.
+         \u0110\u1EB7t trong block n\xE0y v\xEC n\xF3 l\xE0 style \u0111\u01B0\u1EE3c nh\u1ED3i CU\u1ED0I <head> (keepStyleLast), n\xEAn ch\u1EAFc ch\u1EAFn
+         kh\xF4ng b\u1ECB hai block style m\xF4n h\u1ECDc \u1EDF tr\xEAn ghi \u0111\xE8. H\xE0ng th\u01B0 m\u1EE5c l\u1EB7p \u0111\xFAng l\u01B0\u1EDBi c\u1EE7a
+         .subjectAdminItem \u0111\u1EC3 hai lo\u1EA1i h\xE0ng th\u1EB3ng c\u1ED9t v\u1EDBi nhau. */
+      body #subjectsAdmin .subjectAdminFolder{
+        display:grid!important;grid-template-columns:40px 112px minmax(0,1fr) auto!important;gap:12px!important;
+        align-items:center!important;min-height:76px!important;height:auto!important;padding:11px 15px!important;
+        border-radius:18px!important;overflow:visible!important;cursor:grab!important;
+        border:1px dashed rgba(200,169,110,.34)!important;
+        background:linear-gradient(150deg,rgba(200,169,110,.085),rgba(255,255,255,.02))!important;
+        transition:border-color .14s ease,background .14s ease,opacity .14s ease!important;
+      }
+      body #subjectsAdmin .subjectAdminFolder:hover{border-color:rgba(232,212,168,.55)!important;background:linear-gradient(150deg,rgba(200,169,110,.13),rgba(255,255,255,.03))!important;}
+      body #subjectsAdmin .subjectAdminFolder.dragging{opacity:.45!important;}
+      body #subjectsAdmin .subjectFolderCode{background:rgba(200,169,110,.18)!important;border-color:rgba(232,212,168,.34)!important;}
+      body #subjectsAdmin .subjectFolderCode::before{content:"\u25A3";margin-right:6px;opacity:.85;}
+      body #subjectsAdmin .subjectFolderChips{display:flex!important;align-items:center!important;gap:8px!important;flex-wrap:wrap!important;margin-top:3px!important;}
+      body #subjectsAdmin .subjectFolderChip{display:inline-flex!important;align-items:center!important;min-height:28px!important;padding:5px 11px!important;border-radius:999px!important;background:rgba(232,212,168,.12)!important;border:1px solid rgba(232,212,168,.28)!important;color:var(--gold2)!important;font-size:.80rem!important;font-weight:900!important;line-height:1!important;}
+      body #subjectsAdmin .subjectFolderOpenBtn{min-width:96px!important;}
+      body #subjectsAdmin .subjectAdminBackBar{display:flex!important;align-items:center!important;gap:12px!important;flex-wrap:wrap!important;margin:0 0 10px!important;padding:9px 13px!important;border:1px solid rgba(200,169,110,.18)!important;border-radius:16px!important;background:rgba(0,0,0,.22)!important;}
+      body #subjectsAdmin .subjectAdminBack{min-height:34px!important;height:34px!important;padding:0 14px!important;border-radius:999px!important;font-size:.84rem!important;font-weight:900!important;}
+      body #subjectsAdmin .subjectAdminBackBar .subjectAdminCode{min-width:0!important;max-width:none!important;width:max-content!important;}
+      body #subjectsAdmin .subjectAdminBackMeta{margin-left:auto!important;color:rgba(245,240,232,.60)!important;font-size:.84rem!important;font-weight:800!important;white-space:nowrap!important;}
+      @media (max-width:1100px){
+        body #subjectsAdmin .subjectAdminFolder{grid-template-columns:38px 104px minmax(0,1fr)!important;}
+        body #subjectsAdmin .subjectAdminFolder .subjectAdminActions{grid-column:2 / -1!important;justify-content:flex-start!important;min-width:0!important;}
+      }
+      @media (max-width:760px){
+        body #subjectsAdmin .subjectAdminFolder{grid-template-columns:38px minmax(0,1fr)!important;padding:12px!important;}
+        body #subjectsAdmin .subjectAdminFolder .subjectAdminCode{grid-column:2!important;}
+        body #subjectsAdmin .subjectAdminFolder .subjectAdminInfo,
+        body #subjectsAdmin .subjectAdminFolder .subjectAdminActions{grid-column:1 / -1!important;}
+      }
       @media (max-width:1100px){
         body #subjectsAdmin .subjectAdminItem{grid-template-columns:38px 104px minmax(0,1fr)!important;min-height:112px!important;}
         body #subjectsAdmin .subjectAdminActions{grid-column:2 / -1!important;justify-content:flex-start!important;min-width:0!important;flex-wrap:wrap!important;}
@@ -5421,11 +5981,13 @@ ${E(val)}</pre>`;
     function normalizeMode(v) {
       if (v && typeof v === "object" && "value" in v) v = v.value;
       if (typeof v !== "string") v = String(v || "approval");
-      try {
-        const parsed = JSON.parse(v);
-        if (typeof parsed === "string") v = parsed;
-      } catch (e) {
-        lhWarn("COPILOT_ADMIN_REG_MODE_AND_PAGE_RESTORE_FIX_20260630", e);
+      if (/^\s*["[{]/.test(v)) {
+        try {
+          const parsed = JSON.parse(v);
+          if (typeof parsed === "string") v = parsed;
+        } catch (e) {
+          lhWarn("COPILOT_ADMIN_REG_MODE_AND_PAGE_RESTORE_FIX_20260630", e);
+        }
       }
       v = String(v || "approval").replace(/^"+|"+$/g, "").trim();
       return ["open", "approval", "closed"].includes(v) ? v : "approval";
@@ -6046,7 +6608,9 @@ H\u1ECD s\u1EBD b\u1ECB \u0111\u0103ng xu\u1EA5t kh\u1ECFi h\u1EC7 th\u1ED1ng v\
   })();
 
   // src/admin/main.js
-  initVersionChecker();
+  var mocking = installMock();
+  if (!mocking) clearMockLeftovers();
+  if (!mocking) initVersionChecker();
   window.renderUserRowSaaS = renderUserRowSaaS2;
   window.getUserTableHeadHTML = getUserTableHeadHTML2;
   window.uploadImageToCloudinaryHelper = uploadImageToCloudinary;

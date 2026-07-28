@@ -8,7 +8,9 @@
     "build": "node scripts/build.js",
     "migrate": "node scripts/migrate.js",
     "map": "node scripts/map.js",
+    "find": "node scripts/find-symbol.js",
     "check:catch": "node scripts/check-empty-catch.js",
+    "check:overrides": "node scripts/check-overrides.js",
     "format": "prettier --write \"src/**/*.js\"",
     "format:check": "prettier --check \"src/**/*.js\""
   },

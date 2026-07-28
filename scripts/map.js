@@ -13,47 +13,21 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { splitBlocks, OUTSIDE_BLOCK } from './lib/blocks.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+// Các file tách ra theo docs/SPLIT_PLAN.md cũng phải có mặt ở đây, nếu không thì block
+// vừa chuyển đi sẽ biến mất khỏi bản đồ (và khỏi chỗ tra tag lỗi của `lhErrors()`).
 const FILES = [
   { file: 'src/student/appCore.js', label: 'appCore.js (bundle -> app.js)' },
-  { file: 'src/admin/adminCore.js', label: 'adminCore.js (bundle -> admin.js)' }
+  { file: 'src/student/exam.js', label: 'exam.js (tab Kiểm tra, tách khỏi appCore)' },
+  { file: 'src/student/editor.js', label: 'editor.js (sửa/báo cáo câu hỏi, tách khỏi appCore)' },
+  { file: 'src/student/images.js', label: 'images.js (ảnh + upload Cloudinary, tách khỏi appCore)' },
+  { file: 'src/student/library.js', label: 'library.js (tab Thư viện, tách khỏi appCore)' },
+  { file: 'src/student/subjectGate.js', label: 'subjectGate.js (cổng chọn môn + số câu, tách khỏi appCore)' },
+  { file: 'src/admin/adminCore.js', label: 'adminCore.js (bundle -> admin.js)' },
 ];
-
-const MARKER = /^\s*(?:\/\/|\/\*)\s*=+\s*(.+?)\s*=+\s*(?:\*\/)?\s*$/;
-
-function isEndMarker(raw) {
-  return /^END\b/i.test(raw) || /\bEND$/i.test(raw) || /ĐÃ XÓA/i.test(raw);
-}
-
-/** Loại các dòng chỉ toàn dấu = (`// ==========`) — không phải marker block. */
-function isRealMarker(raw) {
-  return raw.replace(/=/g, '').trim().length >= 3;
-}
-
-function slug(raw) {
-  return raw.trim().replace(/\s+/g, '_');
-}
-
-/** Cắt file thành các block theo marker. Vùng ngoài marker gộp thành "(ngoài block)". */
-function splitBlocks(lines) {
-  const blocks = [];
-  let current = null;
-  const closeAt = i => { if (current) { current.end = i; blocks.push(current); current = null; } };
-
-  lines.forEach((line, i) => {
-    const m = line.match(MARKER);
-    if (!m) return;
-    const raw = m[1].trim();
-    if (!isRealMarker(raw)) return;
-    if (isEndMarker(raw)) { closeAt(i + 1); return; }
-    closeAt(i);
-    current = { name: slug(raw), start: i + 1, end: lines.length, exports: new Set(), assigns: [], keys: new Set(), api: new Set() };
-  });
-  closeAt(lines.length);
-  return blocks;
-}
 
 function scan(text) {
   const out = { exports: new Set(), assigns: new Set(), keys: new Set(), api: new Set() };
@@ -65,7 +39,8 @@ function scan(text) {
   }
   // window.X = ... cũng là một lần "ghi đè" X vì các block khác gọi qua window.X().
   for (const x of out.exports) out.assigns.add(x);
-  for (const m of text.matchAll(/localStorage\.(?:getItem|setItem|removeItem)\(\s*['"`]([^'"`]+)['"`]/g)) out.keys.add(m[1]);
+  for (const m of text.matchAll(/localStorage\.(?:getItem|setItem|removeItem)\(\s*['"`]([^'"`]+)['"`]/g))
+    out.keys.add(m[1]);
   for (const m of text.matchAll(/['"`](\/api\/[A-Za-z0-9\-_]+)/g)) out.api.add(m[1]);
   return out;
 }
@@ -77,10 +52,49 @@ function scan(text) {
   window.* thì luôn giữ, vì đó chắc chắn là API dùng chung giữa các block.
 */
 const LOCAL_NOISE = new Set([
-  'modal', 'card', 'code', 'risk', 'imgs', 'list', 'box', 'row', 'text', 'html', 'data',
-  'item', 'file', 'opts', 'opt', 'cnt', 'info', 'meta', 'body', 'head', 'main', 'wrap',
-  'btn', 'icon', 'line', 'page', 'part', 'val', 'key', 'arr', 'obj', 'str', 'num',
-  'res', 'req', 'out', 'tmp', 'name', 'type', 'size', 'idx', 'total', 'count'
+  'modal',
+  'card',
+  'code',
+  'risk',
+  'imgs',
+  'list',
+  'box',
+  'row',
+  'text',
+  'html',
+  'data',
+  'item',
+  'file',
+  'opts',
+  'opt',
+  'cnt',
+  'info',
+  'meta',
+  'body',
+  'head',
+  'main',
+  'wrap',
+  'btn',
+  'icon',
+  'line',
+  'page',
+  'part',
+  'val',
+  'key',
+  'arr',
+  'obj',
+  'str',
+  'num',
+  'res',
+  'req',
+  'out',
+  'tmp',
+  'name',
+  'type',
+  'size',
+  'idx',
+  'total',
+  'count',
 ]);
 
 function isInterestingName(name, exported) {
@@ -103,7 +117,10 @@ function table(head, rows) {
 function short(set, max = 6) {
   const arr = [...set];
   if (!arr.length) return '';
-  const head = arr.slice(0, max).map(x => '`' + x + '`').join(', ');
+  const head = arr
+    .slice(0, max)
+    .map(x => '`' + x + '`')
+    .join(', ');
   return arr.length > max ? `${head} …+${arr.length - max}` : head;
 }
 
@@ -135,10 +152,10 @@ for (const { file, label } of FILES) {
   const funcs = declaredFunctions(text);
   const exportedAnywhere = new Set([...text.matchAll(/\bwindow\.([A-Za-z_$][\w$]*)\s*=(?!=)/g)].map(m => m[1]));
 
-  const outsideName = '(ngoài block)';
-  const assignedBy = new Map();   // tên hàm -> [block theo thứ tự]
-  const keyUsedBy = new Map();    // khóa localStorage -> Set(block)
-  const apiUsedBy = new Map();    // endpoint -> Set(block)
+  const outsideName = OUTSIDE_BLOCK;
+  const assignedBy = new Map(); // tên hàm -> [block theo thứ tự]
+  const keyUsedBy = new Map(); // khóa localStorage -> Set(block)
+  const apiUsedBy = new Map(); // endpoint -> Set(block)
   const rows = [];
 
   for (const b of blocks) {
@@ -147,7 +164,7 @@ for (const { file, label } of FILES) {
     const name = b.name || outsideName;
 
     for (const fn of s.assigns) {
-      if (!funcs.has(fn)) continue;                          // chỉ tính hàm thật, bỏ biến thường
+      if (!funcs.has(fn)) continue; // chỉ tính hàm thật, bỏ biến thường
       if (!isInterestingName(fn, exportedAnywhere)) continue; // bỏ biến local trùng tên hàm
       const list = assignedBy.get(fn) || [];
       if (list[list.length - 1] !== name) list.push(name);
@@ -162,12 +179,7 @@ for (const { file, label } of FILES) {
       apiUsedBy.get(a).add(name);
     }
 
-    rows.push([
-      '`' + name + '`',
-      `${b.start}–${b.end}`,
-      String(b.end - b.start + 1),
-      short(s.exports, 5) || '—'
-    ]);
+    rows.push(['`' + name + '`', `${b.start}–${b.end}`, String(b.end - b.start + 1), short(s.exports, 5) || '—']);
   }
 
   const overrides = [...assignedBy.entries()]
@@ -178,24 +190,32 @@ for (const { file, label } of FILES) {
   md += `${lines.length} dòng · ${blocks.length} block\n\n`;
 
   md += `### Hàm bị ghi đè nhiều lần (bản CUỐI = bản đang chạy)\n\n`;
-  md += table(['Hàm', 'Số block gán', 'Thứ tự block (cuối cùng thắng)'], overrides.map(([fn, list]) => {
-    const marked = list.map((b, i) => (i === list.length - 1 ? '**' + b + '**' : b));
-    const chain = marked.length > 6
-      ? [...marked.slice(0, 2), `…${marked.length - 4} block nữa…`, ...marked.slice(-2)].join(' → ')
-      : marked.join(' → ');
-    return ['`' + fn + '`', String(list.length), chain];
-  }));
+  md += table(
+    ['Hàm', 'Số block gán', 'Thứ tự block (cuối cùng thắng)'],
+    overrides.map(([fn, list]) => {
+      const marked = list.map((b, i) => (i === list.length - 1 ? '**' + b + '**' : b));
+      const chain =
+        marked.length > 6
+          ? [...marked.slice(0, 2), `…${marked.length - 4} block nữa…`, ...marked.slice(-2)].join(' → ')
+          : marked.join(' → ');
+      return ['`' + fn + '`', String(list.length), chain];
+    }),
+  );
 
   md += `\n### Danh sách block\n\n`;
   md += table(['Block', 'Dòng', 'Số dòng', 'Gán ra window.*'], rows);
 
   md += `\n### Khóa localStorage\n\n`;
-  md += table(['Khóa', 'Block dùng'], [...keyUsedBy.entries()].sort()
-    .map(([k, set]) => ['`' + k + '`', [...set].join(', ')]));
+  md += table(
+    ['Khóa', 'Block dùng'],
+    [...keyUsedBy.entries()].sort().map(([k, set]) => ['`' + k + '`', [...set].join(', ')]),
+  );
 
   md += `\n### Endpoint API\n\n`;
-  md += table(['Endpoint', 'Block gọi'], [...apiUsedBy.entries()].sort()
-    .map(([a, set]) => ['`' + a + '`', [...set].join(', ')]));
+  md += table(
+    ['Endpoint', 'Block gọi'],
+    [...apiUsedBy.entries()].sort().map(([a, set]) => ['`' + a + '`', [...set].join(', ')]),
+  );
 }
 
 mkdirSync(path.join(root, 'docs'), { recursive: true });

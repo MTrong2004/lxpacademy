@@ -500,7 +500,12 @@ body{margin:0;min-height:100vh;background:radial-gradient(circle at 70% -10%,rgb
 .editSubjectNotice{padding:12px 14px!important;border-radius:14px!important;border:1px solid rgba(232,212,168,.18)!important;background:rgba(232,212,168,.07)!important;color:rgba(245,240,232,.75)!important;line-height:1.45!important;}
 .editSubjectForm input,
 .editSubjectForm textarea{width:100%!important;border:1px solid rgba(200,169,110,.25)!important;border-radius:14px!important;background:rgba(255,255,255,.045)!important;color:#fff!important;padding:12px 14px!important;outline:none!important;}
-.editSubjectForm textarea{min-height:118px!important;resize:vertical!important;}
+.editSubjectForm textarea{min-height:92px!important;resize:vertical!important;}
+/* SUBJECT_DESC_LIMIT_20260728: bộ đếm ký tự ô mô tả môn (160 = đúng 3 dòng thẻ môn hiện được
+   ở app.css .subjectCardDesc). Rule cùng tên có trong app.css cho form "Thêm môn" bên app học sinh. */
+.descCounter{float:right!important;color:rgba(245,240,232,.45)!important;font-size:.78rem!important;font-weight:700!important;font-variant-numeric:tabular-nums!important;}
+.descCounter.nearLimit{color:#e0b96a!important;}
+.descCounter.overLimit{color:#e9877b!important;}
 .editSubjectForm input:focus,
 .editSubjectForm textarea:focus{border-color:rgba(232,212,168,.58)!important;box-shadow:0 0 0 3px rgba(232,212,168,.10)!important;}
 .editSubjectMeta{display:flex!important;flex-wrap:wrap!important;gap:8px!important;color:var(--mist)!important;font-size:.86rem!important;}

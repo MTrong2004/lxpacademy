@@ -1078,6 +1078,11 @@ to{opacity:1;transform:translateY(0)}
 .addSubjectField.full{grid-column:1/-1 !important}
 .addSubjectField label{color:rgba(232,212,168,.86) !important;font-size:.82rem !important;font-weight:850 !important}
 .addSubjectField .req{color:#e9877b !important}
+/* SUBJECT_DESC_LIMIT_20260728: bộ đếm ký tự của ô mô tả môn (giới hạn 160, khớp 3 dòng
+   mà .subjectCardDesc hiện được). Rule cùng tên có trong admin.css cho trang admin. */
+.descCounter{float:right !important;color:rgba(245,240,232,.45) !important;font-size:.76rem !important;font-weight:700 !important;font-variant-numeric:tabular-nums !important}
+.descCounter.nearLimit{color:#e0b96a !important}
+.descCounter.overLimit{color:#e9877b !important}
 .addSubjectField input,.addSubjectField textarea{width:100% !important;max-width:100% !important;min-width:0 !important;box-sizing:border-box !important;border:1px solid rgba(200,169,110,.22) !important;border-radius:13px !important;background:rgba(255,255,255,.045) !important;color:var(--fog,#f5f0e8) !important;padding:11px 13px !important;font-size:.92rem !important;outline:none !important}
 .addSubjectField textarea{resize:vertical !important;min-height:74px !important}
 .aiStepCard{width:100% !important;margin:0 0 14px !important;color:rgba(245,240,232,.76) !important;line-height:1.55 !important}
@@ -1149,7 +1154,7 @@ to{opacity:1;transform:translateY(0)}
 .importStepActions{margin-top:0 !important;padding-top:12px !important;border-top:1px solid rgba(232,212,168,.10) !important;align-items:center !important}
 .importStepActions .primary,.importStepActions .btn{min-height:40px !important;height:40px !important;padding:0 16px !important}
 .addSubjectForm{width:100% !important;min-width:0 !important;padding:20px !important;border-radius:20px !important;border:1px solid rgba(232,212,168,.18) !important;background:linear-gradient(145deg,rgba(245,240,232,.065),rgba(255,255,255,.025)) !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.04) !important;box-sizing:border-box !important;overflow-y:auto !important;overflow-x:hidden !important;max-height:none !important;overflow:visible !important;padding-bottom:16px !important}
-.polishedSubjectPanel{position:relative;z-index:1;border:1px solid rgba(200,169,110,.22);background:linear-gradient(145deg,rgba(245,240,232,.06),rgba(255,255,255,.02));box-shadow:0 28px 90px rgba(0,0,0,.42);width:min(1040px,96vw) !important;padding:18px !important;border-radius:24px !important;gap:12px !important;display:flex !important;flex-direction:column !important;max-height:calc(100dvh - 28px) !important;overflow:auto !important}
+.polishedSubjectPanel{position:relative;z-index:1;border:1px solid rgba(200,169,110,.22);background:linear-gradient(145deg,rgba(245,240,232,.06),rgba(255,255,255,.02));box-shadow:0 28px 90px rgba(0,0,0,.42);width:min(1360px,94vw) !important;padding:18px !important;border-radius:24px !important;gap:12px !important;display:flex !important;flex-direction:column !important;max-height:calc(100dvh - 28px) !important;overflow:auto !important}
 @media (max-width:760px){.importUnifiedBox{padding:12px !important;gap:10px !important}
 #importDropZone,.importUnifiedBox .userFileInputWrap{min-height:110px !important;padding:18px 12px !important}
 .importStepActions{align-items:stretch !important;display:grid !important;grid-template-columns:1fr !important;gap:10px !important}
@@ -1191,28 +1196,65 @@ to{opacity:1;transform:translateY(0)}
 }
 .subjectCard h3,.subjectCard p{display:none !important}
 .subjectGateFooter{justify-content:space-between;align-items:center;border-top:1px solid rgba(200,169,110,.12);flex-wrap:wrap;position:sticky !important;bottom:0 !important;z-index:5 !important;display:grid !important;grid-template-columns:minmax(0,1fr) minmax(160px,240px) !important;gap:12px !important;background:linear-gradient(180deg,rgba(12,10,9,.90),rgba(12,10,9,.98)) !important;padding:10px 0 0 !important;margin-top:0 !important;padding-top:14px !important}
-.subjectCardCode{gap:8px;background:rgba(200,169,110,.12);border:1px solid rgba(200,169,110,.2);color:var(--gold2);margin-bottom:12px;justify-content:flex-start !important;flex:0 0 auto !important;width:auto !important;min-height:26px !important;padding:6px 11px !important;display:inline-flex !important;align-items:center !important;border-radius:999px !important;line-height:1 !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;font-size:.76rem !important;font-weight:950 !important;letter-spacing:.06em !important;grid-column:1 !important;grid-row:1 !important;justify-self:start !important;align-self:start !important;margin:0 !important;max-width:135px !important}
-.subjectCardTitle{opacity:1 !important;visibility:visible !important;display:block !important;min-width:0 !important;grid-column:2 !important;grid-row:1 !important;justify-self:end !important;align-self:start !important;width:auto !important;max-width:100% !important;min-height:0 !important;margin:3px 0 0 !important;padding:0 !important;color:rgba(245,240,232,.74) !important;font-size:.82rem !important;font-weight:800 !important;line-height:1.18 !important;text-align:right !important;letter-spacing:.01em !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;text-shadow:none !important}
-.subjectCardDesc{opacity:1 !important;visibility:visible !important;display:-webkit-box !important;-webkit-box-orient:vertical !important;-webkit-line-clamp:2 !important;width:100% !important;min-width:0 !important;min-height:36px !important;max-height:39px !important;overflow:hidden !important;line-height:1.38 !important;margin:0 !important;grid-column:1 / -1 !important;grid-row:2 !important;margin-top:2px !important;color:rgba(245,240,232,.58) !important;font-size:.82rem !important;font-weight:600 !important}
+.subjectCardCode{gap:8px;background:rgba(200,169,110,.12);border:1px solid rgba(200,169,110,.2);color:var(--gold2);margin-bottom:12px;justify-content:flex-start !important;flex:0 0 auto !important;width:auto !important;min-height:24px !important;padding:5px 9px !important;display:inline-flex !important;align-items:center !important;border-radius:999px !important;line-height:1 !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;font-size:.72rem !important;font-weight:950 !important;letter-spacing:.05em !important;grid-column:1 !important;grid-row:1 !important;justify-self:start !important;align-self:start !important;margin:0 !important;max-width:118px !important}
+.subjectCardTitle{opacity:1 !important;visibility:visible !important;display:block !important;min-width:0 !important;grid-column:2 !important;grid-row:1 !important;justify-self:end !important;align-self:start !important;width:auto !important;max-width:100% !important;min-height:0 !important;margin:2px 0 0 !important;padding:0 !important;color:rgba(245,240,232,.74) !important;font-size:.76rem !important;font-weight:800 !important;line-height:1.18 !important;text-align:right !important;letter-spacing:.01em !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;text-shadow:none !important}
+.subjectCardDesc{opacity:1 !important;visibility:visible !important;display:-webkit-box !important;-webkit-box-orient:vertical !important;-webkit-line-clamp:2 !important;width:100% !important;min-width:0 !important;min-height:36px !important;max-height:40px !important;overflow:hidden !important;line-height:1.34 !important;margin:0 !important;grid-column:1 / -1 !important;grid-row:2 !important;margin-top:1px !important;color:rgba(245,240,232,.58) !important;font-size:.78rem !important;font-weight:600 !important}
 @media (max-width:760px){.subjectCardTitle{font-size:.78rem !important;max-width:170px !important}
 .subjectCardCode{max-width:115px !important}
 }
-.subjectMeta{margin-top:auto !important;width:100% !important;min-width:0 !important;margin:0 !important;display:flex !important;justify-content:space-between !important;gap:10px !important;border-top:1px solid rgba(232,212,168,.08) !important;color:rgba(245,240,232,.72) !important;font-size:.84rem !important;font-weight:700 !important;grid-column:1 / -1 !important;grid-row:3 !important;height:34px !important;min-height:34px !important;padding-top:6px !important;overflow:visible !important;align-items:center !important}
-.subjectChoose{flex:0 0 auto !important;position:static !important;right:auto !important;bottom:auto !important;transform:none !important;margin-left:auto !important;width:auto !important;min-width:82px !important;max-width:118px !important;height:30px !important;min-height:30px !important;padding:0 12px !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;border-radius:999px !important;box-sizing:border-box !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;font-size:.78rem !important;font-weight:900 !important;line-height:1 !important;color:rgba(245,240,232,.86) !important;background:rgba(255,255,255,.045) !important;border:1px solid rgba(232,212,168,.24) !important;box-shadow:none !important}
+.subjectMeta{margin-top:auto !important;width:100% !important;min-width:0 !important;margin:0 !important;display:flex !important;justify-content:space-between !important;gap:8px !important;border-top:1px solid rgba(232,212,168,.08) !important;color:rgba(245,240,232,.72) !important;font-size:.78rem !important;font-weight:700 !important;grid-column:1 / -1 !important;grid-row:3 !important;height:30px !important;min-height:30px !important;padding-top:5px !important;overflow:visible !important;align-items:center !important}
+.subjectChoose{flex:0 0 auto !important;position:static !important;right:auto !important;bottom:auto !important;transform:none !important;margin-left:auto !important;width:auto !important;min-width:72px !important;max-width:108px !important;height:27px !important;min-height:27px !important;padding:0 10px !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;border-radius:999px !important;box-sizing:border-box !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;font-size:.74rem !important;font-weight:900 !important;line-height:1 !important;color:rgba(245,240,232,.86) !important;background:rgba(255,255,255,.045) !important;border:1px solid rgba(232,212,168,.24) !important;box-shadow:none !important}
 .subjectChoose:hover{background:rgba(232,212,168,.11) !important;border-color:rgba(232,212,168,.42) !important}
 .subjectMeta>span:first-child{flex:1 1 auto !important;min-width:0 !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;padding-right:8px !important}
-@media (max-width:760px){.subjectCard{padding:13px !important;height:160px !important;min-height:160px !important}
+@media (max-width:760px){.subjectCard{padding:13px !important;height:178px !important;min-height:178px !important}
 .subjectChoose{min-width:78px !important;height:29px !important;font-size:.76rem !important;padding:0 10px !important}
 }
 .subjectCard.active{border-color:rgba(232,212,168,.78) !important;box-shadow:0 0 0 2px rgba(232,212,168,.18),0 18px 40px rgba(0,0,0,.28) !important}
 .subjectCard.active .subjectChoose{box-shadow:0 8px 18px rgba(0,0,0,.20) !important;background:linear-gradient(135deg,rgba(200,169,110,.95),rgba(232,212,168,.95)) !important;color:#111 !important;border-color:transparent !important;font-weight:950 !important}
 .subjectCard[aria-pressed="true"] .subjectChoose{background:linear-gradient(135deg,rgba(200,169,110,.95),rgba(232,212,168,.95)) !important;color:#111 !important}
-.subjectList{padding-right:4px;display:grid !important;flex:1 1 auto !important;min-height:160px !important;max-height:none !important;overflow:auto !important;margin:-6px -8px 0 !important;scroll-padding-top:14px !important;grid-template-columns:repeat(auto-fit,minmax(270px,1fr)) !important;align-items:stretch !important;gap:18px !important;padding:10px 16px 28px 8px !important;overflow-y:auto !important;overflow-x:hidden !important;scroll-padding:14px !important}
-.subjectCard{position:relative;border:1px solid rgba(200,169,110,.18);background:linear-gradient(145deg,rgba(245,240,232,.06),rgba(255,255,255,.02));box-shadow:0 14px 30px rgba(0,0,0,.18);border-radius:18px !important;flex-direction:column !important;justify-content:flex-start !important;color:var(--fog,#f5f0e8) !important;width:100% !important;min-width:0 !important;padding:14px 16px !important;gap:7px !important;overflow:hidden !important;text-align:left !important;box-sizing:border-box !important;display:grid !important;grid-template-columns:auto minmax(0,1fr) !important;grid-template-rows:auto minmax(42px,1fr) auto !important;column-gap:10px !important;row-gap:10px !important;align-items:start !important;height:166px !important;min-height:166px !important;padding-bottom:14px !important;transform-origin:center !important;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease,background .18s ease !important;will-change:transform !important}
+.subjectList{padding-right:4px;display:grid !important;flex:1 1 auto !important;min-height:160px !important;max-height:none !important;overflow:auto !important;margin:-6px -8px 0 !important;scroll-padding-top:14px !important;grid-template-columns:repeat(4,minmax(0,1fr)) !important;align-items:stretch !important;gap:14px !important;padding:10px 16px 24px 8px !important;overflow-y:auto !important;overflow-x:hidden !important;scroll-padding:14px !important}
+.subjectCard{position:relative;border:1px solid rgba(200,169,110,.18);background:linear-gradient(145deg,rgba(245,240,232,.06),rgba(255,255,255,.02));box-shadow:0 14px 30px rgba(0,0,0,.18);border-radius:18px !important;flex-direction:column !important;justify-content:flex-start !important;color:var(--fog,#f5f0e8) !important;width:100% !important;min-width:0 !important;padding:12px 14px !important;gap:6px !important;overflow:hidden !important;text-align:left !important;box-sizing:border-box !important;display:grid !important;grid-template-columns:auto minmax(0,1fr) !important;grid-template-rows:auto minmax(38px,1fr) auto !important;column-gap:8px !important;row-gap:7px !important;align-items:start !important;height:150px !important;min-height:150px !important;padding-bottom:12px !important;transform-origin:center !important;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease,background .18s ease !important;will-change:transform !important}
 .subjectCard:hover{transform:translateY(-2px) scale(1.012) !important;border-color:rgba(232,212,168,.45) !important;box-shadow:0 18px 42px rgba(0,0,0,.30),0 0 22px rgba(232,212,168,.12) !important;background:linear-gradient(145deg,rgba(245,240,232,.085),rgba(255,255,255,.034)) !important}
 .subjectCard.active:hover{transform:translateY(-2px) scale(1.012) !important;border-color:rgba(232,212,168,.78) !important;box-shadow:0 0 0 2px rgba(232,212,168,.18),0 20px 46px rgba(0,0,0,.32),0 0 24px rgba(232,212,168,.14) !important}
 @media (max-width:760px){.subjectList{grid-template-columns:1fr !important;gap:14px !important;padding:8px 10px 24px 6px !important}
 .subjectCard:hover,.subjectCard.active:hover{transform:translateY(-1px) scale(1.006) !important}
+}
+/* SUBJECT_FOLDER_DRILLDOWN_20260728 (thay khung mở sẵn `.subjectGroup` của
+   SUBJECT_GROUP_BY_BASE_20260728 — markup đó không còn được sinh ra nữa).
+   Cụm mã gốc giờ là MỘT thẻ thư mục nằm chung lưới với thẻ môn lẻ, nên chỉ cần một bộ cột
+   duy nhất cho `.subjectList` — không còn cảnh grid ngoài và grid trong lệch số cột.
+   Thẻ thư mục dùng lại đúng khung lưới 3 hàng của `.subjectCard` để hai loại thẻ cao bằng nhau
+   (`.subjectCardCode` / `.subjectMeta` đã ghim grid-row 1 và 3). */
+.subjectFolderCard{position:relative;border:1px dashed rgba(200,169,110,.34);background:linear-gradient(150deg,rgba(200,169,110,.085),rgba(255,255,255,.02));box-shadow:0 14px 30px rgba(0,0,0,.18);border-radius:18px !important;color:var(--fog,#f5f0e8) !important;width:100% !important;min-width:0 !important;box-sizing:border-box !important;text-align:left !important;padding:12px 14px 12px !important;display:grid !important;grid-template-columns:auto minmax(0,1fr) !important;grid-template-rows:auto minmax(38px,1fr) auto !important;column-gap:8px !important;row-gap:7px !important;align-items:start !important;height:150px !important;min-height:150px !important;overflow:hidden !important;transform-origin:center !important;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease,background .18s ease !important}
+.subjectFolderCard:hover{transform:translateY(-2px) scale(1.012) !important;border-color:rgba(232,212,168,.62) !important;box-shadow:0 18px 42px rgba(0,0,0,.30),0 0 22px rgba(232,212,168,.12) !important;background:linear-gradient(150deg,rgba(200,169,110,.13),rgba(255,255,255,.03)) !important}
+.subjectFolderCard.holdsPicked{border-style:solid !important;border-color:rgba(232,212,168,.62) !important;box-shadow:0 0 0 1px rgba(232,212,168,.14),0 16px 36px rgba(0,0,0,.26) !important}
+.subjectFolderCard .subjectCardCode::before{content:"▣";margin-right:6px;opacity:.85}
+.subjectFolderTag{grid-column:2 !important;grid-row:1 !important;justify-self:end !important;align-self:start !important;margin-top:2px !important;color:var(--gold2) !important;font-size:.74rem !important;font-weight:900 !important;letter-spacing:.02em !important;white-space:nowrap !important}
+.subjectFolderNames{grid-column:1 / -1 !important;grid-row:2 !important;display:-webkit-box !important;-webkit-box-orient:vertical !important;-webkit-line-clamp:2 !important;overflow:hidden !important;min-width:0 !important;min-height:36px !important;max-height:40px !important;margin-top:1px !important;color:rgba(245,240,232,.56) !important;font-size:.78rem !important;font-weight:650 !important;line-height:1.34 !important}
+.subjectFolderCard .subjectChoose{background:rgba(232,212,168,.13) !important;border-color:rgba(232,212,168,.40) !important;color:#f4e6c4 !important}
+/* Thanh lùi ra khi đang đứng trong một thư mục — chiếm trọn một hàng của lưới. */
+.subjectFolderBar{grid-column:1 / -1 !important;position:sticky !important;top:0 !important;z-index:6 !important;display:flex !important;align-items:center !important;gap:12px !important;flex-wrap:wrap !important;margin:0 0 2px !important;padding:9px 12px !important;border:1px solid rgba(200,169,110,.18) !important;border-radius:14px !important;background:linear-gradient(180deg,rgba(20,15,12,.97),rgba(14,11,9,.93)) !important;box-shadow:0 10px 22px rgba(0,0,0,.22) !important}
+.subjectFolderBack{height:32px !important;min-height:32px !important;padding:0 14px !important;display:inline-flex !important;align-items:center !important;border:1px solid rgba(232,212,168,.28) !important;border-radius:999px !important;background:rgba(255,255,255,.045) !important;color:rgba(245,240,232,.88) !important;font-size:.78rem !important;font-weight:900 !important;white-space:nowrap !important}
+.subjectFolderBack:hover{background:rgba(232,212,168,.13) !important;border-color:rgba(232,212,168,.48) !important}
+.subjectFolderBarCode{display:inline-flex !important;align-items:center !important;padding:5px 12px !important;border-radius:999px !important;background:rgba(200,169,110,.14) !important;border:1px solid rgba(200,169,110,.26) !important;color:var(--gold2) !important;font-size:.78rem !important;font-weight:950 !important;letter-spacing:.06em !important;line-height:1 !important;white-space:nowrap !important}
+.subjectFolderBarMeta{margin-left:auto !important;color:rgba(245,240,232,.56) !important;font-size:.78rem !important;font-weight:700 !important;white-space:nowrap !important}
+/* SỐ CỘT: 4 cột là mốc chính (thẻ hẹp nhất ~305px ở panel 1360px), rồi hạ dần theo bề rộng.
+   Mô tả chỉ còn kẹp 2 dòng nên 305px vẫn đọc được ~70 ký tự; phần bị cắt vẫn xem được ở
+   tooltip `title` của thẻ. Đổi số cột thì đo lại `.subjectCardDesc` (xem SUBJECT_DESC_LIMIT). */
+@media (max-width:1500px){.subjectList{grid-template-columns:repeat(3,minmax(0,1fr)) !important}
+}
+@media (max-width:1150px){.subjectList{grid-template-columns:repeat(2,minmax(0,1fr)) !important}
+}
+@media (max-width:1000px){.subjectCardDesc,.subjectFolderNames{-webkit-line-clamp:3 !important;min-height:52px !important;max-height:56px !important}
+.subjectCard,.subjectFolderCard{height:auto !important;min-height:168px !important}
+}
+@media (max-width:760px){.subjectList{grid-template-columns:1fr !important;gap:12px !important}
+.subjectFolderBarMeta{font-size:.74rem !important}
+}
+/* Màn thấp: ép thẻ gọn thêm để vẫn thấy đủ 3 hàng mà không phải cuộn. */
+@media (max-height:900px) and (min-width:1001px){.subjectList{gap:12px !important;padding-bottom:18px !important}
+.subjectCard,.subjectFolderCard{height:134px !important;min-height:134px !important}
+.subjectCardDesc,.subjectFolderNames{min-height:34px !important;max-height:36px !important}
 }
 .subjectGateTabs{display:flex !important;align-items:center !important;gap:10px !important;margin:-2px 0 18px !important;padding:6px 0 8px !important;border-bottom:1px solid rgba(232,212,168,.12) !important;min-height:48px !important;overflow:visible !important}
 .subjectGateTab{border-bottom:2px solid transparent !important;position:relative !important;width:auto !important;min-width:0 !important;height:38px !important;padding:0 15px !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;border:1px solid transparent !important;border-radius:999px !important;background:rgba(255,255,255,.025) !important;color:rgba(245,240,232,.56) !important;font-size:.82rem !important;font-weight:900 !important;letter-spacing:.10em !important;white-space:nowrap !important;text-transform:uppercase !important;box-shadow:none !important;transform:none !important;transition:background .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease,transform .18s ease !important}
@@ -2046,23 +2088,34 @@ body:not(.hod-is-admin-final) #adminOpenBtn,body:not(.hod-is-admin-final) #hodFl
 .examSubjectChip{min-height:168px !important;padding:18px !important}
 .examSubjectChipName{max-width:52% !important}
 }
-.examSubjectChips{display:flex !important;flex-wrap:wrap !important;gap:12px !important;align-items:flex-start !important;margin:8px 0 18px !important}
-.examSubjectChip{width:330px !important;height:165px !important;max-width:100% !important;min-height:unset !important;position:relative !important;display:block !important;padding:0 !important;border-radius:20px !important;border:1px solid rgba(232,212,168,.50) !important;background:linear-gradient(145deg,rgba(255,255,255,.050),rgba(255,255,255,.016)) !important;box-shadow:inset 0 0 0 1px rgba(232,212,168,.08),0 12px 26px rgba(0,0,0,.24) !important;color:var(--mist,#a0aec0) !important;cursor:pointer !important;overflow:hidden !important;transition:transform .14s ease,border-color .14s ease,box-shadow .14s ease !important;font-weight:500 !important}
+/* ===== FIX_EXAM_MERGE_CARD_FLOW_20260728 =====
+   Trước: thẻ "Gộp thêm môn" có chiều cao CỐ ĐỊNH và 4 phần con đều position:absolute
+   đặt theo offset gõ tay (top:62px, bottom:48px, bottom:14px…). Ba biến thể responsive
+   bên dưới lại đổi cả chiều cao thẻ LẪN offset một cách rời rạc, nên các cỡ thẻ nhỏ
+   (901px+ -> 122px, màn thấp max-height:680px -> 92px) làm gạch chia rơi đúng vào hàng
+   "N câu / Chọn" và mô tả tràn xuống dưới — đúng như ảnh người dùng gửi. Thêm nữa
+   `.examSubjectChipDesc` còn dính `min-height:48px !important` của lớp CSS cũ ở trên,
+   min-height thắng height:28px nên mô tả luôn cao 48px dù lớp mới đặt 28px.
+   Nay thẻ xếp theo LUỒNG (flex column): mô tả co giãn, hàng dưới `margin-top:auto`,
+   nên không cỡ nào chồng nhau được. Ba biến thể responsive chỉ còn tinh chỉnh cỡ chữ /
+   bề rộng, KHÔNG đặt offset tuyệt đối nữa. */
+.examSubjectChips{display:flex !important;flex-wrap:wrap !important;gap:12px !important;align-items:stretch !important;margin:8px 0 18px !important}
+.examSubjectChip{width:330px !important;height:auto !important;max-width:100% !important;min-height:150px !important;position:relative !important;display:flex !important;flex-direction:column !important;align-items:stretch !important;justify-content:flex-start !important;gap:10px !important;padding:14px 18px !important;box-sizing:border-box !important;border-radius:20px !important;border:1px solid rgba(232,212,168,.50) !important;background:linear-gradient(145deg,rgba(255,255,255,.050),rgba(255,255,255,.016)) !important;box-shadow:inset 0 0 0 1px rgba(232,212,168,.08),0 12px 26px rgba(0,0,0,.24) !important;color:var(--mist,#a0aec0) !important;cursor:pointer !important;overflow:hidden !important;transition:transform .14s ease,border-color .14s ease,box-shadow .14s ease !important;font-weight:500 !important}
 .examSubjectChip input[type="checkbox"]{position:absolute !important;opacity:0 !important;pointer-events:none !important}
 .examSubjectChip:hover{transform:translateY(-1px) !important;border-color:rgba(232,212,168,.70) !important}
 .examSubjectChip.checked{border-color:rgba(232,212,168,.82) !important;box-shadow:inset 0 0 0 1px rgba(232,212,168,.14),0 0 0 2px rgba(232,212,168,.16),0 12px 26px rgba(0,0,0,.26) !important}
-.examSubjectChipTop{position:absolute !important;left:18px !important;right:18px !important;top:14px !important;height:30px !important;display:flex !important;align-items:center !important;justify-content:space-between !important;gap:12px !important}
+.examSubjectChipTop{position:static !important;display:flex !important;align-items:center !important;justify-content:space-between !important;gap:12px !important;height:auto !important;min-height:0 !important;flex:0 0 auto !important}
 .examSubjectChipCode{display:inline-flex !important;align-items:center !important;justify-content:center !important;height:30px !important;padding:0 12px !important;border-radius:12px !important;background:rgba(200,169,110,.14) !important;border:1px solid rgba(232,212,168,.30) !important;color:var(--gold2,#e8d4a8) !important;font-weight:700 !important;font-size:.92rem !important;letter-spacing:.04em !important;line-height:1 !important;flex:0 0 auto !important}
-.examSubjectChipName{color:rgba(255,255,255,.84) !important;font-weight:650 !important;font-size:.86rem !important;line-height:1.1 !important;text-align:right !important;overflow:hidden !important;text-overflow:ellipsis !important;white-space:nowrap !important;max-width:155px !important}
-.examSubjectChipDesc{position:absolute !important;left:18px !important;right:18px !important;top:62px !important;display:block !important;color:rgba(220,214,202,.62) !important;font-weight:500 !important;font-size:.86rem !important;line-height:1.35 !important;height:36px !important;overflow:hidden !important}
-.examSubjectChipDivider{position:absolute !important;left:18px !important;right:18px !important;bottom:48px !important;display:block !important;height:1px !important;background:rgba(232,212,168,.10) !important}
-.examSubjectChipBottom{position:absolute !important;left:18px !important;right:18px !important;bottom:14px !important;height:32px !important;display:flex !important;align-items:center !important;justify-content:space-between !important;gap:12px !important}
-.examSubjectChipCount{color:rgba(255,255,255,.70) !important;font-weight:650 !important;font-size:.90rem !important;line-height:1 !important}
-.examSubjectChipChoose{display:inline-flex !important;align-items:center !important;justify-content:center !important;min-width:86px !important;height:32px !important;padding:0 14px !important;border-radius:999px !important;background:rgba(255,255,255,.06) !important;border:1px solid rgba(232,212,168,.22) !important;color:rgba(255,255,255,.82) !important;font-weight:650 !important;font-size:.84rem !important;line-height:1 !important}
+.examSubjectChipName{min-width:0 !important;max-width:none !important;flex:1 1 auto !important;color:rgba(255,255,255,.84) !important;font-weight:650 !important;font-size:.86rem !important;line-height:1.1 !important;text-align:right !important;overflow:hidden !important;text-overflow:ellipsis !important;white-space:nowrap !important}
+.examSubjectChipDesc{position:static !important;display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;flex:1 1 auto !important;height:auto !important;min-height:0 !important;color:rgba(220,214,202,.62) !important;font-weight:500 !important;font-size:.86rem !important;line-height:1.35 !important;overflow:hidden !important}
+.examSubjectChipDivider{position:static !important;display:block !important;flex:0 0 auto !important;width:100% !important;height:1px !important;background:rgba(232,212,168,.10) !important}
+.examSubjectChipBottom{position:static !important;margin-top:auto !important;display:flex !important;align-items:center !important;justify-content:space-between !important;gap:12px !important;height:auto !important;min-height:0 !important;flex:0 0 auto !important}
+.examSubjectChipCount{color:rgba(255,255,255,.70) !important;font-weight:650 !important;font-size:.90rem !important;line-height:1 !important;white-space:nowrap !important}
+.examSubjectChipChoose{display:inline-flex !important;align-items:center !important;justify-content:center !important;flex:0 0 auto !important;min-width:86px !important;height:32px !important;padding:0 14px !important;border-radius:999px !important;background:rgba(255,255,255,.06) !important;border:1px solid rgba(232,212,168,.22) !important;color:rgba(255,255,255,.82) !important;font-weight:650 !important;font-size:.84rem !important;line-height:1 !important;white-space:nowrap !important}
 .examSubjectChip.checked .examSubjectChipChoose{background:linear-gradient(135deg,#d5b169,#ebd392) !important;border-color:rgba(255,255,255,.16) !important;color:#12100b !important;font-weight:700 !important}
-@media (max-width:520px){.examSubjectChip{width:100% !important;height:160px !important}
-.examSubjectChipName{max-width:48% !important}
+@media (max-width:520px){.examSubjectChip{width:100% !important}
 }
+/* ===== END FIX_EXAM_MERGE_CARD_FLOW_20260728 ===== */
 @media (max-width:760px){html,body{width:100% !important;height:100dvh !important;overflow:hidden !important;overscroll-behavior:none !important}
 .content{height:calc(100dvh - var(--headH,122px)) !important;min-height:0 !important;margin-top:var(--headH,122px) !important;padding-top:0 !important;overflow:hidden !important}
 #quiz.pane.scroll.active,#study.pane.scroll.active{display:block !important;height:calc(100dvh - var(--headH,122px)) !important;max-height:calc(100dvh - var(--headH,122px)) !important;min-height:0 !important;overflow-y:auto !important;overflow-x:hidden !important;-webkit-overflow-scrolling:touch !important;overscroll-behavior-y:contain !important;touch-action:pan-y !important;padding:10px 10px 96px !important;scroll-padding-bottom:96px !important}
@@ -2088,13 +2141,10 @@ body:not(.hod-is-admin-final) #adminOpenBtn,body:not(.hod-is-admin-final) #hodFl
 #quiz .examCustomCntInput{width:100% !important;height:44px !important;border-radius:14px !important}
 #quiz .start{height:50px !important;border-radius:16px !important;margin-top:8px !important}
 #quiz .examSubjectChips{display:grid !important;grid-template-columns:1fr !important;gap:10px !important}
-#quiz .examSubjectChip{width:100% !important;height:142px !important;border-radius:16px !important}
-#quiz .examSubjectChipTop{left:14px !important;right:14px !important;top:12px !important;height:28px !important}
+#quiz .examSubjectChip{width:100% !important;min-height:0 !important;padding:12px 14px !important;gap:8px !important;border-radius:16px !important}
 #quiz .examSubjectChipCode{height:28px !important;padding:0 10px !important;border-radius:10px !important;font-size:.84rem !important;font-weight:650 !important}
-#quiz .examSubjectChipName{font-size:.82rem !important;font-weight:550 !important;max-width:55% !important}
-#quiz .examSubjectChipDesc{left:14px !important;right:14px !important;top:54px !important;height:32px !important;font-size:.82rem !important;font-weight:450 !important;line-height:1.3 !important}
-#quiz .examSubjectChipDivider{left:14px !important;right:14px !important;bottom:44px !important}
-#quiz .examSubjectChipBottom{left:14px !important;right:14px !important;bottom:12px !important;height:28px !important}
+#quiz .examSubjectChipName{font-size:.82rem !important;font-weight:550 !important}
+#quiz .examSubjectChipDesc{font-size:.82rem !important;font-weight:450 !important;line-height:1.3 !important}
 #quiz .examSubjectChipCount{font-size:.84rem !important;font-weight:550 !important}
 #quiz .examSubjectChipChoose{min-width:76px !important;height:28px !important;padding:0 12px !important;font-size:.78rem !important;font-weight:650 !important}
 #quiz .qcard{padding:12px !important;border-radius:16px !important}
@@ -2111,7 +2161,7 @@ body:not(.hod-is-admin-final) #adminOpenBtn,body:not(.hod-is-admin-final) #hodFl
 #quiz.pane.scroll.active,#study.pane.scroll.active{overflow-y:auto !important;overflow-x:hidden !important;-webkit-overflow-scrolling:touch !important;touch-action:pan-y !important}
 #quiz.pane.scroll.active{align-items:stretch !important;padding:12px 16px 80px !important}
 #quiz .setup{width:min(100%,1180px) !important;margin:0 auto 12px !important;padding:16px !important;border-radius:20px !important}
-#quiz .examOnlyStart{display:grid !important;grid-template-columns:minmax(0,1.05fr) minmax(300px,.95fr) !important;grid-template-areas:"badge badge" "subject counts" "merge custom" "start start" !important;gap:12px 16px !important;align-items:start !important}
+#quiz .examOnlyStart{display:grid !important;grid-template-columns:minmax(0,1fr) minmax(320px,1.12fr) !important;grid-template-rows:auto auto auto auto minmax(0,1fr) auto !important;grid-template-areas:"badge badge" "subject merge" "counts merge" "custom merge" ". merge" "range range" "start start" !important;gap:12px 18px !important;align-items:start !important}
 #quiz .examOnlyBadge{grid-area:badge !important;width:max-content !important;margin:0 !important;padding:6px 12px !important;border-radius:999px !important;font-size:.78rem !important;line-height:1 !important}
 #quiz .examOnlyLabel{margin:0 0 8px !important;font-size:.95rem !important;line-height:1.2 !important;font-weight:700 !important}
 #quiz .examOnlyStart>.examOnlyLabel:nth-of-type(1),#quiz .examOnlyStart>.examActiveSubjectCard{grid-column:1 !important}
@@ -2122,13 +2172,10 @@ body:not(.hod-is-admin-final) #adminOpenBtn,body:not(.hod-is-admin-final) #hodFl
 #quiz .examActiveSubjectDesc{font-size:.82rem !important;line-height:1.35 !important;margin-bottom:7px !important;display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important}
 #quiz .examActiveSubjectMeta{font-size:.82rem !important;font-weight:650 !important}
 #quiz .examSubjectChips{grid-area:merge !important;display:flex !important;flex-wrap:wrap !important;gap:10px !important;margin:0 !important}
-#quiz .examSubjectChip{width:260px !important;height:128px !important;border-radius:16px !important;box-shadow:inset 0 0 0 1px rgba(232,212,168,.08),0 10px 22px rgba(0,0,0,.20) !important}
-#quiz .examSubjectChipTop{left:12px !important;right:12px !important;top:10px !important;height:26px !important}
+#quiz .examSubjectChip{width:260px !important;min-height:0 !important;padding:10px 12px !important;gap:7px !important;border-radius:16px !important;box-shadow:inset 0 0 0 1px rgba(232,212,168,.08),0 10px 22px rgba(0,0,0,.20) !important}
 #quiz .examSubjectChipCode{height:26px !important;padding:0 9px !important;border-radius:9px !important;font-size:.78rem !important;font-weight:650 !important}
-#quiz .examSubjectChipName{font-size:.78rem !important;font-weight:520 !important;max-width:52% !important}
-#quiz .examSubjectChipDesc{left:12px !important;right:12px !important;top:48px !important;height:28px !important;font-size:.78rem !important;font-weight:430 !important;line-height:1.25 !important}
-#quiz .examSubjectChipDivider{left:12px !important;right:12px !important;bottom:38px !important}
-#quiz .examSubjectChipBottom{left:12px !important;right:12px !important;bottom:9px !important;height:26px !important}
+#quiz .examSubjectChipName{font-size:.78rem !important;font-weight:520 !important}
+#quiz .examSubjectChipDesc{font-size:.78rem !important;font-weight:430 !important;line-height:1.25 !important}
 #quiz .examSubjectChipCount{font-size:.80rem !important;font-weight:550 !important}
 #quiz .examSubjectChipChoose{height:26px !important;min-width:70px !important;padding:0 10px !important;font-size:.74rem !important;font-weight:650 !important}
 #quiz .examOnlyCountGrid{grid-area:counts !important;display:grid !important;grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:8px !important;margin-top:26px !important}
@@ -2140,7 +2187,7 @@ body:not(.hod-is-admin-final) #adminOpenBtn,body:not(.hod-is-admin-final) #hodFl
 #quiz #start.start{grid-area:start !important;height:48px !important;border-radius:15px !important;margin:2px 0 0 !important;padding:0 16px !important}
 @media (max-width:760px){#quiz.pane.scroll.active{padding:8px 10px 72px !important}
 #quiz .setup{padding:10px !important;border-radius:16px !important}
-#quiz .examOnlyStart{grid-template-columns:1fr !important;grid-template-areas:"badge" "subject" "merge" "counts" "custom" "start" !important;gap:8px !important}
+#quiz .examOnlyStart{grid-template-columns:1fr !important;grid-template-rows:none !important;grid-template-areas:"badge" "subject" "merge" "counts" "custom" "range" "start" !important;gap:8px !important}
 #quiz .examOnlyLabel{display:none !important}
 #quiz .examOnlyBadge{font-size:.68rem !important;padding:5px 10px !important}
 #quiz .examActiveSubjectCard{margin:0 !important;min-height:88px !important;padding:10px !important;border-radius:14px !important}
@@ -2150,13 +2197,10 @@ body:not(.hod-is-admin-final) #adminOpenBtn,body:not(.hod-is-admin-final) #hodFl
 #quiz .examActiveSubjectDesc{font-size:.76rem !important;line-height:1.25 !important;margin-bottom:5px !important;-webkit-line-clamp:1 !important}
 #quiz .examActiveSubjectMeta{font-size:.76rem !important}
 #quiz .examSubjectChips{display:grid !important;grid-template-columns:1fr !important;gap:8px !important}
-#quiz .examSubjectChip{width:100% !important;height:104px !important;border-radius:14px !important}
-#quiz .examSubjectChipTop{left:10px !important;right:10px !important;top:8px !important;height:24px !important}
+#quiz .examSubjectChip{width:100% !important;min-height:0 !important;padding:9px 10px !important;gap:6px !important;border-radius:14px !important}
 #quiz .examSubjectChipCode{height:24px !important;font-size:.72rem !important;padding:0 8px !important;border-radius:8px !important}
-#quiz .examSubjectChipName{font-size:.74rem !important;max-width:55% !important}
-#quiz .examSubjectChipDesc{left:10px !important;right:10px !important;top:40px !important;height:24px !important;font-size:.74rem !important;line-height:1.2 !important}
-#quiz .examSubjectChipDivider{left:10px !important;right:10px !important;bottom:32px !important}
-#quiz .examSubjectChipBottom{left:10px !important;right:10px !important;bottom:7px !important;height:23px !important}
+#quiz .examSubjectChipName{font-size:.74rem !important}
+#quiz .examSubjectChipDesc{font-size:.74rem !important;line-height:1.2 !important;-webkit-line-clamp:1 !important}
 #quiz .examSubjectChipCount{font-size:.74rem !important}
 #quiz .examSubjectChipChoose{height:23px !important;min-width:64px !important;font-size:.70rem !important;padding:0 9px !important}
 #quiz .examOnlyCountGrid{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:6px !important;margin-top:0 !important}
@@ -2168,13 +2212,12 @@ body:not(.hod-is-admin-final) #adminOpenBtn,body:not(.hod-is-admin-final) #hodFl
 #quiz #start.start{height:44px !important;border-radius:13px !important;font-size:.88rem !important}
 }
 @media (max-width:380px),(max-height:680px){#quiz .examActiveSubjectCard{min-height:78px !important}
-#quiz .examSubjectChip{height:92px !important}
-#quiz .examSubjectChipDesc{display:none !important}
-#quiz .examSubjectChipDivider{bottom:30px !important}
+#quiz .examSubjectChip{min-height:0 !important;gap:6px !important}
+#quiz .examSubjectChipDesc{-webkit-line-clamp:1 !important}
 #quiz .examOnlyCountGrid .cnt,#quiz .cnt{height:31px !important;min-height:31px !important}
 #quiz #start.start{height:40px !important}
 }
-#quiz .examOnlyStart{display:grid !important;grid-template-columns:minmax(0,1.08fr) minmax(320px,.92fr) !important;grid-template-areas:"badge badge" "subject counts" "merge custom" "start start" !important;gap:14px 18px !important;align-items:start !important}
+#quiz .examOnlyStart{display:grid !important;grid-template-columns:minmax(0,1fr) minmax(320px,1.12fr) !important;grid-template-rows:auto auto auto auto minmax(0,1fr) auto !important;grid-template-areas:"badge badge" "subject merge" "counts merge" "custom merge" ". merge" "range range" "start start" !important;gap:12px 18px !important;align-items:start !important}
 #quiz .examOnlyStart>.examOnlyLabel{display:none !important}
 #quiz .examOnlyBadge{grid-area:badge !important;margin:0 !important}
 #quiz .examActiveSubjectCard{grid-area:subject !important;margin:0 !important;width:100% !important;min-height:118px !important}
@@ -2188,21 +2231,70 @@ body:not(.hod-is-admin-final) #adminOpenBtn,body:not(.hod-is-admin-final) #hodFl
 #quiz .examCustomCntRow::before{content:"Tùy chỉnh" !important;color:var(--gold2,#e8d4a8) !important;font-size:.78rem !important;font-weight:750 !important;white-space:nowrap !important}
 #quiz .examCustomCntLabel{display:none !important}
 #quiz .setup{max-width:1220px !important;padding:18px !important}
-#quiz .examSubjectChip{width:250px !important;height:122px !important}
+#quiz .examSubjectChip{width:250px !important;min-height:0 !important}
 #quiz .examOnlyCountGrid{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:8px !important}
 #quiz .examCustomCntRow{display:grid !important;grid-template-columns:auto minmax(0,1fr) auto !important;gap:8px !important;align-items:center !important}
-@media (max-width:760px){#quiz .examOnlyStart{grid-template-columns:1fr !important;grid-template-areas:"badge" "subject" "merge" "counts" "custom" "start" !important;gap:8px !important}
+@media (max-width:760px){#quiz .examOnlyStart{grid-template-columns:1fr !important;grid-template-rows:none !important;grid-template-areas:"badge" "subject" "merge" "counts" "custom" "range" "start" !important;gap:8px !important}
 #quiz .examActiveSubjectCard::before,#quiz .examSubjectChips::before,#quiz .examOnlyCountGrid::before,#quiz .examCustomCntRow::before{font-size:.72rem !important;margin-bottom:4px !important}
 #quiz .examSubjectChips::before,#quiz .examOnlyCountGrid::before{width:100% !important}
 #quiz .examOnlyCountGrid{grid-template-columns:repeat(3,minmax(0,1fr)) !important}
 #quiz .examCustomCntRow{grid-template-columns:auto minmax(0,1fr) auto !important}
-#quiz .examSubjectChip{width:100% !important;height:100px !important}
+#quiz .examSubjectChip{width:100% !important;min-height:0 !important}
+}
+/* ===== EXAM_QUESTION_RANGE_20260728 =====
+   Hàng "Giới hạn khoảng câu" của tab Kiểm tra (exam.js: examRangeOn / applyRange).
+   Ô "range" đã được thêm vào CẢ 4 grid-template-areas của #quiz .examOnlyStart ở trên —
+   thiếu một cái là hàng này bị đẩy thành dòng grid ẩn và làm lệch cả bảng. */
+.examRangeRow{grid-area:range !important;display:flex !important;flex-wrap:wrap !important;align-items:center !important;gap:10px 14px !important;padding:10px 14px !important;border-radius:14px !important;border:1px dashed rgba(232,212,168,.28) !important;background:rgba(255,255,255,.025) !important;box-sizing:border-box !important}
+.examRangeToggle{display:inline-flex !important;align-items:center !important;gap:8px !important;color:var(--gold2,#e8d4a8) !important;font-weight:700 !important;font-size:.88rem !important;cursor:pointer !important;white-space:nowrap !important;user-select:none !important}
+.examRangeToggle input[type="checkbox"]{width:16px !important;height:16px !important;accent-color:var(--gold2) !important;cursor:pointer !important;margin:0 !important;flex:0 0 auto !important}
+.examRangeFields{display:flex !important;flex-wrap:wrap !important;align-items:center !important;gap:8px !important;min-width:0 !important}
+.examRangeLbl{color:var(--mist) !important;font-weight:600 !important;font-size:.86rem !important;white-space:nowrap !important}
+.examRangeInput{width:92px !important;height:38px !important;padding:0 10px !important;border-radius:12px !important;background:rgba(255,255,255,.04) !important;border:1px solid rgba(200,169,110,.22) !important;color:#fff !important;font-size:.92rem !important;font-weight:700 !important;outline:none !important;box-sizing:border-box !important}
+.examRangeInput:focus{border-color:rgba(232,212,168,.5) !important;background:rgba(255,255,255,.08) !important}
+.examRangeInput::placeholder{color:rgba(245,240,232,.35) !important;font-weight:500 !important}
+.examRangeNote{color:rgba(245,240,232,.5) !important;font-size:.8rem !important;font-weight:500 !important}
+.examRangeDisabled{opacity:.55 !important}
+.examRangeDisabled .examRangeInput,.examRangeDisabled .examRangeToggle{cursor:not-allowed !important}
+@media (max-width:760px){.examRangeRow{padding:8px 10px !important;gap:8px 10px !important;border-radius:12px !important}
+.examRangeToggle{font-size:.82rem !important}
+.examRangeInput{width:76px !important;height:34px !important;font-size:.84rem !important}
+.examRangeLbl{font-size:.8rem !important}
+.examRangeNote{width:100% !important;font-size:.74rem !important}
+}
+/* ===== END EXAM_QUESTION_RANGE_20260728 ===== */
+/* ===== EXAM_MERGE_LIST_TALL_COLUMN_20260728 =====
+   Trước: "Gộp thêm môn" nằm ở CỘT TRÁI, dưới nó còn 3 hàng nữa nên chỉ cao ~140px ở màn
+   thấp (chỉ thấy 1 hàng thẻ), trong khi NỬA DƯỚI CỘT PHẢI bỏ trống hoàn toàn. Nay danh
+   sách môn chiếm cả cột phải, cao suốt cột trái; hàng khoảng câu chuyển thành hàng
+   NGANG cả bề rộng nên không bị bó hẹp thành 2 dòng nữa. Đo ở 1270x670 (đúng cỡ máy
+   người dùng), 10 môn gộp: danh sách 290px thấy 4 thẻ + mô tả, khung ngoài KHÔNG phải
+   cuộn -> nút "Bắt đầu kiểm tra" (sticky) không che thẻ nào. Trước đó: ~140px, 1-2 thẻ,
+   mô tả bị ẩn hẳn vì rule (max-height:680px), thẻ bị nút che nửa dưới.
+   Hai chỗ dễ hỏng nếu sửa tiếp:
+   · `grid-template-rows` có ĐÚNG một hàng `minmax(0,1fr)` (hàng thứ 5, ô trái để trống
+     bằng dấu `.`). Nó hút hết phần dư khi danh sách môn cao hơn cột trái; bỏ nó đi thì
+     phần dư chia đều cho 3 hàng trên và cột trái giãn ra rời rạc ~100px mỗi khe.
+   · Bản mobile (max-width:760px) phải `grid-template-rows:none` để không thừa hàng 1fr.
+   Cap chiều cao vẫn cần: danh sách dài hơn cột trái thì panel sẽ cao quá khung .setup và
+   nút bắt đầu lại che thẻ môn. */
+@media (min-width:761px){#quiz .examSubjectChips{grid-area:merge !important;align-self:stretch !important;display:flex !important;flex-wrap:wrap !important;align-content:flex-start !important;gap:12px !important;margin:0 !important;max-height:max(150px,calc(100vh - 380px)) !important;overflow-y:auto !important;overflow-x:hidden !important;padding-right:6px !important;scrollbar-width:thin !important;scrollbar-color:rgba(232,212,168,0.25) transparent !important;overscroll-behavior:contain !important}
+/* Nhãn "Gộp thêm môn" là ::before nằm TRONG vùng cuộn -> ghim lại để cuộn không mất nhãn. */
+#quiz .examSubjectChips::before{position:sticky !important;top:0 !important;z-index:2 !important;padding-bottom:5px !important;background:linear-gradient(180deg,rgba(18,15,14,.97),rgba(18,15,14,.82)) !important}
+/* Hai thẻ mỗi hàng bất kể cột phải rộng bao nhiêu; cột hẹp thì tự về 1 thẻ. */
+#quiz .examSubjectChip{width:calc(50% - 6px) !important;min-width:212px !important;max-width:100% !important}
 }
 #quiz .examOnlyStartHint,#quiz .examStartHint,#quiz .examOnlyHint,#quiz .quizHint,#quiz .hint{display:none !important;height:0 !important;margin:0 !important;padding:0 !important;overflow:hidden !important}
 #quiz .examOnlyEmpty{display:none !important;height:0 !important;margin:0 !important;padding:0 !important;overflow:hidden !important}
 @media (min-width:901px){#quiz.pane.scroll,#quiz.scroll{height:calc(100dvh - var(--headH,112px)) !important;min-height:0 !important;overflow:hidden !important;padding:10px clamp(24px,3vw,48px) 14px !important;align-items:center !important;justify-content:flex-start !important}
 #quizBody{width:min(1380px,calc(100vw - clamp(36px,5vw,84px))) !important;max-width:1380px !important;height:calc(100dvh - var(--headH,112px) - 24px) !important;min-height:0 !important;margin:0 auto !important;display:flex !important;flex-direction:column !important;justify-content:center !important}
-#quiz .setup{width:min(1120px,100%) !important;margin-left:auto !important;margin-right:auto !important;background:rgba(20,16,15,0.65) !important;border:1px solid rgba(232,212,168,0.12) !important;backdrop-filter:blur(12px) !important;box-shadow:0 30px 80px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.05) !important;border-radius:28px !important}
+#quiz .setup{width:min(1120px,100%) !important;margin-left:auto !important;margin-right:auto !important;background:rgba(20,16,15,0.65) !important;border:1px solid rgba(232,212,168,0.12) !important;backdrop-filter:blur(12px) !important;box-shadow:0 30px 80px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.05) !important;border-radius:28px !important;max-height:100% !important;min-height:0 !important;overflow-y:auto !important;overflow-x:hidden !important;scrollbar-width:thin !important;scrollbar-color:rgba(232,212,168,0.25) transparent !important}
+#quiz .setup #start.start{position:sticky !important;bottom:0 !important;z-index:5 !important;box-shadow:0 -16px 26px 10px rgba(20,16,15,0.92),0 4px 15px rgba(200,169,110,0.25) !important}
+/* FIX_EXAM_MERGE_CARD_FLOW_20260728: nút "Bắt đầu kiểm tra" là position:sticky trong khung
+   .setup có overflow-y:auto, nên khi danh sách "Gộp thêm môn" dài thì cả khung cuộn và nút
+   nằm CHE LÊN nửa dưới mấy thẻ môn (đúng ảnh người dùng gửi). Cho riêng danh sách môn cuộn
+   trong chính nó, chiều cao chừa đủ chỗ cho các hàng còn lại -> khung ngoài gần như không
+   phải cuộn nữa nên nút không che thẻ nào. */
 #quiz .examOnlyGridContainer{width:100% !important;max-width:1380px !important;height:100% !important;min-height:0 !important;margin:0 auto !important;display:grid !important;grid-template-columns:minmax(0,1fr) minmax(250px,310px) !important;gap:24px !important;align-items:stretch !important;justify-content:center !important}
 #quiz .examOnlyCard{height:100% !important;min-height:0 !important;max-height:100% !important;width:100% !important;max-width:none !important;margin:0 !important;display:flex !important;flex-direction:column !important;justify-content:space-between !important;padding:24px 28px !important;border-radius:28px !important;background:rgba(20,16,15,0.65) !important;border:1px solid rgba(232,212,168,0.12) !important;backdrop-filter:blur(12px) !important;box-shadow:0 30px 80px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.05) !important}
 #quiz .examOnlyTopline{flex:0 0 auto !important;align-items:center !important;margin-bottom:12px !important;gap:12px !important;border-bottom:1px solid rgba(255,255,255,0.04) !important;padding-bottom:12px !important}
@@ -3857,3 +3949,46 @@ body:not(.kizspy-active) #kizspyExamPortal {
     line-height:1.36 !important;
   }
 }
+
+/* ============================================================
+   SUBJECT_FOLDER_DRILLDOWN_20260728 — huy hiệu NEW cho thẻ thư mục.
+   Phải nằm cuối file: các block NEW cũ (COPILOT_SHOW_SUBJECT_NEW_BADGE / _ON_CARD) chỉ
+   nhắm `.subjectCard`, mà thẻ thư mục lại `overflow:hidden` nên huy hiệu bị cắt mất.
+   ============================================================ */
+.subjectFolderCard{overflow:visible !important}
+.subjectFolderCard.hasNewBadge{position:relative !important;overflow:visible !important;padding-top:14px !important}
+.subjectFolderCard .subjectNewBadge{display:inline-flex !important;position:absolute !important;top:-8px !important;right:10px !important;left:auto !important;z-index:50 !important;align-items:center !important;justify-content:center !important;min-width:42px !important;height:23px !important;padding:0 8px !important;border-radius:999px !important;background:linear-gradient(135deg,#fff07a,#ffd35a 58%,#fff3bb) !important;color:#211304 !important;border:1px solid rgba(255,235,170,.72) !important;font-size:.54rem !important;font-weight:950 !important;letter-spacing:.04em !important;line-height:1 !important;text-transform:uppercase !important;box-shadow:0 4px 12px rgba(0,0,0,.30),0 0 11px rgba(255,224,92,.34) !important;pointer-events:none !important}
+@media (max-width:760px){.subjectFolderCard .subjectNewBadge{right:10px !important;top:-6px !important;font-size:.44rem !important;min-width:34px !important;height:18px !important;padding:0 6px !important}
+}
+
+/* FIX_SUBJECT_CARD_OVERFLOW_GLOSS_20260728 */
+.subjectCard::before,
+.subjectFolderCard::before {
+  content: "" !important;
+  display: block !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  border-radius: inherit !important;
+  background: linear-gradient(120deg, transparent 0%, transparent 32%, rgba(255,255,255,.34) 45%, rgba(232,212,168,.18) 52%, transparent 68%, transparent 100%) !important;
+  background-size: 240% 100% !important;
+  background-position: -140% 0 !important;
+  opacity: 0 !important;
+  transform: none !important;
+  transition: background-position 0.62s ease, opacity 0.14s ease !important;
+  animation: none !important;
+  clip-path: inset(0 round 18px) !important;
+}
+
+.subjectCard:hover::before,
+.subjectCard.active:hover::before,
+.subjectFolderCard:hover::before {
+  content: "" !important;
+  display: block !important;
+  background-position: 140% 0 !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+

@@ -192,11 +192,24 @@ const server = http.createServer(async (req, res) => {
   }
 
   const ext = path.extname(filePath).toLowerCase();
-  res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
+  /*
+    Dev server KHÔNG cho browser cache gì cả.
+
+    index.html nạp `app.js?v=20260726_v9999999` — chuỗi cố định, không đổi theo build.
+    Nên sau `npm run build` browser vẫn chạy bundle cũ cho tới khi Ctrl+Shift+R; đã mất
+    một vòng debug vì tưởng code mới không chạy ("ReferenceError: RAW is not defined"
+    trong khi file trên đĩa đã đúng). Chỉ ảnh hưởng chạy local — trên Vercel là
+    vercel.json quyết định header.
+  */
+  res.writeHead(200, {
+    'Content-Type': MIME_TYPES[ext] || 'application/octet-stream',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+  });
   fs.createReadStream(filePath).pipe(res);
 });
 
-const PORT = 3000;
+// PORT để chạy được hai dev server song song (phiên Claude khác đang giữ 3000).
+const PORT = Number(process.env.PORT) || 3000;
 server.listen(PORT, () => {
   console.log(`\n🚀 LOCAL DEV SERVER RUNNING AT: http://localhost:${PORT}`);
   console.log(`Database connected: ${process.env.TURSO_DATABASE_URL}\n`);

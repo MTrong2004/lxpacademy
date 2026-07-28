@@ -2784,7 +2784,10 @@ Bắt đầu ngay từ câu 1.`;
         </div>
         <div class="field">
           <label>Nội dung / mô tả môn</label>
-          <textarea id="editSubjectDesc" rows="5" maxlength="600" placeholder="Mô tả ngắn hiển thị ở thẻ môn...">${esc(s.description || '')}</textarea>
+          <!-- Bản CHẾT: openEditSubjectAdmin của block này bị block
+               COPILOT_ADMIN_SUBJECT_NEW_BADGE_TOGGLE_20260630 (~5017) gán đè. Giữ maxlength khớp
+               để hai bản không lệch nếu có ngày bản này sống lại. Xem SUBJECT_DESC_LIMIT_20260728. -->
+          <textarea id="editSubjectDesc" rows="3" maxlength="160" placeholder="Mô tả ngắn hiển thị ở thẻ môn (tối đa 160 ký tự)...">${esc(s.description || '')}</textarea>
         </div>
         <div class="editSubjectMeta">
           <span>Trạng thái: ${s.is_active === false ? 'Đang ẩn' : 'Đang hiện'}</span>
@@ -4718,6 +4721,8 @@ ${E(val)}</pre>`;
 
   let dragSubjectCache = [];
   let dragFromIndex = -1;
+  // SUBJECT_FOLDER_DRILLDOWN_20260728: mã gốc của thư mục đang mở ('' = danh sách ngoài cùng).
+  let openBase = '';
 
   function injectCompactSubjectStyle() {
     if (document.getElementById('compactDragSubjectStyle')) return;
@@ -4807,10 +4812,47 @@ ${E(val)}</pre>`;
     return Number(s?.__question_count || s?.question_count || s?.questions_count || (code ? 0 : 0)) || 0;
   }
 
-  function filteredSubjects() {
-    const q = String(document.getElementById('search')?.value || '')
+  /**
+   * SUBJECT_FOLDER_DRILLDOWN_20260728: mã gốc, phải khớp `baseCode` của
+   * `src/student/subjectGate.js` và `src/student/exam.js` — MLN122, MLN122_2 → 'MLN122'.
+   * Đổi quy tắc thì đổi CẢ BA chỗ, không thì thư mục hai bên lệch nhau.
+   */
+  function baseOf(code) {
+    return String(code || '')
+      .split(/[_\-\s]/)[0]
+      .toUpperCase();
+  }
+  /** Gom theo mã gốc, cụm neo tại vị trí thành viên ĐẦU TIÊN nên thứ tự sort_order không nhảy. */
+  function groupsOf(arr) {
+    const byBase = new Map();
+    const order = [];
+    (arr || []).forEach(s => {
+      const b = baseOf(s.code);
+      if (!byBase.has(b)) {
+        byBase.set(b, []);
+        order.push(b);
+      }
+      byBase.get(b).push(s);
+    });
+    return order.map(b => ({ base: b, items: byBase.get(b) }));
+  }
+  /** Ghi lại thứ tự phẳng từ danh sách cụm — dùng sau mỗi lần kéo thả (cả ở ngoài lẫn trong thư mục). */
+  function commitGroupOrder(groups) {
+    dragSubjectCache = groups.flatMap(g => g.items);
+    dragSubjectCache.forEach((s, i) => {
+      s.sort_order = i + 1;
+    });
+  }
+  function searchText() {
+    return String(document.getElementById('search')?.value || '')
       .trim()
       .toLowerCase();
+  }
+  function countQuestions(items) {
+    return items.reduce((n, s) => n + getSubjectQuestionCount(s), 0);
+  }
+  function filteredSubjects() {
+    const q = searchText();
     const arr = dragSubjectCache
       .filter(isActiveSubjectRow)
       .slice()
@@ -4856,23 +4898,10 @@ ${E(val)}</pre>`;
     }
   }
 
-  window.renderSubjectAdminList = function () {
-    injectCompactSubjectStyle();
-    const list = document.getElementById('subjectAdminList');
-    if (!list) return;
-    const arr = filteredSubjects();
-    if (!arr.length) {
-      list.innerHTML = '<p class="muted">Không có môn học phù hợp.</p>';
-      return;
-    }
-    const totalQuestions = arr.reduce((sum, s) => sum + getSubjectQuestionCount(s), 0);
-    list.innerHTML =
-      `<p class="subjectOrderHint">Tổng: <b>${arr.length}</b> môn · <b>${totalQuestions}</b> câu. Kéo dấu ☰ để đổi vị trí.</p>` +
-      arr
-        .map(
-          (s, idx) => `
-      <div class="subjectAdminItem" draggable="true" data-subject-key="${esc(subjectKey(s))}" data-visible-index="${idx}">
-        <div class="subjectDragHandle" title="Kéo để đổi vị trí">☰</div>
+  function subjectRowHTML(s, idx, draggable) {
+    return `
+      <div class="subjectAdminItem" draggable="${draggable ? 'true' : 'false'}" data-subject-key="${esc(subjectKey(s))}" data-visible-index="${idx}">
+        <div class="subjectDragHandle" title="${draggable ? 'Kéo để đổi vị trí' : 'Xóa ô tìm kiếm để kéo đổi vị trí'}">☰</div>
         <div class="subjectAdminCode">${esc(s.code || '')}</div>
         <div class="subjectAdminInfo">
           <b>${idx + 1}. ${esc(s.name || s.code || 'Chưa có tên môn')}</b>
@@ -4883,38 +4912,148 @@ ${E(val)}</pre>`;
           <button class="act warn" type="button" onclick="openEditSubjectAdmin('${escJs(s.code)}')">Sửa</button>
           ${isAdmin() ? `<button class="act bad" type="button" onclick="deleteSubjectAdmin('${escJs(s.code)}')">Xóa</button>` : ''}
         </div>
-      </div>`,
-        )
-        .join('');
-    bindSubjectDragEvents();
+      </div>`;
+  }
+
+  /**
+   * SUBJECT_FOLDER_DRILLDOWN_20260728: hàng THƯ MỤC ở danh sách ngoài cùng — gọn hơn hàng môn,
+   * liệt kê luôn mã các môn con để nhìn một phát thấy hết mà không phải mở ra.
+   * Nút NEW của thư mục do block COPILOT_SUBJECT_NEW_BADGE_ON_CARD_20260630 gắn vào sau
+   * (nó đọc `data-folder-base`), cùng đường với nút NEW của hàng môn.
+   */
+  function folderRowHTML(g, idx, draggable) {
+    const codes = g.items.map(s => String(s.code || '')).join(' · ');
+    return `
+      <div class="subjectAdminFolder" draggable="${draggable ? 'true' : 'false'}" data-folder-base="${esc(g.base)}" data-visible-index="${idx}">
+        <div class="subjectDragHandle" title="${draggable ? 'Kéo để đổi vị trí' : 'Xóa ô tìm kiếm để kéo đổi vị trí'}">☰</div>
+        <div class="subjectAdminCode subjectFolderCode">${esc(g.base)}</div>
+        <div class="subjectAdminInfo">
+          <b>${idx + 1}. Thư mục ${esc(g.base)}</b>
+          <p>${esc(codes)}</p>
+          <div class="subjectFolderChips">
+            <span class="subjectFolderChip">${g.items.length} môn</span>
+            <span class="subjectQuestionCount">Tổng số câu: <b>${countQuestions(g.items)}</b> câu</span>
+          </div>
+        </div>
+        <div class="subjectAdminActions">
+          <button class="act ok subjectFolderOpenBtn" type="button" onclick="openSubjectFolderAdmin('${escJs(g.base)}')">Mở ▸</button>
+        </div>
+      </div>`;
+  }
+
+  function overviewHTML(groups, flatCount, mode) {
+    const folders = groups.filter(g => g.items.length > 1).length;
+    const total = countQuestions(groups.flatMap(g => g.items));
+    const where =
+      mode === 'search'
+        ? 'Kết quả tìm kiếm'
+        : mode === 'folder'
+          ? `Thư mục <b>${esc(openBase)}</b>`
+          : `<b>${folders}</b> thư mục · <b>${groups.length - folders}</b> môn lẻ`;
+    const hint = mode === 'search' ? 'Xóa ô tìm kiếm để quay lại dạng thư mục.' : 'Kéo dấu ☰ để đổi vị trí.';
+    return `<p class="subjectOrderHint">${where} — <b>${flatCount}</b> môn · <b>${total}</b> câu. ${hint}</p>`;
+  }
+
+  function folderBackHTML(g) {
+    return `<div class="subjectAdminBackBar">
+      <button class="act subjectAdminBack" type="button" onclick="openSubjectFolderAdmin('')">← Tất cả môn</button>
+      <span class="subjectAdminCode subjectFolderCode">${esc(g.base)}</span>
+      <span class="subjectAdminBackMeta">${g.items.length} môn · ${countQuestions(g.items)} câu</span>
+    </div>`;
+  }
+
+  window.openSubjectFolderAdmin = function (base) {
+    openBase = String(base || '');
+    renderSubjectAdminList();
+    const list = document.getElementById('subjectAdminList');
+    if (list) list.scrollTop = 0;
   };
 
-  function bindSubjectDragEvents() {
+  window.renderSubjectAdminList = function () {
+    injectCompactSubjectStyle();
     const list = document.getElementById('subjectAdminList');
     if (!list) return;
-    list.querySelectorAll('.subjectAdminItem').forEach(item => {
+    const q = searchText();
+    const arr = filteredSubjects();
+    const groups = groupsOf(arr);
+    // Đang tìm kiếm thì bỏ thư mục, trải phẳng kết quả (đúng việc của ô tìm kiếm).
+    const openGroup = q ? null : groups.find(g => g.base === openBase && g.items.length > 1) || null;
+    if (!q && !openGroup) openBase = '';
+    if (!arr.length) {
+      openBase = '';
+      list.innerHTML = '<p class="muted">Không có môn học phù hợp.</p>';
+      return;
+    }
+    list.classList.toggle('inFolder', !!openGroup);
+    if (q) {
+      list.innerHTML =
+        overviewHTML(groups, arr.length, 'search') + arr.map((s, i) => subjectRowHTML(s, i, false)).join('');
+    } else if (openGroup) {
+      list.innerHTML =
+        overviewHTML([openGroup], openGroup.items.length, 'folder') +
+        folderBackHTML(openGroup) +
+        openGroup.items.map((s, i) => subjectRowHTML(s, i, true)).join('');
+    } else {
+      list.innerHTML =
+        overviewHTML(groups, arr.length, 'root') +
+        groups
+          .map((g, i) => (g.items.length < 2 ? subjectRowHTML(g.items[0], i, true) : folderRowHTML(g, i, true)))
+          .join('');
+    }
+    bindSubjectDragEvents(!!openGroup);
+  };
+
+  /**
+   * Kéo thả: ở ngoài cùng thì đổi chỗ CẢ KHỐI thư mục, trong thư mục thì đổi chỗ các môn con.
+   * Cả hai đều ghi lại thứ tự phẳng qua `commitGroupOrder` nên `sort_order` luôn liền mạch
+   * 1..N và các môn cùng mã gốc luôn nằm liền nhau — nhờ đó lần sau gom cụm không bị vỡ.
+   */
+  function bindSubjectDragEvents(inFolder) {
+    const list = document.getElementById('subjectAdminList');
+    if (!list) return;
+    const rows = [...list.querySelectorAll('[draggable="true"]')];
+    if (!rows.length) return;
+    const keyOf = el => (el.dataset.folderBase ? 'F:' + el.dataset.folderBase : 'S:' + el.dataset.subjectKey);
+    const indexOf = key => {
+      const groups = groupsOf(dragSubjectCache);
+      if (inFolder) {
+        const g = groups.find(x => x.base === openBase);
+        return g ? g.items.findIndex(s => 'S:' + subjectKey(s) === key) : -1;
+      }
+      return groups.findIndex(g => (g.items.length < 2 ? 'S:' + subjectKey(g.items[0]) : 'F:' + g.base) === key);
+    };
+    let fromKey = '';
+    rows.forEach(item => {
       item.addEventListener('dragstart', e => {
-        const key = item.dataset.subjectKey;
-        dragFromIndex = dragSubjectCache.findIndex(s => subjectKey(s) === key);
+        fromKey = keyOf(item);
+        dragFromIndex = indexOf(fromKey);
         item.classList.add('dragging');
         e.dataTransfer.effectAllowed = 'move';
       });
       item.addEventListener('dragend', () => {
         item.classList.remove('dragging');
         dragFromIndex = -1;
+        fromKey = '';
       });
       item.addEventListener('dragover', e => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
       });
-      item.addEventListener('drop', async e => {
+      item.addEventListener('drop', e => {
         e.preventDefault();
-        const targetKey = item.dataset.subjectKey;
-        const toIndex = dragSubjectCache.findIndex(s => subjectKey(s) === targetKey);
+        const toIndex = indexOf(keyOf(item));
         if (dragFromIndex < 0 || toIndex < 0 || dragFromIndex === toIndex) return;
-        const [moved] = dragSubjectCache.splice(dragFromIndex, 1);
-        dragSubjectCache.splice(toIndex, 0, moved);
-        dragSubjectCache.forEach((s, i) => (s.sort_order = i + 1));
+        const groups = groupsOf(dragSubjectCache);
+        if (inFolder) {
+          const g = groups.find(x => x.base === openBase);
+          if (!g) return;
+          const [moved] = g.items.splice(dragFromIndex, 1);
+          g.items.splice(toIndex, 0, moved);
+        } else {
+          const [moved] = groups.splice(dragFromIndex, 1);
+          groups.splice(toIndex, 0, moved);
+        }
+        commitGroupOrder(groups);
         renderSubjectAdminList();
         saveSubjectOrder();
       });
@@ -5013,8 +5152,8 @@ ${E(val)}</pre>`;
           </div>
         </div>
         <div class="field">
-          <label>Nội dung / mô tả môn</label>
-          <textarea id="editSubjectDesc" rows="5" maxlength="600" placeholder="Mô tả ngắn hiển thị ở thẻ môn...">${esc(s.description || '')}</textarea>
+          <label>Nội dung / mô tả môn <span class="descCounter" id="editSubjectDescCount">0/160</span></label>
+          <textarea id="editSubjectDesc" rows="3" maxlength="160" placeholder="Mô tả ngắn hiển thị ở thẻ môn (tối đa 160 ký tự)...">${esc(s.description || '')}</textarea>
         </div>
         <label class="newBadgeToggleBox" style="display:flex;align-items:center;gap:10px;border:1px solid rgba(200,169,110,.22);border-radius:14px;padding:11px 13px;background:rgba(255,255,255,.035);cursor:pointer;">
           <input id="editSubjectNewBadge" type="checkbox" ${hasNewBadge(s) ? 'checked' : ''} style="width:18px;height:18px;">
@@ -5037,6 +5176,22 @@ ${E(val)}</pre>`;
           this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, '');
         };
         input.focus();
+      }
+      // SUBJECT_DESC_LIMIT_20260728: 160 ký tự = đúng chỗ thẻ môn hiện được (.subjectCardDesc
+      // kẹp 3 dòng trong app.css). Trước đây ô này cho gõ 600 nên mô tả dài bị cắt mất ở thẻ.
+      const desc = document.getElementById('editSubjectDesc');
+      const count = document.getElementById('editSubjectDescCount');
+      if (desc && count) {
+        // Môn cũ trong DB có thể đang dài hơn 160 (maxlength không cắt nội dung nạp sẵn),
+        // nên có mốc đỏ riêng cho trường hợp vượt để người sửa biết mà rút gọn.
+        const sync = () => {
+          const n = desc.value.length;
+          count.textContent = n + '/160';
+          count.classList.toggle('nearLimit', n >= 140 && n <= 160);
+          count.classList.toggle('overLimit', n > 160);
+        };
+        desc.oninput = sync;
+        sync();
       }
     }, 0);
   };
@@ -5156,6 +5311,41 @@ ${E(val)}</pre>`;
       btn.setAttribute('onclick', "toggleSubjectNewBadgeFromCard('" + escJs(code) + "')");
       actions.insertBefore(btn, actions.firstChild);
     });
+    enhanceFolderRows();
+  }
+
+  /**
+   * SUBJECT_FOLDER_DRILLDOWN_20260728: hàng thư mục cũng có nút NEW, bật/tắt cho CẢ cụm.
+   * Trạng thái đọc từ các môn con: đủ cả = isOn, một phần = isPartial. Không lưu cờ NEW riêng
+   * cho thư mục ở đâu cả — thư mục chỉ là cách nhóm theo mã gốc, không phải một dòng trong DB.
+   */
+  function baseOf(code) {
+    return String(code || '')
+      .split(/[_\-\s]/)[0]
+      .toUpperCase();
+  }
+  function folderItems(base) {
+    const src = cardSubjectCache.length ? cardSubjectCache : cache.subjects || [];
+    return src.filter(s => baseOf(s.code) === String(base || '').toUpperCase());
+  }
+  function enhanceFolderRows() {
+    const list = document.getElementById('subjectAdminList');
+    if (!list) return;
+    list.querySelectorAll('.subjectAdminFolder').forEach(row => {
+      const base = row.dataset.folderBase || '';
+      if (!base || row.querySelector('.subjectNewToggle')) return;
+      const actions = row.querySelector('.subjectAdminActions');
+      if (!actions) return;
+      const items = folderItems(base);
+      const on = items.filter(hasNewBadge).length;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'act subjectNewToggle' + (items.length && on === items.length ? ' isOn' : on ? ' isPartial' : '');
+      btn.textContent = `NEW ${on}/${items.length}`;
+      btn.title = on ? 'Bấm để tắt NEW cho cả thư mục' : 'Bấm để bật NEW cho cả thư mục';
+      btn.setAttribute('onclick', "toggleSubjectFolderNewBadge('" + escJs(base) + "')");
+      actions.insertBefore(btn, actions.firstChild);
+    });
   }
 
   let lastCardSubjectFetchAt = 0;
@@ -5213,6 +5403,26 @@ ${E(val)}</pre>`;
       await window.loadSubjectsAdmin?.();
     } finally {
       if (btn) btn.classList.remove('isBusy');
+    }
+  };
+
+  window.toggleSubjectFolderNewBadge = async function (base) {
+    if (!isEditor()) return alert('Admin hoặc Editor mới được sửa môn học.');
+    const items = folderItems(base);
+    if (!items.length) return alert('Không tìm thấy môn học trong thư mục ' + base + '.');
+    const next = !items.every(hasNewBadge); // còn môn nào chưa bật thì bật hết, đủ cả thì tắt hết
+    const changed = items.filter(s => hasNewBadge(s) !== next);
+    if (!changed.length) return;
+    setBusy(true, next ? 'Đang bật NEW cho thư mục...' : 'Đang tắt NEW cho thư mục...');
+    try {
+      for (const s of changed) {
+        if (!(await adminAction('set_subject_new_badge', { id: s.id, enabled: next }))) return;
+        s.cover = makeCover(s.cover || '', next);
+      }
+      toast((next ? 'Đã bật NEW cho ' : 'Đã tắt NEW cho ') + changed.length + ' môn trong ' + base);
+      await window.loadSubjectsAdmin?.();
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -5745,7 +5955,41 @@ ${E(val)}</pre>`;
       body #subjectsAdmin .subjectAdminActions .act,
       body #subjectsAdmin .subjectAdminActions button{min-height:38px!important;height:38px!important;padding:0 14px!important;border-radius:999px!important;font-size:.86rem!important;line-height:1!important;white-space:nowrap!important;}
       body #subjectsAdmin .subjectNewToggle{min-width:96px!important;height:38px!important;}
+      body #subjectsAdmin .subjectNewToggle.isPartial{background:linear-gradient(135deg,rgba(255,231,168,.30),rgba(232,196,110,.16))!important;color:#ffe9b8!important;border-color:rgba(232,212,168,.52)!important;}
       body #subjectsAdmin .subjectOrderHint{margin:0 0 10px!important;padding:10px 14px!important;border-radius:16px!important;background:rgba(0,0,0,.18)!important;border:1px solid rgba(200,169,110,.12)!important;}
+      /* SUBJECT_FOLDER_DRILLDOWN_20260728 — hàng thư mục + thanh lùi ra.
+         Đặt trong block này vì nó là style được nhồi CUỐI <head> (keepStyleLast), nên chắc chắn
+         không bị hai block style môn học ở trên ghi đè. Hàng thư mục lặp đúng lưới của
+         .subjectAdminItem để hai loại hàng thẳng cột với nhau. */
+      body #subjectsAdmin .subjectAdminFolder{
+        display:grid!important;grid-template-columns:40px 112px minmax(0,1fr) auto!important;gap:12px!important;
+        align-items:center!important;min-height:76px!important;height:auto!important;padding:11px 15px!important;
+        border-radius:18px!important;overflow:visible!important;cursor:grab!important;
+        border:1px dashed rgba(200,169,110,.34)!important;
+        background:linear-gradient(150deg,rgba(200,169,110,.085),rgba(255,255,255,.02))!important;
+        transition:border-color .14s ease,background .14s ease,opacity .14s ease!important;
+      }
+      body #subjectsAdmin .subjectAdminFolder:hover{border-color:rgba(232,212,168,.55)!important;background:linear-gradient(150deg,rgba(200,169,110,.13),rgba(255,255,255,.03))!important;}
+      body #subjectsAdmin .subjectAdminFolder.dragging{opacity:.45!important;}
+      body #subjectsAdmin .subjectFolderCode{background:rgba(200,169,110,.18)!important;border-color:rgba(232,212,168,.34)!important;}
+      body #subjectsAdmin .subjectFolderCode::before{content:"▣";margin-right:6px;opacity:.85;}
+      body #subjectsAdmin .subjectFolderChips{display:flex!important;align-items:center!important;gap:8px!important;flex-wrap:wrap!important;margin-top:3px!important;}
+      body #subjectsAdmin .subjectFolderChip{display:inline-flex!important;align-items:center!important;min-height:28px!important;padding:5px 11px!important;border-radius:999px!important;background:rgba(232,212,168,.12)!important;border:1px solid rgba(232,212,168,.28)!important;color:var(--gold2)!important;font-size:.80rem!important;font-weight:900!important;line-height:1!important;}
+      body #subjectsAdmin .subjectFolderOpenBtn{min-width:96px!important;}
+      body #subjectsAdmin .subjectAdminBackBar{display:flex!important;align-items:center!important;gap:12px!important;flex-wrap:wrap!important;margin:0 0 10px!important;padding:9px 13px!important;border:1px solid rgba(200,169,110,.18)!important;border-radius:16px!important;background:rgba(0,0,0,.22)!important;}
+      body #subjectsAdmin .subjectAdminBack{min-height:34px!important;height:34px!important;padding:0 14px!important;border-radius:999px!important;font-size:.84rem!important;font-weight:900!important;}
+      body #subjectsAdmin .subjectAdminBackBar .subjectAdminCode{min-width:0!important;max-width:none!important;width:max-content!important;}
+      body #subjectsAdmin .subjectAdminBackMeta{margin-left:auto!important;color:rgba(245,240,232,.60)!important;font-size:.84rem!important;font-weight:800!important;white-space:nowrap!important;}
+      @media (max-width:1100px){
+        body #subjectsAdmin .subjectAdminFolder{grid-template-columns:38px 104px minmax(0,1fr)!important;}
+        body #subjectsAdmin .subjectAdminFolder .subjectAdminActions{grid-column:2 / -1!important;justify-content:flex-start!important;min-width:0!important;}
+      }
+      @media (max-width:760px){
+        body #subjectsAdmin .subjectAdminFolder{grid-template-columns:38px minmax(0,1fr)!important;padding:12px!important;}
+        body #subjectsAdmin .subjectAdminFolder .subjectAdminCode{grid-column:2!important;}
+        body #subjectsAdmin .subjectAdminFolder .subjectAdminInfo,
+        body #subjectsAdmin .subjectAdminFolder .subjectAdminActions{grid-column:1 / -1!important;}
+      }
       @media (max-width:1100px){
         body #subjectsAdmin .subjectAdminItem{grid-template-columns:38px 104px minmax(0,1fr)!important;min-height:112px!important;}
         body #subjectsAdmin .subjectAdminActions{grid-column:2 / -1!important;justify-content:flex-start!important;min-width:0!important;flex-wrap:wrap!important;}
@@ -6089,11 +6333,20 @@ ${E(val)}</pre>`;
   function normalizeMode(v) {
     if (v && typeof v === 'object' && 'value' in v) v = v.value;
     if (typeof v !== 'string') v = String(v || 'approval');
-    try {
-      const parsed = JSON.parse(v);
-      if (typeof parsed === 'string') v = parsed;
-    } catch (e) {
-      lhWarn('COPILOT_ADMIN_REG_MODE_AND_PAGE_RESTORE_FIX_20260630', e);
+    /*
+      Chỉ thử JSON.parse khi chuỗi TRÔNG NHƯ JSON. Trước đây parse mọi giá trị, nên
+      giá trị bình thường ('approval') luôn ném SyntaxError rồi bị lhWarn ghi lại —
+      mỗi lần mở trang admin là lhErrors() có sẵn 4 lỗi giả. Đó là dùng catch làm
+      luồng điều khiển, và nó làm nhiễu đúng bảng lỗi mà quy trình debug dựa vào
+      (xem mục Debug trong CLAUDE.md). Giá trị cũ dạng '"approval"' vẫn parse được.
+    */
+    if (/^\s*["[{]/.test(v)) {
+      try {
+        const parsed = JSON.parse(v);
+        if (typeof parsed === 'string') v = parsed;
+      } catch (e) {
+        lhWarn('COPILOT_ADMIN_REG_MODE_AND_PAGE_RESTORE_FIX_20260630', e);
+      }
     }
     v = String(v || 'approval')
       .replace(/^"+|"+$/g, '')

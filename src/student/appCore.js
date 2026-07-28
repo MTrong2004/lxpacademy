@@ -1,3 +1,4 @@
+import { LHState, initState } from './state.js';
 /* AI_JS_MAP_START
 Mục đích: Bản đồ nhanh cho AI đọc app.js, tránh sửa nhầm và tránh vá chồng. Không ảnh hưởng chức năng web.
 Quy tắc sửa: giữ nguyên 1 file app.js, chỉ sửa nhóm liên quan, ưu tiên gộp vào block đang dùng. KHÔNG ĐỤNG Discord webhook.
@@ -104,6 +105,32 @@ AI_JS_MAP_END */
 // LH_ERROR_SURFACING_20260727: mọi catch trong file này dùng lhWarn('<TÊN_BLOCK>', e)
 // thay cho catch rỗng. Xem lỗi đã bị catch: mở Console gõ  lhErrors()
 import { lhWarn } from '../core/log.js';
+// Hàm định dạng thuần, trước ở ngay trong file này (xem docs/SPLIT_PLAN.md).
+import { sortAns, answerText, finalAnswerText, fmt, clone, esc } from './format.js';
+// Tính năng Kiểm tra. `installExam()` được gọi ĐÚNG chỗ block cũ đứng (~dòng 8118),
+// không phải ở đây — import thì bị đưa lên đầu file, gọi ở đây là đổi thứ tự chạy.
+import { installExam } from './exam.js';
+// Sửa / báo cáo câu hỏi. Cũng gọi đúng chỗ block cũ đứng (~dòng 7900 và ~11190).
+import { installEditor, installEditorPasteUpload } from './editor.js';
+// Ảnh + upload Cloudinary. Năm hàm install, mỗi hàm gọi đúng chỗ block cũ đứng.
+import {
+  installUploadDiagnostics,
+  installUploadLock,
+  installImageVisibleAfterSave,
+  installEditImagesRender,
+  installImgsHTML,
+} from './images.js';
+// Thư viện câu hỏi (tab "Thư viện").
+import { installLibraryLabelFix, installLibrary } from './library.js';
+// Cổng chọn môn + số câu mỗi môn. Năm hàm install, mỗi hàm gọi đúng chỗ block cũ đứng
+// (~dòng 2344, 8449, 8460, 8749, 8946) — không gọi ở đây.
+import {
+  installSubjectGate,
+  installGateAriaFix,
+  installSubjectCountsCache,
+  installClearAddSubjectDraft,
+  installSubjectCountsFallback,
+} from './subjectGate.js';
 
 // ===== FIX_OAUTH_SESSION_FINAL_20260628 =====
 if (location.hash && location.hash.includes('&amp;')) {
@@ -252,9 +279,7 @@ try {
 } catch (e) {
   lhWarn('merged', e);
 }
-function clone(x) {
-  return JSON.parse(JSON.stringify(x));
-}
+// `clone` đã chuyển sang ./format.js (import ở đầu file) để ./editor.js dùng chung.
 function notify(msg) {
   const t = document.getElementById('toast');
   if (!t) return;
@@ -301,57 +326,40 @@ function hideProgress() {
   const el = document.getElementById('adminProgressOverlay');
   if (el) el.classList.add('hidden');
 }
+// Phơi ra window để ./exam.js gọi được (nó nằm ngoài file này nên không thấy binding
+// module). Không phải lớp ghi đè: hai hàm này chỉ được khai báo đúng một lần.
+window.showProgress = showProgress;
+window.hideProgress = hideProgress;
 
-let RAW = [],
-  pool = [],
-  ci = Math.max(0, Math.min(+localStorage.getItem('hod102_ci') || 0, BASE.length - 1)),
-  flipped = false,
-  flipDir = 'horizontal',
-  cardFontSize = localStorage.getItem('hod102_card_font_size_v3') || '1',
-  flipMode = localStorage.getItem('hod102_flip_mode') || 'single',
-  hideOptions = false,
-  randomActive = localStorage.getItem('hod102_random_active') === '1',
-  qCnt = 20,
-  qSet = [],
-  qDone = {},
-  qSel = {},
-  quizMode = 'practice',
-  examSubmitted = false,
-  timerInt = null,
-  examStart = 0,
-  editDraft = null;
+// State dùng chung đã chuyển sang ./state.js (xem docs/SPLIT_PLAN.md bước 1).
+// Mọi chỗ dùng là LHState.<tên>; các file tính năng tách sau này import cùng object này.
+initState(BASE);
 function rebuild() {
-  RAW = BASE.map(c => Object.assign(clone(c), edits[c.num] || {}));
-  pool = pool.length ? pool.map(o => RAW.find(c => c.num === o.num) || o) : [...RAW];
+  LHState.RAW = BASE.map(c => Object.assign(clone(c), edits[c.num] || {}));
+  LHState.pool = LHState.pool.length
+    ? LHState.pool.map(o => LHState.RAW.find(c => c.num === o.num) || o)
+    : [...LHState.RAW];
 }
 rebuild();
 const $ = id => document.getElementById(id);
-function esc(s) {
-  return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-}
-function sortAns(s) {
-  return (s || '').split('').sort().join('');
-}
-function answerText(c) {
-  return (c.answer || '')
-    .split('')
-    .map(ch => ch + '. ' + (c.options?.[ch] || ''))
-    .join('; ');
-}
-function finalAnswerText(c) {
-  const raw = String(c?.answer_text ?? '').trim();
-  const ans = String(c?.answer ?? '')
-    .trim()
-    .toUpperCase();
-  if (!raw || raw.toUpperCase() === ans || /^[A-E]+$/i.test(raw)) return answerText(c);
-  return raw;
-}
+// `esc` đã chuyển sang ./format.js (import ở đầu file) để ./images.js dùng chung.
+// sortAns / answerText / finalAnswerText đã chuyển sang ./format.js (import ở đầu file)
+// để exam.js dùng chung. Cách gọi không đổi.
 function optionsHTML(c) {
   return Object.entries(c.options || {})
     .map(([k, v]) => `<div class="opt"><div class="letter">${k}</div><div class="ot">${esc(v)}</div></div>`)
     .join('');
 }
+/*
+  HÀM CHUYỂN TIẾP + thân dự phòng. Bản ĐANG CHẠY là `window.imgsHTML` do ./images.js gán
+  (installImgsHTML — nó lọc bỏ ảnh `data:` và đọc nhiều tên field khác nhau).
+
+  Vẫn giữ thân gốc bên dưới làm dự phòng, KHÔNG xóa: `installImgsHTML()` chạy ở khoảng dòng
+  11200, còn hàm này có thể bị gọi sớm hơn trong lúc appCore đang nạp.
+*/
 function imgsHTML(c) {
+  const liveImgsHTML = window.imgsHTML;
+  if (typeof liveImgsHTML === 'function' && liveImgsHTML !== imgsHTML) return liveImgsHTML(c);
   return (c.images || []).map(im => `<img src="${esc(im.src)}" alt="" loading="lazy" decoding="async">`).join('');
 }
 function setv(k, v) {
@@ -408,16 +416,16 @@ function renderAllSafe() {
 window.renderAllSafe = renderAllSafe;
 // ===== FIX_LIBRARY_STALE_AFTER_SUBJECT_CHANGE_20260727 END =====
 function renderCard() {
-  let c = pool[ci] || RAW[0];
+  let c = LHState.pool[LHState.ci] || LHState.RAW[0];
   if (!c) return;
   fit(c);
   applyCardFontSize();
   const __idxEl = $('idx');
-  if (__idxEl) __idxEl.textContent = ci + 1;
+  if (__idxEl) __idxEl.textContent = LHState.ci + 1;
   const __totalEl = $('total');
-  if (__totalEl) __totalEl.textContent = pool.length;
+  if (__totalEl) __totalEl.textContent = LHState.pool.length;
   const __barEl = $('bar');
-  if (__barEl) __barEl.style.width = (pool.length ? ((ci + 1) / pool.length) * 100 : 0) + '%';
+  if (__barEl) __barEl.style.width = (LHState.pool.length ? ((LHState.ci + 1) / LHState.pool.length) * 100 : 0) + '%';
   const __tagEl = $('tag');
   if (__tagEl) __tagEl.textContent = 'CÂU ' + c.num;
   const __qEl = $('question');
@@ -438,47 +446,47 @@ function renderCard() {
   document.querySelector('#fc .front')?.classList.toggle('hasImg', !!(c.images && c.images.length));
   $('options').innerHTML = optionsHTML(c);
   $('options').classList.remove('hide');
-  hideOptions = false;
+  LHState.hideOptions = false;
   applyCardFontSize();
   updateCardTools();
   if (typeof window.updateBookmarkBtn === 'function') window.updateBookmarkBtn();
   $('ansLetter').textContent = (c.answer || '').split('').join(', ');
   $('ansText').innerHTML = esc(c.answer_text || answerText(c)).replace(/; /g, '<br>');
   $('card').classList.remove('dir-horizontal', 'dir-up', 'dir-down');
-  $('card').classList.add('dir-' + flipDir);
-  $('card').classList.toggle('flip', flipped);
-  $('mode').textContent = flipMode === 'single' ? '1x' : '2x';
+  $('card').classList.add('dir-' + LHState.flipDir);
+  $('card').classList.toggle('flip', LHState.flipped);
+  $('mode').textContent = LHState.flipMode === 'single' ? '1x' : '2x';
   var _sc = localStorage.getItem('learninghub_subject_code_merged_v1') || '';
-  localStorage.setItem('hod102_ci', ci);
-  if (_sc) localStorage.setItem('learninghub_progress_' + _sc, ci);
-  localStorage.setItem('hod102_flip_mode', flipMode);
+  localStorage.setItem('hod102_ci', LHState.ci);
+  if (_sc) localStorage.setItem('learninghub_progress_' + _sc, LHState.ci);
+  localStorage.setItem('hod102_flip_mode', LHState.flipMode);
 }
 function flip(dir = 'horizontal') {
-  flipDir = dir;
-  flipped = !flipped;
+  LHState.flipDir = dir;
+  LHState.flipped = !LHState.flipped;
   renderCard();
 }
 function next() {
-  ci = (ci + 1) % pool.length;
-  flipped = false;
-  flipDir = 'horizontal';
+  LHState.ci = (LHState.ci + 1) % LHState.pool.length;
+  LHState.flipped = false;
+  LHState.flipDir = 'horizontal';
   renderCard();
 }
 function prev() {
-  ci = (ci - 1 + pool.length) % pool.length;
-  flipped = false;
-  flipDir = 'horizontal';
+  LHState.ci = (LHState.ci - 1 + LHState.pool.length) % LHState.pool.length;
+  LHState.flipped = false;
+  LHState.flipDir = 'horizontal';
   renderCard();
 }
 function shuffle() {
-  for (let i = pool.length - 1; i > 0; i--) {
+  for (let i = LHState.pool.length - 1; i > 0; i--) {
     let j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
+    [LHState.pool[i], LHState.pool[j]] = [LHState.pool[j], LHState.pool[i]];
   }
-  ci = 0;
-  flipped = false;
-  flipDir = 'horizontal';
-  randomActive = false;
+  LHState.ci = 0;
+  LHState.flipped = false;
+  LHState.flipDir = 'horizontal';
+  LHState.randomActive = false;
   localStorage.setItem('hod102_random_active', '0');
   renderCard();
   let sh = $('shuffle');
@@ -498,11 +506,11 @@ function reset(force) {
     return;
   }
   __allowUserReset = false;
-  pool = [...RAW];
-  ci = 0;
-  flipped = false;
-  flipDir = 'horizontal';
-  randomActive = false;
+  LHState.pool = [...LHState.RAW];
+  LHState.ci = 0;
+  LHState.flipped = false;
+  LHState.flipDir = 'horizontal';
+  LHState.randomActive = false;
   localStorage.setItem('hod102_random_active', '0');
   renderCard();
 }
@@ -537,54 +545,53 @@ function switchTab(n, b) {
     }
   if (typeof window.fixCounter === 'function') window.fixCounter();
 }
-function sample(a, n) {
-  a = [...a];
-  for (let i = a.length - 1; i > 0; i--) {
-    let j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return n ? a.slice(0, n) : a;
-}
-function fmt(ms) {
-  let s = Math.floor(ms / 1000),
-    m = Math.floor(s / 60);
-  s %= 60;
-  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
-}
+// `sample()` chuyển sang ./exam.js (chỉ bài kiểm tra gọi), `fmt()` sang ./format.js.
 function startTimer() {
-  clearInterval(timerInt);
-  examStart = Date.now();
-  timerInt = setInterval(() => ($('timer').textContent = fmt(Date.now() - examStart)), 1000);
+  clearInterval(LHState.timerInt);
+  LHState.examStart = Date.now();
+  LHState.timerInt = setInterval(() => ($('timer').textContent = fmt(Date.now() - LHState.examStart)), 1000);
 }
 function stopTimer() {
-  clearInterval(timerInt);
+  clearInterval(LHState.timerInt);
 }
 function syncQuizSet() {
-  if (qSet && qSet.length) {
-    qSet = qSet.map(c => RAW.find(x => x.num === c.num) || c);
+  if (LHState.qSet && LHState.qSet.length) {
+    LHState.qSet = LHState.qSet.map(c => LHState.RAW.find(x => x.num === c.num) || c);
   }
 }
+/*
+  Hàm CHUYỂN TIẾP, không phải bản vẽ thật. Bản thật nằm trong ./exam.js và tự gán vào
+  `window.renderQuiz` (trước khi tách exam.js, nó gán thẳng vào binding module này —
+  từ file khác thì module ES không cho gán nữa).
+
+  Vẫn cần hàm này vì ~15 chỗ trong appCore gọi `renderQuiz()` theo tên, không qua window.
+  So `!== renderQuiz` để nếu có ai gán window.renderQuiz = chính hàm này thì không đệ quy.
+*/
 function renderQuiz() {
+  // Tên riêng cho từng hàm chuyển tiếp: scripts/check-overrides.js không phân biệt scope,
+  // ba biến local cùng tên `live` ngoài block bị nó tính thành 3 lớp ghi đè.
+  const liveRenderQuiz = window.renderQuiz;
+  if (typeof liveRenderQuiz === 'function' && liveRenderQuiz !== renderQuiz) return liveRenderQuiz();
   if (typeof window.__examOnlyRender === 'function') return window.__examOnlyRender();
   const body = $('quizBody');
   if (body) body.innerHTML = '';
 }
 function pickAns(i, k) {
-  if ((quizMode === 'practice' && qDone[i]) || examSubmitted) return;
-  let c = qSet[i];
+  if ((LHState.quizMode === 'practice' && LHState.qDone[i]) || LHState.examSubmitted) return;
+  let c = LHState.qSet[i];
   if (c.answer.length > 1) {
-    let set = new Set((qSel[i] || '').split('').filter(Boolean));
+    let set = new Set((LHState.qSel[i] || '').split('').filter(Boolean));
     set.has(k) ? set.delete(k) : set.add(k);
-    qSel[i] = [...set].sort().join('');
-  } else qSel[i] = k;
+    LHState.qSel[i] = [...set].sort().join('');
+  } else LHState.qSel[i] = k;
   renderQuiz();
 }
 function checkAns(i) {
-  if (!qSel[i]) {
+  if (!LHState.qSel[i]) {
     alert('Bạn chọn đáp án trước nha.');
     return;
   }
-  qDone[i] = true;
+  LHState.qDone[i] = true;
   renderQuiz();
 }
 function score() {
@@ -592,13 +599,13 @@ function score() {
 }
 function smart(q) {
   q = q.trim().toLowerCase();
-  if (!q) return RAW;
+  if (!q) return LHState.RAW;
   let m = q.match(/^#(\d+)$/);
-  if (m) return RAW.filter(c => c.num === +m[1]);
+  if (m) return LHState.RAW.filter(c => c.num === +m[1]);
   m = q.match(/^answer\s*:\s*([a-e]+)$/i);
-  if (m) return RAW.filter(c => sortAns(c.answer) === sortAns(m[1].toUpperCase()));
-  if (['multi', 'multiple', 'chọn nhiều'].includes(q)) return RAW.filter(c => c.answer.length > 1);
-  return RAW.filter(c =>
+  if (m) return LHState.RAW.filter(c => sortAns(c.answer) === sortAns(m[1].toUpperCase()));
+  if (['multi', 'multiple', 'chọn nhiều'].includes(q)) return LHState.RAW.filter(c => c.answer.length > 1);
+  return LHState.RAW.filter(c =>
     (
       String(c.num) +
       ' ' +
@@ -614,7 +621,18 @@ function smart(q) {
       .includes(q),
   );
 }
+/*
+  HÀM CHUYỂN TIẾP + thân dự phòng (như imgsHTML). Bản ĐANG CHẠY là `renderUnified` của
+  ./library.js, tự gán vào `window.renderStudy`. 11 chỗ trong appCore gọi `renderStudy()`
+  theo TÊN nên phải có hàm này.
+
+  Thân gốc bên dưới giữ làm dự phòng cho quãng trước khi `installLibrary()` chạy — không
+  xóa. Trước 20260727 quãng đó do `renderStudyBetter` (FINAL_SMART_SEARCH) đảm nhiệm; hai
+  lớp gán trần của nó đã xóa vì từ file khác không gán được binding module này nữa.
+*/
 function renderStudy() {
+  const liveRenderStudy = window.renderStudy;
+  if (typeof liveRenderStudy === 'function' && liveRenderStudy !== renderStudy) return liveRenderStudy();
   let arr = smart($('search').value || ''),
     max = arr.length;
   $('studyList').innerHTML =
@@ -638,31 +656,52 @@ function renderStudy() {
         ? ''
         : '<div class="more">Không tìm thấy kết quả.</div>');
 }
+/*
+  DEAD_OVERRIDE_20260727 — CHÚ THÍCH GỐC cho cả nhóm sửa câu hỏi, các chỗ khác trỏ về đây.
+
+  THÂN hàm này là mã chết, nhưng KHAI BÁO phải giữ: 8 chỗ khác trong file gán trần
+  `openEditor = …` (không const/let), trong module ES thì không có khai báo là ReferenceError.
+
+  Bản ĐANG CHẠY là `openEditPreview` (và `saveEditPreview`) của block
+  LIBRARY_FILTER_AND_EDIT_PREVIEW_LAYOUT_20260627. Lý do: block đó gọi `apply()` ba lần —
+  trực tiếp, `setTimeout(apply, 0)` và `setTimeout(apply, 900)` — và `apply()` gán VÔ ĐIỀU KIỆN
+  `openEditor = openEditPreview` / `saveEditor = saveEditPreview`. Mọi lớp gán ĐỒNG BỘ đều
+  chạy xong trước cả hai timer đó, nên tất cả đều bị ghi đè.
+
+  Xác minh 20260727 trên app đang chạy (không phải suy luận của script):
+    String(window.openEditor).slice(0, 60)   -> "function openEditPreview() { … }"
+    String(window.saveEditor).slice(0, 60)   -> "async function saveEditPreview() { … }"
+
+  Vậy nên: **sửa lỗi editor / upload ảnh thì sửa vào openEditPreview & saveEditPreview**.
+  Vá vào các lớp dưới đây là vá vào chỗ không bao giờ chạy — đó chính là kiểu lỗi
+  "lúc được lúc không" đã đi tìm suốt.
+
+  Cẩn thận khi dọn: các block đánh dấu chết Ở ĐÂY vẫn còn phần SỐNG (chúng bind
+  `#imgUpload.onchange`, `#saveEdit.onclick` trong `setTimeout(boot, 1500)` và phơi
+  `__LHCleanImages` / `__LHUploadCloudinary` / `__LHGetPendingImageUpload` ra window cho
+  6 chỗ khác gọi). Chỉ lớp gán openEditor/saveEditor là chết, KHÔNG phải cả block.
+  Kế hoạch xóa + phép thử phải chạy khi đã đăng nhập: docs/SPLIT_PLAN.md bước 3.
+*/
+/*
+  HÀM CHUYỂN TIẾP (20260727). Thân cũ — bản editor "cổ" bám vào #editTitle / #editQuestion /
+  #editOptions — đã xóa: nó là mã chết (xem khối trên) và mọi id đó bị openEditPreview xóa
+  khỏi DOM. Bản thật nằm trong ./editor.js, tự gán vào `window.openEditor`.
+
+  Vẫn cần hàm này vì 5 chỗ trong appCore gọi `openEditor()` theo TÊN (nút "!" trên Flashcard
+  ~938/945, #stEdit, phím `e` ~1087, openStudyReport ~4768, ~8757) — module ES không cho
+  ./editor.js gán vào binding này.
+*/
 function openEditor() {
-  let c = pool[ci];
-  editDraft = clone(c);
-  let reporting = !!window.HODSupabase?.getUser?.() && !window.HODSupabase?.isAdmin?.();
-  $('editTitle').textContent = (reporting ? 'Báo cáo / đề xuất sửa câu ' : 'Sửa câu ') + c.num;
-  if ($('saveEdit')) $('saveEdit').textContent = reporting ? 'Gửi báo cáo cho admin' : 'Lưu sửa';
-  if ($('restoreEdit')) $('restoreEdit').classList.toggle('hidden', reporting);
-  $('editQuestion').value = c.question;
-  $('editAnswer').value = c.answer;
-  renderEditOptions();
-  renderEditImages();
-  $('editModal').classList.remove('hidden');
+  const liveOpenEditor = window.openEditor;
+  if (typeof liveOpenEditor === 'function' && liveOpenEditor !== openEditor) return liveOpenEditor();
+  console.warn('[openEditor] chưa có bản thật từ ./editor.js');
 }
-function renderEditOptions() {
-  let ops = editDraft.options || {};
-  let box = $('editOptions');
-  if (!box) return;
-  box.innerHTML = ['A', 'B', 'C', 'D', 'E']
-    .map(
-      k =>
-        `<div class="field"><label>Đáp án ${k}</label><textarea data-opt="${k}">${esc(ops[k] || '')}</textarea></div>`,
-    )
-    .join('');
-}
+// HÀM CHUYỂN TIẾP + thân dự phòng, như imgsHTML ở trên. Bản đang chạy là
+// `window.renderEditImages` do ./images.js gán (installEditImagesRender — bản có guard null).
 function renderEditImages() {
+  const liveRenderEditImages = window.renderEditImages;
+  if (typeof liveRenderEditImages === 'function' && liveRenderEditImages !== renderEditImages)
+    return liveRenderEditImages();
   let box = $('editImgs');
   if (!box) {
     const input = $('imgUpload');
@@ -673,7 +712,7 @@ function renderEditImages() {
     input.insertAdjacentElement('afterend', box);
   }
   box.innerHTML =
-    (editDraft.images || [])
+    (LHState.editDraft.images || [])
       .map((im, i) => {
         const src =
           im && typeof im === 'object' ? im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '' : im;
@@ -681,44 +720,26 @@ function renderEditImages() {
       })
       .join('') || '<p style="color:var(--mist)">Chưa có hình.</p>';
 }
+// HÀM CHUYỂN TIẾP (20260727), cùng lý do như openEditor ở trên. Thân cũ đã xóa (mã chết).
+// Chỗ duy nhất còn dùng tên này trong appCore là `$('saveEdit').onclick = saveEditor` (~950).
 function saveEditor() {
-  let oldQ = clone(RAW.find(c => c.num === editDraft.num) || pool[ci] || editDraft);
-  editDraft.question = $('editQuestion').value.trim();
-  editDraft.answer = $('editAnswer').value.trim().toUpperCase();
-  let ops = {};
-  document.querySelectorAll('[data-opt]').forEach(t => {
-    if (t.value.trim()) ops[t.dataset.opt] = t.value.trim();
-  });
-  editDraft.options = ops;
-  editDraft.answer_text = answerText(editDraft);
-  if (window.HODSupabase && window.HODSupabase.isReady()) {
-    window.HODSupabase.submitEditRequest(editDraft, oldQ);
-    return;
-  }
-  if (window.HODSupabase?.getUser?.()) {
-    alert('Chưa kết nối được dữ liệu duyệt. Hãy tải lại trang rồi gửi lại báo cáo.');
-    return;
-  }
-  edits[editDraft.num] = {
-    question: editDraft.question,
-    options: editDraft.options,
-    answer: editDraft.answer,
-    answer_text: editDraft.answer_text,
-    images: editDraft.images || [],
-  };
-  localStorage.setItem(STORE, JSON.stringify(edits));
-  rebuild();
-  ci = pool.findIndex(c => c.num === editDraft.num);
-  if (ci < 0) ci = 0;
-  flipped = false;
-  renderCard();
-  renderQuiz();
-  renderStudy();
-  $('editModal').classList.add('hidden');
-  notify('Đã lưu sửa local');
+  const liveSaveEditor = window.saveEditor;
+  if (typeof liveSaveEditor === 'function' && liveSaveEditor !== saveEditor) return liveSaveEditor();
+  console.warn('[saveEditor] chưa có bản thật từ ./editor.js');
 }
+/**
+ * Lưu bản sửa vào localStorage khi KHÔNG có kết nối duyệt (nhánh dự phòng của editor).
+ * Phải là hàm chứ không phơi thẳng `edits` ra window: `edits` bị GÁN LẠI lúc chạy
+ * (nhập file sửa ~dòng 752, xóa hết ~1053) nên ./editor.js giữ tham chiếu cũ là ghi nhầm
+ * vào object đã bị thay.
+ */
+function saveLocalEdit(num, patch) {
+  edits[num] = patch;
+  localStorage.setItem(STORE, JSON.stringify(edits));
+}
+window.__LHSaveLocalEdit = saveLocalEdit;
 function restoreEditor() {
-  delete edits[editDraft.num];
+  delete edits[LHState.editDraft.num];
   localStorage.setItem(STORE, JSON.stringify(edits));
   rebuild();
   syncQuizSet();
@@ -728,6 +749,12 @@ function restoreEditor() {
   $('editModal').classList.add('hidden');
   notify('Đã khôi phục');
 }
+// Phơi ra window cho ./editor.js (nút "Khôi phục" trong editor gọi hàm này) và cho
+// `notify`. Tên có tiền tố __LH để check:overrides không tưởng là thêm lớp ghi đè cho
+// `restoreEditor` — nó không phân biệt scope, thấy hàm khai báo ngoài block CỘNG một lần
+// gán window là báo 2 lớp.
+window.__LHRestoreEditor = restoreEditor;
+window.notify = notify;
 function exportEdits() {
   let blob = new Blob([JSON.stringify(edits, null, 2)], { type: 'application/json' }),
     a = document.createElement('a');
@@ -754,10 +781,10 @@ function importEditsFile(f) {
   fr.readAsText(f);
 }
 function applyCardFontSize() {
-  let n = parseFloat(cardFontSize || '1');
+  let n = parseFloat(LHState.cardFontSize || '1');
   if (!isFinite(n)) n = 1;
   n = Math.max(0.8, Math.min(1.3, n));
-  cardFontSize = String(n);
+  LHState.cardFontSize = String(n);
   let root = document.documentElement,
     fc = $('fc');
   let set = (k, v) => {
@@ -775,7 +802,7 @@ function applyCardFontSize() {
   if ($('stCardFontState')) $('stCardFontState').textContent = Math.round(n * 100) + '%';
 }
 function updateCardTools() {
-  hideOptions = false;
+  LHState.hideOptions = false;
   try {
     localStorage.removeItem('hod102_hide_options');
   } catch (e) {
@@ -820,16 +847,16 @@ function setupCardTools() {
 function updateSettingsUI() {
   if (!$('stFlipState')) return;
   $('stFlipState').textContent =
-    'Đang dùng: ' + (flipMode === 'single' ? '1x - bấm 1 lần để lật' : '2x - hạn chế lật nhầm');
+    'Đang dùng: ' + (LHState.flipMode === 'single' ? '1x - bấm 1 lần để lật' : '2x - hạn chế lật nhầm');
   if ($('stOptState')) $('stOptState').textContent = 'Đang hiện lựa chọn';
   if ($('stToggleOpts')) $('stToggleOpts').style.display = 'none';
-  if ($('stGoInput')) $('stGoInput').value = pool[ci]?.num || '';
+  if ($('stGoInput')) $('stGoInput').value = LHState.pool[LHState.ci]?.num || '';
   applyCardFontSize();
   updateCardTools();
 }
 function toggleFlipMode() {
-  flipMode = flipMode === 'single' ? 'double' : 'single';
-  flipped = false;
+  LHState.flipMode = LHState.flipMode === 'single' ? 'double' : 'single';
+  LHState.flipped = false;
   renderCard();
   updateSettingsUI();
 }
@@ -839,15 +866,15 @@ function goToQuestionNum() {
     alert('Nhập số câu trước nha.');
     return;
   }
-  let i = pool.findIndex(c => c.num === n);
-  if (i < 0) i = RAW.findIndex(c => c.num === n);
+  let i = LHState.pool.findIndex(c => c.num === n);
+  if (i < 0) i = LHState.RAW.findIndex(c => c.num === n);
   if (i < 0) {
     alert('Không tìm thấy câu ' + n);
     return;
   }
-  if (!pool.find(c => c.num === n)) pool = [...RAW];
-  ci = i;
-  flipped = false;
+  if (!LHState.pool.find(c => c.num === n)) LHState.pool = [...LHState.RAW];
+  LHState.ci = i;
+  LHState.flipped = false;
   renderCard();
   updateSettingsUI();
   $('settingsModal').classList.add('hidden');
@@ -896,13 +923,13 @@ function init() {
     };
   if ($('stCardFont'))
     $('stCardFont').oninput = e => {
-      cardFontSize = (+e.target.value / 100).toFixed(2);
+      LHState.cardFontSize = (+e.target.value / 100).toFixed(2);
       applyCardFontSize();
       renderCard();
     };
   if ($('stCardFontReset'))
     $('stCardFontReset').onclick = () => {
-      cardFontSize = '1';
+      LHState.cardFontSize = '1';
       applyCardFontSize();
       renderCard();
       updateSettingsUI();
@@ -940,7 +967,7 @@ function init() {
   $('mode').onclick = toggleFlipMode;
   const handleCardClick = e => {
     if (e.target.closest('#editCard') || e.target.closest('#cardTools') || e.target.closest('.modal')) return;
-    if (flipMode === 'single') {
+    if (LHState.flipMode === 'single') {
       flip('horizontal');
     }
   };
@@ -966,7 +993,7 @@ function init() {
     };
     cardEl.ondblclick = e => {
       e.stopPropagation();
-      if (flipMode === 'double') {
+      if (LHState.flipMode === 'double') {
         flip('horizontal');
       }
     };
@@ -982,7 +1009,7 @@ function init() {
   $('editImgs').onclick = e => {
     let b = e.target.closest('[data-rm]');
     if (b) {
-      editDraft.images.splice(+b.dataset.rm, 1);
+      LHState.editDraft.images.splice(+b.dataset.rm, 1);
       renderEditImages();
     }
   };
@@ -1009,8 +1036,8 @@ function init() {
             throw new Error(errData.error?.message || 'Upload Cloudinary thất bại');
           }
           const data = await res.json();
-          editDraft.images = editDraft.images || [];
-          editDraft.images.push({
+          LHState.editDraft.images = LHState.editDraft.images || [];
+          LHState.editDraft.images.push({
             id: data.public_id,
             src: data.secure_url,
             url: data.secure_url,
@@ -1018,7 +1045,8 @@ function init() {
             source: 'cloudinary',
             name: file.name,
           });
-          if (typeof window.__LHCleanImages === 'function') editDraft.images = window.__LHCleanImages(editDraft.images);
+          if (typeof window.__LHCleanImages === 'function')
+            LHState.editDraft.images = window.__LHCleanImages(LHState.editDraft.images);
           renderEditImages();
           if (typeof notify === 'function') notify('Đã upload ảnh lên Cloudinary');
         } catch (err) {
@@ -1331,10 +1359,10 @@ window.HODSupabase = (() => {
 
   function purgeOfflineQuestionCache() {
     try {
-      RAW = [];
-      pool = [];
-      ci = 0;
-      flipped = false;
+      LHState.RAW = [];
+      LHState.pool = [];
+      LHState.ci = 0;
+      LHState.flipped = false;
       const q = $('question');
       if (q) q.textContent = 'Tài khoản chưa được duyệt hoặc đã bị khóa.';
       const opts = $('options');
@@ -1677,12 +1705,12 @@ window.HODSupabase = (() => {
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.error) throw new Error(json.error || 'Không tải được questions từ Turso');
       const rows = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
-      RAW = rows.map(rowToQuestion);
-      pool = [...RAW];
+      LHState.RAW = rows.map(rowToQuestion);
+      LHState.pool = [...LHState.RAW];
       var _sci = +localStorage.getItem('learninghub_progress_' + activeSubject) || 0;
-      ci = Math.max(0, Math.min(_sci, Math.max(0, pool.length - 1)));
-      flipped = false;
-      if ($id('total')) $id('total').textContent = pool.length;
+      LHState.ci = Math.max(0, Math.min(_sci, Math.max(0, LHState.pool.length - 1)));
+      LHState.flipped = false;
+      if ($id('total')) $id('total').textContent = LHState.pool.length;
       try {
         renderCard();
       } catch (e) {
@@ -2322,604 +2350,8 @@ window.HODSupabase = (() => {
 })();
 
 // ===== LEARNING HUB MERGED SUBJECT PATCH START =====
-(function () {
-  const HUB_URL = window.APP_CONFIG?.SUPABASE_URL || '';
-  const HUB_KEY = window.APP_CONFIG?.SUPABASE_ANON_KEY || '';
-  const SUBJECT_STORE = 'learninghub_subject_code_merged_v1';
-  let subjectClient = null,
-    subjectsCache = [],
-    pickedCode = localStorage.getItem(SUBJECT_STORE) || '',
-    lock = false;
-  function c() {
-    if (window.HODSupabase?.__client) return window.HODSupabase.__client;
-    if (!window.supabase) return null;
-    if (!subjectClient) subjectClient = window.supabase.createClient(HUB_URL, HUB_KEY);
-    return subjectClient;
-  }
-  function $(id) {
-    return document.getElementById(id);
-  }
-  function esc2(s) {
-    return String(s ?? '').replace(
-      /[&<>"']/g,
-      c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-    );
-  }
-  function displayCode(code) {
-    return String(code || '');
-  }
-  function user() {
-    return window.HODSupabase?.getUser?.() || null;
-  }
-  function logged() {
-    return !!user();
-  }
-  function subjectCode() {
-    return localStorage.getItem(SUBJECT_STORE) || '';
-  }
-  function getDeviceTypeString() {
-    const ua = navigator.userAgent || '';
-    let os = 'Máy tính';
-    if (/iPhone|iPad|iPod/i.test(ua)) os = '📱 iOS';
-    else if (/Android/i.test(ua)) os = '📱 Android';
-    else if (/Macintosh|Mac OS X/i.test(ua)) os = '💻 Mac';
-    else if (/Windows/i.test(ua)) os = '💻 Windows';
-    else if (/Linux/i.test(ua)) os = '💻 Linux';
-
-    let browser = '';
-    if (/Chrome|CriOS/i.test(ua) && !/Edge|Edg/i.test(ua)) browser = 'Chrome';
-    else if (/Safari/i.test(ua) && !/Chrome|CriOS/i.test(ua)) browser = 'Safari';
-    else if (/Firefox|FxMo/i.test(ua)) browser = 'Firefox';
-    else if (/Edge|Edg/i.test(ua)) browser = 'Edge';
-
-    return browser ? `${os} · ${browser}` : os;
-  }
-  function syncUserSubjectToProfile(code) {
-    const u = user() || window.HODSupabase?.getUser?.();
-    if (!u) {
-      setTimeout(() => {
-        const u2 = user() || window.HODSupabase?.getUser?.();
-        if (u2) syncUserSubjectToProfile(code);
-      }, 1000);
-      return;
-    }
-    try {
-      const md = u.user_metadata || {};
-      const sub = code || subjectCode() || '';
-      fetch('/api/profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: u.id,
-          email: u.email,
-          full_name: md.full_name || md.name || '',
-          avatar_url: md.avatar_url || md.picture || '',
-          current_subject: sub,
-          device_info: typeof getDeviceTypeString === 'function' ? getDeviceTypeString() : undefined,
-        }),
-      }).catch(e => console.warn('syncUserSubjectToProfile failed:', e));
-    } catch (e) {
-      lhWarn('LEARNING_HUB_MERGED_SUBJECT_PATCH', e);
-    }
-  }
-  // FIX_LIBRARY_STALE_AFTER_SUBJECT_CHANGE_20260727: bắn 'lh:subject-changed' (trước đây
-  // không nơi nào bắn nên listener trong BOOKMARK_QUESTIONS_FEATURE chưa từng chạy) để
-  // thư viện tự dọn tìm kiếm/trạng thái mở của môn cũ rồi vẽ lại.
-  function setSubject(code) {
-    if (code) localStorage.setItem(SUBJECT_STORE, code);
-    else localStorage.removeItem(SUBJECT_STORE);
-    pickedCode = code || '';
-    syncSubjectTexts();
-    syncUserSubjectToProfile(code);
-    try {
-      if (typeof window.__examResetForSubjectChange === 'function') window.__examResetForSubjectChange();
-    } catch (e) {
-      lhWarn('LEARNING_HUB_MERGED_SUBJECT_PATCH', e);
-    }
-    try {
-      window.dispatchEvent(new CustomEvent('lh:subject-changed', { detail: { code: code || '' } }));
-    } catch (e) {
-      lhWarn('LEARNING_HUB_MERGED_SUBJECT_PATCH', e);
-    }
-  }
-  function meta(code) {
-    return subjectsCache.find(x => x.code === code) || null;
-  }
-  function label(code) {
-    const m = meta(code);
-    return m ? `${displayCode(m.code)} · ${m.name || ''}` : displayCode(code) || 'Chưa chọn môn';
-  }
-  function notifyUX(msg) {
-    if (typeof notify === 'function') notify(msg);
-    else console.log(msg);
-  }
-  function syncSubjectTexts() {
-    const code = subjectCode();
-    if ($('subjectInlineText')) $('subjectInlineText').textContent = code ? label(code) : 'Chưa chọn môn';
-    if ($('hodAccountSubjectText')) $('hodAccountSubjectText').textContent = code ? label(code) : 'Chưa chọn môn';
-    ensureChip();
-    const chip = $('subjectTopChip');
-    if (chip) {
-      chip.textContent = code ? label(code) : 'Chọn môn';
-      chip.classList.toggle('hidden', !logged());
-    }
-  }
-  function ensureChip() {
-    const actions = document.querySelector('#fc .actions') || document.querySelector('.actions');
-    if (!actions || $('subjectTopChip')) return;
-    const b = document.createElement('button');
-    b.id = 'subjectTopChip';
-    b.type = 'button';
-    b.className = 'subjectChip hidden';
-    b.onclick = () => openGate();
-    actions.prepend(b);
-  }
-  function updateBrand(code) {
-    if (typeof fixBrand === 'function') fixBrand();
-  }
-  function closeAccountMenu() {
-    $('hodAccountMenu')?.classList.add('hidden');
-  }
-  function gateOn(on) {
-    document.body.classList.toggle('has-subject-gate', !!on);
-    $('subjectGate')?.classList.toggle('hidden', !on);
-    $('subjectGate')?.setAttribute('aria-hidden', on ? 'false' : 'true');
-  }
-  function showErr(msg) {
-    const e = $('subjectError');
-    if (e) {
-      e.textContent = msg;
-      e.classList.remove('hidden');
-    }
-  }
-  function clearErr() {
-    $('subjectError')?.classList.add('hidden');
-  }
-  function showLoading(on, msg = 'Đang tải danh sách môn học...') {
-    const e = $('subjectLoading');
-    if (e) {
-      e.textContent = msg;
-      e.classList.toggle('hidden', !on);
-    }
-  }
-  function fallbackSubjects() {
-    return [
-      {
-        code: 'HOD102',
-        name: 'HOD102 Learning',
-        description: 'Môn mặc định để bắt đầu học.',
-        cover: '',
-        is_active: true,
-        question_count: 0,
-      },
-      {
-        code: 'MLN111',
-        name: 'MLN111 Learning',
-        description: 'Bộ câu hỏi và tài liệu MLN111.',
-        cover: '',
-        is_active: true,
-        question_count: 0,
-      },
-    ];
-  }
-  async function addQuestionCounts(subjects) {
-    const list = subjects || [];
-    // Giảm gọi Supabase: không query questions ở bước render môn.
-    // Số câu lấy từ subjects nếu có, hoặc cache localStorage đã đếm một lần.
-    let store = { counts: {}, confirmed: {} };
-    try {
-      store = JSON.parse(localStorage.getItem('learninghub_subject_counts_cache_v3') || '{}') || store;
-    } catch (e) {
-      lhWarn('LEARNING_HUB_MERGED_SUBJECT_PATCH', e);
-    }
-    store.counts = store.counts || {};
-    store.confirmed = store.confirmed || {};
-    const active = localStorage.getItem('learninghub_subject_code_merged_v1') || '';
-    const current = {};
-    try {
-      (RAW || []).forEach(q => {
-        const code = q.subject_code || active || '';
-        if (code) current[code] = (current[code] || 0) + 1;
-      });
-    } catch (e) {
-      lhWarn('LEARNING_HUB_MERGED_SUBJECT_PATCH', e);
-    }
-    return list.map(s => {
-      const code = s.code || '';
-      let n = s.question_count ?? s.questions_count ?? s.count;
-      if (n === undefined || n === null || Number(n) === 0) n = current[code] ?? store.counts[code] ?? 0;
-      n = Number(n);
-      if (!Number.isFinite(n)) n = 0;
-      return { ...s, question_count: n };
-    });
-  }
-  async function getSubjects() {
-    if (!logged()) return fallbackSubjects();
-    try {
-      const res = await fetch('/api/subjects?ts=' + Date.now(), { cache: 'no-store' });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || json.error) throw new Error(json.error || 'Không tải được subjects từ Turso');
-      const rows = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
-      if (!rows.length) return fallbackSubjects();
-      rows.sort(
-        (a, b) =>
-          (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) ||
-          String(a.code || '').localeCompare(String(b.code || '')),
-      );
-      return await addQuestionCounts(rows);
-    } catch (e) {
-      console.warn('[Turso subjects]', e);
-      showErr('Không tải được danh sách môn học từ Turso. Đang dùng môn mặc định.');
-      return fallbackSubjects();
-    }
-  }
-
-  function card(s) {
-    const rawCode = String(s.code || '');
-    const code = esc2(displayCode(rawCode));
-    const name = esc2(s.name || displayCode(rawCode) || 'Chưa có tên môn');
-    const desc = esc2(s.description || 'Môn học chưa có mô tả.');
-    const rawCount = Number(s.question_count ?? s.questions_count ?? s.count);
-    const countText = Number.isFinite(rawCount) ? `${rawCount} câu` : '— câu';
-    const status = s.is_active === false ? 'Tạm ẩn' : countText;
-    const chosen = pickedCode === s.code;
-    let coverMeta = {};
-    try {
-      coverMeta = typeof s.cover === 'string' ? JSON.parse(s.cover || '{}') : s.cover || {};
-    } catch (e) {
-      coverMeta = {};
-    }
-    const isNew = !!(
-      s.new_badge ||
-      s.newBadge ||
-      s.is_new ||
-      s.isNew ||
-      coverMeta.new_badge ||
-      coverMeta.newBadge ||
-      coverMeta.is_new
-    );
-    const newBadge = isNew ? '<span class="subjectNewBadge">NEW</span>' : '';
-    return `<button class="subjectCard ${chosen ? 'active' : ''} ${isNew ? 'hasNewBadge' : ''}" data-code="${esc2(rawCode)}" type="button" title="${code} - ${name} - ${countText}">
-      ${newBadge}
-      <span class="subjectCardCode"><span>${code}</span></span>
-      <span class="subjectCardTitle">${name}</span>
-      <span class="subjectCardDesc">${desc}</span>
-      <span class="subjectMeta">
-        <span>${status}</span>
-        <span class="subjectChoose">${chosen ? 'Đã chọn' : 'Chọn môn'}</span>
-      </span>
-    </button>`;
-  }
-  function applyPicked() {
-    if ($('subjectPickedText')) $('subjectPickedText').textContent = pickedCode ? label(pickedCode) : 'Chưa chọn môn';
-    if ($('subjectEnter')) $('subjectEnter').disabled = !pickedCode;
-    document.querySelectorAll('.subjectCard').forEach(x => {
-      const active = x.dataset.code === pickedCode;
-      x.classList.toggle('active', active);
-      x.setAttribute('aria-pressed', active ? 'true' : 'false');
-      const choose = x.querySelector('.subjectChoose');
-      if (choose) choose.textContent = active ? 'Đã chọn' : 'Chọn môn';
-    });
-  }
-  function renderSubjects() {
-    const list = $('subjectList');
-    if (!list) return;
-    const q = ($('subjectSearch')?.value || '').trim().toLowerCase();
-    const arr = subjectsCache.filter(
-      s => !q || `${s.code || ''} ${s.name || ''} ${s.description || ''}`.toLowerCase().includes(q),
-    );
-    list.innerHTML = arr.map(card).join('');
-    $('subjectEmpty')?.classList.toggle('hidden', !!arr.length);
-    list.querySelectorAll('.subjectCard').forEach(
-      x =>
-        (x.onclick = () => {
-          pickedCode = x.dataset.code;
-          applyPicked();
-        }),
-    );
-    applyPicked();
-  }
-  let lastRefreshTime = 0;
-  async function refreshSubjects(force = false) {
-    const now = Date.now();
-    if (!force && now - lastRefreshTime < 2000) {
-      return;
-    }
-    lastRefreshTime = now;
-    if (!logged()) return;
-    clearErr();
-    showLoading(true);
-    try {
-      subjectsCache = await getSubjects();
-      if (!pickedCode && subjectCode()) pickedCode = subjectCode();
-      if (!pickedCode && subjectsCache[0]) pickedCode = subjectsCache[0].code;
-      renderSubjects();
-      syncSubjectTexts();
-    } finally {
-      showLoading(false);
-    }
-  }
-  let lastOpenGateTime = 0;
-  function openGate(force = false) {
-    const now = Date.now();
-    if (!force && now - lastOpenGateTime < 1000) {
-      return;
-    }
-    lastOpenGateTime = now;
-    if (!logged()) return;
-    localStorage.setItem('learninghub_subject_gate_open_v1', 'true');
-    if ($('subjectUserEmail')) $('subjectUserEmail').textContent = user()?.email || 'Chưa đăng nhập';
-    gateOn(true);
-    closeAccountMenu();
-    refreshSubjects(true);
-  }
-  function closeGate() {
-    localStorage.setItem('learninghub_subject_gate_open_v1', 'false');
-    gateOn(false);
-  }
-  async function loadBySubject(code) {
-    if (!code) return false;
-    syncUserSubjectToProfile(code);
-    // ACCESS_GATE_STRICT_20260726: fail-closed, không có profile hợp lệ thì không gọi /api/questions.
-    if (!window.lhHasFullAccess?.(window.HODSupabase?.getProfile?.() || null)) return false;
-    try {
-      const res = await fetch('/api/questions?subject_code=' + encodeURIComponent(code) + '&ts=' + Date.now(), {
-        cache: 'no-store',
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || json.error) throw new Error(json.error || 'Không tải được questions từ Turso');
-      const data = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
-      RAW = data.map(r => ({
-        id: r.id,
-        subject_code: r.subject_code || code,
-        num: r.num,
-        question: r.question,
-        options: r.options || {},
-        answer: r.answer,
-        answer_text: r.answer_text,
-        images: typeof cleanImages === 'function' ? cleanImages(r.images || []) : r.images || [],
-        has_image: !!(r.has_image || (r.images || []).length),
-        error_risk: r.error_risk || 'low',
-        error_risk_reason: r.error_risk_reason || '',
-        __imagesChecked: true,
-        __imagesLoaded: true,
-      }));
-      pool = [...RAW];
-      var _saved = +localStorage.getItem('learninghub_progress_' + code) || 0;
-      ci = Math.max(0, Math.min(_saved, Math.max(0, pool.length - 1)));
-      flipped = false;
-      if ($('idx')) $('idx').textContent = pool.length ? String(ci + 1) : '0';
-      if ($('total')) $('total').textContent = String(pool.length);
-      updateBrand(code);
-      syncSubjectTexts();
-      // FIX_20260705: xóa trạng thái bài kiểm tra của môn trước để tab Kiểm tra không hiện đề cũ.
-      try {
-        if (typeof window.__examResetForSubjectChange === 'function') window.__examResetForSubjectChange();
-      } catch (e) {
-        lhWarn('LEARNING_HUB_MERGED_SUBJECT_PATCH', e);
-      }
-      try {
-        renderCard();
-      } catch (e) {
-        lhWarn('LEARNING_HUB_MERGED_SUBJECT_PATCH', e);
-      }
-      try {
-        renderQuiz();
-      } catch (e) {
-        lhWarn('LEARNING_HUB_MERGED_SUBJECT_PATCH', e);
-      }
-      try {
-        renderStudy();
-      } catch (e) {
-        lhWarn('LEARNING_HUB_MERGED_SUBJECT_PATCH', e);
-      }
-      notifyUX('Đã tải ' + label(code));
-      return true;
-    } catch (e) {
-      console.warn('[Turso loadBySubject]', e);
-      notifyUX('Không tải được dữ liệu môn học từ Turso.');
-      return false;
-    }
-  }
-
-  async function enterSubject() {
-    if (!pickedCode) return;
-    const btn = $('subjectEnter');
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = 'Đang tải...';
-    }
-    try {
-      setSubject(pickedCode);
-      closeGate();
-      let ok = false;
-      if (typeof window.loadCurrentSubjectOnly === 'function') {
-        ok = await window.loadCurrentSubjectOnly(true);
-      }
-      if (!ok) {
-        ok = await loadBySubject(pickedCode);
-      }
-    } catch (e) {
-      console.error('[enterSubject]', e);
-      notifyUX('Không thể chuyển môn: ' + (e.message || e));
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = 'Bắt đầu →';
-      }
-    }
-  }
-  async function logoutGate() {
-    closeGate();
-    setSubject('');
-    await window.HODSupabase?.signOut?.();
-  }
-  function patchSubmit() {
-    if (window.__hubPatchSubmitMerged || !window.HODSupabase?.submitEditRequest) return;
-    window.__hubPatchSubmitMerged = true;
-    const old = window.HODSupabase.submitEditRequest.bind(window.HODSupabase);
-    window.HODSupabase.submitEditRequest = async function (newDraft, oldQ) {
-      if (oldQ?.id) return old(newDraft, oldQ);
-      const supa = c();
-      const code = oldQ?.subject_code || subjectCode();
-      const num = oldQ?.num;
-      if (supa && code && num) {
-        const { data, error } = await supa
-          .from('questions')
-          .select('id,subject_code')
-          .eq('subject_code', code)
-          .eq('num', num)
-          .maybeSingle();
-        if (!error && data) oldQ = { ...oldQ, id: data.id, subject_code: data.subject_code || code };
-      }
-      return old(newDraft, oldQ);
-    };
-  }
-  function patchSave() {
-    if (window.__hubPatchSaveMerged || typeof saveEditor !== 'function') return;
-    window.__hubPatchSaveMerged = true;
-    const old = saveEditor;
-    saveEditor = async function () {
-      let oldQ = clone(RAW.find(c => c.num === editDraft.num) || pool[ci] || editDraft);
-      editDraft.question = $('editQuestion').value.trim();
-      editDraft.answer = $('editAnswer').value.trim().toUpperCase();
-      let ops = {};
-      document.querySelectorAll('[data-opt]').forEach(t => {
-        if (t.value.trim()) ops[t.dataset.opt] = t.value.trim();
-      });
-      editDraft.options = ops;
-      editDraft.answer_text = answerText(editDraft);
-      editDraft.subject_code = subjectCode();
-      if (window.HODSupabase && window.HODSupabase.isReady()) {
-        const _role = String(window.HODSupabase?.getProfile?.()?.role || '')
-          .trim()
-          .toLowerCase();
-        if (['admin', 'editor'].includes(_role)) {
-          const _qid = oldQ?.id || editDraft?.id;
-          if (!_qid) {
-            alert('Không tìm thấy ID câu hỏi. Hãy tải lại trang rồi thử lại.');
-            return;
-          }
-          const _u = window.HODSupabase?.getUser?.();
-          if (!_u?.id) {
-            alert('Chưa đăng nhập. Hãy đăng nhập lại.');
-            return;
-          }
-          const _list = editDraft.images || [];
-          const _text = editDraft.question + ' ' + Object.values(editDraft.options || {}).join(' ');
-          const _needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(_text);
-          const _hasImg = !!(_list.length || oldQ?.has_image);
-          const _risk = (editDraft.answer?.length || 0) > 1 ? 'medium' : 'low';
-          const _newData = {
-            question: editDraft.question,
-            options: editDraft.options || {},
-            answer: editDraft.answer,
-            answer_text: editDraft.answer_text,
-            images: _list,
-            has_image: _hasImg || _needsImg,
-            error_risk: _risk,
-            error_risk_reason: null,
-          };
-          const _oldData = {
-            question: oldQ.question,
-            options: oldQ.options || {},
-            answer: oldQ.answer,
-            answer_text: oldQ.answer_text,
-            images: oldQ.images || [],
-          };
-          if (typeof notify === 'function') notify('Đang lưu...');
-          try {
-            const _res = await fetch('/api/admin-action', {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({
-                user_id: _u.id,
-                action: 'save_question_direct',
-                payload: { question_id: _qid, new_data: _newData, old_data: _oldData },
-              }),
-            });
-            const _json = await _res.json().catch(() => ({}));
-            if (!_res.ok || _json.error) {
-              alert('Lưu trực tiếp thất bại: ' + (_json.error || _res.status));
-              return;
-            }
-          } catch (_err) {
-            alert('Lỗi kết nối khi lưu: ' + _err.message);
-            return;
-          }
-          if (typeof window.clearLearningHubQuestionCache === 'function') window.clearLearningHubQuestionCache();
-          $('editModal')?.classList.add('hidden');
-          if (typeof notify === 'function') notify('Đã lưu trực tiếp ✓');
-          if (typeof window.loadCurrentSubjectOnly === 'function') await window.loadCurrentSubjectOnly(true);
-          else if (window.HODSupabase?.loadQuestionsFromSupabase)
-            await window.HODSupabase.loadQuestionsFromSupabase(true);
-          return;
-        }
-        await window.HODSupabase.submitEditRequest(editDraft, oldQ);
-        return;
-      }
-      return old();
-    };
-    const _saveBtn = $('saveEdit');
-    if (_saveBtn) _saveBtn.onclick = saveEditor;
-  }
-  function patchSignOut() {
-    if (window.__hubPatchSignoutMerged || !window.HODSupabase?.signOut) return;
-    window.__hubPatchSignoutMerged = true;
-    const old = window.HODSupabase.signOut.bind(window.HODSupabase);
-    window.HODSupabase.signOut = async function () {
-      setSubject('');
-      return old();
-    };
-  }
-  function ensureChangeBtn() {
-    if (!$('hodChangeSubjectBtn')) return;
-    $('hodChangeSubjectBtn').onclick = e => {
-      e?.preventDefault?.();
-      openGate(true);
-    };
-  }
-  function isApproved() {
-    return !!window.lhHasFullAccess?.(window.HODSupabase?.getProfile?.() || null);
-  }
-  function bind() {
-    ensureChip();
-    ensureChangeBtn();
-    patchSubmit();
-    patchSave();
-    patchSignOut();
-    syncSubjectTexts();
-    $('subjectRefresh')?.addEventListener('click', () => refreshSubjects(true));
-    $('subjectSearch')?.addEventListener('input', renderSubjects);
-    $('subjectEnter')?.addEventListener('click', enterSubject);
-    $('subjectLogout')?.addEventListener('click', logoutGate);
-
-    // Bỏ tự kiểm tra/tự tải môn học liên tục.
-    // Chỉ tải môn đã chọn 1 lần khi mở web. Danh sách môn chỉ tải khi người dùng mở bảng chọn môn hoặc bấm Tải lại.
-    const runSubjectCheckOnce = () => {
-      if (window.__LHCheckedOnce) return;
-      if (!logged() || !isApproved()) return;
-      window.__LHCheckedOnce = true;
-      syncSubjectTexts();
-      const isGateOpen = localStorage.getItem('learninghub_subject_gate_open_v1') === 'true';
-      if (subjectCode() && !isGateOpen) {
-        syncUserSubjectToProfile(subjectCode());
-        loadBySubject(subjectCode());
-      } else {
-        openGate();
-      }
-    };
-
-    window.__LHTriggerSubjectCheck = runSubjectCheckOnce;
-    runSubjectCheckOnce();
-    setTimeout(runSubjectCheckOnce, 800);
-  }
-  window.getSubjectsCache = () => subjectsCache;
-  window.loadBySubject = loadBySubject;
-  window.setSubject = setSubject;
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);
-  else bind();
-})();
+// Thân block đã chuyển sang ./subjectGate.js. Gọi đúng chỗ cũ để thứ tự chạy không đổi.
+installSubjectGate();
 // ===== LEARNING HUB MERGED SUBJECT PATCH END =====
 
 // ===== ADD_SUBJECT_FEATURE_20260625 (UPGRADED TAB UX/UI) =====
@@ -3172,8 +2604,20 @@ Bắt đầu ngay từ câu 1.`;
     nameInp?.addEventListener('input', function () {
       localStorage.setItem('learninghub_add_subject_name_v1', this.value);
     });
+    // SUBJECT_DESC_LIMIT_20260728: 160 ký tự là đúng chỗ thẻ môn hiện được (.subjectCardDesc kẹp
+    // 3 dòng). Trước đây form cho gõ 300 nhưng thẻ chỉ hiện ~110 nên phần dư mất hẳn.
+    const syncDescCount = () => {
+      const el = $('addSubjectDescCount');
+      if (!el || !descInp) return;
+      const n = descInp.value.length;
+      el.textContent = n + '/160';
+      el.classList.toggle('nearLimit', n >= 140 && n <= 160);
+      el.classList.toggle('overLimit', n > 160);
+    };
+    syncDescCount();
     descInp?.addEventListener('input', function () {
       localStorage.setItem('learninghub_add_subject_desc_v1', this.value);
+      syncDescCount();
     });
 
     const fileName = localStorage.getItem('learninghub_add_subject_file_name_v1');
@@ -3238,8 +2682,8 @@ Bắt đầu ngay từ câu 1.`;
             <input id="addSubjectName" type="text" placeholder="VD: Tên môn học" maxlength="100">
           </div>
           <div class="addSubjectField full">
-            <label>Mô tả ngắn</label>
-            <textarea id="addSubjectDesc" placeholder="Mô tả môn học..." rows="2" maxlength="300"></textarea>
+            <label>Mô tả ngắn <span class="descCounter" id="addSubjectDescCount">0/160</span></label>
+            <textarea id="addSubjectDesc" placeholder="Mô tả môn học..." rows="2" maxlength="160"></textarea>
           </div>
         </div>
         <div class="step-actions right">
@@ -3745,11 +3189,11 @@ Bắt đầu ngay từ câu 1.`;
   const logged = () => !!window.HODSupabase?.getUser?.();
   function empty(msg) {
     try {
-      RAW = [];
-      pool = [];
-      ci = 0;
-      flipped = false;
-      randomActive = false;
+      LHState.RAW = [];
+      LHState.pool = [];
+      LHState.ci = 0;
+      LHState.flipped = false;
+      LHState.randomActive = false;
       localStorage.setItem('hod102_random_active', '0');
     } catch (e) {
       lhWarn('PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY', e);
@@ -3796,7 +3240,7 @@ Bắt đầu ngay từ câu 1.`;
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.error) throw new Error(json.error || 'Không tải được questions từ Turso');
       const data = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
-      RAW = data.map(r => ({
+      LHState.RAW = data.map(r => ({
         id: r.id,
         subject_code: r.subject_code || subject,
         num: r.num,
@@ -3811,14 +3255,14 @@ Bắt đầu ngay từ câu 1.`;
         __imagesChecked: true,
         __imagesLoaded: true,
       }));
-      pool = [...RAW];
+      LHState.pool = [...LHState.RAW];
       var _saved2 = +localStorage.getItem('learninghub_progress_' + subject) || 0;
-      ci = Math.max(0, Math.min(_saved2, Math.max(0, pool.length - 1)));
-      flipped = false;
-      randomActive = false;
+      LHState.ci = Math.max(0, Math.min(_saved2, Math.max(0, LHState.pool.length - 1)));
+      LHState.flipped = false;
+      LHState.randomActive = false;
       localStorage.setItem('hod102_random_active', '0');
       try {
-        if ($('total')) $('total').textContent = String(RAW.length);
+        if ($('total')) $('total').textContent = String(LHState.RAW.length);
       } catch (e) {
         lhWarn('PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY', e);
       }
@@ -3840,9 +3284,9 @@ Bắt đầu ngay từ câu 1.`;
   function patchLoaders() {
     try {
       window.rebuild = function () {
-        RAW = [];
-        pool = [];
-        return RAW;
+        LHState.RAW = [];
+        LHState.pool = [];
+        return LHState.RAW;
       };
     } catch (e) {
       lhWarn('PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY', e);
@@ -3855,11 +3299,11 @@ Bắt đầu ngay từ câu 1.`;
     patchLoaders();
     const subject = code();
     try {
-      if (!Array.isArray(RAW) || !RAW.length) {
+      if (!Array.isArray(LHState.RAW) || !LHState.RAW.length) {
         if (logged() && subject) loadSubjectOnly();
         return;
       }
-      if (RAW.some(q => !q.id || !q.subject_code || q.subject_code !== subject)) loadSubjectOnly();
+      if (LHState.RAW.some(q => !q.id || !q.subject_code || q.subject_code !== subject)) loadSubjectOnly();
     } catch (e) {
       lhWarn('PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY', e);
     }
@@ -3887,7 +3331,7 @@ Bắt đầu ngay từ câu 1.`;
       }
     });
     try {
-      randomActive = false;
+      LHState.randomActive = false;
       localStorage.setItem('hod102_random_active', '0');
     } catch (e) {
       lhWarn('PATCH_REMOVE_RANDOM_FEATURE_FINAL', e);
@@ -4085,171 +3529,15 @@ if (typeof finalAnswerText !== 'function') {
   else boot();
   window.addEventListener('resize', resizeDebounced, { passive: true });
 })();
-(function () {
-  const $ = id => document.getElementById(id);
-  function prof() {
-    return window.HODSupabase?.getProfile?.() || null;
-  }
-  function can() {
-    const p = prof();
-    return !!p && ['admin', 'editor'].includes(p.role) && !(p.blocked || p.is_blocked || p.status === 'blocked');
-  }
-  function cli() {
-    return window.HODSupabase?.__client || null;
-  }
-  function sc() {
-    return localStorage.getItem('learninghub_subject_code_merged_v1') || '';
-  }
-  function build() {
-    editDraft.question = ($('editQuestion')?.value || '').trim();
-    editDraft.answer = ($('editAnswer')?.value || '').trim().toUpperCase();
-    const ops = {};
-    document.querySelectorAll('[data-opt]').forEach(t => {
-      if ((t.value || '').trim()) ops[t.dataset.opt] = t.value.trim();
-    });
-    editDraft.options = ops;
-    editDraft.answer_text = typeof answerText === 'function' ? answerText(editDraft) : '';
-    editDraft.subject_code = sc() || editDraft.subject_code || '';
-    editDraft.images = editDraft.images || [];
-    return editDraft;
-  }
-  async function qid(oldQ, draft) {
-    if (oldQ?.id) return oldQ.id;
-    const c = cli();
-    if (!c) return null;
-    const code = oldQ?.subject_code || draft?.subject_code || sc(),
-      num = oldQ?.num || draft?.num;
-    if (!code || !num) return null;
-    const { data, error } = await c
-      .from('questions')
-      .select('id')
-      .eq('subject_code', code)
-      .eq('num', num)
-      .maybeSingle();
-    return error || !data ? null : data.id;
-  }
-  async function direct() {
-    if (window.__LH_EDIT_IMAGE_UPLOADING > 0) {
-      alert('Ảnh đang upload, chờ xong rồi bấm Lưu.');
-      return true;
-    }
-    if (!window.HODSupabase?.isReady?.()) {
-      alert('Bạn cần đăng nhập trước.');
-      return false;
-    }
-    if (!can()) return false;
-    const u = window.HODSupabase?.getUser?.();
-    const oldQ = clone(RAW.find(x => x.num === editDraft.num) || pool[ci] || editDraft);
-    const d = build();
-    const id = oldQ?.id || (await qid(oldQ, d));
-    if (!id) {
-      alert('Không tìm thấy ID câu hỏi trên Turso. Hãy tải lại trang rồi thử lại.');
-      return true;
-    }
-    let list = d.images || [];
-    if (typeof window.__LHCleanImages === 'function') list = window.__LHCleanImages(list);
-    list = list
-      .map(im => {
-        if (typeof im === 'string')
-          return { src: im, url: im, secure_url: im, source: im.includes('cloudinary.com') ? 'cloudinary' : 'url' };
-        const src = im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '';
-        return { ...im, src, url: im.url || src, secure_url: im.secure_url || src };
-      })
-      .filter(im => im && im.src && !String(im.src).startsWith('data:image/'));
-    d.images = list;
-    const localHasImg = !!(list.length || oldQ.has_image);
-    const contentText = d.question + ' ' + Object.values(d.options || {}).join(' ');
-    const needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(contentText);
-    const hasPlaceholder = list.some(im => {
-      const src = typeof im === 'string' ? im : im.src || im.url || im.secure_url || '';
-      return !src || src.includes('URL_') || src.includes('MÔ_TẢ') || src.includes('PLACEHOLDER');
-    });
-    let risk = 'low';
-    let reason = '';
-    if ((localHasImg && hasPlaceholder) || (needsImg && list.length === 0)) {
-      risk = 'high';
-      reason = 'Cần hình vẽ/ảnh minh họa nhưng chưa có ảnh thực tế';
-    } else if (d.answer.length > 1) {
-      risk = 'medium';
-      reason = 'Câu chọn nhiều đáp án đúng, cần rà soát kỹ';
-    }
-    const payload = {
-      id,
-      subject_code: d.subject_code || oldQ.subject_code || sc(),
-      num: d.num || oldQ.num,
-      question: d.question,
-      options: d.options || {},
-      answer: d.answer,
-      answer_text: d.answer_text,
-      images: list,
-      updated_at: new Date().toISOString(),
-      has_image: localHasImg || needsImg,
-      error_risk: risk,
-      error_risk_reason: reason || null,
-    };
-    try {
-      const res = await fetch('/api/admin-action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        cache: 'no-store',
-        body: JSON.stringify({
-          user_id: u?.id,
-          action: 'save_question_direct',
-          payload: { question_id: id, new_data: payload, old_data: oldQ },
-        }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || json.error) throw new Error(json.error || 'Không lưu được vào Turso');
-    } catch (error) {
-      alert('Sửa trực tiếp thất bại: ' + error.message);
-      return true;
-    }
-    if (typeof window.clearLearningHubQuestionCache === 'function') window.clearLearningHubQuestionCache();
-    if (typeof window.clearLearningHubSupabaseCache === 'function') window.clearLearningHubSupabaseCache('questions');
-    try {
-      RAW = (RAW || []).map(q =>
-        Number(q.id) === Number(id) ||
-        (q.subject_code === payload.subject_code && Number(q.num) === Number(payload.num))
-          ? { ...q, ...payload }
-          : q,
-      );
-      pool = (pool || []).map(q =>
-        Number(q.id) === Number(id) ||
-        (q.subject_code === payload.subject_code && Number(q.num) === Number(payload.num))
-          ? { ...q, ...payload }
-          : q,
-      );
-    } catch (e) {
-      lhWarn('FINAL_FLOATING_PARTICLES_CANVAS_20260613', e);
-    }
-    $('editModal')?.classList.add('hidden');
-    if (typeof notify === 'function') notify('Đã lưu ảnh vào Turso');
-    if (typeof window.loadCurrentSubjectOnly === 'function') await window.loadCurrentSubjectOnly();
-    else if (window.HODSupabase?.loadQuestionsFromSupabase) await window.HODSupabase.loadQuestionsFromSupabase();
-    return true;
-  }
-  const oldSave = typeof saveEditor === 'function' ? saveEditor : null;
-  saveEditor = async function () {
-    if (can()) {
-      const h = await direct();
-      if (h) return;
-    }
-    return oldSave ? oldSave.apply(this, arguments) : undefined;
-  };
-  window.saveEditor = saveEditor;
-  const oldOpen = typeof openEditor === 'function' ? openEditor : null;
-  openEditor = function () {
-    if (oldOpen) oldOpen.apply(this, arguments);
-    setTimeout(() => {
-      if (can()) {
-        if ($('editTitle')) $('editTitle').textContent = 'Sửa trực tiếp câu ' + ((pool && pool[ci]?.num) || '');
-        if ($('saveEdit')) $('saveEdit').textContent = 'Lưu trực tiếp';
-        if ($('restoreEdit')) $('restoreEdit').classList.remove('hidden');
-      }
-    }, 0);
-  };
-  window.openEditor = openEditor;
-})();
+/*
+  ===== IIFE "lưu trực tiếp" cũ trong FINAL_FLOATING_PARTICLES_CANVAS_20260613 — ĐÃ XÓA (20260727) =====
+  171 dòng. Block này lẽ ra chỉ vẽ hạt nền (canvas), nhưng có một IIFE thứ hai vá luồng
+  sửa câu hỏi: bọc saveEditor để admin/editor "lưu trực tiếp", bọc openEditor để đổi chữ
+  nút. Cả hai lớp chết vì apply() của LIBRARY_FILTER_AND_EDIT_PREVIEW_LAYOUT ghi đè ở mốc
+  900ms, và mọi thứ nó chạm (#editQuestion, #editAnswer, #editTitle, #saveEdit,
+  #restoreEdit) đều bị openEditPreview xóa khỏi DOM khi dựng lại #editModal.
+  Không mất hành vi: saveEditPreview lo "lưu trực tiếp" cho admin/editor.
+*/
 
 // ===== FINAL_REPORT_BUTTON_OPEN_TAB_20260613 =====
 // Thay khu vực "Báo cáo đã gửi" trong menu tài khoản thành nút bấm mở tab/modal xem báo cáo.
@@ -4865,7 +4153,8 @@ if (typeof finalAnswerText !== 'function') {
       document.querySelector('.counter');
     if (!counter) return;
     const tab = document.querySelector('.tab.active')?.dataset?.tab || 'fc';
-    const rawLen = typeof RAW !== 'undefined' && Array.isArray(RAW) ? String(RAW.length) : '637';
+    const rawLen =
+      typeof LHState.RAW !== 'undefined' && Array.isArray(LHState.RAW) ? String(LHState.RAW.length) : '637';
     let html;
     if (tab === 'fc') {
       const idx = $('idx')?.textContent || '1';
@@ -4952,22 +4241,26 @@ if (typeof finalAnswerText !== 'function') {
 (function () {
   function getQuestionByNum(num) {
     num = Number(num);
-    return (RAW || []).find(c => Number(c.num) === num) || (pool || []).find(c => Number(c.num) === num) || null;
+    return (
+      (LHState.RAW || []).find(c => Number(c.num) === num) ||
+      (LHState.pool || []).find(c => Number(c.num) === num) ||
+      null
+    );
   }
   function setCurrentQuestionByNum(num) {
     num = Number(num);
-    let idx = (pool || []).findIndex(c => Number(c.num) === num);
+    let idx = (LHState.pool || []).findIndex(c => Number(c.num) === num);
     if (idx < 0) {
-      const rawIdx = (RAW || []).findIndex(c => Number(c.num) === num);
+      const rawIdx = (LHState.RAW || []).findIndex(c => Number(c.num) === num);
       if (rawIdx >= 0) {
-        pool = [...RAW];
+        LHState.pool = [...LHState.RAW];
         idx = rawIdx;
       }
     }
     if (idx >= 0) {
-      ci = idx;
-      flipped = false;
-      flipDir = 'horizontal';
+      LHState.ci = idx;
+      LHState.flipped = false;
+      LHState.flipDir = 'horizontal';
       try {
         renderCard();
       } catch (e) {
@@ -5064,16 +4357,11 @@ if (typeof finalAnswerText !== 'function') {
   // LIBRARY_UX_STEP1_STABLE_RENDER gán renderStudy = renderUnified trong setTimeout(0)
   // nên nó thắng mọi lớp bọc gán lúc parse. Nút báo cáo trong thư viện hiện do
   // handler [data-stable-report] của STEP1 lo. Đừng thêm lớp bọc mới ở đây.
-  const oldRenderStudy = typeof renderStudy === 'function' ? renderStudy : null;
-  if (oldRenderStudy && !window.__studyReportRenderPatched) {
-    window.__studyReportRenderPatched = true;
-    renderStudy = function () {
-      const result = oldRenderStudy.apply(this, arguments);
-      setTimeout(hardBindReportButtons, 0);
-      return result;
-    };
-    window.renderStudy = renderStudy;
-  }
+  // Lớp bọc renderStudy của block này ĐÃ XÓA (20260727): STEP1 (renderUnified, nay ở
+  // ./library.js) ghi đè renderStudy nên lớp bọc không bao giờ chạy, và nút báo cáo trong
+  // thư viện do handler [data-stable-report] của STEP1 lo. `hardBindReportButtons` vẫn
+  // SỐNG — nó được gọi ở DOMContentLoaded ngay dưới đây. `openStudyReport` cũng vẫn sống.
+  // Phải xóa để hàm chuyển tiếp `renderStudy` (~dòng 613) không bị gán trần đè lên.
 
   document.addEventListener('DOMContentLoaded', function () {
     hardBindReportButtons();
@@ -5492,8 +4780,8 @@ if (typeof finalAnswerText !== 'function') {
   }
   function smartBetter(q) {
     const p = parseQuery(q);
-    if (!p.raw) return RAW;
-    return RAW.map(c => ({ c, m: scoreQuestion(c, p) }))
+    if (!p.raw) return LHState.RAW;
+    return LHState.RAW.map(c => ({ c, m: scoreQuestion(c, p) }))
       .filter(x => x.m.ok)
       .sort((a, b) => b.m.score - a.m.score || Number(a.c.num) - Number(b.c.num))
       .map(x => Object.assign({}, x.c, { __autoOpenAnswer: x.m.auto }));
@@ -5630,12 +4918,12 @@ if (typeof finalAnswerText !== 'function') {
   }
 
   smart = smartBetter;
-  // DEAD_OVERRIDE_20260727: renderStudyBetter không còn vẽ thư viện — STEP1 (renderUnified)
-  // ghi đè renderStudy trong setTimeout(0), và STEP1 dùng searchList/parseQuery riêng của nó.
-  // Kéo theo: `smart`/`smartBetter` giờ chỉ còn được gọi bởi renderStudy GỐC (cũng đã chết).
-  // Chưa xóa vì đó là khai báo ở tầng module, cần dọn cả chuỗi cùng lúc — xem CLAUDE.md.
-  renderStudy = renderStudyBetter;
-  window.renderStudy = renderStudyBetter;
+  // Hai dòng `renderStudy = renderStudyBetter` / `window.renderStudy = …` ĐÃ XÓA (20260727):
+  // STEP1 (renderUnified, nay ở ./library.js) ghi đè renderStudy nên chúng không vẽ thư viện,
+  // và phải xóa để hàm chuyển tiếp `renderStudy` (~dòng 613) không bị gán trần đè lên —
+  // từ file khác thì library.js chỉ gán được `window.renderStudy`.
+  // `smart = smartBetter` ngay trên vẫn SỐNG; `renderStudyBetter()` vẫn được gọi trực tiếp
+  // ở DOMContentLoaded dưới đây, y như trước.
   document.addEventListener('DOMContentLoaded', function () {
     bindBetterSearch();
     setTimeout(bindBetterSearch, 100);
@@ -5698,7 +4986,7 @@ if (typeof finalAnswerText !== 'function') {
     return $('study')?.classList.contains('active') || document.querySelector('.tab.active')?.dataset?.tab === 'study';
   }
   function nextNum() {
-    const nums = (RAW || []).map(q => Number(q.num)).filter(Number.isFinite);
+    const nums = (LHState.RAW || []).map(q => Number(q.num)).filter(Number.isFinite);
     return nums.length ? Math.max(...nums) + 1 : 1;
   }
   function notifyOk(msg) {
@@ -6046,11 +5334,11 @@ if (typeof finalAnswerText !== 'function') {
       if (typeof window.loadCurrentSubjectOnly === 'function') await window.loadCurrentSubjectOnly(true);
       else if (window.HODSupabase?.loadQuestionsFromSupabase) await window.HODSupabase.loadQuestionsFromSupabase();
       try {
-        const idx = (RAW || []).findIndex(q => Number(q.num) === num);
+        const idx = (LHState.RAW || []).findIndex(q => Number(q.num) === num);
         if (idx >= 0) {
-          pool = [...RAW];
-          ci = idx;
-          flipped = false;
+          LHState.pool = [...LHState.RAW];
+          LHState.ci = idx;
+          LHState.flipped = false;
           renderCard?.();
           renderStudy?.();
         }
@@ -8120,1680 +7408,22 @@ if (typeof finalAnswerText !== 'function') {
 })();
 
 // ===== FINAL_EXAM_ONLY_QUIZ_UI_20260627 =====
-(function () {
-  let examOnlyIndex = 0;
-  let examOnlyReview = false;
-  let examSelectedCodes = [];
-  let timerInt = null;
-  let examStart = 0;
-  let examBaseMs = 0;
-  let examElapsed = '00:00';
-  let examLayoutMode = localStorage.getItem('hod102_exam_layout_mode') || 'standard';
-  let kizspyFontSize = parseInt(localStorage.getItem('hod102_kizspy_font_size') || '10', 10);
-  let kizspySplitPct = parseFloat(localStorage.getItem('hod102_kizspy_split_pct') || '42');
-  let kizspyCheckedMap = {};
-
-  const EXAM_STORE = 'learninghub_exam_state_v1';
-  const $ = id => document.getElementById(id);
-  const E = s =>
-    String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-  const S = s =>
-    typeof sortAns === 'function'
-      ? sortAns(s || '')
-      : String(s || '')
-          .split('')
-          .sort()
-          .join('');
-  const FMT = ms =>
-    typeof fmt === 'function'
-      ? fmt(ms)
-      : String(Math.floor(ms / 60000)).padStart(2, '0') + ':' + String(Math.floor(ms / 1000) % 60).padStart(2, '0');
-  const IMG = c => {
-    try {
-      return typeof imgsHTML === 'function' ? imgsHTML(c) : '';
-    } catch (e) {
-      return '';
-    }
-  };
-  const EXPLAIN = c => {
-    try {
-      return typeof finalAnswerText === 'function' ? finalAnswerText(c) : answerText(c);
-    } catch (e) {
-      return String(c?.answer || '')
-        .split('')
-        .map(k => k + '. ' + ((c?.options || {})[k] || ''))
-        .join('; ');
-    }
-  };
-  const done = () => Object.keys(qSel || {}).filter(k => qSel[k]).length;
-  const examSubject = () => {
-    try {
-      return localStorage.getItem('learninghub_subject_code_merged_v1') || '';
-    } catch (e) {
-      return '';
-    }
-  };
-  const displayCode = code => String(code || '');
-  const baseCode = code =>
-    String(code || '')
-      .split(/[_\-\s]/)[0]
-      .toUpperCase();
-
-  function timeMsFromText(t) {
-    const m = String(t || '').match(/^(\d+):(\d+)$/);
-    return m ? (+m[1] * 60 + +m[2]) * 1000 : 0;
-  }
-  function setTimerText() {
-    const el = $('examTimer');
-    if (el) el.textContent = examElapsed;
-  }
-  function startTimer(resumeMs = 0) {
-    clearInterval(timerInt);
-    examBaseMs = Math.max(0, resumeMs || 0);
-    examStart = Date.now();
-    examElapsed = FMT(examBaseMs);
-    setTimerText();
-    timerInt = setInterval(() => {
-      examElapsed = FMT(examBaseMs + Date.now() - examStart);
-      setTimerText();
-    }, 1000);
-  }
-  function stopTimer() {
-    clearInterval(timerInt);
-    timerInt = null;
-  }
-  function resetTimer() {
-    stopTimer();
-    examBaseMs = 0;
-    examStart = 0;
-    examElapsed = '00:00';
-    setTimerText();
-  }
-  function nowTimerMs() {
-    return examSubmitted || !timerInt ? timeMsFromText(examElapsed) : examBaseMs + Date.now() - examStart;
-  }
-
-  function saveExam() {
-    try {
-      if (!qSet || !qSet.length) return;
-      localStorage.setItem(
-        EXAM_STORE,
-        JSON.stringify({
-          subject: examSubject(),
-          nums: (qSet || []).map(c => c.num),
-          ids: (qSet || []).map(c => c.id || ''),
-          qSel: qSel || {},
-          submitted: !!examSubmitted,
-          index: examOnlyIndex || 0,
-          review: !!examOnlyReview,
-          qCnt: qCnt || 0,
-          timerMs: nowTimerMs(),
-          timer: examElapsed,
-          layoutMode: examLayoutMode,
-        }),
-      );
-    } catch (e) {
-      lhWarn('FINAL_EXAM_ONLY_QUIZ_UI_20260627', e);
-    }
-  }
-  function clearExam() {
-    try {
-      localStorage.removeItem(EXAM_STORE);
-    } catch (e) {
-      lhWarn('FINAL_EXAM_ONLY_QUIZ_UI_20260627', e);
-    }
-  }
-  function restoreExam() {
-    try {
-      const st = JSON.parse(localStorage.getItem(EXAM_STORE) || 'null');
-      if (!st || !Array.isArray(st.nums) || !st.nums.length || !Array.isArray(RAW) || !RAW.length) return false;
-      const curSub = examSubject() || '';
-      const stSub = st.subject || '';
-      if (!stSub || !curSub || stSub !== curSub) return false;
-      const restored = st.nums
-        .map((n, i) => RAW.find(c => String(c.id || '') === String(st.ids?.[i] || '') || Number(c.num) === Number(n)))
-        .filter(Boolean);
-      if (!restored.length) return false;
-      qSet = restored;
-      qSel = st.qSel || {};
-      examSubmitted = !!st.submitted;
-      examOnlyIndex = Math.max(0, Math.min(+st.index || 0, qSet.length - 1));
-      examOnlyReview = !!st.review;
-      qCnt = st.qCnt || 0;
-      if (st.layoutMode) examLayoutMode = st.layoutMode;
-      quizMode = 'exam';
-      examElapsed = st.timer || FMT(+st.timerMs || 0);
-      if (!examSubmitted && !timerInt) startTimer(+st.timerMs || timeMsFromText(examElapsed));
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  function markTab() {
-    document.querySelectorAll('.tab').forEach(t => {
-      if (t.dataset?.tab === 'quiz') t.textContent = 'Kiểm tra';
-    });
-  }
-  function removeOldQuizUI() {
-    document
-      .querySelectorAll('#quiz .modeRow,#quiz .cntGrid:not(.examOnlyCountGrid),#practiceMode,#examMode')
-      .forEach(x => x.remove());
-  }
-
-  let examSubjectsData = [];
-  let examSubjectsFetchedAt = 0;
-  async function ensureExamSubjects() {
-    if (ensureExamSubjects.__busy) return;
-    if (!window.HODSupabase?.getUser?.()) return;
-    const prof = window.HODSupabase?.getProfile?.();
-    if (prof && (prof.approved === false || prof.approved === 0 || prof.approved === '0')) return;
-    if (examSubjectsData.length && Date.now() - examSubjectsFetchedAt < 60000) return;
-    ensureExamSubjects.__busy = true;
-    try {
-      const res = await fetch('/api/subjects?ts=' + Date.now(), { cache: 'no-store' });
-      const json = await res.json().catch(() => ({}));
-      const rows = Array.isArray(json.data) ? json.data : [];
-      if (res.ok && rows.length) {
-        examSubjectsData = rows.filter(s => s && s.is_active !== false);
-        examSubjectsFetchedAt = Date.now();
-        if (document.querySelector('#quiz .setup .examOnlyStart')) setup();
-      }
-    } catch (e) {
-      console.warn('[exam subjects]', e);
-    } finally {
-      ensureExamSubjects.__busy = false;
-    }
-  }
-  function cachedSubjects() {
-    let subjects = typeof window.getSubjectsCache === 'function' ? window.getSubjectsCache() || [] : [];
-    if (!subjects.length) subjects = examSubjectsData;
-    if (!subjects.length || Date.now() - examSubjectsFetchedAt > 60000) ensureExamSubjects();
-    return subjects;
-  }
-
-  function setup() {
-    const box = document.querySelector('#quiz .setup');
-    if (!box) return;
-    const activeSubject = examSubject();
-    const subjects = cachedSubjects();
-    const totalCount = (RAW || []).length;
-    if (activeSubject && (!examSelectedCodes.length || !examSelectedCodes.includes(activeSubject)))
-      examSelectedCodes = [activeSubject];
-    const activeBase = baseCode(activeSubject);
-    const activeSub =
-      subjects.find(s => s.code === activeSubject) ||
-      (activeSubject ? { code: activeSubject, name: displayCode(activeSubject), question_count: totalCount } : null);
-    const matchingSubjects = subjects.filter(s => s.code !== activeSubject && baseCode(s.code) === activeBase);
-
-    const activeCard = activeSub
-      ? `
-      <div class="examActiveSubjectCard">
-        <div class="examActiveSubjectTop"><span class="examActiveSubjectCode">${E(displayCode(activeSub.code))}</span><span class="examActiveSubjectName">${E(activeSub.name || displayCode(activeSub.code))}</span></div>
-        <div class="examActiveSubjectDesc">${E(activeSub.description || 'Môn học chưa có mô tả.')}</div>
-        <div class="examActiveSubjectMeta">${E(activeSub.question_count || totalCount || 0)} câu</div>
-      </div>`
-      : '';
-
-    const extraChips = matchingSubjects
-      .map(s => {
-        const checked = examSelectedCodes.includes(s.code);
-        return `<label class="examSubjectChip ${checked ? 'checked' : ''}" data-exam-subj="${E(s.code)}">
-        <input type="checkbox" value="${E(s.code)}" ${checked ? 'checked' : ''}>
-        <span class="examSubjectChipTop"><span class="examSubjectChipCode">${E(displayCode(s.code))}</span><span class="examSubjectChipName">${E(s.name || '')}</span></span>
-        <span class="examSubjectChipDesc">${E(s.description || 'Môn học chưa có mô tả.')}</span>
-        <span class="examSubjectChipDivider"></span>
-        <span class="examSubjectChipBottom"><span class="examSubjectChipCount">${E(s.question_count || 0)} câu</span><span class="examSubjectChipChoose">${checked ? 'Đã chọn' : 'Chọn'}</span></span>
-      </label>`;
-      })
-      .join('');
-
-    box.innerHTML = `
-      <div class="examOnlyStart">
-        <div class="examOnlyBadge">KIỂM TRA</div>
-        <div class="examOnlyLabel">Môn đang học</div>
-        ${activeCard || '<span style="color:var(--mist)">Chưa chọn môn học</span>'}
-        ${extraChips ? `<div class="examOnlyLabel">Gộp thêm môn <span style="font-weight:400;color:var(--mist);font-size:.85rem">(chọn thêm môn cùng mã để gộp đề)</span></div><div class="examSubjectChips" id="examSubjectChipsExtra">${extraChips}</div>` : ''}
-        <div class="examOnlyLabel">Số câu kiểm tra <span style="font-weight:400;color:var(--mist);font-size:.85rem">(Thư viện hiện có: <span id="examTotalCountVal">${totalCount}</span> câu)</span></div>
-        <div class="examOnlyCountGrid">
-          <button class="cnt" data-exam-cnt="10">10</button>
-          <button class="cnt" data-exam-cnt="20">20</button>
-          <button class="cnt" data-exam-cnt="30">30</button>
-          <button class="cnt" data-exam-cnt="50">50</button>
-          <button class="cnt" data-exam-cnt="100">100</button>
-          <button class="cnt" data-exam-cnt="0">Tất cả</button>
-        </div>
-        <div class="examCustomCntRow"><label class="examCustomCntLabel">Tùy chỉnh:</label><input type="number" id="examCustomCnt" class="examCustomCntInput" min="1" placeholder="Nhập số câu..."><button type="button" class="cnt examCustomCntApply" id="examCustomCntApply">Áp dụng</button></div>
-        <button id="start" class="start" type="button">Bắt đầu kiểm tra</button>
-      </div>`;
-
-    const updateMergedCount = () => {
-      const sum =
-        subjects
-          .filter(s => examSelectedCodes.includes(s.code))
-          .reduce((acc, s) => acc + (+s.question_count || 0), 0) || totalCount;
-      const el = $('examTotalCountVal');
-      if (el) el.textContent = sum;
-    };
-    updateMergedCount();
-    box.querySelectorAll('.examSubjectChip input[type="checkbox"]').forEach(cb => {
-      cb.onchange = () => {
-        const code = cb.value;
-        const label = cb.closest('.examSubjectChip');
-        if (cb.checked) {
-          if (!examSelectedCodes.includes(code)) examSelectedCodes.push(code);
-          label?.classList.add('checked');
-        } else {
-          examSelectedCodes = examSelectedCodes.filter(c => c !== code);
-          label?.classList.remove('checked');
-        }
-        const choose = label?.querySelector('.examSubjectChipChoose');
-        if (choose) choose.textContent = cb.checked ? 'Đã chọn' : 'Chọn';
-        updateMergedCount();
-      };
-    });
-    box.querySelectorAll('[data-exam-cnt]').forEach(b => {
-      const cnt = +b.dataset.examCnt;
-      b.classList.toggle('sel', cnt === qCnt);
-      b.onclick = () => {
-        qCnt = cnt;
-        box.querySelectorAll('[data-exam-cnt]').forEach(x => x.classList.remove('sel'));
-        b.classList.add('sel');
-        const input = $('examCustomCnt');
-        if (input) input.value = '';
-      };
-    });
-    const applyBtn = $('examCustomCntApply');
-    const customInput = $('examCustomCnt');
-    if (applyBtn && customInput) {
-      const applyCustom = () => {
-        const v = parseInt(customInput.value, 10);
-        if (v > 0) {
-          qCnt = v;
-          box.querySelectorAll('[data-exam-cnt]').forEach(x => x.classList.remove('sel'));
-        }
-      };
-      applyBtn.onclick = applyCustom;
-      customInput.onkeydown = e => {
-        if (e.key === 'Enter') applyCustom();
-      };
-    }
-    const startBtn = $('start');
-    if (startBtn) {
-      startBtn.onclick = () => {
-        showLayoutPickerModal(() => {
-          start();
-        });
-      };
-    }
-  }
-
-  function showLayoutPickerModal(onConfirm) {
-    let modal = document.getElementById('examLayoutPickerModal');
-    if (!modal) {
-      modal = document.createElement('div');
-      modal.id = 'examLayoutPickerModal';
-      document.body.appendChild(modal);
-    }
-    modal.className = 'examLayoutPickerOverlay';
-    modal.innerHTML = `
-      <div class="examLayoutPickerBox">
-        <h3 class="examLayoutPickerTitle">🎯 Chọn Giao Diện Làm Bài</h3>
-        <p class="examLayoutPickerSub">Vui lòng chọn kiểu giao diện hiển thị bạn mong muốn:</p>
-        
-        <div class="examLayoutPickerGrid">
-          <div class="examLayoutPickerCard ${examLayoutMode === 'kizspy' ? 'active' : ''}" data-pick-layout="kizspy">
-            <span class="examLayoutPickerBadge">GIAO DIỆN THI</span>
-            <div class="examLayoutPickerIcon">💻</div>
-            <div class="examLayoutPickerName">Giao diện thi</div>
-            <div class="examLayoutPickerDesc">Mô phỏng EOS Client FPT vạch đỏ, tích chọn cột trái & tùy chỉnh zoom cỡ chữ.</div>
-          </div>
-
-          <div class="examLayoutPickerCard ${examLayoutMode === 'standard' ? 'active' : ''}" data-pick-layout="standard">
-            <div class="examLayoutPickerIcon">🗂</div>
-            <div class="examLayoutPickerName">Giao diện chuẩn</div>
-            <div class="examLayoutPickerDesc">Giao diện dạng thẻ đầy đủ tính năng truyền thống.</div>
-          </div>
-        </div>
-
-        <div class="examLayoutPickerActions">
-          <button type="button" class="examLayoutPickerConfirmBtn" id="examLayoutPickerStart">Bắt đầu làm bài ▶</button>
-        </div>
-      </div>
-    `;
-
-    modal.querySelectorAll('[data-pick-layout]').forEach(card => {
-      card.onclick = () => {
-        examLayoutMode = card.dataset.pickLayout;
-        try {
-          localStorage.setItem('hod102_exam_layout_mode', examLayoutMode);
-        } catch (e) {
-          lhWarn('FINAL_EXAM_ONLY_QUIZ_UI_20260627', e);
-        }
-        modal.querySelectorAll('[data-pick-layout]').forEach(x => x.classList.remove('active'));
-        card.classList.add('active');
-      };
-    });
-
-    const confirmBtn = modal.querySelector('#examLayoutPickerStart');
-    if (confirmBtn) {
-      confirmBtn.onclick = () => {
-        modal.remove();
-        if (typeof onConfirm === 'function') onConfirm();
-      };
-    }
-  }
-
-  function showQuickCheckResultPopup(userChoice, correctChoice, q) {
-    let popup = document.getElementById('kizspyQuickCheckPopup');
-    if (!popup) {
-      popup = document.createElement('div');
-      popup.id = 'kizspyQuickCheckPopup';
-      document.body.appendChild(popup);
-    }
-    popup.className = 'kizspyCheckOverlay';
-
-    const opts = q.options || {};
-    const formatOptText = keysStr => {
-      if (!keysStr) return '';
-      return keysStr
-        .split('')
-        .map(k => (opts[k] ? `${k}. ${opts[k]}` : k))
-        .join('; ');
-    };
-
-    const userText = formatOptText(userChoice);
-    const correctText = formatOptText(correctChoice);
-
-    if (!userChoice) {
-      popup.innerHTML = `
-        <div class="kizspyCheckBox warning">
-          <div class="kizspyCheckHeader">
-            <span class="kizspyCheckTitle">⚠️ CHƯA CHỌN ĐÁP ÁN</span>
-            <button type="button" class="kizspyCheckClose" id="kizspyCheckCloseBtn">×</button>
-          </div>
-          <div class="kizspyCheckContent">
-            Bạn chưa tích chọn đáp án nào cho <b>Câu ${examOnlyIndex + 1}</b>. Hãy chọn 1 đáp án ở cột trái rồi bấm Kiểm tra lại nhé!
-          </div>
-          <div class="kizspyCheckFooter">
-            <button type="button" class="kizspyCheckOkBtn" id="kizspyCheckOkBtn">Đã hiểu</button>
-          </div>
-        </div>
-      `;
-    } else {
-      const isCorrect = S(userChoice) === S(correctChoice);
-      const explainText = q.explain || EXPLAIN(q) || '';
-
-      popup.innerHTML = `
-        <div class="kizspyCheckBox ${isCorrect ? 'correct' : 'incorrect'}">
-          <div class="kizspyCheckHeader">
-            <span class="kizspyCheckTitle">${isCorrect ? '✅ CHÍNH XÁC!' : '❌ CHƯA CHÍNH XÁC'}</span>
-            <button type="button" class="kizspyCheckClose" id="kizspyCheckCloseBtn">×</button>
-          </div>
-          <div class="kizspyCheckBodyGrid">
-            <div class="kizspyCheckRow ${isCorrect ? 'ok' : 'bad'}">
-              <div class="kizspyCheckRowTop">
-                <span class="kizspyCheckLabel">Lựa chọn của bạn:</span>
-                <span class="kizspyCheckBadge ${isCorrect ? 'ok' : 'bad'}">${E(userChoice)}</span>
-              </div>
-              <div class="kizspyCheckVal">${E(userText)}</div>
-            </div>
-            ${
-              !isCorrect
-                ? `
-              <div class="kizspyCheckRow ok">
-                <div class="kizspyCheckRowTop">
-                  <span class="kizspyCheckLabel">Đáp án đúng:</span>
-                  <span class="kizspyCheckBadge ok">${E(correctChoice)}</span>
-                </div>
-                <div class="kizspyCheckVal">${E(correctText)}</div>
-            <div class="kizspyCheckExplainText">${E(explainText)}</div>
-              </div>
-            `
-                : ''
-            }
-          </div>
-          <div class="kizspyCheckFooter">
-            <button type="button" class="kizspyCheckOkBtn" id="kizspyCheckOkBtn">Đóng</button>
-          </div>
-        </div>
-      `;
-    }
-
-    const close = () => popup.remove();
-    const closeBtn = popup.querySelector('#kizspyCheckCloseBtn');
-    const okBtn = popup.querySelector('#kizspyCheckOkBtn');
-    if (closeBtn) closeBtn.onclick = close;
-    if (okBtn) okBtn.onclick = close;
-    popup.onclick = e => {
-      if (e.target === popup) close();
-    };
-  }
-
-  async function loadQuestionsForCodes(codes) {
-    if (!codes.length) return [];
-    const out = [];
-    for (const code of codes) {
-      try {
-        const res = await fetch('/api/questions?subject_code=' + encodeURIComponent(code) + '&ts=' + Date.now(), {
-          cache: 'no-store',
-        });
-        const json = await res.json().catch(() => ({}));
-        if (res.ok && Array.isArray(json.data)) out.push(...json.data);
-      } catch (e) {
-        console.warn('[loadQuestionsForCodes]', code, e);
-      }
-    }
-    return out.map(r => ({
-      id: r.id,
-      subject_code: r.subject_code,
-      num: r.num,
-      question: r.question,
-      options: r.options || {},
-      answer: r.answer,
-      answer_text: r.answer_text,
-      images: typeof cleanImages === 'function' ? cleanImages(r.images || []) : r.images || [],
-      has_image: !!(r.has_image || (r.images || []).length),
-      error_risk: r.error_risk || 'low',
-      error_risk_reason: r.error_risk_reason || '',
-      __imagesChecked: true,
-      __imagesLoaded: true,
-    }));
-  }
-
-  async function start() {
-    quizMode = 'exam';
-    examSubmitted = false;
-    examOnlyReview = false;
-    examOnlyIndex = 0;
-    const activeSubject = examSubject();
-    const extraCodes = examSelectedCodes.filter(c => c && c !== activeSubject);
-    let mergedPool = [...(RAW || [])];
-    if (extraCodes.length) {
-      if (typeof showProgress === 'function') showProgress('Đang tải câu hỏi từ các môn đã chọn...', 0, 100);
-      const extraQuestions = await loadQuestionsForCodes(extraCodes);
-      if (typeof hideProgress === 'function') hideProgress();
-      const seen = new Set(mergedPool.map(q => q.id || q.subject_code + ':' + q.num));
-      extraQuestions.forEach(q => {
-        const key = q.id || q.subject_code + ':' + q.num;
-        if (!seen.has(key)) {
-          mergedPool.push(q);
-          seen.add(key);
-        }
-      });
-    }
-    if (!mergedPool.length) {
-      alert('Chưa có câu hỏi để kiểm tra.');
-      return;
-    }
-    qSet = sample(mergedPool, qCnt || 0);
-    qDone = {};
-    qSel = {};
-    clearExam();
-    startTimer(0);
-    saveExam();
-    draw();
-  }
-
-  function scoreExam() {
-    let ok = 0;
-    (qSet || []).forEach((c, i) => {
-      if (S(qSel[i]) === S(c.answer)) ok++;
-    });
-    const total = (qSet || []).length;
-    const pct = total ? Math.round((ok / total) * 100) : 0;
-    return { ok, bad: total - ok, total, pct };
-  }
-
-  function draw() {
-    window.__examOnlyRender = draw;
-    const body = $('quizBody');
-    if (!body) return;
-
-    const isQuizActive =
-      $('quiz')?.classList.contains('active') || document.querySelector('.tab.active')?.dataset?.tab === 'quiz';
-    if (!isQuizActive) {
-      document.body.classList.remove('kizspy-active');
-      const p = document.getElementById('kizspyExamPortal');
-      if (p) p.remove();
-      return;
-    }
-    if (!qSet || !qSet.length) restoreExam();
-    const box = document.querySelector('#quiz .setup');
-    const idxEl = document.getElementById('idx');
-    const totalEl = document.getElementById('total');
-    const totalCountVal = qSet && qSet.length ? qSet.length : typeof RAW !== 'undefined' && RAW.length ? RAW.length : 0;
-    if (idxEl) idxEl.textContent = String((examOnlyIndex || 0) + 1);
-    if (totalEl) totalEl.textContent = String(totalCountVal);
-
-    if (!qSet || !qSet.length) {
-      document.body.classList.remove('kizspy-active');
-      const p = document.getElementById('kizspyExamPortal');
-      if (p) p.remove();
-      setup();
-      if (box) box.classList.remove('hidden');
-      body.innerHTML = '';
-      return;
-    }
-    if (box) box.classList.add('hidden');
-    if (examSubmitted && !examOnlyReview) {
-      document.body.classList.remove('kizspy-active');
-      const portal = document.getElementById('kizspyExamPortal');
-      if (portal) portal.remove();
-      result();
-      return;
-    }
-
-    const c = qSet[examOnlyIndex];
-    const total = qSet.length;
-    const p = Math.round(((examOnlyIndex + 1) / total) * 100);
-    const ch = qSel[examOnlyIndex] || '';
-    const correctAns = c.answer || '';
-
-    if (examLayoutMode === 'kizspy') {
-      document.body.classList.add('kizspy-active');
-      let portal = document.getElementById('kizspyExamPortal');
-      if (!portal) {
-        portal = document.createElement('div');
-        portal.id = 'kizspyExamPortal';
-        document.body.appendChild(portal);
-      }
-      portal.style.display = 'flex';
-
-      const questionCountLabel = `Question: ${examOnlyIndex + 1}`;
-      const ansLen = (c.answer || '').length;
-      const isMulti = ansLen > 1;
-      const choiceInstruction = isMulti ? `(Choose ${ansLen} answers)` : '(Choose 1 answer)';
-
-      const isCheckedThisQ = examOnlyReview || !!kizspyCheckedMap[examOnlyIndex];
-      const isUserChoseAny = !!ch;
-      const isUserCorrect = isUserChoseAny && S(ch) === S(correctAns);
-
-      const isAllChecked = (qSet || []).length > 0 && (qSet || []).every((_, idx) => kizspyCheckedMap[idx]);
-
-      // Selection boxes for Left Pane
-      const selectBoxesHTML = Object.keys(c.options || {})
-        .map(k => {
-          const isChecked = String(ch).includes(k);
-          const inputType = isMulti ? 'checkbox' : 'radio';
-          let boxClass = isChecked ? 'sel' : '';
-          if (isCheckedThisQ) {
-            if (correctAns.includes(k)) boxClass += ' check-correct-ok';
-            else if (isChecked && !correctAns.includes(k)) boxClass += ' check-user-bad';
-          }
-          return `
-          <label class="kizspySelectBoxItem ${boxClass}" data-exam-opt="${E(k)}">
-            <input type="${inputType}" class="kizspyRadioCheck" name="kizspyOpt_${examOnlyIndex}" ${isChecked ? 'checked' : ''} ${examOnlyReview ? 'disabled' : ''}>
-            <span class="kizspySelectBoxLetter">${E(k)}</span>
-          </label>
-        `;
-        })
-        .join('');
-
-      // Display options text for Right Pane
-      let optsHTML = Object.entries(c.options || {})
-        .map(([k, v]) => {
-          const isChecked = String(ch).includes(k);
-          const isUserChose = ch.includes(k);
-          const isCorrect = correctAns.includes(k);
-          let stateClass = isChecked ? 'sel' : '';
-          let badgeTag = '';
-          if (isCheckedThisQ) {
-            if (isCorrect) {
-              stateClass = 'check-correct-ok';
-              badgeTag = '<span class="kizspyCheckBadgeTag ok">✓ Đáp án đúng</span>';
-            } else if (isUserChose && !isCorrect) {
-              stateClass = 'check-user-bad';
-              badgeTag = '<span class="kizspyCheckBadgeTag bad">✕ Lựa chọn của bạn</span>';
-            }
-          }
-          return `
-          <div class="kizspyOption ${stateClass}" ${!examOnlyReview ? `data-exam-opt="${E(k)}"` : ''}>
-            <span class="kizspyOptionPrefix">${E(k)}.</span>
-            <span class="kizspyOptionText">${E(v)}</span>
-            ${badgeTag}
-          </div>
-        `;
-        })
-        .join('');
-
-      portal.innerHTML = `
-        <div class="kizspyHeaderNav">
-          <div class="kizspyNavLeft">
-            <span class="kizspyBrandBadge">💻 EOS Client</span>
-            <span class="kizspyTimerBadge">⏱ <b id="examTimer">${timeText()}</b></span>
-            <span class="kizspyCountBadge">Đã làm: <b>${done()}/${total}</b></span>
-          </div>
-
-          <div class="kizspyNavCenter">
-            <button type="button" id="kizspyOpenMapBtn" class="kizspyBtn kizspyBtnMap" title="Xem bản đồ tất cả các câu hỏi trong bài thi">
-              🗺 Bản đồ câu (${done()}/${total})
-            </button>
-            <button type="button" id="kizspyFontDec" class="kizspyBtn" title="Giảm cỡ chữ (Zoom out)">A-</button>
-            <button type="button" id="kizspyFontReset" class="kizspyBtn" title="Reset cỡ chữ về mặc định 10px">↺ 10px</button>
-            <button type="button" id="kizspyFontInc" class="kizspyBtn" title="Tăng cỡ chữ (Zoom in)">A+</button>
-            <button type="button" id="kizspyQuickCheck" class="kizspyBtn kizspyBtnCheck ${isCheckedThisQ ? 'active' : ''}" title="Kiểm tra đáp án câu hiện tại">
-              ✔ Check đáp án
-            </button>
-            <button type="button" id="examToggleLayout" class="kizspyBtn kizspyBtnLayout" title="Chuyển về giao diện chuẩn">
-              ⇄ Giao diện chuẩn
-            </button>
-          </div>
-
-          <div class="kizspyNavRight">
-            ${
-              !examOnlyReview
-                ? `
-              <button type="button" id="examSubmit" class="kizspyBtn kizspyBtnSubmit">Nộp bài</button>
-            `
-                : `
-              <button type="button" id="examOnlyExitToResult" class="kizspyBtn kizspyBtnSubmit">Xem kết quả</button>
-            `
-            }
-            <button type="button" id="examOnlyExit" class="kizspyBtn kizspyBtnExit">✕ Thoát</button>
-          </div>
-        </div>
-
-        <div class="kizspyMainSplit">
-          <div class="kizspyLeftPane" style="flex:0 0 ${kizspySplitPct}% !important; width:${kizspySplitPct}% !important;">
-            <div class="kizspyHeaderLine">${questionCountLabel}</div>
-            <div class="kizspySubLine">${choiceInstruction}</div>
-            <div class="kizspySelectBoxContainer">
-              <div class="kizspySelectBoxList">${selectBoxesHTML}</div>
-            </div>
-
-            <!-- Prev / Next Navigation Buttons on Left Pane -->
-            <div class="kizspyLeftNavBtns">
-              <button type="button" id="examPrev" class="kizspyNavBtn" ${examOnlyIndex <= 0 ? 'disabled' : ''}>← Prev</button>
-              <button type="button" id="examNext" class="kizspyNavBtn" ${examOnlyIndex >= total - 1 ? 'disabled' : ''}>Next →</button>
-            </div>
-          </div>
-
-          <div class="kizspyDividerLine" title="Kéo qua trái/phải để chỉnh độ rộng 2 cột"></div>
-
-          <div class="kizspyRightPane" style="font-size:${kizspyFontSize}px !important;">
-            <div class="kizspyQText" style="font-size:${kizspyFontSize}px !important;">${E(c.question)}</div>
-            ${c.images && c.images.length ? `<div class="kizspyQImgs">${IMG(c)}</div>` : ''}
-            <div class="kizspyOptionsList">${optsHTML}</div>
-          </div>
-        </div>
-
-        <!-- EOS Question Map Modal Overlay -->
-        <div id="kizspyMapModal" class="kizspyMapOverlay hidden">
-          <div class="kizspyMapBox">
-            <div class="kizspyMapHeader">
-              <div class="kizspyMapTitle">
-                <b>🗺 Bản đồ câu hỏi bài thi EOS</b>
-                <span>(Đã làm: ${done()} / ${total} câu)</span>
-              </div>
-              <button type="button" class="kizspyMapClose" id="kizspyCloseMapBtn" title="Đóng bản đồ câu hỏi">✕</button>
-            </div>
-            
-            <div class="kizspyMapGrid">
-              ${(qSet || [])
-                .map((qItem, idx) => {
-                  const userSel = qSel[idx] || '';
-                  const isUserDone = !!userSel;
-                  const isChecked = examOnlyReview || !!kizspyCheckedMap[idx];
-                  const isCurrent = idx === examOnlyIndex;
-                  const correctAnsStr = qItem.answer || '';
-                  const isCorrect = isUserDone && S(userSel) === S(correctAnsStr);
-
-                  let itemClass = '';
-                  if (isCurrent) itemClass += ' current';
-                  if (isChecked && isUserDone) {
-                    itemClass += isCorrect ? ' ok' : ' bad';
-                  } else if (isUserDone) {
-                    itemClass += ' done';
-                  }
-
-                  const subLabel = userSel ? E(userSel) : isChecked && isUserDone ? (isCorrect ? '✓' : '✕') : '';
-
-                  return `
-                  <div class="kizspyMapItem ${itemClass}" data-exam-jump="${idx}">
-                    <span>${idx + 1}</span>
-                    ${subLabel ? `<span class="kizspyMapItemSub">${subLabel}</span>` : ''}
-                  </div>
-                `;
-                })
-                .join('')}
-            </div>
-          </div>
-        </div>
-      `;
-
-      // Clear main body to prevent duplicates behind portal
-      body.innerHTML = `<div style="padding:20px;text-align:center;color:#94a3b8;">(Đang ở chế độ Kizspy EOS Portal)</div>`;
-
-      setTimeout(() => {
-        const openMapBtn = portal.querySelector('#kizspyOpenMapBtn');
-        const mapModal = portal.querySelector('#kizspyMapModal');
-        const closeMapBtn = portal.querySelector('#kizspyCloseMapBtn');
-
-        if (openMapBtn && mapModal) {
-          openMapBtn.onclick = () => mapModal.classList.remove('hidden');
-        }
-        if (closeMapBtn && mapModal) {
-          closeMapBtn.onclick = () => mapModal.classList.add('hidden');
-        }
-        if (mapModal) {
-          mapModal.onclick = e => {
-            if (e.target === mapModal) mapModal.classList.add('hidden');
-          };
-          mapModal.querySelectorAll('[data-exam-jump]').forEach(item => {
-            item.onclick = e => {
-              e.preventDefault();
-              e.stopPropagation();
-              const idx = parseInt(item.getAttribute('data-exam-jump'), 10);
-              if (!isNaN(idx)) {
-                examOnlyIndex = idx;
-                mapModal.classList.add('hidden');
-                saveExam();
-                draw();
-              }
-            };
-          });
-        }
-        const divider = portal.querySelector('.kizspyDividerLine');
-        const container = portal.querySelector('.kizspyMainSplit');
-        const leftPane = portal.querySelector('.kizspyLeftPane');
-        if (divider && container && leftPane) {
-          let isDragging = false;
-          const startDrag = e => {
-            if (e) e.preventDefault();
-            isDragging = true;
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none';
-          };
-          const doDrag = e => {
-            if (!isDragging) return;
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const rect = container.getBoundingClientRect();
-            const pct = Math.max(10, Math.min(90, ((clientX - rect.left) / rect.width) * 100));
-            kizspySplitPct = Math.round(pct * 10) / 10;
-            try {
-              localStorage.setItem('hod102_kizspy_split_pct', String(kizspySplitPct));
-            } catch (ex) {
-              lhWarn('FINAL_EXAM_ONLY_QUIZ_UI_20260627', ex);
-            }
-            leftPane.style.setProperty('flex', `0 0 ${kizspySplitPct}%`, 'important');
-            leftPane.style.setProperty('width', `${kizspySplitPct}%`, 'important');
-          };
-          const stopDrag = () => {
-            if (isDragging) {
-              isDragging = false;
-              document.body.style.cursor = '';
-              document.body.style.userSelect = '';
-            }
-          };
-          divider.addEventListener('mousedown', startDrag);
-          window.addEventListener('mousemove', doDrag);
-          window.addEventListener('mouseup', stopDrag);
-          divider.addEventListener('touchstart', startDrag, { passive: false });
-          window.addEventListener('touchmove', doDrag, { passive: false });
-          window.addEventListener('touchend', stopDrag);
-        }
-
-        const fontDecBtn = portal.querySelector('#kizspyFontDec');
-        if (fontDecBtn) {
-          fontDecBtn.onclick = () => {
-            if (kizspyFontSize > 9) {
-              kizspyFontSize--;
-              try {
-                localStorage.setItem('hod102_kizspy_font_size', String(kizspyFontSize));
-              } catch (ex) {
-                lhWarn('FINAL_EXAM_ONLY_QUIZ_UI_20260627', ex);
-              }
-              saveExam();
-              draw();
-            }
-          };
-        }
-
-        const fontResetBtn = portal.querySelector('#kizspyFontReset');
-        if (fontResetBtn) {
-          fontResetBtn.onclick = () => {
-            kizspyFontSize = 10;
-            try {
-              localStorage.setItem('hod102_kizspy_font_size', '10');
-            } catch (ex) {
-              lhWarn('FINAL_EXAM_ONLY_QUIZ_UI_20260627', ex);
-            }
-            saveExam();
-            draw();
-          };
-        }
-
-        const fontIncBtn = portal.querySelector('#kizspyFontInc');
-        if (fontIncBtn) {
-          fontIncBtn.onclick = () => {
-            if (kizspyFontSize < 24) {
-              kizspyFontSize++;
-              try {
-                localStorage.setItem('hod102_kizspy_font_size', String(kizspyFontSize));
-              } catch (ex) {
-                lhWarn('FINAL_EXAM_ONLY_QUIZ_UI_20260627', ex);
-              }
-              saveExam();
-              draw();
-            }
-          };
-        }
-
-        const checkBtn = portal.querySelector('#kizspyQuickCheck');
-        if (checkBtn) {
-          checkBtn.onclick = () => {
-            kizspyCheckedMap[examOnlyIndex] = !kizspyCheckedMap[examOnlyIndex];
-            saveExam();
-            draw();
-          };
-        }
-
-        // Option click handlers inside Portal (both Left Pane boxes & Right Pane text)
-        portal.querySelectorAll('[data-exam-opt]').forEach(el => {
-          el.onclick = e => {
-            if (examOnlyReview) return;
-            const selText = window.getSelection() ? window.getSelection().toString().trim() : '';
-            if (selText.length > 0) return;
-            const k = el.getAttribute('data-exam-opt');
-            if (!k) return;
-            const isMulti = (c.answer || '').length > 1;
-            if (isMulti) {
-              let cur = (qSel[examOnlyIndex] || '').split('').filter(Boolean);
-              if (cur.includes(k)) cur = cur.filter(x => x !== k);
-              else cur.push(k);
-              cur.sort();
-              qSel[examOnlyIndex] = cur.join('');
-            } else {
-              qSel[examOnlyIndex] = k;
-            }
-            saveExam();
-            draw();
-          };
-        });
-
-        // Prev / Next / Layout Toggle / Submit / Exit buttons inside Portal
-        const pBtn = portal.querySelector('#examPrev');
-        if (pBtn)
-          pBtn.onclick = () => {
-            if (examOnlyIndex > 0) {
-              examOnlyIndex--;
-              saveExam();
-              draw();
-            }
-          };
-
-        const nBtn = portal.querySelector('#examNext');
-        if (nBtn)
-          nBtn.onclick = () => {
-            if (examOnlyIndex < total - 1) {
-              examOnlyIndex++;
-              saveExam();
-              draw();
-            }
-          };
-
-        const tBtn = portal.querySelector('#examToggleLayout');
-        if (tBtn)
-          tBtn.onclick = () => {
-            examLayoutMode = 'standard';
-            try {
-              localStorage.setItem('hod102_exam_layout_mode', 'standard');
-            } catch (ex) {
-              lhWarn('FINAL_EXAM_ONLY_QUIZ_UI_20260627', ex);
-            }
-            document.body.classList.remove('kizspy-active');
-            if (portal) portal.remove();
-            saveExam();
-            draw();
-          };
-
-        const sBtn = portal.querySelector('#examSubmit');
-        if (sBtn)
-          sBtn.onclick = () => {
-            submit();
-          };
-
-        const exBtn = portal.querySelector('#examOnlyExit');
-        if (exBtn)
-          exBtn.onclick = () => {
-            if (confirm('Thoát bài kiểm tra hiện tại?')) {
-              document.body.classList.remove('kizspy-active');
-              if (portal) portal.remove();
-              clearExam();
-              qSet = [];
-              qSel = {};
-              examSubmitted = false;
-              examOnlyReview = false;
-              examOnlyIndex = 0;
-              resetTimer();
-              draw();
-            }
-          };
-
-        const exToResBtn = portal.querySelector('#examOnlyExitToResult');
-        if (exToResBtn)
-          exToResBtn.onclick = () => {
-            examOnlyReview = false;
-            document.body.classList.remove('kizspy-active');
-            if (portal) portal.remove();
-            saveExam();
-            draw();
-          };
-      }, 20);
-    } else {
-      document.body.classList.remove('kizspy-active');
-      const portal = document.getElementById('kizspyExamPortal');
-      if (portal) portal.remove();
-      const titleHTML = examOnlyReview
-        ? `Câu ${examOnlyIndex + 1} / ${total} <span class="reviewModeHeaderTag" style="font-size:0.88rem;color:var(--gold2);background:rgba(200,169,110,0.1);padding:3px 8px;border-radius:999px;border:1px solid rgba(200,169,110,0.3);margin-left:8px;vertical-align:middle;font-weight:800;letter-spacing:0.04em;">XEM LẠI</span>`
-        : `Câu ${examOnlyIndex + 1} / ${total}`;
-
-      const subtitleHTML = examOnlyReview
-        ? `Đúng: <b style="color:#72c58c;">${scoreExam().ok}</b> · Sai: <b style="color:#e9877b;">${scoreExam().bad}</b> · Thời gian: <b>${timeText()}</b>`
-        : `Đã làm: ${done()} / ${total} · Thời gian: <span id="examTimer">${timeText()}</span>`;
-
-      const footerHTML = examOnlyReview
-        ? `<div class="examOnlyFooter review-mode"><div class="examOnlyNav" style="grid-column: 1 / -1 !important;"><button type="button" class="btn" id="examPrev" ${examOnlyIndex <= 0 ? 'disabled' : ''}>← Câu trước</button><button type="button" class="btn" id="examNext" ${examOnlyIndex >= total - 1 ? 'disabled' : ''}>Câu tiếp →</button></div></div>`
-        : `<div class="examOnlyFooter"><div class="examOnlyNav"><button type="button" class="btn" id="examPrev" ${examOnlyIndex <= 0 ? 'disabled' : ''}>← Câu trước</button><button type="button" class="btn" id="examNext" ${examOnlyIndex >= total - 1 ? 'disabled' : ''}>Câu tiếp →</button></div><button type="button" class="submitExam" id="examSubmit">Nộp bài</button></div>`;
-
-      const exitBtn = examOnlyReview
-        ? `<button type="button" class="examOnlyExit" id="examOnlyExitToResult">Xem kết quả</button>`
-        : `<button type="button" class="examOnlyExit" id="examOnlyExit">Thoát</button>`;
-
-      const opts = Object.entries(c.options || {})
-        .map(([k, v]) => {
-          const isChecked = String(ch).includes(k);
-          const isUserChose = ch.includes(k);
-          const isCorrect = correctAns.includes(k);
-          let stateClass = isChecked ? 'sel' : '';
-          if (examOnlyReview) {
-            if (isCorrect) stateClass = 'review-correct';
-            else if (isUserChose && !isCorrect) stateClass = 'review-incorrect';
-          }
-          return `
-          <button type="button" class="examOnlyOption ${stateClass}" ${!examOnlyReview ? `data-exam-opt="${E(k)}"` : ''}>
-            <span class="qkey">${E(k)}</span>
-            <span class="qtxt">${E(v)}</span>
-            ${examOnlyReview ? (isCorrect ? '<span style="margin-left:auto;color:#72c58c;font-weight:bold;">✓</span>' : isUserChose ? '<span style="margin-left:auto;color:#e9877b;font-weight:bold;">×</span>' : '') : ''}
-          </button>
-        `;
-        })
-        .join('');
-
-      const gridItems = (qSet || [])
-        .map((q, idx) => {
-          const isCur = idx === examOnlyIndex;
-          const isDone = !!qSel[idx];
-          let stateClass = '';
-          if (examOnlyReview) {
-            const isCorrect = S(qSel[idx]) === S(q.answer);
-            stateClass = isCorrect ? 'review-grid-correct review-ok' : 'review-grid-incorrect review-bad';
-          } else {
-            stateClass = isDone ? 'answered' : '';
-          }
-          return `
-          <button type="button" class="examGridItem ${stateClass} ${isCur ? 'active' : ''}" data-exam-jump="${idx}">
-            ${idx + 1}
-          </button>
-        `;
-        })
-        .join('');
-
-      body.innerHTML = `
-        <div class="examOnlyGridContainer">
-          <section class="examOnlyCard">
-            <div class="examOnlyTopline">
-              <div>
-                <div class="examOnlyQuestionNo">${titleHTML}</div>
-                <div class="examOnlyMeta">${subtitleHTML}</div>
-              </div>
-              <div style="display:flex;gap:8px;align-items:center;">
-                <button type="button" class="examOnlyExit" id="examToggleLayout" style="background:rgba(200,169,110,0.15);color:var(--gold2);">⇄ Đổi giao diện</button>
-                ${exitBtn}
-              </div>
-            </div>
-            <div class="examOnlyProgress"><div style="width:${p}%"></div></div>
-            <div class="examOnlyContentBody">
-              <div class="examOnlyQuestionZone">
-                <div class="qq">${E(c.question)}</div>
-                <div class="qimgs">${IMG(c)}</div>
-              </div>
-              <div class="examOnlyRightZone">
-                <div class="examOnlyOptions">${opts}</div>
-              </div>
-            </div>
-            ${footerHTML}
-          </section>
-          <aside class="examOnlySidebar">
-            <div class="examSidebarHead"><h4>Bản đồ câu hỏi</h4></div>
-            <div class="examSidebarGrid">${gridItems}</div>
-          </aside>
-        </div>
-      `;
-    }
-    setTimerText();
-  }
-  function timeText() {
-    return examElapsed || '00:00';
-  }
-
-  function result() {
-    const box = document.querySelector('#quiz .setup');
-    if (box) box.classList.add('hidden');
-    const body = $('quizBody');
-    if (!body) return;
-    const s = scoreExam();
-    const label =
-      s.pct >= 90 ? 'Xuất sắc' : s.pct >= 70 ? 'Khá ổn rồi' : s.pct >= 50 ? 'Cần ôn thêm' : 'Nên làm lại vài vòng';
-    body.innerHTML = `<section class="examOnlyResult"><div class="examOnlyBadge">KẾT QUẢ KIỂM TRA</div><h2>${s.ok} / ${s.total} câu đúng</h2><div class="examOnlyScore">${s.pct}%</div><p>${label}</p><div class="examOnlyStats"><span>Đúng: <b>${s.ok}</b></span><span>Sai: <b>${s.bad}</b></span><span>Thời gian: <b>${timeText()}</b></span></div><div class="examOnlyActions"><button type="button" class="primary" id="examReviewBtn">Xem lại bài làm</button><button type="button" class="btn" id="examRetryBtn">Làm lại bộ này</button><button type="button" class="btn" id="examNewBtn">Tạo đề mới</button></div><div id="examReviewList" class="examOnlyReviewList hidden"></div></section>`;
-    if (examOnlyReview) review();
-  }
-
-  function review() {
-    const list = $('examReviewList');
-    if (!list) return;
-    list.classList.remove('hidden');
-    list.innerHTML = (qSet || [])
-      .map((c, i) => {
-        const ch = qSel[i] || '';
-        const correctAns = c.answer || '';
-        const ok = S(ch) === S(correctAns);
-
-        const reviewOpts = Object.entries(c.options || {})
-          .map(([k, v]) => {
-            const isUserChose = ch.includes(k);
-            const isCorrect = correctAns.includes(k);
-            let stateClass = '';
-            let badgeHTML = '';
-            if (isCorrect) {
-              stateClass = 'review-opt-correct';
-              badgeHTML = `<span class="review-opt-badge correct">✓</span>`;
-            } else if (isUserChose && !isCorrect) {
-              stateClass = 'review-opt-incorrect';
-              badgeHTML = `<span class="review-opt-badge incorrect">×</span>`;
-            } else {
-              stateClass = 'review-opt-normal';
-            }
-            return `<div class="examReviewOpt ${stateClass}"><span class="qkey">${k}</span><span class="qtxt">${E(v)}</span>${badgeHTML}</div>`;
-          })
-          .join('');
-
-        return `
-        <div class="examOnlyReviewItem ${ok ? 'item-correct' : 'item-incorrect'}">
-          <div class="examOnlyReviewHeader">
-            <span class="reviewItemNo">CÂU ${i + 1}</span>
-            <span class="reviewStatusBadge ${ok ? 'correct' : 'incorrect'}">${ok ? 'ĐÚNG' : 'SAI'}</span>
-          </div>
-          <div class="examOnlyReviewQ">${E(c.question)}</div>
-          <div class="qimgs">${IMG(c)}</div>
-          <div class="examOnlyReviewOptionsList">${reviewOpts}</div>
-        </div>
-      `;
-      })
-      .join('');
-  }
-
-  function submit() {
-    if (!confirm('Bạn chắc chắn muốn nộp bài?\n\nĐã làm: ' + done() + ' / ' + (qSet || []).length + ' câu')) return;
-    examElapsed = FMT(nowTimerMs());
-    examSubmitted = true;
-    examOnlyReview = false;
-    document.body.classList.remove('kizspy-active');
-    const portal = document.getElementById('kizspyExamPortal');
-    if (portal) portal.remove();
-    stopTimer();
-    saveExam();
-    result();
-  }
-
-  function bind() {
-    markTab();
-    removeOldQuizUI();
-    setup();
-    const label = $('quizModeLabel');
-    if (label) label.textContent = 'Kiểm tra: nộp bài mới hiện đáp án';
-    const body = $('quizBody');
-    if (body && body.dataset.examOnlyBound !== '1') {
-      body.dataset.examOnlyBound = '1';
-
-      document.addEventListener(
-        'keydown',
-        e => {
-          if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
-          if (e.ctrlKey || e.metaKey || e.altKey) return;
-          if ($('quiz') && $('quiz').classList.contains('active')) {
-            if (e.key === 'ArrowRight') {
-              if (qSet && qSet.length) {
-                examOnlyIndex = Math.min(qSet.length - 1, examOnlyIndex + 1);
-                saveExam();
-                draw();
-              }
-              return;
-            }
-            if (e.key === 'ArrowLeft' || e.key === 'Backspace') {
-              if (qSet && qSet.length) {
-                examOnlyIndex = Math.max(0, examOnlyIndex - 1);
-                saveExam();
-                draw();
-              }
-              if (e.key === 'Backspace') e.preventDefault();
-              return;
-            }
-
-            // Keyboard shortcut for choosing options A, B, C, D, E or 1, 2, 3, 4, 5
-            const keyUpper = e.key.toUpperCase();
-            let keyOpt = '';
-            if (['A', 'B', 'C', 'D', 'E'].includes(keyUpper)) {
-              keyOpt = keyUpper;
-            } else if (['1', '2', '3', '4', '5'].includes(e.key)) {
-              const mapKey = { 1: 'A', 2: 'B', 3: 'C', 4: 'D', 5: 'E' };
-              keyOpt = mapKey[e.key];
-            }
-            if (keyOpt && !examSubmitted && qSet && qSet.length) {
-              const c = qSet[examOnlyIndex];
-              if (c && c.options && c.options[keyOpt]) {
-                if (String(c.answer || '').length > 1) {
-                  const set = new Set(
-                    String(qSel[examOnlyIndex] || '')
-                      .split('')
-                      .filter(Boolean),
-                  );
-                  set.has(keyOpt) ? set.delete(keyOpt) : set.add(keyOpt);
-                  qSel[examOnlyIndex] = Array.from(set).sort().join('');
-                } else {
-                  qSel[examOnlyIndex] = keyOpt;
-                }
-                saveExam();
-                draw();
-                return;
-              }
-            }
-
-            if (e.key === 'Escape') {
-              if (examOnlyReview) {
-                examOnlyReview = false;
-                saveExam();
-                draw();
-              } else {
-                const exitBtn = $('examOnlyExit') || $('examOnlyExitToResult');
-                if (exitBtn) exitBtn.click();
-              }
-              return;
-            }
-            if (e.code === 'Space' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-              e.preventDefault();
-            }
-          }
-        },
-        true,
-      );
-
-      body.addEventListener('click', e => {
-        const opt = e.target.closest('[data-exam-opt]');
-        if (opt && !examSubmitted && qSet && qSet.length) {
-          const c = qSet[examOnlyIndex];
-          const k = opt.dataset.examOpt;
-          if (c && String(c.answer || '').length > 1) {
-            const set = new Set(
-              String(qSel[examOnlyIndex] || '')
-                .split('')
-                .filter(Boolean),
-            );
-            set.has(k) ? set.delete(k) : set.add(k);
-            qSel[examOnlyIndex] = Array.from(set).sort().join('');
-          } else qSel[examOnlyIndex] = k;
-          saveExam();
-          draw();
-          return;
-        }
-        if (e.target.id === 'examEditCard' || e.target.closest('#examEditCard')) {
-          const c = qSet && qSet[examOnlyIndex];
-          if (c && typeof window.openStudyReport === 'function') window.openStudyReport(c.num);
-          else if (typeof openEditor === 'function') openEditor();
-          return;
-        }
-        if (e.target.id === 'examToggleLayout') {
-          examLayoutMode = examLayoutMode === 'kizspy' ? 'standard' : 'kizspy';
-          try {
-            localStorage.setItem('hod102_exam_layout_mode', examLayoutMode);
-          } catch (ex) {
-            lhWarn('FINAL_EXAM_ONLY_QUIZ_UI_20260627', ex);
-          }
-          saveExam();
-          draw();
-          return;
-        }
-        if (e.target.id === 'examPrev') {
-          examOnlyIndex = Math.max(0, examOnlyIndex - 1);
-          saveExam();
-          draw();
-          return;
-        }
-        if (e.target.id === 'examNext') {
-          examOnlyIndex = Math.min((qSet || []).length - 1, examOnlyIndex + 1);
-          saveExam();
-          draw();
-          return;
-        }
-        if (e.target.id === 'examSubmit') {
-          submit();
-          return;
-        }
-        if (e.target.id === 'examReviewBtn') {
-          examOnlyReview = true;
-          saveExam();
-          draw();
-          return;
-        }
-        if (e.target.id === 'examOnlyExitToResult') {
-          examOnlyReview = false;
-          saveExam();
-          draw();
-          return;
-        }
-        if (e.target.id === 'examRetryBtn') {
-          qSel = {};
-          examSubmitted = false;
-          examOnlyReview = false;
-          examOnlyIndex = 0;
-          startTimer(0);
-          saveExam();
-          draw();
-          return;
-        }
-        if (e.target.id === 'examNewBtn' || e.target.id === 'examOnlyExit') {
-          if (e.target.id === 'examOnlyExit' && !confirm('Thoát bài kiểm tra hiện tại?')) return;
-          clearExam();
-          qSet = [];
-          qSel = {};
-          examSubmitted = false;
-          examOnlyReview = false;
-          examOnlyIndex = 0;
-          resetTimer();
-          draw();
-          return;
-        }
-        const jump = e.target.closest('[data-exam-jump]');
-        if (jump) {
-          examOnlyIndex = +jump.dataset.examJump;
-          saveExam();
-          draw();
-        }
-      });
-    }
-    restoreExam();
-    draw();
-  }
-
-  try {
-    renderQuiz = function () {
-      setup();
-      draw();
-    };
-  } catch (e) {
-    window.renderQuiz = function () {
-      setup();
-      draw();
-    };
-  }
-
-  window.__examResetForSubjectChange = function () {
-    try {
-      stopTimer();
-    } catch (e) {
-      lhWarn('FINAL_EXAM_ONLY_QUIZ_UI_20260627', e);
-    }
-    qSet = [];
-    qSel = {};
-    qDone = {};
-    examSubmitted = false;
-    examOnlyReview = false;
-    examOnlyIndex = 0;
-    examElapsed = '00:00';
-    examSelectedCodes = [];
-    quizMode = 'exam';
-    kizspyCheckedMap = {};
-    document.body.classList.remove('kizspy-active');
-    const portal = document.getElementById('kizspyExamPortal');
-    if (portal) portal.remove();
-  };
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(bind, 120));
-  else setTimeout(bind, 120);
-  setTimeout(bind, 900);
-})();
+// Thân block đã chuyển sang ./exam.js (bước 2 của docs/SPLIT_PLAN.md). Gọi ĐÚNG chỗ cũ
+// để thứ tự chạy không đổi: block này vốn chạy sau 8000 dòng đầu của appCore, còn
+// `import` thì luôn bị đưa lên đầu file.
+installExam();
 // ===== FINAL_EXAM_ONLY_QUIZ_UI_20260627 END =====
 
 // ===== LIBRARY_LABEL_AND_UI_FIX_20260627 =====
-(function () {
-  function fixLibraryText() {
-    document.querySelectorAll('.tab,[data-tab="study"],button,a,span,div,h1,h2,h3,p').forEach(el => {
-      if (!el || el.children.length) return;
-      const t = (el.textContent || '').trim();
-      if (t === 'Thư viện' || t === 'Thư viện' || t === 'All' || (el.dataset && el.dataset.tab === 'study')) {
-        el.textContent = 'Thư viện';
-      }
-    });
-    document.querySelectorAll('[data-tab="study"]').forEach(el => {
-      el.textContent = 'Thư viện';
-    });
-    const search = document.getElementById('search') || document.getElementById('studySearch');
-    if (search) search.placeholder = 'Tìm trong thư viện: #12, đáp án, từ khóa...';
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fixLibraryText);
-  else fixLibraryText();
-  setTimeout(fixLibraryText, 100);
-  setTimeout(fixLibraryText, 600);
-  setInterval(fixLibraryText, 1200);
-})();
+// Thân block đã chuyển sang ./library.js. Gọi đúng chỗ cũ để thứ tự chạy không đổi.
+installLibraryLabelFix();
 // ===== LIBRARY_LABEL_AND_UI_FIX_20260627 END =====
 
 // ===== LIBRARY_FILTER_AND_EDIT_PREVIEW_LAYOUT_20260627 =====
-(function () {
-  const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-  function $(id) {
-    return document.getElementById(id);
-  }
-  function esc(s) {
-    return String(s ?? '').replace(
-      /[&<>"']/g,
-      c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-    );
-  }
-  function ans(q) {
-    return String(q?.answer || '')
-      .toUpperCase()
-      .replace(/[^A-Z]/g, '');
-  }
-  function src(im) {
-    return typeof im === 'string' ? im : im?.src || im?.url || '';
-  }
-  function risk(q) {
-    return q?.error_risk || (ans(q).length > 1 ? 'medium' : 'low');
-  }
-  function nextKey(opts) {
-    const used = new Set(Object.keys(opts || {}).map(k => String(k).toUpperCase()));
-    return LETTERS.find(k => !used.has(k));
-  }
-  /*
-    Bản render thư viện + handler [data-library-filter] của block này ĐÃ XÓA (20260727):
-    LIBRARY_UX_STEP1_STABLE_RENDER ghi đè `renderStudy` trong setTimeout nên chúng
-    không bao giờ chạy. Phần còn lại của block (form sửa câu hỏi / edit preview) vẫn sống.
-  */
-  function editImgs(q) {
-    const imgs = q.images || [];
-    return `<div class="v7Images"><div class="v7ImagesHead"><span>Ảnh của câu hỏi</span><button class="v7UploadBtn" type="button" data-edit-pick-img>+ Thêm ảnh</button><input id="editPreviewImgInput" class="v7HiddenInput" type="file" accept="image/*" multiple></div><div class="v7Thumbs">${imgs.length ? imgs.map((im, i) => `<div class="v7Thumb"><button class="v7RemoveImg" type="button" data-edit-rm-img="${i}">×</button><img src="${esc(src(im))}" alt="Ảnh ${i + 1}" loading="lazy" decoding="async"></div>`).join('') : '<div class="v7NoImage">Chưa có ảnh.</div>'}</div></div>`;
-  }
-  function optRows(opts) {
-    return Object.keys(opts || {})
-      .sort()
-      .map(
-        k =>
-          `<div class="v7OptRow"><div class="v7Key">${esc(k)}</div><input value="${esc(opts[k] || '')}" data-edit-opt="${esc(k)}"><button class="v7DelOpt" type="button" data-edit-del-opt="${esc(k)}">×</button></div>`,
-      )
-      .join('');
-  }
-  function redrawImg() {
-    const h = $('editPreviewImageHost');
-    if (h && window.editDraft) h.innerHTML = editImgs(window.editDraft);
-  }
-  function redrawOpt() {
-    const h = $('editPreviewOptions');
-    if (h && window.editDraft) h.innerHTML = optRows(window.editDraft.options || {});
-  }
-  function openEditPreview() {
-    const c = (typeof pool !== 'undefined' && pool[ci]) || (typeof RAW !== 'undefined' && RAW[0]);
-    if (!c) return;
-    window.editDraft = clone(c);
-    if (typeof editDraft !== 'undefined') editDraft = window.editDraft;
-    const role = String(window.HODSupabase?.getProfile?.()?.role || '')
-      .trim()
-      .toLowerCase();
-    const canDirect = ['admin', 'editor'].includes(role);
-    const reporting = !!window.HODSupabase?.getUser?.() && !canDirect;
-    const modal = $('editModal'),
-      box = modal?.querySelector('.box');
-    if (!modal || !box) return;
-    box.classList.add('editPreviewBox', 'quizEditLayoutV2');
-    box.innerHTML = `<button class="modalX" type="button" data-edit-preview-close>×</button><div class="v7Head editPreviewHead"><div><span class="v7Label">SỬA CÂU HỎI</span><h2>${esc((reporting ? 'Báo cáo / đề xuất sửa câu ' : 'Sửa câu ') + (c.num || ''))}</h2><p class="v7Hint">Sửa nhanh nội dung quiz, đáp án và ảnh.</p></div><div class="v7TopActions"><button class="btn ${reporting ? 'hidden' : ''}" type="button" data-edit-preview-restore>Khôi phục</button><button class="primary v7SaveTop" type="button" data-edit-preview-save>${canDirect ? 'Lưu trực tiếp' : reporting ? 'Gửi báo cáo' : 'Lưu sửa'}</button></div></div><article class="v7Card editPreviewCard"><div class="editPreviewTwoColumns"><div class="editPreviewLeftCol"><div class="v7Field"><label>Câu hỏi</label><textarea data-edit-question>${esc(c.question || '')}</textarea></div><div class="v7Field"><label>Đáp án đúng</label><input data-edit-answer value="${esc(ans(c))}" placeholder="VD: A hoặc AC"></div><div id="editPreviewImageHost">${editImgs(c)}</div></div><div class="editPreviewRightCol"><div class="v7Field"><label>Các đáp án</label><div id="editPreviewOptions" class="v7Options">${optRows(c.options || {})}</div></div><div class="v7Bottom"><button class="btn" type="button" data-edit-add-opt>+ Thêm đáp án</button></div></div></div></article>`;
-    modal.classList.remove('hidden');
-  }
-  async function saveEditPreview() {
-    if (!window.editDraft) return;
-    const oldQ = clone(
-      (typeof RAW !== 'undefined' && RAW.find(c => c.num === window.editDraft.num)) || window.editDraft,
-    );
-    const modal = $('editModal');
-    const q = (modal?.querySelector('[data-edit-question]')?.value || '').trim();
-    const a = (modal?.querySelector('[data-edit-answer]')?.value || '')
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z]/g, '');
-    if (!q) return alert('Câu hỏi không được để trống.');
-    if (!a) return alert('Đáp án đúng không được để trống.');
-    const opts = {};
-    modal?.querySelectorAll('[data-edit-opt]').forEach(inp => {
-      const k = String(inp.dataset.editOpt || '').toUpperCase(),
-        v = (inp.value || '').trim();
-      if (k && v) opts[k] = v;
-    });
-    if (!Object.keys(opts).length) return alert('Cần ít nhất 1 đáp án.');
-    for (const k of a.split('')) if (!opts[k]) return alert('Đáp án đúng ' + k + ' chưa có nội dung.');
-    Object.assign(window.editDraft, {
-      question: q,
-      answer: a,
-      options: opts,
-      answer_text: a
-        .split('')
-        .map(k => k + '. ' + (opts[k] || ''))
-        .join('; '),
-      subject_code: localStorage.getItem('learninghub_subject_code_merged_v1') || window.editDraft.subject_code || '',
-    });
-    if (window.HODSupabase && window.HODSupabase.isReady()) {
-      const role = String(window.HODSupabase?.getProfile?.()?.role || '')
-        .trim()
-        .toLowerCase();
-      const canDirect = ['admin', 'editor'].includes(role);
-      if (canDirect) {
-        const id = oldQ?.id || window.editDraft?.id;
-        if (!id) {
-          alert('Không tìm thấy ID câu hỏi. Hãy tải lại trang rồi thử lại.');
-          return;
-        }
-        const u = window.HODSupabase?.getUser?.();
-        if (!u?.id) {
-          alert('Chưa đăng nhập. Hãy đăng nhập lại.');
-          return;
-        }
-        const list = window.editDraft.images || [];
-        const localHasImg = oldQ?.__imagesLoaded ? list.length > 0 : !!(list.length || oldQ?.has_image);
-        const text = window.editDraft.question + ' ' + Object.values(window.editDraft.options || {}).join(' ');
-        const needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(text);
-        const hasPlaceholder = list.some(im => {
-          const src = typeof im === 'string' ? im : im.src || im.url || im.secure_url || '';
-          return !src || src.includes('URL_') || src.includes('MÔ_TẢ') || src.includes('PLACEHOLDER');
-        });
-        let risk = '';
-        let reason = '';
-        if ((localHasImg && hasPlaceholder) || (needsImg && list.length === 0)) {
-          risk = 'high';
-          reason = 'Cần hình vẽ/ảnh minh họa nhưng chưa có ảnh thực tế';
-        } else if (window.editDraft.answer.length > 1) {
-          risk = 'medium';
-          reason = 'Câu chọn nhiều đáp án đúng, cần rà soát kỹ';
-        } else {
-          risk = 'low';
-        }
-        const newData = {
-          question: window.editDraft.question,
-          options: window.editDraft.options || {},
-          answer: window.editDraft.answer,
-          answer_text: window.editDraft.answer_text,
-          images: list,
-          has_image: localHasImg || needsImg,
-          error_risk: risk,
-          error_risk_reason: reason || null,
-        };
-        const oldData = {
-          question: oldQ.question,
-          options: oldQ.options || {},
-          answer: oldQ.answer,
-          answer_text: oldQ.answer_text,
-          images: oldQ.images || [],
-        };
-        if (typeof notify === 'function') notify('Đang lưu...');
-        try {
-          const res = await fetch('/api/admin-action', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              user_id: u.id,
-              action: 'save_question_direct',
-              payload: { question_id: id, new_data: newData, old_data: oldData },
-            }),
-          });
-          const resJson = await res.json().catch(() => ({}));
-          if (!res.ok || resJson.error) {
-            alert('Lưu trực tiếp thất bại: ' + (resJson.error || res.status));
-            return;
-          }
-        } catch (fetchErr) {
-          alert('Lỗi kết nối khi lưu: ' + fetchErr.message);
-          return;
-        }
-        if (typeof window.clearLearningHubQuestionCache === 'function') {
-          window.clearLearningHubQuestionCache();
-        }
-        $('editModal')?.classList.add('hidden');
-        notify('Đã lưu trực tiếp ✓');
-        if (typeof window.loadCurrentSubjectOnly === 'function') await window.loadCurrentSubjectOnly(true);
-        else if (window.HODSupabase?.loadQuestionsFromSupabase)
-          await window.HODSupabase.loadQuestionsFromSupabase(true);
-        return;
-      }
-      await window.HODSupabase.submitEditRequest(window.editDraft, oldQ);
-      return;
-    }
-    if (window.HODSupabase?.getUser?.()) {
-      alert('Chưa kết nối được dữ liệu duyệt. Hãy tải lại trang rồi gửi lại báo cáo.');
-      return;
-    }
-    edits[window.editDraft.num] = {
-      question: window.editDraft.question,
-      options: window.editDraft.options,
-      answer: window.editDraft.answer,
-      answer_text: window.editDraft.answer_text,
-      images: window.editDraft.images || [],
-    };
-    localStorage.setItem('hod102_user_edits_v1', JSON.stringify(edits));
-    rebuild();
-    ci = pool.findIndex(c => c.num === window.editDraft.num);
-    if (ci < 0) ci = 0;
-    flipped = false;
-    renderCard();
-    renderQuiz();
-    renderStudy();
-    $('editModal')?.classList.add('hidden');
-    notify('Đã lưu sửa local');
-  }
-  function apply() {
-    try {
-      openEditor = openEditPreview;
-      saveEditor = saveEditPreview;
-    } catch (e) {
-      lhWarn('LIBRARY_FILTER_AND_EDIT_PREVIEW_LAYOUT_20260627', e);
-    }
-    window.openEditor = openEditPreview;
-    window.saveEditor = saveEditPreview;
-  }
-  apply();
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(apply, 0));
-  else setTimeout(apply, 0);
-  setTimeout(apply, 900);
-  window.goStudyFromLib = function (idx) {
-    if (typeof pool !== 'undefined' && Array.isArray(pool) && pool.length > 0) {
-      if (typeof idx === 'number' && idx >= 0 && idx < pool.length) ci = idx;
-    }
-    if (typeof renderCard === 'function') renderCard();
-    document.querySelector('[data-tab="fc"]')?.click();
-  };
-  document.addEventListener('click', e => {
-    if (e.target.closest('[data-edit-preview-close]')) return $('editModal')?.classList.add('hidden');
-    if (e.target.closest('[data-edit-preview-save]')) return saveEditPreview();
-    if (e.target.closest('[data-edit-preview-restore]')) return typeof restoreEditor === 'function' && restoreEditor();
-    if (e.target.closest('[data-edit-pick-img]')) return $('editPreviewImgInput')?.click();
-    const rm = e.target.closest('[data-edit-rm-img]');
-    if (rm && window.editDraft) {
-      window.editDraft.images = window.editDraft.images || [];
-      window.editDraft.images.splice(+rm.dataset.editRmImg, 1);
-      redrawImg();
-      return;
-    }
-    if (e.target.closest('[data-edit-add-opt]') && window.editDraft) {
-      window.editDraft.options = window.editDraft.options || {};
-      const k = nextKey(window.editDraft.options);
-      if (!k) return alert('Đã đủ số đáp án.');
-      window.editDraft.options[k] = '';
-      redrawOpt();
-      setTimeout(() => document.querySelector(`[data-edit-opt="${k}"]`)?.focus(), 0);
-      return;
-    }
-    const del = e.target.closest('[data-edit-del-opt]');
-    if (del && window.editDraft) {
-      delete window.editDraft.options[String(del.dataset.editDelOpt || '').toUpperCase()];
-      redrawOpt();
-    }
-  });
-  document.addEventListener('change', async e => {
-    if (e.target?.id === 'editPreviewImgInput' && window.editDraft) {
-      const inp = e.target;
-      const files = Array.from(inp.files || []);
-      if (!files.length) return;
-      inp.disabled = true;
-      if (typeof notify === 'function') notify('Đang upload ảnh...');
-      try {
-        window.editDraft.images = window.editDraft.images || [];
-        if (window.__LHCleanImages) window.editDraft.images = window.__LHCleanImages(window.editDraft.images);
-        for (const file of files) {
-          if (window.__LHUploadCloudinary) {
-            const uploaded = await window.__LHUploadCloudinary(file);
-            if (uploaded) window.editDraft.images.push(uploaded);
-          } else {
-            const fr = new FileReader();
-            const p = new Promise(resolve => {
-              fr.onload = () => {
-                window.editDraft.images.push({
-                  id: 'edit_' + Date.now(),
-                  src: fr.result,
-                  source: 'user-upload',
-                  name: file.name,
-                });
-                resolve();
-              };
-              fr.readAsDataURL(file);
-            });
-            await p;
-          }
-        }
-        redrawImg();
-        if (typeof notify === 'function') notify('Đã upload ảnh thành URL');
-      } catch (err) {
-        alert(err.message || err);
-      } finally {
-        inp.disabled = false;
-        inp.value = '';
-      }
-    }
-  });
-  setTimeout(() => {
-    try {
-      if ($('studyList')) renderStudy();
-    } catch (e) {
-      lhWarn('LIBRARY_FILTER_AND_EDIT_PREVIEW_LAYOUT_20260627', e);
-    }
-  }, 350);
-})();
+// Thân block (editor đang chạy: openEditPreview / saveEditPreview) đã chuyển sang
+// ./editor.js — bước 3 của docs/SPLIT_PLAN.md. Gọi ĐÚNG chỗ cũ để thứ tự chạy không đổi:
+// `import` thì luôn bị đưa lên đầu file.
+installEditor();
 // ===== LIBRARY_FILTER_AND_EDIT_PREVIEW_LAYOUT_20260627 END =====
 
 /*
@@ -9810,577 +7440,8 @@ if (typeof finalAnswerText !== 'function') {
 */
 
 // ===== LIBRARY_UX_STEP1_STABLE_RENDER_20260627 =====
-(function () {
-  const FILTER_STORE = 'learninghub_library_filter_v1';
-  const VIEW_STORE = 'learninghub_library_view_v1';
-  const OPEN_STORE = 'learninghub_library_open_nums_v1';
-  const SEARCH_STORE = 'learninghub_library_search_v1';
-  const $ = id => document.getElementById(id);
-  const esc = s =>
-    String(s ?? '').replace(
-      /[&<>"']/g,
-      c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-    );
-  const norm = s =>
-    String(s ?? '')
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/đ/g, 'd')
-      .replace(/[^a-z0-9#:\s]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  const ans = q =>
-    String(q?.answer || '')
-      .toUpperCase()
-      .replace(/[^A-Z]/g, '');
-  const imgSrc = im => (typeof im === 'string' ? im : im?.src || im?.url || '');
-  const optimizeImageUrl = src => {
-    if (!src) return '';
-    if (src.includes('res.cloudinary.com/') && src.includes('/image/upload/')) {
-      if (!src.includes('q_auto') && !src.includes('f_auto')) {
-        return src.replace('/image/upload/', '/image/upload/c_limit,w_600,q_auto,f_auto/');
-      }
-    }
-    return src;
-  };
-  const hasImg = q => {
-    const list = q?.images || [];
-    const localHasImg = !!(list.map(imgSrc).filter(Boolean).length || q?.has_image);
-    if (localHasImg) return true;
-    const text = (q?.question || '') + ' ' + Object.values(q?.options || {}).join(' ');
-    return /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(text);
-  };
-  const risk = q => {
-    if (q?.error_risk) return q.error_risk;
-    const list = (q?.images || []).map(imgSrc).filter(Boolean);
-    const localHasImg = !!(list.length || q?.has_image);
-    const text = (q?.question || '') + ' ' + Object.values(q?.options || {}).join(' ');
-    const needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(text);
-    const hasPlaceholder = list.some(im => {
-      const src = typeof im === 'string' ? im : im.src || im.url || '';
-      return !src || src.includes('URL_') || src.includes('MÔ_TẢ') || src.includes('PLACEHOLDER');
-    });
-    if ((localHasImg && hasPlaceholder) || (needsImg && list.length === 0)) {
-      return 'high';
-    }
-    if (ans(q).length > 1) return 'medium';
-    return 'low';
-  };
-  const riskColor = r => ({ high: '#e74c3c', medium: '#f39c12', low: '#27ae60' })[r] || '#999';
-  const filterVal = () => localStorage.getItem(FILTER_STORE) || 'all';
-  const viewVal = () => localStorage.getItem(VIEW_STORE) || 'compact';
-  let lastList = [];
-  const libraryOpenNums = new Set();
-  try {
-    JSON.parse(localStorage.getItem(OPEN_STORE) || '[]').forEach(n => libraryOpenNums.add(String(n)));
-  } catch (e) {
-    lhWarn('LIBRARY_UX_STEP1_STABLE_RENDER_20260627', e);
-  }
-  function saveOpenState() {
-    try {
-      localStorage.setItem(OPEN_STORE, JSON.stringify([...libraryOpenNums]));
-    } catch (e) {
-      lhWarn('LIBRARY_UX_STEP1_STABLE_RENDER_20260627', e);
-    }
-  }
-  function answerText(q) {
-    const a = ans(q);
-    return a
-      ? a
-          .split('')
-          .map(k => k + '. ' + (q.options?.[k] || ''))
-          .join(' | ')
-      : 'Chưa có đáp án';
-  }
-  function allText(q) {
-    return norm([q?.num, q?.question, q?.answer, q?.answer_text, Object.values(q?.options || {}).join(' ')].join(' '));
-  }
-  function parseQuery(raw) {
-    const q = String(raw || '').trim(),
-      n = norm(q);
-    const p = { raw: q, n, num: null, answer: null, multi: false, tokens: [] };
-    if (/^\d+$/.test(n)) p.num = Number(n);
-    let m = n.match(/(?:^|\s)#\s*(\d+)(?:\s|$)|(?:^|\s)cau\s*(\d+)(?:\s|$)/);
-    if (m) p.num = Number(m[1] || m[2]);
-    m = n.match(/(?:answer|ans|dap\s*an|dapan)\s*:\s*([a-e]+)/i);
-    if (m) p.answer = m[1].toUpperCase().split('').sort().join('');
-    p.multi = /(^|\s)(multi|multiple|chon nhieu|nhieu dap an|nhieu lua chon)(\s|$)/.test(n);
-    let tokens = n
-      .split(/\s+/)
-      .filter(
-        t =>
-          t.length >= 2 &&
-          !/^(answer|ans|dap|an|dapan|multi|multiple|chon|nhieu|lua|cau)$/.test(t) &&
-          !t.includes(':') &&
-          !/^#?\d+$/.test(t),
-      );
-    const cleanN = n
-      .replace(/(?:answer|ans|dap\s*an|dapan)\s*:\s*[a-e]+/gi, '')
-      .replace(/(?:^|\s)#\s*\d+(?:\s|$)|(?:^|\s)cau\s*\d+(?:\s|$)/gi, '')
-      .replace(/(?:^|\s)(multi|multiple|chon nhieu|nhieu dap an|nhieu lua chon)(\s|$)/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (cleanN.includes(' ') && cleanN.length >= 3) {
-      tokens.unshift(cleanN);
-    }
-    p.tokens = tokens;
-    return p;
-  }
-  function hlt(text) {
-    const raw = $('search')?.value || $('studySearch')?.value || '';
-    const p = parseQuery(raw);
-    const tokens = [...new Set((p.tokens || []).filter(t => t.length >= 2))].sort((a, b) => b.length - a.length);
-    const src = String(text ?? '');
-    if (!tokens.length) return esc(src);
-    let ns = '',
-      map = [];
-    for (let i = 0; i < src.length; i++) {
-      let c = norm(src[i]);
-      if (!c) continue;
-      for (const ch of c) {
-        ns += ch;
-        map.push(i);
-      }
-    }
-    let ranges = [];
-    for (const t of tokens) {
-      let pos = 0;
-      while ((pos = ns.indexOf(t, pos)) > -1) {
-        let a = map[pos],
-          b = map[pos + t.length - 1] + 1;
-        if (a != null && b != null && !ranges.some(r => !(b <= r[0] || a >= r[1]))) ranges.push([a, b]);
-        pos += t.length;
-      }
-    }
-    if (!ranges.length) return esc(src);
-    ranges.sort((a, b) => a[0] - b[0]);
-    let out = '',
-      last = 0;
-    for (const [a, b] of ranges) {
-      out += esc(src.slice(last, a));
-      out += `<mark class="searchMark tokenMark">${esc(src.slice(a, b))}</mark>`;
-      last = b;
-    }
-    return out + esc(src.slice(last));
-  }
-  function searchList() {
-    const raw = $('search')?.value || $('studySearch')?.value || '';
-    const p = parseQuery(raw);
-    let data = Array.isArray(RAW) ? RAW : [];
-    if (!p.raw) return data;
-    return data
-      .map(q => {
-        let score = 0;
-        if (p.num !== null) {
-          if (Number(q.num) !== p.num) return null;
-          score += 2000;
-        }
-        const a = ans(q).split('').sort().join('');
-        if (p.answer) {
-          if (a !== p.answer) return null;
-          score += 900;
-        }
-        if (p.multi) {
-          if (ans(q).length <= 1) return null;
-          score += 350;
-        }
-        const h = allText(q);
-        for (const t of p.tokens) {
-          if (!h.includes(t)) return null;
-          score += 80;
-        }
-        return { q, score };
-      })
-      .filter(Boolean)
-      .sort((x, y) => y.score - x.score || Number(x.q.num) - Number(y.q.num))
-      .map(x => x.q);
-  }
-  function passFilter(q) {
-    const f = filterVal();
-    if (f === 'all') return true;
-    if (f === 'has_image') return hasImg(q);
-    if (f === 'starred') return typeof window.__isBookmarked === 'function' ? window.__isBookmarked(q) : false;
-    return risk(q) === f;
-  }
-  function stats(data) {
-    return {
-      total: data.length,
-      img: data.filter(hasImg).length,
-      high: data.filter(q => risk(q) === 'high').length,
-      medium: data.filter(q => risk(q) === 'medium').length,
-      low: data.filter(q => risk(q) === 'low').length,
-    };
-  }
-  function ensureToolbar() {
-    const list = $('studyList');
-    if (!list) return;
-    let tool = $('libraryStableToolbar');
-    if (!tool) {
-      tool = document.createElement('section');
-      tool.id = 'libraryStableToolbar';
-      tool.className = 'libraryStableToolbar';
-      tool.innerHTML =
-        '<div class="libStableHead libStableHeadCompact"><div class="libStableInfo"><b id="libStableFilterText">Tất cả</b><em id="libStableCount">0 câu</em></div></div><div id="libStableSearchSlot"></div><div id="libStableFilters"></div>';
-      const searchBox = ($('search') || $('studySearch'))?.closest('.search');
-      (searchBox?.parentNode || list.parentNode).insertBefore(tool, searchBox || list);
-    }
-    const searchBox = ($('search') || $('studySearch'))?.closest('.search');
-    if (searchBox && $('libStableSearchSlot') && searchBox.parentNode !== $('libStableSearchSlot'))
-      $('libStableSearchSlot').appendChild(searchBox);
-    const input = $('search') || $('studySearch');
-    if (input) {
-      input.placeholder = 'Tìm câu hoặc #12...';
-      if (!input.value) {
-        try {
-          input.value = localStorage.getItem(SEARCH_STORE) || '';
-        } catch (e) {
-          lhWarn('LIBRARY_UX_STEP1_STABLE_RENDER_20260627', e);
-        }
-      }
-      if (!$('libStableClear')) {
-        const b = document.createElement('button');
-        b.id = 'libStableClear';
-        b.type = 'button';
-        b.textContent = '×';
-        b.title = 'Xóa tìm kiếm';
-        b.onclick = function () {
-          input.value = '';
-          try {
-            localStorage.removeItem(SEARCH_STORE);
-          } catch (e) {
-            lhWarn('LIBRARY_UX_STEP1_STABLE_RENDER_20260627', e);
-          }
-          renderUnified();
-          input.focus();
-        };
-        input.insertAdjacentElement('afterend', b);
-      }
-      input.oninput = function () {
-        try {
-          localStorage.setItem(SEARCH_STORE, input.value || '');
-        } catch (e) {
-          lhWarn('LIBRARY_UX_STEP1_STABLE_RENDER_20260627', e);
-        }
-        renderUnified();
-      };
-      $('libStableClear')?.classList.toggle('show', !!input.value.trim());
-    }
-  }
-  function renderFilters(base, shown) {
-    ensureToolbar();
-    const box = $('libStableFilters');
-    if (!box) return;
-    const s = stats(base),
-      f = filterVal(),
-      v = viewVal();
-    const starCnt = typeof window.__countBookmarks === 'function' ? window.__countBookmarks() : 0;
-    const filters = [
-      ['all', 'Tất cả', s.total],
-      ['starred', '🔖 Đã lưu', starCnt],
-      ['has_image', 'Có ảnh', s.img],
-      ['high', 'Rủi ro cao', s.high],
-      ['medium', 'Trung bình', s.medium],
-      ['low', 'Thấp', s.low],
-    ];
-    const isAllOpen = v === 'full';
-
-    box.innerHTML = `
-      <div class="libStableFilterLine" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-          ${filters.map(x => `<button type="button" class="${f === x[0] ? 'active' : ''}" data-stable-filter="${x[0]}">${x[1]} <small>${x[2]}</small></button>`).join('')}
-        </div>
-        <div style="display:flex;gap:6px;align-items:center;">
-          <button type="button" class="v7FilterBtn ${isAllOpen ? 'active' : ''}" data-stable-toggle-all="${isAllOpen ? 'compact' : 'full'}" title="Mở hoặc thu gọn tất cả câu hỏi trong danh sách">
-            ${isAllOpen ? '📑 Thu gọn tất cả' : '📂 Mở tất cả'}
-          </button>
-        </div>
-      </div>
-    `;
-    const ft = $('libStableFilterText'),
-      ct = $('libStableCount');
-    if (ft) ft.textContent = 'Đang lọc: ' + (filters.find(x => x[0] === f)?.[1] || 'Tất cả');
-    if (ct) ct.textContent = shown.length + ' / ' + base.length + ' câu';
-  }
-  function miniImg(q) {
-    const imgs = (q.images || []).map(imgSrc).filter(Boolean);
-    if (imgs.length) {
-      return `<div class="libraryV2Img noAutoImg" title="Có ${imgs.length} ảnh"><img src="${esc(optimizeImageUrl(imgs[0]))}" alt="thumb" loading="lazy" decoding="async"></div>`;
-    }
-    return q.has_image
-      ? `<div class="libraryV2Img noAutoImg" title="Có ảnh"><span>🖼</span></div>`
-      : '<div class="libraryV2Img empty"></div>';
-  }
-  function options(q) {
-    const a = ans(q);
-    return Object.entries(q.options || {})
-      .map(
-        ([k, v]) =>
-          `<div class="libraryOption ${a.includes(String(k).toUpperCase()) ? 'correct' : ''}"><b>${esc(k)}</b><span>${hlt(v)}</span></div>`,
-      )
-      .join('');
-  }
-  function images(q, open) {
-    if (!open) return '';
-    if (q.has_image && !q.__imagesLoaded && !q.__imagesLoading) {
-      q.__imagesLoading = true;
-      const supa = window.HODSupabase?.__client;
-      if (supa && q.id) {
-        supa
-          .from('questions')
-          .select('id,images,updated_at')
-          .eq('id', q.id)
-          .maybeSingle()
-          .then(res => {
-            q.__imagesLoading = false;
-            q.__imagesLoaded = true;
-            if (res.data) {
-              q.images = cleanImages(res.data.images);
-              if (typeof renderStudy === 'function') renderStudy();
-            }
-          })
-          .catch(() => {
-            q.__imagesLoading = false;
-            q.__imagesLoaded = true;
-          });
-      }
-    }
-    const imgs = (q.images || []).map(imgSrc).filter(Boolean);
-    if (!imgs.length) {
-      return q.has_image
-        ? `<div class="libraryV2Images"><div class="imgLoading" style="color:var(--mist);font-size:.8rem;padding:10px 0;">Đang tải ảnh từ database...</div></div>`
-        : '';
-    }
-    return `<div class="libraryV2Images">${imgs.map((s, i) => `<img loading="lazy" decoding="async" src="${esc(optimizeImageUrl(s))}" alt="Ảnh ${i + 1}" class="zoomableImg">`).join('')}</div>`;
-  }
-  function card(q, i) {
-    const a = ans(q) || '?',
-      r = risk(q);
-    const rawSearch = ($('search')?.value || $('studySearch')?.value || '').trim();
-    const queryObj = parseQuery(rawSearch);
-    let isMatchInDetails = false;
-    if (queryObj.tokens && queryObj.tokens.length) {
-      const detailsText = norm(Object.values(q.options || {}).join(' ') + ' ' + (q.answer_text || ''));
-      isMatchInDetails = queryObj.tokens.every(t => detailsText.includes(t));
-    }
-    const open = viewVal() === 'full' || libraryOpenNums.has(String(q.num)) || isMatchInDetails || !!rawSearch;
-    const bmBtnHTML = typeof window.__getBookmarkBtnHTML === 'function' ? window.__getBookmarkBtnHTML(q) : '';
-    return `<article class="libraryV2Card libraryQuestionCard ${open ? 'open' : ''}" data-num="${esc(q.num || '')}" data-stable-index="${i}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">Câu ${esc(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${hlt(q.question || '')}</div><div class="libraryV2Answer"><b>Đáp án: ${esc(a)}</b><span>${hlt(answerText(q))}</span></div></div>${miniImg(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-stable-study="${i}" title="Học câu này">Học</button>${bmBtnHTML}<button type="button" class="libraryV2Report" data-stable-report="${i}" title="Báo cáo / sửa câu">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${options(q)}</div>${images(q, open)}</div></article>`;
-  }
-  // Thẻ thư viện KHÔNG có nút xóa: chức năng xóa câu ở app học sinh đã bỏ (20260727).
-  // Xóa câu làm ở trang admin. Xem ghi chú "ĐÃ XÓA" tại chỗ 2 block delete cũ.
-  function renderUnified() {
-    // RESTORE_LIBRARY_NORMALIZE_20260727: chuẩn hóa has_image/error_risk trước khi lọc & đếm,
-    // nếu không thì câu mới import thiếu thuộc tính -> bộ lọc "Có ảnh"/"Rủi ro" đếm sai.
-    if (typeof window.__LHNormalizeAll === 'function') window.__LHNormalizeAll();
-    ensureToolbar();
-    const base = searchList();
-    lastList = base.filter(passFilter);
-    renderFilters(base, lastList);
-    const list = $('studyList');
-    if (!list) return;
-    list.innerHTML = lastList.length
-      ? lastList.map(card).join('')
-      : '<div class="libraryStableEmpty"><b>Không có câu phù hợp.</b><button type="button" data-stable-clear-all>Xóa tìm kiếm & bộ lọc</button></div>';
-    if ($('libStableClear'))
-      $('libStableClear').classList.toggle('show', !!(($('search') || $('studySearch'))?.value || '').trim());
-  }
-  window.renderUnified = renderUnified;
-  window.renderStudy = renderUnified;
-  function setCurrent(q) {
-    let idx = (pool || []).findIndex(x => Number(x.num) === Number(q.num));
-    if (idx < 0) {
-      pool = [...RAW];
-      idx = pool.findIndex(x => Number(x.num) === Number(q.num));
-    }
-    if (idx >= 0) {
-      ci = idx;
-      flipped = false;
-      flipDir = 'horizontal';
-      try {
-        renderCard();
-      } catch (e) {
-        lhWarn('LIBRARY_UX_STEP1_STABLE_RENDER_20260627', e);
-      }
-      return true;
-    }
-    return false;
-  }
-
-  function showImageLightbox(src) {
-    let overlay = document.getElementById('lhImageLightbox');
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.id = 'lhImageLightbox';
-      overlay.style.cssText = `
-        position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(0,0,0,0.85);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 99999;
-        cursor: zoom-out;
-        opacity: 0;
-        transition: opacity 0.25s ease;
-      `;
-      overlay.innerHTML = `<img id="lhLightboxImg" src="" style="width:90vw;height:90vh;object-fit:contain;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.5);transition:transform 0.25s ease;transform:scale(0.95);">`;
-      overlay.onclick = () => {
-        overlay.style.opacity = '0';
-        overlay.querySelector('img').style.transform = 'scale(0.95)';
-        setTimeout(() => overlay.classList.add('hidden'), 250);
-      };
-      document.body.appendChild(overlay);
-    }
-    overlay.classList.remove('hidden');
-    overlay.querySelector('img').src = src;
-    setTimeout(() => {
-      overlay.style.opacity = '1';
-      overlay.querySelector('img').style.transform = 'scale(1)';
-    }, 10);
-  }
-
-  document.addEventListener(
-    'click',
-    function (e) {
-      // 1. Phóng to bất kỳ ảnh nào khi bấm vào
-      const zoomImg = e.target.closest(
-        '.libraryV2Images img, #images img, .sitem img, .dqEditImg img, .libraryV2Img img',
-      );
-      if (zoomImg && zoomImg.src) {
-        e.preventDefault();
-        e.stopPropagation();
-        showImageLightbox(zoomImg.src);
-        return;
-      }
-
-      const toggleAll = e.target.closest('[data-stable-toggle-all]');
-      if (toggleAll) {
-        e.preventDefault();
-        const targetView = toggleAll.dataset.stableToggleAll;
-        localStorage.setItem(VIEW_STORE, targetView);
-        if (targetView === 'compact') {
-          libraryOpenNums.clear();
-          saveOpenState();
-        }
-        renderUnified();
-        return;
-      }
-
-      const f = e.target.closest('[data-stable-filter]');
-      if (f) {
-        e.preventDefault();
-        localStorage.setItem(FILTER_STORE, f.dataset.stableFilter || 'all');
-        renderUnified();
-        return;
-      }
-      if (e.target.closest('[data-stable-clear-all]')) {
-        e.preventDefault();
-        const input = $('search') || $('studySearch');
-        if (input) input.value = '';
-        try {
-          localStorage.removeItem(SEARCH_STORE);
-        } catch (_e) {
-          lhWarn('LIBRARY_UX_STEP1_STABLE_RENDER_20260627', _e);
-        }
-        localStorage.setItem(FILTER_STORE, 'all');
-        renderUnified();
-        return;
-      }
-
-      const h = e.target.closest('[data-stable-study]');
-      if (h) {
-        e.preventDefault();
-        const q = lastList[+h.dataset.stableStudy];
-        if (q && setCurrent(q)) document.querySelector('[data-tab="fc"]')?.click?.();
-        return;
-      }
-      const r = e.target.closest('[data-stable-report]');
-      if (r) {
-        e.preventDefault();
-        const q = lastList[+r.dataset.stableReport];
-        if (q) {
-          if (typeof window.openStudyReport === 'function') window.openStudyReport(q.num, e);
-          else if (setCurrent(q)) openEditor?.();
-        }
-        return;
-      }
-
-      // 2. Nhấp vào hàng để co/giãn câu hỏi
-      const cardRow = e.target.closest('.libraryV2Row');
-      if (cardRow) {
-        const card = cardRow.closest('.libraryV2Card');
-        if (card) {
-          e.preventDefault();
-          card.classList.toggle('open');
-          const num = card.dataset.num;
-          if (num) {
-            if (card.classList.contains('open')) libraryOpenNums.add(String(num));
-            else libraryOpenNums.delete(String(num));
-            saveOpenState();
-          }
-          const toggleBtn = card.querySelector('[data-stable-toggle]');
-          if (toggleBtn) {
-            toggleBtn.textContent = card.classList.contains('open') ? 'Thu gọn' : 'Mở';
-          }
-          return;
-        }
-      }
-    },
-    true,
-  );
-  function apply() {
-    try {
-      renderStudy = renderUnified;
-      window.renderStudy = renderUnified;
-    } catch (e) {
-      window.renderStudy = renderUnified;
-    }
-    const s = $('search') || $('studySearch');
-    if (s) {
-      try {
-        if (!s.value) s.value = localStorage.getItem(SEARCH_STORE) || '';
-      } catch (e) {
-        lhWarn('LIBRARY_UX_STEP1_STABLE_RENDER_20260627', e);
-      }
-      s.oninput = function () {
-        try {
-          localStorage.setItem(SEARCH_STORE, s.value || '');
-        } catch (e) {
-          lhWarn('LIBRARY_UX_STEP1_STABLE_RENDER_20260627', e);
-        }
-        renderUnified();
-      };
-    }
-    renderUnified();
-  }
-  window.__renderStudyUnified = renderUnified;
-  /*
-    FIX_LIBRARY_STALE_AFTER_SUBJECT_CHANGE_20260727
-    Đổi môn thì tìm kiếm + danh sách câu đang mở của môn cũ không còn đúng nữa
-    (OPEN_STORE lưu theo số câu, môn mới cũng có số câu trùng). Dọn rồi vẽ lại ngay
-    bằng RAW hiện có; khi loadSubjectLight xong nó sẽ gọi renderStudy lần nữa.
-  */
-  window.addEventListener('lh:subject-changed', () => {
-    const s = $('search') || $('studySearch');
-    if (s) s.value = '';
-    try {
-      localStorage.removeItem(SEARCH_STORE);
-    } catch (e) {
-      lhWarn('LIBRARY_UX_STEP1_STABLE_RENDER_20260627', e);
-    }
-    libraryOpenNums.clear();
-    saveOpenState();
-    try {
-      renderUnified();
-    } catch (e) {
-      lhWarn('LIBRARY_UX_STEP1_STABLE_RENDER_20260627', e);
-    }
-  });
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(apply, 0));
-  else setTimeout(apply, 0);
-  setTimeout(apply, 700);
-})();
+// Thân block đã chuyển sang ./library.js. Gọi đúng chỗ cũ để thứ tự chạy không đổi.
+installLibrary();
 // ===== LIBRARY_UX_STEP1_STABLE_RENDER_20260627 END =====
 
 // ===== COPILOT_CLOUDINARY_IMAGE_FIX_20260627 =====
@@ -10445,7 +7506,7 @@ if (typeof finalAnswerText !== 'function') {
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.error) throw new Error(json.error || 'Không tải được câu hỏi từ Turso');
       const data = Array.isArray(json.data) ? json.data : [];
-      RAW = data.map(r => {
+      LHState.RAW = data.map(r => {
         const images = typeof cleanImages === 'function' ? cleanImages(r.images || []) : r.images || [];
         return {
           id: r.id,
@@ -10463,10 +7524,10 @@ if (typeof finalAnswerText !== 'function') {
           __imagesLoaded: true,
         };
       });
-      pool = [...RAW];
+      LHState.pool = [...LHState.RAW];
       const saved = +localStorage.getItem('learninghub_progress_' + code) || 0;
-      ci = Math.max(0, Math.min(saved, Math.max(0, pool.length - 1)));
-      flipped = false;
+      LHState.ci = Math.max(0, Math.min(saved, Math.max(0, LHState.pool.length - 1)));
+      LHState.flipped = false;
       renderAllSafe(); // FIX_LIBRARY_STALE_AFTER_SUBJECT_CHANGE_20260727
       return true;
     } catch (e) {
@@ -10484,7 +7545,7 @@ if (typeof finalAnswerText !== 'function') {
 
   async function fetchImagesForCurrent() {
     const c = supa();
-    const q = (pool && pool[ci]) || null;
+    const q = (LHState.pool && LHState.pool[LHState.ci]) || null;
     if (!c || !q || !q.id || q.__imagesChecked) return;
     q.__imagesChecked = true;
     const { data, error } = await c.from('questions').select('id,images').eq('id', q.id).maybeSingle();
@@ -10517,9 +7578,9 @@ if (typeof finalAnswerText !== 'function') {
       inp.disabled = true;
       notifyX('Đang upload ảnh lên Cloudinary...');
       try {
-        editDraft.images = editDraft.images || [];
+        LHState.editDraft.images = LHState.editDraft.images || [];
         for (const file of files) {
-          editDraft.images.push(await uploadCloudinary(file));
+          LHState.editDraft.images.push(await uploadCloudinary(file));
         }
         if (typeof renderEditImages === 'function') renderEditImages();
         notifyX('Đã upload ảnh lên Cloudinary');
@@ -10531,26 +7592,10 @@ if (typeof finalAnswerText !== 'function') {
       }
     };
   }
-  const oldOpenEditor = typeof openEditor === 'function' ? openEditor : null;
-  if (oldOpenEditor && !oldOpenEditor.__cloudinaryPatch) {
-    openEditor = async function () {
-      const q = (pool && pool[ci]) || null;
-      if (q && q.id && !q.__imagesLoaded) {
-        try {
-          const c = supa();
-          const { data } = await c.from('questions').select('*').eq('id', q.id).maybeSingle();
-          if (data) Object.assign(q, data, { images: data.images || [], __imagesLoaded: true });
-        } catch (e) {
-          lhWarn('COPILOT_CLOUDINARY_IMAGE_FIX_20260627', e);
-        }
-      }
-      const r = oldOpenEditor.apply(this, arguments);
-      setTimeout(bindEditorUpload, 0);
-      return r;
-    };
-    openEditor.__cloudinaryPatch = true;
-    window.openEditor = openEditor;
-  }
+  // Lớp bọc openEditor của block này đã XÓA (20260727): chết vì apply() ở mốc 900ms.
+  // Bỏ luôn được một đường đọc THẲNG Supabase từ client (c.from("questions")) mà
+  // CLAUDE.md nói phải chuyển dần sang /api/*. loadCurrentSubjectOnly / renderCard của
+  // block này vẫn sống.
   document.addEventListener('DOMContentLoaded', () => {
     patchApi();
     setTimeout(bindEditorUpload, 300);
@@ -10701,10 +7746,10 @@ if (typeof finalAnswerText !== 'function') {
       inp.disabled = true;
       notifyX('Đang upload ảnh...');
       try {
-        editDraft.images = cleanImages(editDraft.images);
+        LHState.editDraft.images = cleanImages(LHState.editDraft.images);
         for (const file of files) {
           const uploaded = await uploadCloudinary(file);
-          if (uploaded) editDraft.images.push(uploaded);
+          if (uploaded) LHState.editDraft.images.push(uploaded);
         }
         if (typeof renderEditImages === 'function') renderEditImages();
         notifyX('Đã upload ảnh bằng URL');
@@ -10722,9 +7767,9 @@ if (typeof finalAnswerText !== 'function') {
   renderEditImages = window.renderEditImages = function () {
     const box = $('editImgs');
     if (!box) return oldRenderEditImages ? oldRenderEditImages() : undefined;
-    editDraft.images = cleanImages(editDraft.images);
-    box.innerHTML = editDraft.images.length
-      ? editDraft.images
+    LHState.editDraft.images = cleanImages(LHState.editDraft.images);
+    box.innerHTML = LHState.editDraft.images.length
+      ? LHState.editDraft.images
           .map(
             (im, i) =>
               `<div class="editImg"><button class="rm" data-rm="${i}">×</button><img src="${esc(im.src)}" loading="lazy" decoding="async"></div>`,
@@ -10733,32 +7778,9 @@ if (typeof finalAnswerText !== 'function') {
       : '<p style="color:var(--mist)">Chưa có hình.</p>';
   };
 
-  const oldOpenEditor = typeof openEditor === 'function' ? openEditor : null;
-  if (oldOpenEditor && !oldOpenEditor.__urlOnlyPatch) {
-    openEditor = window.openEditor = async function () {
-      const q = (pool && pool[ci]) || null;
-      if (q?.id && !q.__imagesLoaded) {
-        try {
-          const code = subject();
-          if (code) {
-            const rows = await fetchTursoQuestions(code);
-            const data = rows.find(r => String(r.id) === String(q.id));
-            if (data) Object.assign(q, mapTursoRow(data, code));
-          }
-        } catch (e) {
-          lhWarn('FINAL_URL_ONLY_IMAGES_AND_CURRENT_RELOAD_20260628', e);
-        }
-      }
-      const r = oldOpenEditor.apply(this, arguments);
-      setTimeout(bindEditorUpload, 0);
-      setTimeout(() => {
-        if (editDraft) editDraft.images = cleanImages(editDraft.images);
-        if (typeof renderEditImages === 'function') renderEditImages();
-      }, 20);
-      return r;
-    };
-    openEditor.__urlOnlyPatch = true;
-  }
+  // Lớp bọc openEditor của block này đã XÓA (20260727): chết vì apply() ở mốc 900ms.
+  // Nó nạp trước ảnh của câu từ Turso rồi lọc lại editDraft.images — việc nạp ảnh nay do
+  // thư viện (LIBRARY_UX_STEP1_STABLE_RENDER) làm. __LHCleanImages vẫn sống.
 
   // Chặn Base64 trước mọi luồng gửi báo cáo/sửa.
   if (window.HODSupabase?.submitEditRequest && !window.HODSupabase.submitEditRequest.__urlOnlyPatch) {
@@ -10833,11 +7855,11 @@ if (typeof finalAnswerText !== 'function') {
     };
   }
   function applyQuestionRows(rows, code) {
-    RAW = (rows || []).map(r => mapTursoRow(r, code));
-    pool = [...RAW];
+    LHState.RAW = (rows || []).map(r => mapTursoRow(r, code));
+    LHState.pool = [...LHState.RAW];
     const saved = +localStorage.getItem('learninghub_progress_' + code) || 0;
-    ci = Math.max(0, Math.min(saved, Math.max(0, pool.length - 1)));
-    flipped = false;
+    LHState.ci = Math.max(0, Math.min(saved, Math.max(0, LHState.pool.length - 1)));
+    LHState.flipped = false;
     renderAllSafe(); // FIX_LIBRARY_STALE_AFTER_SUBJECT_CHANGE_20260727
   }
 
@@ -10870,8 +7892,8 @@ if (typeof finalAnswerText !== 'function') {
           changed++;
         return Object.assign(row, next);
       };
-      RAW = (RAW || []).map(patch);
-      pool = (pool || []).map(patch);
+      LHState.RAW = (LHState.RAW || []).map(patch);
+      LHState.pool = (LHState.pool || []).map(patch);
       if (changed) {
         console.info('[revalidateQuestions] ' + code + ': cập nhật ' + changed + ' câu từ server');
         renderAllSafe(); // FIX_LIBRARY_STALE_AFTER_SUBJECT_CHANGE_20260727
@@ -10913,7 +7935,7 @@ if (typeof finalAnswerText !== 'function') {
   }
 
   async function fetchImagesForCurrent(force = false) {
-    const q = (pool && pool[ci]) || null;
+    const q = (LHState.pool && LHState.pool[LHState.ci]) || null;
     const code = subject();
     if (!q?.id || !code) return false;
     if (!force && q.__imagesLoaded) return true;
@@ -10937,7 +7959,7 @@ if (typeof finalAnswerText !== 'function') {
         try {
           writeQuestionCache(
             code,
-            pool.map(x => ({
+            LHState.pool.map(x => ({
               id: x.id,
               subject_code: x.subject_code,
               num: x.num,
@@ -10969,7 +7991,7 @@ if (typeof finalAnswerText !== 'function') {
   }
 
   async function reloadCurrentQuestion(silent = false) {
-    const q = (pool && pool[ci]) || null;
+    const q = (LHState.pool && LHState.pool[LHState.ci]) || null;
     const code = subject();
     if (!q?.id || !code) return false;
     try {
@@ -10981,8 +8003,8 @@ if (typeof finalAnswerText !== 'function') {
       }
       const clean = mapTursoRow(data, code);
       const upd = row => (String(row.id) === String(clean.id) ? Object.assign(row, clean) : row);
-      RAW = (RAW || []).map(upd);
-      pool = (pool || []).map(upd);
+      LHState.RAW = (LHState.RAW || []).map(upd);
+      LHState.pool = (LHState.pool || []).map(upd);
       renderAllSafe(); // FIX_LIBRARY_STALE_AFTER_SUBJECT_CHANGE_20260727
       if (!silent) notifyX('Đã reload câu hiện tại');
       return true;
@@ -11179,11 +8201,11 @@ if (typeof finalAnswerText !== 'function') {
   function doResetKeepTab() {
     const tab = currentTabId();
     try {
-      if (Array.isArray(RAW)) pool = [...RAW];
-      ci = 0;
-      flipped = false;
-      flipDir = 'horizontal';
-      randomActive = false;
+      if (Array.isArray(LHState.RAW)) LHState.pool = [...LHState.RAW];
+      LHState.ci = 0;
+      LHState.flipped = false;
+      LHState.flipDir = 'horizontal';
+      LHState.randomActive = false;
       localStorage.setItem('hod102_random_active', '0');
       const subject = localStorage.getItem('learninghub_subject_code_merged_v1') || '';
       if (subject) localStorage.setItem('learninghub_progress_' + subject, '0');
@@ -11256,10 +8278,10 @@ if (typeof finalAnswerText !== 'function') {
   }
   function preloadAround() {
     try {
-      if (!Array.isArray(pool) || !pool.length) return;
-      preloadQuestionImages(pool[ci]);
-      preloadQuestionImages(pool[(ci + 1) % pool.length]);
-      preloadQuestionImages(pool[(ci - 1 + pool.length) % pool.length]);
+      if (!Array.isArray(LHState.pool) || !LHState.pool.length) return;
+      preloadQuestionImages(LHState.pool[LHState.ci]);
+      preloadQuestionImages(LHState.pool[(LHState.ci + 1) % LHState.pool.length]);
+      preloadQuestionImages(LHState.pool[(LHState.ci - 1 + LHState.pool.length) % LHState.pool.length]);
     } catch (e) {
       lhWarn('FINAL_IMAGE_NO_FLICKER_HARD_FIX_20260628', e);
     }
@@ -11347,879 +8369,48 @@ window.clearLearningHubQuestionCache = function () {
 };
 // ===== END SUPABASE_CACHE_CLEAR_HELPER_20260628 =====
 
-// ===== CLEAN_IMAGE_REQUEST_DELETE_OLD_CREATE_NEW_20260628 =====
-// 1 luồng duy nhất cho nút Lưu:
-// - User thường: xóa request pending cũ của cùng câu rồi tạo request mới.
-// - Admin/editor: lưu trực tiếp vào Turso qua /api/admin-action.
-// - Ảnh gửi lên request chỉ dùng URL, không lưu base64.
-(function () {
-  const SUBJECT_STORE = 'learninghub_subject_code_merged_v1';
-  let sending = false;
-  const $ = id => document.getElementById(id);
-  const supa = () => window.HODSupabase?.__client || null;
-  const me = () => window.HODSupabase?.getUser?.() || null;
-  const prof = () => window.HODSupabase?.getProfile?.() || null;
-  const currentSubject = () => localStorage.getItem(SUBJECT_STORE) || '';
-  const notifyUser = t => (typeof notify === 'function' ? notify(t) : alert(t));
-  const isEditorRole = () => ['admin', 'editor'].includes(String(prof()?.role || '').toLowerCase());
+/*
+  ===== CLEAN_IMAGE_REQUEST_DELETE_OLD_CREATE_NEW_20260628 — ĐÃ XÓA (20260727) =====
+  248 dòng, chết toàn bộ. Xác minh: hàm `saveClean` của nó chỉ tới được qua lớp gán
+  `saveEditor = saveClean` (bị apply() của LIBRARY_FILTER_AND_EDIT_PREVIEW_LAYOUT ghi đè ở
+  mốc 900ms) hoặc qua `bind()` gắn vào `#saveEdit` — id đó bị openEditPreview xóa khỏi DOM
+  ngay lần mở editor đầu tiên (Console lúc editor mở: getElementById('saveEdit') -> null).
+  Kèm theo là một `setInterval(bind, 1000)` chạy không tải mãi mãi, nay cũng hết.
 
-  function imgSrc(im) {
-    if (!im) return '';
-    if (typeof im === 'string') return im.trim();
-    return String(
-      im.secure_url ||
-        im.src ||
-        im.url ||
-        im.publicUrl ||
-        im.public_url ||
-        im.file_url ||
-        im.image_url ||
-        im.path ||
-        '',
-    ).trim();
-  }
-  function cleanImages(list) {
-    let raw = list || [];
-    if (typeof raw === 'string') {
-      const t = raw.trim();
-      if (!t) return [];
-      if ((t.startsWith('[') && t.endsWith(']')) || (t.startsWith('{') && t.endsWith('}'))) {
-        try {
-          raw = JSON.parse(t);
-        } catch (e) {
-          raw = [t];
-        }
-      } else raw = [t];
-    }
-    if (!Array.isArray(raw)) raw = [raw];
-    return raw
-      .map((im, i) => {
-        const src = imgSrc(im);
-        if (!src) return null;
-        if (/^data:image\//i.test(src)) return null;
-        if (src.length > 500 && /^(iVBORw0KGgo|\/9j\/|R0lGOD|UklGR)/.test(src)) return null;
-        const o = typeof im === 'object' && im ? { ...im } : {};
-        o.id = o.id || o.public_id || 'img_' + i + '_' + Date.now();
-        o.src = src;
-        o.url = src;
-        o.source = o.source || (/cloudinary/i.test(src) ? 'cloudinary' : 'url');
-        delete o.data;
-        delete o.base64;
-        delete o.dataUrl;
-        delete o.data_url;
-        return o;
-      })
-      .filter(Boolean);
-  }
-  function buildDraft() {
-    const d = typeof editDraft !== 'undefined' ? editDraft : window.editDraft;
-    if (!d) return null;
-    d.question = ($('editQuestion')?.value || '').trim();
-    d.answer = ($('editAnswer')?.value || '').trim().toUpperCase();
-    const ops = {};
-    document.querySelectorAll('[data-opt]').forEach(t => {
-      const v = (t.value || '').trim();
-      if (v) ops[t.dataset.opt] = v;
-    });
-    d.options = ops;
-    d.answer_text = typeof answerText === 'function' ? answerText(d) : '';
-    d.subject_code = d.subject_code || currentSubject();
-    d.images = cleanImages(d.images || []);
-    return d;
-  }
-  async function fetchQuestion(oldQ, d) {
-    let q = oldQ || {};
-    const code = q.subject_code || d?.subject_code || currentSubject();
-    if (code && q.id) {
-      try {
-        const res = await fetch('/api/questions?subject_code=' + encodeURIComponent(code) + '&ts=' + Date.now(), {
-          cache: 'no-store',
-        });
-        const json = await res.json().catch(() => ({}));
-        const rows = Array.isArray(json.data) ? json.data : [];
-        const found = rows.find(r => String(r.id) === String(q.id));
-        if (found) {
-          const images = cleanImages(found.images || []);
-          q = { ...q, ...found, images, has_image: !!(found.has_image || images.length) };
-        }
-      } catch (e) {
-        lhWarn('CLEAN_IMAGE_REQUEST_DELETE_OLD_CREATE_NEW_20260628', e);
-      }
-    }
-    return q;
-  }
-  function row(q) {
-    const images = cleanImages(q?.images || []);
-    return {
-      question: q?.question || '',
-      options: q?.options || {},
-      answer: q?.answer || '',
-      answer_text: q?.answer_text || (typeof finalAnswerText === 'function' ? finalAnswerText(q) : ''),
-      images,
-      has_image: !!(q?.has_image || images.length),
-    };
-  }
-  async function saveClean(e) {
-    if (e) {
-      e.preventDefault?.();
-      e.stopPropagation?.();
-      e.stopImmediatePropagation?.();
-    }
-    if (sending) return false;
-    const c = supa(),
-      u = me();
-    if (!c || !u) {
-      alert('Bạn cần đăng nhập trước.');
-      return false;
-    }
-    const d = buildDraft();
-    if (!d) return false;
-    if (!d.question) return (alert('Chưa có nội dung câu hỏi.'), false);
-    if (!d.answer) return (alert('Chưa nhập đáp án đúng.'), false);
-    if (!d.options || !Object.keys(d.options).length) return (alert('Chưa có lựa chọn đáp án.'), false);
-
-    const oldQ = await fetchQuestion((RAW || []).find(x => x.num === d.num) || (pool || [])[ci] || d, d);
-    if (!oldQ?.id) return (alert('Không tìm thấy ID câu hỏi. Hãy tải lại trang rồi thử lại.'), false);
-    const oldRow = row(oldQ),
-      newRow = row(d);
-    const btn = $('saveEdit'),
-      oldText = btn?.textContent || '';
-    sending = true;
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = 'Đang lưu...';
-    }
-    try {
-      if (isEditorRole()) {
-        const imgs = newRow.images || [];
-        const payload = {
-          id: oldQ.id,
-          subject_code: oldQ.subject_code || d.subject_code || currentSubject(),
-          num: oldQ.num || d.num,
-          question: newRow.question,
-          options: newRow.options,
-          answer: newRow.answer,
-          answer_text: newRow.answer_text,
-          images: imgs,
-          has_image: imgs.length > 0,
-          updated_at: new Date().toISOString(),
-          error_risk: oldQ.error_risk || 'low',
-          error_risk_reason: oldQ.error_risk_reason || null,
-        };
-        const res = await fetch('/api/admin-action', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          cache: 'no-store',
-          body: JSON.stringify({
-            user_id: u.id,
-            action: 'save_question_direct',
-            payload: { question_id: oldQ.id, new_data: payload, old_data: oldRow },
-          }),
-        });
-        const out = await res.json().catch(() => ({}));
-        if (!res.ok || out.error) return (alert('Lưu trực tiếp thất bại: ' + (out.error || res.status)), false);
-        if (typeof window.clearLearningHubQuestionCache === 'function') window.clearLearningHubQuestionCache();
-        $('editModal')?.classList.add('hidden');
-        notifyUser('Đã lưu trực tiếp');
-        if (typeof window.loadCurrentSubjectOnly === 'function') await window.loadCurrentSubjectOnly(true);
-        return false;
-      }
-
-      const payload = {
-        question_id: oldQ.id,
-        question_num: oldQ.num || d.num || null,
-        subject_code: oldQ.subject_code || d.subject_code || currentSubject(),
-        user_id: u.id,
-        user_email: u.email || prof()?.email || '',
-        old_data: oldRow,
-        new_data: newRow,
-        reason: '',
-      };
-      const reqRes = await fetch('/api/edit-requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        cache: 'no-store',
-        body: JSON.stringify(payload),
-      });
-      const reqOut = await reqRes.json().catch(() => ({}));
-      if (!reqRes.ok || reqOut.error)
-        return (alert('Gửi yêu cầu sửa thất bại: ' + (reqOut.error || reqRes.status)), false);
-      $('editModal')?.classList.add('hidden');
-      notifyUser('Đã gửi yêu cầu sửa cho admin');
-      return false;
-    } finally {
-      sending = false;
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = oldText || (isEditorRole() ? 'Lưu trực tiếp' : 'Gửi báo cáo');
-      }
-    }
-  }
-
-  saveEditor = window.saveEditor = saveClean;
-  function bind() {
-    const b = $('saveEdit');
-    if (!b) return;
-    b.onclick = saveClean;
-    if (!b.__cleanRequestSaveBound) {
-      b.__cleanRequestSaveBound = true;
-      b.addEventListener('click', saveClean, true);
-    }
-  }
-  const oldOpen = typeof openEditor === 'function' ? openEditor : null;
-  openEditor = window.openEditor = function () {
-    if (oldOpen) oldOpen.apply(this, arguments);
-    setTimeout(bind, 0);
-  };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);
-  else bind();
-  setTimeout(bind, 300);
-  setInterval(bind, 1000);
-})();
-// ===== END CLEAN_IMAGE_REQUEST_DELETE_OLD_CREATE_NEW_20260628 =====
+  Không mất hành vi nào:
+  - "Lưu trực tiếp" cho admin/editor: saveEditPreview làm y hệt (cùng /api/admin-action
+    action save_question_direct, xóa cache, tải lại môn).
+  - "Gửi yêu cầu sửa" cho người thường: submitEditRequest (~dòng 1809) POST cùng
+    /api/edit-requests.
+  - "Xóa request pending cũ của cùng câu rồi tạo mới" (đúng như tên block): việc này nằm ở
+    SERVER, api/controllers/editRequests.js POST — nó tìm request pending cùng
+    (user_id, question_id, subject_code), UPDATE bản đó rồi DELETE các bản trùng. Client
+    nào POST endpoint đó cũng được dedup, nên không cần chép lại vào appCore.
+*/
 
 // ===== COPILOT_FINAL_UPLOAD_DIAGNOSTIC_LOCK_20260628 =====
-// Chốt lại upload ảnh: hiện trạng thái rõ ràng + kiểm tra config Cloudinary.
-(function () {
-  const CFG = (window.APP_CONFIG = Object.assign(
-    {
-      CLOUDINARY_CLOUD_NAME: 'ddc4uvm7m',
-      CLOUDINARY_UPLOAD_PRESET: 'learninghub_unsigned',
-      CLOUDINARY_UPLOAD_FOLDER: 'learninghub/questions',
-      CLOUDINARY_UPLOAD_URL: 'https://api.cloudinary.com/v1_1/ddc4uvm7m/image/upload',
-    },
-    window.APP_CONFIG || {},
-  ));
-  function $(id) {
-    return document.getElementById(id);
-  }
-  function msg(t) {
-    if (typeof notify === 'function') notify(t);
-    else console.log(t);
-  }
-  function ensureStatus(inputId, statusId) {
-    const inp = $(inputId);
-    if (!inp) return null;
-    let st = $(statusId);
-    if (!st) {
-      st = document.createElement('div');
-      st.id = statusId;
-      st.style.cssText =
-        'display:none;margin-top:7px;color:var(--gold2);font-weight:900;font-size:.86rem;word-break:break-word;';
-      inp.insertAdjacentElement('afterend', st);
-    }
-    return st;
-  }
-  async function directUpload(file) {
-    const url =
-      CFG.CLOUDINARY_UPLOAD_URL ||
-      (CFG.CLOUDINARY_CLOUD_NAME
-        ? 'https://api.cloudinary.com/v1_1/' + CFG.CLOUDINARY_CLOUD_NAME + '/image/upload'
-        : '');
-    const preset = CFG.CLOUDINARY_UPLOAD_PRESET;
-    if (!url || !preset) throw new Error('Thiếu Cloudinary config / upload preset.');
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('upload_preset', preset);
-    if (CFG.CLOUDINARY_UPLOAD_FOLDER) fd.append('folder', CFG.CLOUDINARY_UPLOAD_FOLDER);
-    const res = await fetch(url, { method: 'POST', body: fd });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error?.message || 'Cloudinary lỗi HTTP ' + res.status);
-    const img = {
-      id: data.public_id,
-      public_id: data.public_id,
-      src: data.secure_url,
-      url: data.secure_url,
-      width: data.width,
-      height: data.height,
-      source: 'cloudinary',
-    };
-    return img;
-  }
-  window.__LHUploadCloudinary = window.__LHUploadCloudinary || directUpload;
-  window.__LHTestCloudinaryConfig = function () {
-    console.log('[Cloudinary config]', {
-      url: CFG.CLOUDINARY_UPLOAD_URL,
-      cloud: CFG.CLOUDINARY_CLOUD_NAME,
-      preset: CFG.CLOUDINARY_UPLOAD_PRESET,
-      folder: CFG.CLOUDINARY_UPLOAD_FOLDER,
-    });
-    return CFG;
-  };
-  function bindEditUploadFinal() {
-    const inp = $('imgUpload');
-    if (!inp || inp.__copilotFinalUpload) return;
-    inp.__copilotFinalUpload = true;
-    inp.onchange = async function (e) {
-      const files = Array.from(e.target.files || []);
-      const st = ensureStatus('imgUpload', 'editUploadStatus');
-      if (!files.length) return;
-      inp.disabled = true;
-      if (st) {
-        st.style.display = 'block';
-        st.textContent = 'Đang upload ' + files.length + ' ảnh lên Cloudinary...';
-      }
-      msg('Đang upload ảnh lên Cloudinary...');
-      try {
-        editDraft.images = window.__LHCleanImages
-          ? window.__LHCleanImages(editDraft.images || [])
-          : editDraft.images || [];
-        for (const file of files) {
-          const uploaded = await (window.__LHUploadCloudinary || directUpload)(file);
-          editDraft.images.push(uploaded);
-        }
-        if (typeof renderEditImages === 'function') renderEditImages();
-        if (st) {
-          st.textContent = 'Đã upload xong. URL nằm dưới ảnh.';
-          setTimeout(() => {
-            st.style.display = 'none';
-          }, 2200);
-        }
-        msg('Đã upload ảnh thành URL');
-      } catch (err) {
-        if (st) {
-          st.textContent = 'Upload lỗi: ' + (err.message || err);
-        }
-        alert(err.message || err);
-      } finally {
-        inp.disabled = false;
-        inp.value = '';
-      }
-    };
-  }
-  const oldOpen = typeof window.openEditor === 'function' ? window.openEditor : null;
-  if (oldOpen && !oldOpen.__copilotFinalUploadOpen) {
-    window.openEditor = openEditor = function () {
-      const r = oldOpen.apply(this, arguments);
-      setTimeout(bindEditUploadFinal, 0);
-      setTimeout(bindEditUploadFinal, 100);
-      return r;
-    };
-    window.openEditor.__copilotFinalUploadOpen = true;
-  }
-  function boot() {
-    bindEditUploadFinal();
-    window.__LHTestCloudinaryConfig();
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
-  setTimeout(boot, 500);
-})();
+// Thân block đã chuyển sang ./images.js. Gọi đúng chỗ cũ để thứ tự chạy không đổi.
+installUploadDiagnostics();
 // ===== END COPILOT_FINAL_UPLOAD_DIAGNOSTIC_LOCK_20260628 =====
 
-// ===== COPILOT_FIX_EDIT_SAVE_UPLOAD_DIRECT_20260628 =====
-// Fix: bấm Sửa flashcard -> chọn ảnh -> Lưu trực tiếp phải upload ảnh trước rồi mới lưu Supabase.
-(function () {
-  function $(id) {
-    return document.getElementById(id);
-  }
-  function msg(t) {
-    if (typeof notify === 'function') notify(t);
-    else console.log(t);
-  }
-  function isDataUrl(s) {
-    return /^data:image\//i.test(String(s || ''));
-  }
-  function dataUrlToFile(dataUrl, name) {
-    const arr = String(dataUrl).split(',');
-    const mime = (arr[0].match(/:(.*?);/) || [])[1] || 'image/png';
-    const bin = atob(arr[1] || '');
-    const u8 = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-    return new File([u8], name || 'upload_' + Date.now() + '.png', { type: mime });
-  }
-  async function uploadOne(file) {
-    if (window.__LHUploadCloudinary) return await window.__LHUploadCloudinary(file);
-    const cfg = window.APP_CONFIG || {};
-    const url =
-      cfg.CLOUDINARY_UPLOAD_URL ||
-      (cfg.CLOUDINARY_CLOUD_NAME
-        ? 'https://api.cloudinary.com/v1_1/' + cfg.CLOUDINARY_CLOUD_NAME + '/image/upload'
-        : '');
-    if (!url || !cfg.CLOUDINARY_UPLOAD_PRESET) throw new Error('Thiếu Cloudinary config.');
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('upload_preset', cfg.CLOUDINARY_UPLOAD_PRESET);
-    if (cfg.CLOUDINARY_UPLOAD_FOLDER) fd.append('folder', cfg.CLOUDINARY_UPLOAD_FOLDER);
-    const res = await fetch(url, { method: 'POST', body: fd });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error?.message || 'Cloudinary lỗi HTTP ' + res.status);
-    return {
-      id: data.public_id,
-      public_id: data.public_id,
-      src: data.secure_url,
-      url: data.secure_url,
-      width: data.width,
-      height: data.height,
-      source: 'cloudinary',
-    };
-  }
-  function cleanList(arr) {
-    return (arr || [])
-      .filter(Boolean)
-      .map(im => {
-        if (typeof im === 'string') return { src: im, url: im, source: isDataUrl(im) ? 'data' : 'url' };
-        const src = im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '';
-        return Object.assign({}, im, { src: src, url: src || im.url });
-      })
-      .filter(im => im.src || im.url);
-  }
-  async function uploadPendingEditImages() {
-    if (!window.editDraft && typeof editDraft === 'undefined') return;
-    const draft = window.editDraft || editDraft;
-    if (!draft) return;
-    const inp = $('imgUpload');
-    const files = Array.from(inp?.files || []);
-    let list = cleanList(draft.images || []);
-    let need = list.some(im => isDataUrl(im.src || im.url)) || files.length > 0;
-    if (!need) {
-      draft.images = window.__LHCleanImages ? window.__LHCleanImages(list) : list;
-      return;
-    }
-    const st =
-      $('editUploadStatus') ||
-      (() => {
-        const e = document.createElement('div');
-        e.id = 'editUploadStatus';
-        e.style.cssText =
-          'display:block;margin-top:7px;color:var(--gold2);font-weight:900;font-size:.86rem;word-break:break-word;';
-        inp?.insertAdjacentElement('afterend', e);
-        return e;
-      })();
-    st.style.display = 'block';
-    st.textContent = 'Đang upload ảnh lên Cloudinary trước khi lưu...';
-    msg('Đang upload ảnh lên Cloudinary trước khi lưu...');
-    const out = [];
-    for (const im of list) {
-      const src = im.src || im.url;
-      if (isDataUrl(src)) out.push(await uploadOne(dataUrlToFile(src, im.name || 'image.png')));
-      else out.push(im);
-    }
-    for (const f of files) out.push(await uploadOne(f));
-    draft.images = window.__LHCleanImages ? window.__LHCleanImages(out) : out;
-    if (inp) inp.value = '';
-    if (typeof renderEditImages === 'function') renderEditImages();
-    st.textContent = 'Đã upload ảnh xong, đang lưu...';
-  }
-  function bindUploadInput() {
-    const inp = $('imgUpload');
-    if (!inp || inp.__copilotSaveUploadBound) return;
-    inp.__copilotSaveUploadBound = true;
-    inp.onchange = async function (e) {
-      const draft = window.editDraft || (typeof editDraft !== 'undefined' ? editDraft : null);
-      if (!draft) return;
-      const files = Array.from(e.target.files || []);
-      if (!files.length) return;
-      inp.disabled = true;
-      let st = $('editUploadStatus');
-      if (!st) {
-        st = document.createElement('div');
-        st.id = 'editUploadStatus';
-        st.style.cssText =
-          'display:block;margin-top:7px;color:var(--gold2);font-weight:900;font-size:.86rem;word-break:break-word;';
-        inp.insertAdjacentElement('afterend', st);
-      }
-      st.style.display = 'block';
-      st.textContent = 'Đang upload ' + files.length + ' ảnh lên Cloudinary...';
-      try {
-        draft.images = cleanList(draft.images || []);
-        for (const f of files) draft.images.push(await uploadOne(f));
-        draft.images = window.__LHCleanImages ? window.__LHCleanImages(draft.images) : draft.images;
-        if (typeof renderEditImages === 'function') renderEditImages();
-        st.textContent = 'Đã upload xong. URL nằm dưới ảnh.';
-        msg('Đã upload ảnh thành URL');
-      } catch (err) {
-        st.textContent = 'Upload lỗi: ' + (err.message || err);
-        alert(err.message || err);
-      } finally {
-        inp.disabled = false;
-        inp.value = '';
-      }
-    };
-  }
-  const oldOpen = window.openEditor || (typeof openEditor === 'function' ? openEditor : null);
-  if (oldOpen && !oldOpen.__copilotEditSaveUploadOpen) {
-    window.openEditor = openEditor = function () {
-      const r = oldOpen.apply(this, arguments);
-      setTimeout(bindUploadInput, 0);
-      setTimeout(bindUploadInput, 150);
-      setTimeout(rebindSaveButton, 180);
-      return r;
-    };
-    window.openEditor.__copilotEditSaveUploadOpen = true;
-  }
-  const oldSave = window.saveEditor || (typeof saveEditor === 'function' ? saveEditor : null);
-  if (oldSave && !oldSave.__copilotUploadBeforeSave) {
-    window.saveEditor = saveEditor = async function () {
-      const btn = $('saveEdit');
-      const oldText = btn ? btn.textContent : '';
-      try {
-        if (btn) {
-          btn.disabled = true;
-          btn.textContent = 'Đang upload/lưu...';
-        }
-        await uploadPendingEditImages();
-        return await oldSave.apply(this, arguments);
-      } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = oldText || 'Lưu trực tiếp';
-        }
-      }
-    };
-    window.saveEditor.__copilotUploadBeforeSave = true;
-  }
-  function rebindSaveButton() {
-    const btn = $('saveEdit');
-    if (!btn) return;
-    btn.onclick = function (e) {
-      e?.preventDefault?.();
-      return window.saveEditor ? window.saveEditor() : typeof saveEditor === 'function' ? saveEditor() : undefined;
-    };
-  }
-  function boot() {
-    bindUploadInput();
-    rebindSaveButton();
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
-  setTimeout(boot, 500);
-  setTimeout(boot, 1500);
-})();
-// ===== END COPILOT_FIX_EDIT_SAVE_UPLOAD_DIRECT_20260628 =====
+/*
+  ===== COPILOT_FIX_EDIT_SAVE_UPLOAD_DIRECT_20260628 — ĐÃ XÓA (20260727) =====
+  197 dòng, chết toàn bộ, cùng một lý do: cả block bám vào `#imgUpload` và `#saveEdit` của
+  index.html, còn openEditPreview dựng LẠI toàn bộ innerHTML của `#editModal` với bộ id mới
+  (`editPreviewImgInput`, `[data-edit-preview-save]`). Hai lớp gán openEditor/saveEditor của
+  nó thì bị apply() ghi đè ở mốc 900ms.
+
+  Phần duy nhất không trùng lặp là `uploadPendingEditImages()` (upload ảnh data: URL lên
+  Cloudinary TRƯỚC khi lưu) — đã bỏ theo quyết định 20260727: editor đang chạy upload NGAY
+  lúc chọn file qua `window.__LHUploadCloudinary` (handler change của #editPreviewImgInput)
+  và Ctrl+V dán ảnh cũng vậy (EDIT_PREVIEW_CTRL_V_IMAGE_UPLOAD_20260629), nên chỉ còn nhánh
+  dự phòng khi thiếu Cloudinary config là sinh ra ảnh data: — không đáng giữ 197 dòng.
+  `__LHUploadCloudinary` / `__LHCleanImages` KHÔNG bị xóa, chúng ở block khác và vẫn sống.
+*/
 
 // ===== COPILOT_ULTRA_FINAL_EDIT_UPLOAD_LOCK_20260628 =====
-(function () {
-  const STORE = 'learninghub_subject_code_merged_v1';
-  let pending = null;
-  // Lộ ra ngoài để submitEditRequest (gửi yêu cầu sửa cho user thường) có thể chờ
-  // upload Cloudinary xong trước khi gửi — tránh gửi request khi editDraft.images
-  // vẫn còn là base64 tạm (bị cleanImages() lọc mất khi tới backend).
-  window.__LHGetPendingImageUpload = () => pending;
-  function $(id) {
-    return document.getElementById(id);
-  }
-  function msg(t) {
-    if (typeof notify === 'function') notify(t);
-    else console.log(t);
-  }
-  function c() {
-    return window.HODSupabase?.__client || null;
-  }
-  function u() {
-    return window.HODSupabase?.getUser?.() || null;
-  }
-  function p() {
-    return window.HODSupabase?.getProfile?.() || null;
-  }
-  function can() {
-    const x = p(),
-      r = String(x?.role || '').toLowerCase();
-    return !!u() && (r === 'admin' || r === 'editor') && !(x?.blocked || x?.is_blocked || x?.status === 'blocked');
-  }
-  function sc() {
-    return localStorage.getItem(STORE) || '';
-  }
-  function draft() {
-    try {
-      return editDraft || null;
-    } catch (e) {
-      return null;
-    }
-  }
-  function dataUrl(s) {
-    return /^data:image\//i.test(String(s || ''));
-  }
-  function escx(s) {
-    return String(s ?? '').replace(
-      /[&<>"']/g,
-      a => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[a],
-    );
-  }
-  function toFile(data, name) {
-    const a = String(data).split(','),
-      m = (a[0].match(/:(.*?);/) || [])[1] || 'image/png',
-      b = atob(a[1] || ''),
-      u8 = new Uint8Array(b.length);
-    for (let i = 0; i < b.length; i++) u8[i] = b.charCodeAt(i);
-    return new File([u8], name || 'image.png', { type: m });
-  }
-  async function up(file) {
-    if (window.__LHUploadCloudinary) return await window.__LHUploadCloudinary(file);
-    const cfg = window.APP_CONFIG || {},
-      url =
-        cfg.CLOUDINARY_UPLOAD_URL ||
-        (cfg.CLOUDINARY_CLOUD_NAME
-          ? 'https://api.cloudinary.com/v1_1/' + cfg.CLOUDINARY_CLOUD_NAME + '/image/upload'
-          : '');
-    if (!url || !cfg.CLOUDINARY_UPLOAD_PRESET) throw new Error('Thiếu Cloudinary config/upload preset');
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('upload_preset', cfg.CLOUDINARY_UPLOAD_PRESET);
-    if (cfg.CLOUDINARY_UPLOAD_FOLDER) fd.append('folder', cfg.CLOUDINARY_UPLOAD_FOLDER);
-    const res = await fetch(url, { method: 'POST', body: fd }),
-      j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(j?.error?.message || 'Cloudinary lỗi ' + res.status);
-    return {
-      id: j.public_id,
-      public_id: j.public_id,
-      src: j.secure_url,
-      url: j.secure_url,
-      width: j.width,
-      height: j.height,
-      source: 'cloudinary',
-    };
-  }
-  function imgs(a) {
-    return (a || [])
-      .map(im => {
-        if (!im) return null;
-        if (typeof im === 'string') return { src: im, url: im };
-        const src = im.secure_url || im.src || im.url || im.publicUrl || im.public_url || '';
-        return src ? Object.assign({}, im, { src: String(src), url: String(src) }) : null;
-      })
-      .filter(Boolean);
-  }
-  function status(t) {
-    let inp = $('imgUpload'),
-      s = $('editUploadStatus');
-    if (!inp) return null;
-    if (!s) {
-      s = document.createElement('div');
-      s.id = 'editUploadStatus';
-      s.style.cssText =
-        'display:block;margin-top:7px;color:var(--gold2);font-weight:900;font-size:.86rem;word-break:break-word;';
-      inp.insertAdjacentElement('afterend', s);
-    }
-    s.style.display = 'block';
-    if (t) s.textContent = t;
-    return s;
-  }
-  function renderUrls() {
-    const d = draft(),
-      box = $('editImgs');
-    if (!d || !box) return;
-    d.images = imgs(d.images).filter(x => !dataUrl(x.src || x.url));
-    box.innerHTML = d.images.length
-      ? d.images
-          .map(
-            (im, i) =>
-              `<div class="editImg"><button class="rm" data-rm="${i}">×</button><img src="${escx(im.src)}" loading="lazy" decoding="async"><input value="${escx(im.src)}" readonly onclick="this.select()" style="margin-top:6px;width:100%;max-width:260px;border:1px solid rgba(200,169,110,.24);border-radius:10px;background:rgba(0,0,0,.22);color:var(--gold2);padding:7px;font-size:.72rem;"></div>`,
-          )
-          .join('')
-      : '<p style="color:var(--mist)">Chưa có hình.</p>';
-  }
-  async function runUpload(files) {
-    const d = draft();
-    if (!d) return;
-    files = [...(files || [])];
-    if (!files.length) return;
-    const btn = $('saveEdit');
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = 'Đang upload ảnh...';
-    }
-    status('Đang upload ' + files.length + ' ảnh lên Cloudinary...');
-    msg('Đang upload ảnh lên Cloudinary...');
-    d.images = imgs(d.images).filter(x => !dataUrl(x.src || x.url));
-    for (const f of files) {
-      const x = await up(f);
-      d.images.push(x);
-    }
-    d.images = window.__LHCleanImages ? window.__LHCleanImages(d.images) : imgs(d.images);
-    renderUrls();
-    status('Đã upload xong. URL nằm dưới ảnh.');
-    msg('Đã upload ảnh thành URL');
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = 'Lưu trực tiếp';
-    }
-  }
-  function bindInput() {
-    const inp = $('imgUpload');
-    if (!inp || inp.__ultraUpload) return;
-    inp.__ultraUpload = true;
-    inp.onchange = null;
-    inp.addEventListener(
-      'change',
-      e => {
-        const files = [...(e.target.files || [])];
-        if (!files.length) return;
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        pending = runUpload(files)
-          .catch(err => {
-            status('Upload lỗi: ' + (err.message || err));
-            alert(err.message || err);
-            throw err;
-          })
-          .finally(() => {
-            inp.value = '';
-          });
-      },
-      true,
-    );
-  }
-  function build() {
-    const d = draft();
-    if (!d) return null;
-    d.question = ($('editQuestion')?.value || '').trim();
-    d.answer = ($('editAnswer')?.value || '').trim().toUpperCase();
-    const o = {};
-    document.querySelectorAll('[data-opt]').forEach(t => {
-      if ((t.value || '').trim()) o[t.dataset.opt] = t.value.trim();
-    });
-    d.options = o;
-    d.answer_text = typeof answerText === 'function' ? answerText(d) : '';
-    d.subject_code = sc() || d.subject_code || '';
-    d.images = window.__LHCleanImages
-      ? window.__LHCleanImages(imgs(d.images))
-      : imgs(d.images).filter(x => /^https?:\/\//i.test(x.src || x.url));
-    return d;
-  }
-  async function uploadDataUrls() {
-    const d = draft();
-    if (!d) return;
-    const list = imgs(d.images);
-    if (!list.some(x => dataUrl(x.src || x.url))) {
-      d.images = window.__LHCleanImages ? window.__LHCleanImages(list) : list;
-      return;
-    }
-    status('Đang upload ảnh trước khi lưu...');
-    const out = [];
-    for (const im of list) {
-      const s = im.src || im.url;
-      out.push(dataUrl(s) ? await up(toFile(s, im.name)) : im);
-    }
-    d.images = window.__LHCleanImages ? window.__LHCleanImages(out) : out;
-    renderUrls();
-  }
-  // Lộ ra ngoài: submitEditRequest dùng để "quét" nốt ảnh base64 còn sót (vd upload qua
-  // paste thay vì chọn file) trước khi gửi yêu cầu duyệt, tránh mất ảnh như khi upload dở dang.
-  window.__LHUploadPendingDataUrls = uploadDataUrls;
-  async function qid(d) {
-    if (d.id) return d.id;
-    const db = c(),
-      code = d.subject_code || sc();
-    if (!db || !code || !d.num) return null;
-    const { data, error } = await db
-      .from('questions')
-      .select('id')
-      .eq('subject_code', code)
-      .eq('num', d.num)
-      .maybeSingle();
-    return error || !data ? null : data.id;
-  }
-  async function saveDirect() {
-    if (!can()) return false;
-    const usr = u();
-    if (!usr || !draft()) {
-      alert('Chưa sẵn sàng dữ liệu');
-      return true;
-    }
-    const btn = $('saveEdit');
-    try {
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Đang upload/lưu...';
-      }
-      if (pending) await pending;
-      await uploadDataUrls();
-      const d = build(),
-        id = await qid(d);
-      if (!id) {
-        alert('Không tìm thấy ID câu hỏi. Hãy tải lại trang rồi thử lại.');
-        return true;
-      }
-      const oldQ = (RAW || []).find(x => String(x.id) === String(id)) || (pool || [])[ci] || d;
-      const imgs = d.images || [];
-      const payload = {
-        id,
-        subject_code: d.subject_code || oldQ.subject_code || sc(),
-        num: d.num || oldQ.num,
-        question: d.question,
-        options: d.options || {},
-        answer: d.answer,
-        answer_text: d.answer_text,
-        images: imgs,
-        has_image: imgs.length > 0,
-        updated_at: new Date().toISOString(),
-        error_risk: oldQ.error_risk || 'low',
-        error_risk_reason: oldQ.error_risk_reason || null,
-      };
-      const res = await fetch('/api/admin-action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        cache: 'no-store',
-        body: JSON.stringify({
-          user_id: usr.id,
-          action: 'save_question_direct',
-          payload: { question_id: id, new_data: payload, old_data: oldQ },
-        }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || json.error) {
-        alert('Lưu trực tiếp thất bại: ' + (json.error || res.status));
-        return true;
-      }
-      if (typeof window.clearLearningHubQuestionCache === 'function') window.clearLearningHubQuestionCache();
-      $('editModal')?.classList.add('hidden');
-      msg('Đã lưu trực tiếp');
-      if (typeof window.loadCurrentSubjectOnly === 'function') await window.loadCurrentSubjectOnly(true);
-      return true;
-    } finally {
-      pending = null;
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = 'Lưu trực tiếp';
-      }
-    }
-  }
-  function bindSave() {
-    const b = $('saveEdit');
-    if (!b || b.__ultraSave) return;
-    b.__ultraSave = true;
-    b.onclick = null;
-    b.addEventListener(
-      'click',
-      async e => {
-        if (!can()) return;
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        await saveDirect();
-      },
-      true,
-    );
-  }
-  const old = window.openEditor || (typeof openEditor === 'function' ? openEditor : null);
-  if (old && !old.__ultraOpen) {
-    window.openEditor = openEditor = function () {
-      const r = old.apply(this, arguments);
-      setTimeout(() => {
-        bindInput();
-        bindSave();
-        renderUrls();
-        if (can() && $('saveEdit')) $('saveEdit').textContent = 'Lưu trực tiếp';
-      }, 0);
-      setTimeout(() => {
-        bindInput();
-        bindSave();
-        renderUrls();
-      }, 250);
-      return r;
-    };
-    window.openEditor.__ultraOpen = true;
-  }
-  function boot() {
-    bindInput();
-    bindSave();
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
-  setTimeout(boot, 500);
-  setTimeout(boot, 1500);
-  setInterval(boot, 1000);
-})();
+// Thân block đã chuyển sang ./images.js. Gọi đúng chỗ cũ để thứ tự chạy không đổi.
+installUploadLock();
 // ===== END COPILOT_ULTRA_FINAL_EDIT_UPLOAD_LOCK_20260628 =====
 
 // ===== COPILOT_CLEAN_RUNTIME_GUARD_20260628 (đã rút gọn) =====
@@ -12263,196 +8454,8 @@ window.clearLearningHubQuestionCache = function () {
 // ===== END COPILOT_CLEAN_RUNTIME_GUARD_20260628 =====
 
 // ===== COPILOT_FIX_EDIT_IMAGE_VISIBLE_AFTER_SAVE_20260628 =====
-// Fix: thêm ảnh trong form sửa xong không thấy hiện do reload bị cache / cột tải nhẹ thiếu images.
-// Lưu xong cập nhật local ngay, không chờ reload toàn bộ môn.
-(function () {
-  if (window.__COPILOT_FIX_EDIT_IMAGE_VISIBLE_AFTER_SAVE_20260628) return;
-  window.__COPILOT_FIX_EDIT_IMAGE_VISIBLE_AFTER_SAVE_20260628 = true;
-
-  function $(id) {
-    return document.getElementById(id);
-  }
-  function db() {
-    return window.HODSupabase?.__client || null;
-  }
-  function user() {
-    return window.HODSupabase?.getUser?.() || null;
-  }
-  function profile() {
-    return window.HODSupabase?.getProfile?.() || null;
-  }
-  function canDirect() {
-    const r = String(profile()?.role || '').toLowerCase();
-    return !!user() && (r === 'admin' || r === 'editor');
-  }
-  function subjectCode() {
-    return localStorage.getItem('learninghub_subject_code_merged_v1') || '';
-  }
-  function currentDraft() {
-    try {
-      return window.editDraft || editDraft || null;
-    } catch (e) {
-      return window.editDraft || null;
-    }
-  }
-  function imgUrl(im) {
-    if (!im) return '';
-    if (typeof im === 'string') return im;
-    return im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '';
-  }
-  function cleanImgs(list) {
-    return (list || [])
-      .map(im => {
-        const src = imgUrl(im);
-        if (!src || !/^https?:\/\//i.test(src)) return null;
-        return typeof im === 'string' ? { src, url: src } : Object.assign({}, im, { src, url: src });
-      })
-      .filter(Boolean);
-  }
-  function collectDraft() {
-    const d = currentDraft();
-    if (!d) return null;
-    const qEl = $('editQuestion') || document.querySelector('[data-edit-question]');
-    const aEl = $('editAnswer') || document.querySelector('[data-edit-answer]');
-    d.question = (qEl?.value || d.question || '').trim();
-    d.answer = (aEl?.value || d.answer || '')
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z]/g, '');
-    const opts = {};
-    document.querySelectorAll('[data-opt],[data-edit-opt]').forEach(inp => {
-      const k = String(inp.dataset.opt || inp.dataset.editOpt || '').toUpperCase();
-      const v = String(inp.value || '').trim();
-      if (k && v) opts[k] = v;
-    });
-    if (Object.keys(opts).length) d.options = opts;
-    d.answer_text = typeof answerText === 'function' ? answerText(d) : d.answer_text || '';
-    d.subject_code = d.subject_code || subjectCode();
-    d.images = cleanImgs(d.images);
-    return d;
-  }
-  async function getQuestionId(d) {
-    if (d.id) return d.id;
-    const c = db();
-    if (!c || !d.num) return null;
-    const r = await c
-      .from('questions')
-      .select('id')
-      .eq('subject_code', d.subject_code || subjectCode())
-      .eq('num', d.num)
-      .maybeSingle();
-    return r.error || !r.data ? null : r.data.id;
-  }
-  function updateLocal(d, id) {
-    const patch = Object.assign({}, d, {
-      id,
-      images: cleanImgs(d.images),
-      has_image: !!(d.images && d.images.length),
-      __imagesChecked: true,
-      __imagesLoaded: true,
-    });
-    try {
-      if (Array.isArray(RAW)) {
-        const i = RAW.findIndex(q => String(q.id) === String(id) || Number(q.num) === Number(patch.num));
-        if (i >= 0) RAW[i] = Object.assign({}, RAW[i], patch);
-      }
-      if (Array.isArray(pool)) {
-        const j = pool.findIndex(q => String(q.id) === String(id) || Number(q.num) === Number(patch.num));
-        if (j >= 0) pool[j] = Object.assign({}, pool[j], patch);
-      }
-      const active = (pool && pool[ci]) || null;
-      if (active && (String(active.id) === String(id) || Number(active.num) === Number(patch.num))) {
-        Object.assign(active, patch);
-      }
-      if (typeof renderCard === 'function') renderCard();
-      if (typeof renderQuiz === 'function') renderQuiz();
-      if (typeof renderStudy === 'function') renderStudy();
-    } catch (e) {
-      console.warn('[edit image local update]', e);
-    }
-  }
-  async function saveDirectNoReload() {
-    if (!canDirect()) return false;
-    const c = db();
-    const d = collectDraft();
-    if (!c || !d) return false;
-    const id = await getQuestionId(d);
-    if (!id) {
-      alert('Không tìm thấy ID câu hỏi trên Supabase.');
-      return true;
-    }
-    const payload = {
-      question: d.question,
-      options: d.options || {},
-      answer: d.answer,
-      answer_text: d.answer_text,
-      images: cleanImgs(d.images),
-      has_image: !!(d.images && d.images.length),
-      updated_at: new Date().toISOString(),
-    };
-    const u = window.HODSupabase?.getUser?.();
-    const oldQ =
-      (RAW || []).find(x => String(x.id) === String(id) || Number(x.num) === Number(d.num)) ||
-      (pool || []).find(x => String(x.id) === String(id) || Number(x.num) === Number(d.num)) ||
-      d;
-    const old_data = {
-      question: oldQ.question || '',
-      options: oldQ.options || {},
-      answer: oldQ.answer || '',
-      answer_text: oldQ.answer_text || '',
-      images: cleanImgs(oldQ.images || []),
-    };
-    const res = await fetch('/api/admin-action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      cache: 'no-store',
-      body: JSON.stringify({
-        user_id: u?.id,
-        action: 'save_question_direct',
-        payload: {
-          question_id: id,
-          new_data: Object.assign({ id, subject_code: d.subject_code, num: d.num }, payload),
-          old_data,
-        },
-      }),
-    });
-    const out = await res.json().catch(() => ({}));
-    if (!res.ok || out.error) {
-      alert('Lưu trực tiếp thất bại: ' + (out.error || res.status));
-      return true;
-    }
-    if (typeof window.clearLearningHubQuestionCache === 'function') {
-      window.clearLearningHubQuestionCache();
-    }
-    d.images = payload.images;
-    $('editModal')?.classList.add('hidden');
-    updateLocal(Object.assign({}, d, payload), id);
-    if (typeof notify === 'function') notify('Đã lưu ảnh và cập nhật câu hiện tại');
-    return true;
-  }
-
-  document.addEventListener(
-    'click',
-    async function (e) {
-      const btn = e.target.closest?.('#saveEdit,[data-edit-preview-save]');
-      if (!btn || !btn.closest?.('#editModal')) return;
-      if (!canDirect()) return;
-      e.preventDefault?.();
-      e.stopPropagation?.();
-      e.stopImmediatePropagation?.();
-      const oldText = btn.textContent;
-      btn.disabled = true;
-      btn.textContent = 'Đang lưu...';
-      try {
-        await saveDirectNoReload();
-      } finally {
-        btn.disabled = false;
-        btn.textContent = oldText || 'Lưu trực tiếp';
-      }
-    },
-    true,
-  );
-})();
+// Thân block đã chuyển sang ./images.js. Gọi đúng chỗ cũ để thứ tự chạy không đổi.
+installImageVisibleAfterSave();
 // ===== END COPILOT_FIX_EDIT_IMAGE_VISIBLE_AFTER_SAVE_20260628 =====
 
 /*
@@ -12467,233 +8470,13 @@ window.clearLearningHubQuestionCache = function () {
 */
 
 // ===== FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629 =====
-// Fix warning: Blocked aria-hidden because focused button stayed inside #subjectGate.
-(function () {
-  if (window.__FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629) return;
-  window.__FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629 = true;
-  function blurInsideGate() {
-    const gate = document.getElementById('subjectGate');
-    const active = document.activeElement;
-    if (gate && active && gate.contains(active)) {
-      try {
-        active.blur();
-      } catch (e) {
-        lhWarn('FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629', e);
-      }
-    }
-  }
-  function patchGate() {
-    const gate = document.getElementById('subjectGate');
-    if (!gate || gate.__ariaFocusPatch) return;
-    gate.__ariaFocusPatch = true;
-    const obs = new MutationObserver(() => {
-      if (gate.classList.contains('hidden') || gate.getAttribute('aria-hidden') === 'true') blurInsideGate();
-    });
-    obs.observe(gate, { attributes: true, attributeFilter: ['class', 'aria-hidden'] });
-  }
-  ['click', 'pointerdown', 'mousedown', 'touchstart'].forEach(ev => {
-    document.addEventListener(
-      ev,
-      e => {
-        if (
-          e.target &&
-          e.target.closest &&
-          e.target.closest('#subjectEnter,#subjectLogout,#subjectGate .close,#subjectGate [data-close]')
-        ) {
-          setTimeout(blurInsideGate, 0);
-        }
-      },
-      true,
-    );
-  });
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', patchGate);
-  else patchGate();
-  setTimeout(patchGate, 500);
-})();
+// Thân block đã chuyển sang ./subjectGate.js. Gọi đúng chỗ cũ để thứ tự chạy không đổi.
+installGateAriaFix();
 // ===== END FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629 =====
 
 // ===== SUBJECT_COUNTS_ONCE_CACHE_20260629 =====
-// Hiện số câu từng môn theo kiểu tiết kiệm:
-// - Lần đầu trong trình duyệt mới đếm các môn chưa có cache.
-// - F5/load lại dùng localStorage, không query lại.
-// - Khi realtime báo questions/subjects đổi thì đánh dấu dirty, lần sau mới cập nhật lại.
-(function () {
-  if (window.__SUBJECT_COUNTS_ONCE_CACHE_20260629) return;
-  window.__SUBJECT_COUNTS_ONCE_CACHE_20260629 = true;
-
-  const STORE = 'learninghub_subject_counts_cache_v3';
-  const DIRTY = 'learninghub_subject_counts_dirty_v3';
-  const pending = new Set();
-
-  function client() {
-    return window.HODSupabase?.__client || null;
-  }
-  function user() {
-    return window.HODSupabase?.getUser?.() || null;
-  }
-  function activeSubject() {
-    return localStorage.getItem('learninghub_subject_code_merged_v1') || '';
-  }
-  function cssEscape(s) {
-    try {
-      return CSS.escape(String(s));
-    } catch (e) {
-      return String(s).replace(/"/g, '\\"');
-    }
-  }
-  function read() {
-    try {
-      return JSON.parse(localStorage.getItem(STORE) || '{}') || {};
-    } catch (e) {
-      return {};
-    }
-  }
-  function write(data) {
-    try {
-      localStorage.setItem(STORE, JSON.stringify(data || {}));
-    } catch (e) {
-      lhWarn('SUBJECT_COUNTS_ONCE_CACHE_20260629', e);
-    }
-  }
-  function dirty() {
-    return localStorage.getItem(DIRTY) === '1';
-  }
-  function setDirty(on = true) {
-    try {
-      on ? localStorage.setItem(DIRTY, '1') : localStorage.removeItem(DIRTY);
-    } catch (e) {
-      lhWarn('SUBJECT_COUNTS_ONCE_CACHE_20260629', e);
-    }
-  }
-  function ensureStore() {
-    const x = read();
-    x.counts = x.counts || {};
-    x.confirmed = x.confirmed || {};
-    x.updated_at = x.updated_at || '';
-    return x;
-  }
-  function localCount(code) {
-    try {
-      const active = activeSubject();
-      if (active === code && Array.isArray(RAW) && RAW.length) return RAW.length;
-      if (Array.isArray(RAW)) {
-        const n = RAW.filter(q => (q.subject_code || active) === code).length;
-        return n > 0 ? n : null;
-      }
-    } catch (e) {
-      lhWarn('SUBJECT_COUNTS_ONCE_CACHE_20260629', e);
-    }
-    return null;
-  }
-  function setCardCount(code, n) {
-    const count = Number(n || 0);
-    document.querySelectorAll('.subjectCard[data-code="' + cssEscape(code) + '"]').forEach(card => {
-      const meta = card.querySelector('.subjectMeta span:first-child');
-      if (meta) meta.textContent = count + ' câu';
-      card.title = (card.title || code).replace(/(?:\d+|—) câu/g, count + ' câu');
-    });
-  }
-  function paint() {
-    const store = ensureStore();
-    document.querySelectorAll('.subjectCard[data-code]').forEach(card => {
-      const code = card.dataset.code;
-      const n = localCount(code);
-      if (Number.isFinite(Number(n)) && Number(n) > 0) {
-        setCardCount(code, Number(n));
-        return;
-      }
-      if (store.confirmed[code]) setCardCount(code, Number(store.counts[code] || 0));
-    });
-  }
-  let _countsMap = null,
-    _countsAt = 0;
-  async function tursoCounts(force) {
-    const now = Date.now();
-    if (!force && _countsMap && now - _countsAt < 60000) return _countsMap;
-    try {
-      const res = await fetch('/api/subjects?ts=' + now, { cache: 'no-store' });
-      const j = await res.json().catch(() => ({}));
-      const map = {};
-      (j.data || []).forEach(r => {
-        map[String(r.code || '').toUpperCase()] = Number(r.question_count ?? r.questions_count ?? r.count ?? 0);
-      });
-      _countsMap = map;
-      _countsAt = now;
-      return map;
-    } catch (e) {
-      console.warn('[subject count Turso]', e);
-      return _countsMap || {};
-    }
-  }
-  async function countOne(code) {
-    if (!code) return null;
-    const map = await tursoCounts();
-    const v = map[String(code).toUpperCase()];
-    return v === undefined || v === null ? null : Number(v);
-  }
-  async function refresh(force = false) {
-    if (!user()) return;
-    const prof = window.HODSupabase?.getProfile?.() || null;
-    if (prof && (prof.approved === false || prof.approved === 0 || prof.approved === '0')) return;
-    const cards = [...document.querySelectorAll('.subjectCard[data-code]')];
-    if (!cards.length) return;
-    const store = ensureStore();
-    const must = force || dirty();
-
-    paint();
-
-    const codes = cards.map(card => card.dataset.code).filter(Boolean);
-    const need = codes.filter(code => {
-      const n = localCount(code);
-      if (Number.isFinite(Number(n)) && Number(n) > 0) return false;
-      return must || !store.confirmed[code];
-    });
-    if (!need.length) return;
-
-    for (const code of need) {
-      if (pending.has(code)) continue;
-      pending.add(code);
-      const n = await countOne(code);
-      if (n !== null) {
-        store.counts[code] = n;
-        store.confirmed[code] = true;
-        store.updated_at = new Date().toISOString();
-        write(store);
-        setCardCount(code, n);
-      }
-      pending.delete(code);
-    }
-    setDirty(false);
-  }
-
-  const oldClear = window.clearLearningHubSupabaseCache;
-  window.clearLearningHubSupabaseCache = function (kind) {
-    if (!kind || kind === 'all' || kind === 'questions' || kind === 'subjects') setDirty(true);
-    return typeof oldClear === 'function' ? oldClear.apply(this, arguments) : undefined;
-  };
-
-  window.refreshSubjectCountsOnce = function () {
-    return refresh(true);
-  };
-
-  document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(paint, 300);
-    setTimeout(() => refresh(false), 1200);
-    setTimeout(() => refresh(false), 2600);
-  });
-  document.addEventListener(
-    'click',
-    e => {
-      if (e.target.closest('#subjectRefresh')) setTimeout(() => refresh(true), 600);
-      if (e.target.closest('#hodChangeSubjectBtn,#subjectTopChip')) {
-        setTimeout(paint, 300);
-        setTimeout(() => refresh(false), 1200);
-        setTimeout(() => refresh(false), 2600);
-      }
-    },
-    true,
-  );
-})();
+// Thân block đã chuyển sang ./subjectGate.js. Gọi đúng chỗ cũ để thứ tự chạy không đổi.
+installSubjectCountsCache();
 // ===== END SUBJECT_COUNTS_ONCE_CACHE_20260629 =====
 
 // ===== ACTIVE_SUBJECT_COUNT_SYNC_20260629 =====
@@ -12731,8 +8514,8 @@ window.clearLearningHubQuestionCache = function () {
   }
   function loadedCount() {
     try {
-      if (Array.isArray(RAW) && RAW.length) return RAW.length;
-      if (Array.isArray(pool) && pool.length) return pool.length;
+      if (Array.isArray(LHState.RAW) && LHState.RAW.length) return LHState.RAW.length;
+      if (Array.isArray(LHState.pool) && LHState.pool.length) return LHState.pool.length;
     } catch (e) {
       lhWarn('ACTIVE_SUBJECT_COUNT_SYNC_20260629', e);
     }
@@ -12987,122 +8770,8 @@ window.clearLearningHubQuestionCache = function () {
 // ===== END EXAM_UI_STYLE_MERGED_20260702 =====
 
 // ===== CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629 =====
-// Phiên đăng nhập mới: xóa toàn bộ dữ liệu nháp ở phần Thêm môn để người dùng điền lại từ đầu.
-(function () {
-  const KEYS = [
-    'learninghub_add_subject_code_v1',
-    'learninghub_add_subject_name_v1',
-    'learninghub_add_subject_desc_v1',
-    'learninghub_add_subject_step_v1',
-    'learninghub_add_subject_file_name_v1',
-    'learninghub_add_subject_file_size_v1',
-    'learninghub_add_subject_file_data_v1',
-    'learninghub_add_subject_file_previewed_v1',
-  ];
-  const SESSION_KEY = 'learninghub_add_subject_draft_cleared_for_user_v1';
-
-  function clearAddSubjectDraft() {
-    try {
-      KEYS.forEach(k => localStorage.removeItem(k));
-    } catch (e) {
-      lhWarn('CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629', e);
-    }
-    try {
-      localStorage.setItem('learninghub_subject_gate_tab_v1', 'list');
-    } catch (e) {
-      lhWarn('CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629', e);
-    }
-
-    const ids = ['addSubjectCode', 'addSubjectName', 'addSubjectDesc', 'userImportData', 'userImportFile'];
-    ids.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.value = '';
-    });
-
-    const card = document.getElementById('userImportFileCard');
-    const dz = document.getElementById('importDropZone');
-    const pv = document.getElementById('previewImportBtn');
-    const preview = document.getElementById('userImportPreview');
-    if (card) card.classList.add('hidden');
-    if (dz) dz.classList.remove('hidden');
-    if (pv) {
-      pv.classList.add('hidden');
-      pv.disabled = true;
-    }
-    if (preview) preview.innerHTML = '';
-  }
-
-  function currentUserId() {
-    try {
-      return window.HODSupabase?.getUser?.()?.id || '';
-    } catch (e) {
-      return '';
-    }
-  }
-
-  function clearOnceForCurrentLogin() {
-    const uid = currentUserId();
-    if (!uid) return;
-    let cleared = '';
-    try {
-      cleared = sessionStorage.getItem(SESSION_KEY) || '';
-    } catch (e) {
-      lhWarn('CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629', e);
-    }
-    if (cleared === uid) return;
-    clearAddSubjectDraft();
-    try {
-      sessionStorage.setItem(SESSION_KEY, uid);
-    } catch (e) {
-      lhWarn('CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629', e);
-    }
-  }
-
-  function patchAuthMethods() {
-    const api = window.HODSupabase;
-    if (!api || api.__clearAddSubjectDraftPatched) return;
-
-    if (typeof api.signInGoogle === 'function') {
-      const oldGoogle = api.signInGoogle.bind(api);
-      api.signInGoogle = async function () {
-        clearAddSubjectDraft();
-        try {
-          sessionStorage.removeItem(SESSION_KEY);
-        } catch (e) {
-          lhWarn('CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629', e);
-        }
-        return oldGoogle.apply(this, arguments);
-      };
-    }
-
-    if (typeof api.signOut === 'function') {
-      const oldSignOut = api.signOut.bind(api);
-      api.signOut = async function () {
-        clearAddSubjectDraft();
-        try {
-          sessionStorage.removeItem(SESSION_KEY);
-        } catch (e) {
-          lhWarn('CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629', e);
-        }
-        return oldSignOut.apply(this, arguments);
-      };
-    }
-
-    api.__clearAddSubjectDraftPatched = true;
-  }
-
-  function tick() {
-    patchAuthMethods();
-    clearOnceForCurrentLogin();
-  }
-
-  window.__clearAddSubjectDraft = clearAddSubjectDraft;
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick);
-  else tick();
-  setTimeout(tick, 500);
-  setTimeout(tick, 1600);
-  setInterval(tick, 2500);
-})();
+// Thân block đã chuyển sang ./subjectGate.js. Gọi đúng chỗ cũ để thứ tự chạy không đổi.
+installClearAddSubjectDraft();
 // ===== END CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629 =====
 
 // ===== COPILOT_KEEP_IMPORT_QUESTION_ATTRIBUTES_20260629 =====
@@ -13128,17 +8797,17 @@ window.clearLearningHubQuestionCache = function () {
   */
   function normalizeAll() {
     try {
-      if (Array.isArray(RAW)) RAW.forEach(normalizeQuestionAttrs);
+      if (Array.isArray(LHState.RAW)) LHState.RAW.forEach(normalizeQuestionAttrs);
     } catch (e) {
       lhWarn('COPILOT_KEEP_IMPORT_QUESTION_ATTRIBUTES_20260629', e);
     }
     try {
-      if (Array.isArray(pool)) pool.forEach(normalizeQuestionAttrs);
+      if (Array.isArray(LHState.pool)) LHState.pool.forEach(normalizeQuestionAttrs);
     } catch (e) {
       lhWarn('COPILOT_KEEP_IMPORT_QUESTION_ATTRIBUTES_20260629', e);
     }
     try {
-      if (Array.isArray(qSet)) qSet.forEach(normalizeQuestionAttrs);
+      if (Array.isArray(LHState.qSet)) LHState.qSet.forEach(normalizeQuestionAttrs);
     } catch (e) {
       lhWarn('COPILOT_KEEP_IMPORT_QUESTION_ATTRIBUTES_20260629', e);
     }
@@ -13162,149 +8831,13 @@ window.clearLearningHubQuestionCache = function () {
 // ===== END COPILOT_KEEP_IMPORT_QUESTION_ATTRIBUTES_20260629 =====
 
 // ===== EDIT_RENDER_NULL_GUARD_20260629 =====
-(function () {
-  function $(id) {
-    return document.getElementById(id);
-  }
-  function safeSrc(im) {
-    return im && typeof im === 'object'
-      ? im.src || im.url || im.secure_url || im.publicUrl || im.public_url || ''
-      : im || '';
-  }
-  function safeEsc(s) {
-    return String(s ?? '').replace(
-      /[&<>"']/g,
-      c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-    );
-  }
-  function ensureEditImgsBox() {
-    let box = $('editImgs');
-    if (box) return box;
-    const input = $('imgUpload');
-    if (!input) return null;
-    box = document.createElement('div');
-    box.id = 'editImgs';
-    box.className = 'editImgs';
-    input.insertAdjacentElement('afterend', box);
-    return box;
-  }
-  window.renderEditImages = renderEditImages = function () {
-    const box = ensureEditImgsBox();
-    if (!box) return;
-    const imgs =
-      typeof editDraft !== 'undefined' && editDraft && Array.isArray(editDraft.images) ? editDraft.images : [];
-    box.innerHTML = imgs.length
-      ? imgs
-          .map((im, i) => {
-            const src = safeSrc(im);
-            return `<div class="editImg"><button class="rm" data-rm="${i}">×</button><img src="${safeEsc(src)}" loading="lazy" decoding="async"><input class="imgUrlBox" value="${safeEsc(src)}" readonly onclick="this.select()" title="Bấm để chọn URL ảnh" style="margin-top:6px;width:100%;max-width:260px;border:1px solid rgba(200,169,110,.24);border-radius:10px;background:rgba(0,0,0,.22);color:var(--gold2);padding:7px;font-size:.72rem;"></div>`;
-          })
-          .join('')
-      : '<p style="color:var(--mist)">Chưa có hình.</p>';
-  };
-})();
+// Thân block đã chuyển sang ./images.js. Gọi đúng chỗ cũ để thứ tự chạy không đổi.
+installEditImagesRender();
 // ===== END EDIT_RENDER_NULL_GUARD_20260629 =====
 
 // ===== EDIT_PREVIEW_CTRL_V_IMAGE_UPLOAD_20260629 =====
-// Đúng UI trong form "Sửa câu hỏi": vùng "Ảnh của câu hỏi" / nút "+ Thêm ảnh" dùng input #editPreviewImgInput.
-// Ctrl+V hoặc kéo thả ảnh sẽ đưa file vào input này, để handler upload Cloudinary có sẵn xử lý và redraw đúng khung ảnh.
-(function () {
-  function $(id) {
-    return document.getElementById(id);
-  }
-  function msg(t) {
-    if (typeof notify === 'function') notify(t);
-    else console.log(t);
-  }
-  function imageFilesFromClipboard(e) {
-    return [...(e.clipboardData?.items || [])]
-      .filter(item => item.kind === 'file' && String(item.type || '').startsWith('image/'))
-      .map(item => item.getAsFile())
-      .filter(Boolean);
-  }
-  function imageFilesFromDrop(e) {
-    return [...(e.dataTransfer?.files || [])].filter(file => String(file.type || '').startsWith('image/'));
-  }
-  function setInputFilesAndUpload(files, source) {
-    files = [...(files || [])].filter(file => file && String(file.type || '').startsWith('image/'));
-    if (!files.length) return false;
-    const input = $('editPreviewImgInput') || $('imgUpload');
-    if (!input) {
-      alert('Chưa thấy ô thêm ảnh. Đóng/mở lại form sửa rồi thử lại.');
-      return true;
-    }
-    try {
-      const dt = new DataTransfer();
-      files.forEach(file => dt.items.add(file));
-      input.files = dt.files;
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-      msg(source === 'paste' ? 'Đang upload ảnh vừa dán...' : 'Đang upload ảnh...');
-    } catch (err) {
-      alert('Trình duyệt không hỗ trợ dán ảnh kiểu này. Hãy bấm + Thêm ảnh để chọn file.');
-    }
-    return true;
-  }
-  function ensureEditPasteHint() {
-    const modal = $('editModal');
-    if (!modal || modal.classList.contains('hidden')) return;
-    const imagesBox = modal.querySelector('.v7Images');
-    if (!imagesBox || imagesBox.querySelector('.editPasteImageHint')) return;
-    const head = imagesBox.querySelector('.v7ImagesHead') || imagesBox.firstElementChild;
-    const hint = document.createElement('div');
-    hint.className = 'pasteImageHint editPasteImageHint';
-    hint.textContent = 'Có thể chụp/copy ảnh rồi bấm Ctrl + V tại khung này để tự upload URL.';
-    if (head) head.insertAdjacentElement('afterend', hint);
-    else imagesBox.prepend(hint);
-  }
-  function bindEditPreviewPasteUpload() {
-    const modal = $('editModal');
-    if (!modal) return;
-    ensureEditPasteHint();
-    if (modal.__editPreviewPasteUploadBound) return;
-    modal.__editPreviewPasteUploadBound = true;
-    modal.addEventListener(
-      'paste',
-      e => {
-        const files = imageFilesFromClipboard(e);
-        if (!files.length) return;
-        e.preventDefault();
-        setInputFilesAndUpload(files, 'paste');
-      },
-      true,
-    );
-    modal.addEventListener(
-      'dragover',
-      e => {
-        const hasFile = [...(e.dataTransfer?.items || [])].some(item => item.kind === 'file');
-        if (!hasFile) return;
-        e.preventDefault();
-        modal.classList.add('dragImageOver');
-        ensureEditPasteHint();
-      },
-      true,
-    );
-    modal.addEventListener('dragleave', () => modal.classList.remove('dragImageOver'), true);
-    modal.addEventListener(
-      'drop',
-      e => {
-        const files = imageFilesFromDrop(e);
-        if (!files.length) return;
-        e.preventDefault();
-        modal.classList.remove('dragImageOver');
-        setInputFilesAndUpload(files, 'drop');
-      },
-      true,
-    );
-  }
-  function boot() {
-    bindEditPreviewPasteUpload();
-    ensureEditPasteHint();
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
-  setTimeout(boot, 300);
-  setInterval(boot, 700);
-})();
+// Thân block đã chuyển sang ./editor.js. Gọi đúng chỗ cũ để thứ tự chạy không đổi.
+installEditorPasteUpload();
 // ===== END EDIT_PREVIEW_CTRL_V_IMAGE_UPLOAD_20260629 =====
 
 // ===== IMPORT_PREVIEW_CTRL_V_IMAGE_UPLOAD_20260629 =====
@@ -13434,97 +8967,8 @@ window.APP_CONFIG.USE_TURSO_API = true;
 // ===== END TURSO_ONLY_DATA_SOURCE_20260630 =====
 
 // ===== TURSO_SUBJECT_COUNTS_FALLBACK_20260630 =====
-// Fix: user mới chưa có cache thì thẻ môn không bị hiện 0 câu; nếu /api/subjects thiếu count sẽ tự đếm từ /api/questions một lần.
-(function () {
-  if (window.__TURSO_SUBJECT_COUNTS_FALLBACK_20260630) return;
-  window.__TURSO_SUBJECT_COUNTS_FALLBACK_20260630 = true;
-
-  const STORE = 'learninghub_subject_counts_cache_v3';
-  let loading = false;
-
-  function readStore() {
-    try {
-      return JSON.parse(localStorage.getItem(STORE) || '{}') || {};
-    } catch (e) {
-      return {};
-    }
-  }
-  function writeCounts(counts) {
-    try {
-      localStorage.setItem(STORE, JSON.stringify({ counts: counts || {}, confirmed: counts || {}, at: Date.now() }));
-    } catch (e) {
-      lhWarn('TURSO_SUBJECT_COUNTS_FALLBACK_20260630', e);
-    }
-  }
-  function norm(code) {
-    return String(code || '')
-      .trim()
-      .toUpperCase();
-  }
-
-  async function fetchCounts() {
-    if (loading) return null;
-    if (!window.HODSupabase?.getUser?.()) return null;
-    const prof = window.HODSupabase?.getProfile?.();
-    if (prof && (prof.approved === false || prof.approved === 0 || prof.approved === '0')) return null;
-    loading = true;
-    try {
-      const res = await fetch('/api/questions?count_only=1&ts=' + Date.now(), { cache: 'no-store' });
-      const json = await res.json().catch(() => ({}));
-      const rows = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
-      const counts = {};
-      rows.forEach(q => {
-        const code = norm(q.subject_code);
-        const n = Number(q.question_count ?? q.questions_count ?? q.count ?? 1);
-        if (code) counts[code] = (counts[code] || 0) + (Number.isFinite(n) && n > 0 ? n : 1);
-      });
-      writeCounts(counts);
-      return counts;
-    } catch (e) {
-      console.warn('[Turso counts fallback]', e);
-      return null;
-    } finally {
-      loading = false;
-    }
-  }
-
-  function applyCountsToCards(counts) {
-    if (!counts) return;
-    document.querySelectorAll('.subjectCard').forEach(card => {
-      const code = norm(card.dataset.code || card.getAttribute('data-code'));
-      if (!code || counts[code] == null) return;
-      const meta = card.querySelector('.subjectMeta span');
-      if (meta) meta.textContent = Number(counts[code] || 0) + ' câu';
-    });
-  }
-
-  async function refreshZeroCounts() {
-    const cards = Array.from(document.querySelectorAll('.subjectCard'));
-    if (!cards.length) return;
-    const hasZero = cards.some(card => /(^|\s)0\s*câu/i.test(card.textContent || ''));
-    if (!hasZero) return;
-    const store = readStore();
-    if (store.counts) applyCountsToCards(store.counts);
-    const counts = await fetchCounts();
-    applyCountsToCards(counts);
-  }
-
-  const oldRenderSubjects = typeof renderSubjects === 'function' ? renderSubjects : null;
-  if (oldRenderSubjects && !oldRenderSubjects.__tursoCountsFallback) {
-    const fn = function () {
-      const out = oldRenderSubjects.apply(this, arguments);
-      setTimeout(refreshZeroCounts, 80);
-      return out;
-    };
-    fn.__tursoCountsFallback = true;
-    window.renderSubjects = renderSubjects = fn;
-  }
-
-  document.addEventListener('DOMContentLoaded', function () {
-    setTimeout(refreshZeroCounts, 600);
-    setTimeout(refreshZeroCounts, 1800);
-  });
-})();
+// Thân block đã chuyển sang ./subjectGate.js. Gọi đúng chỗ cũ để thứ tự chạy không đổi.
+installSubjectCountsFallback();
 // ===== END TURSO_SUBJECT_COUNTS_FALLBACK_20260630 =====
 
 // ===== APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630 =====
@@ -13553,9 +8997,9 @@ window.APP_CONFIG.USE_TURSO_API = true;
     try {
       return (
         !!code &&
-        Array.isArray(RAW) &&
-        RAW.length > 0 &&
-        RAW.some(q => String(q.subject_code || code).toUpperCase() === String(code).toUpperCase())
+        Array.isArray(LHState.RAW) &&
+        LHState.RAW.length > 0 &&
+        LHState.RAW.some(q => String(q.subject_code || code).toUpperCase() === String(code).toUpperCase())
       );
     } catch (e) {
       return false;
@@ -13624,25 +9068,8 @@ window.APP_CONFIG.USE_TURSO_API = true;
 // ===== END APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630 =====
 
 // ===== COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630 =====
-(function () {
-  if (window.__COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630) return;
-  window.__COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630 = true;
-  try {
-    imgsHTML = function (c) {
-      return (c?.images || [])
-        .map(im => {
-          const src =
-            typeof im === 'string' ? im : im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '';
-          if (!src || String(src).startsWith('data:image/')) return '';
-          return '<img src="' + esc(src) + '" alt="" loading="lazy" decoding="async">';
-        })
-        .join('');
-    };
-    window.imgsHTML = imgsHTML;
-  } catch (e) {
-    lhWarn('COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630', e);
-  }
-})();
+// Thân block đã chuyển sang ./images.js. Gọi đúng chỗ cũ để thứ tự chạy không đổi.
+installImgsHTML();
 // ===== END COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630 =====
 
 // ===== FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701 =====
@@ -14313,8 +9740,13 @@ window.APP_CONFIG.USE_TURSO_API = true;
   const SVG_LIB_SAVED = `<svg class="bmLibIcon" width="14" height="14" viewBox="0 0 24 24" fill="#f5c518" stroke="#f5c518" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
 
   function getSubjectCode() {
-    if (typeof RAW !== 'undefined' && Array.isArray(RAW) && RAW[0] && RAW[0].subject_code) {
-      return String(RAW[0].subject_code).trim();
+    if (
+      typeof LHState.RAW !== 'undefined' &&
+      Array.isArray(LHState.RAW) &&
+      LHState.RAW[0] &&
+      LHState.RAW[0].subject_code
+    ) {
+      return String(LHState.RAW[0].subject_code).trim();
     }
     return localStorage.getItem('learninghub_subject_code_merged_v1') || 'default_subject';
   }
@@ -14467,13 +9899,13 @@ window.APP_CONFIG.USE_TURSO_API = true;
   function getCurrentCard() {
     try {
       const arr =
-        typeof pool !== 'undefined' && Array.isArray(pool) && pool.length
-          ? pool
-          : typeof RAW !== 'undefined'
-            ? RAW
+        typeof LHState.pool !== 'undefined' && Array.isArray(LHState.pool) && LHState.pool.length
+          ? LHState.pool
+          : typeof LHState.RAW !== 'undefined'
+            ? LHState.RAW
             : [];
       if (!arr.length) return null;
-      const index = Math.max(0, Math.min(typeof ci === 'number' ? ci : 0, arr.length - 1));
+      const index = Math.max(0, Math.min(typeof LHState.ci === 'number' ? LHState.ci : 0, arr.length - 1));
       return arr[index] || null;
     } catch (e) {
       return null;
@@ -14522,7 +9954,7 @@ window.APP_CONFIG.USE_TURSO_API = true;
       void btn.offsetWidth;
       btn.classList.add('pop');
       btn.addEventListener('animationend', () => btn.classList.remove('pop'), { once: true });
-      const displayNum = card.num || (typeof ci === 'number' ? ci : 0) + 1;
+      const displayNum = card.num || (typeof LHState.ci === 'number' ? LHState.ci : 0) + 1;
       try {
         notify(added ? `🔖 Đã lưu câu ${displayNum}` : `Đã bỏ lưu câu ${displayNum}`);
       } catch (err) {
