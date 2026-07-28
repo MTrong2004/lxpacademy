@@ -13,6 +13,9 @@ create table if not exists profiles (
   current_subject text,
   device_info text,
   device_history text default '[]',
+  -- Cờ DÙNG MỘT LẦN: admin nhắc người dùng tải lại trang để lấy bản mới.
+  -- /api/profile đọc xong reset ngay về 0. Xem migrations/003.
+  reload_notice integer default 0,
   created_at text default (datetime('now'))
 );
 
@@ -140,6 +143,11 @@ create table if not exists discord_approval_logs (
 
 insert into site_settings (key, value)
 values ('registration_mode', '"approval"')
+on conflict(key) do nothing;
+
+-- Bật/tắt từng loại thông báo Discord từ trang admin (chỉ admin hệ thống đổi được).
+insert into site_settings (key, value)
+values ('discord_notifications', '{"login":true,"action":true,"edit_request":true}')
 on conflict(key) do nothing;
 
 insert into subjects (code, name, description, cover, sort_order, is_active)

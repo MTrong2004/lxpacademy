@@ -16,6 +16,7 @@ import { handleEditRequests, handleMyEditRequests, handleStaffEditRequests } fro
 import { handleSettings } from './controllers/settings.js';
 import { handleNotify } from './controllers/notify.js';
 import { handleAdminDashboard, handleAdminAction } from './controllers/admin.js';
+import { postServerErrorEmbed } from './lib/discord.js';
 
 export default async function handler(req) {
   const parsedUrl = new URL(req.url);
@@ -63,6 +64,17 @@ export default async function handler(req) {
       Client coi 500 là "không kết luận được quyền", KHÔNG coi là bị thu hồi quyền.
     */
     console.error('[API Error]', path, e?.stack || e?.message || e);
+    /*
+      SERVER_ERROR_DISCORD_20260729 — đây là chốt 500 DUY NHẤT của router, nên chỉ cần
+      một lời gọi. Bọc try/catch riêng: webhook lỗi thì vẫn phải trả 500 đúng hình dạng
+      (client dựa vào code INTERNAL_ERROR để hiện "thử lại", không được coi là mất quyền).
+      postServerErrorEmbed tự gộp tin trùng và tự tôn trọng công tắc 'server_error'.
+    */
+    try {
+      await postServerErrorEmbed(path, e);
+    } catch (notifyErr) {
+      console.warn('[server_error discord] không gửi được:', notifyErr?.message || notifyErr);
+    }
     return json({ error: 'Đã xảy ra lỗi hệ thống', code: 'INTERNAL_ERROR' }, 500);
   }
 }

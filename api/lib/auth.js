@@ -1,4 +1,5 @@
 import { db, cleanStr } from './db.js';
+import { postServerErrorEmbed } from './discord.js';
 
 export function getAdminEmail() {
   const envEmail = cleanStr(process.env.ADMIN_EMAIL).toLowerCase().trim();
@@ -15,6 +16,39 @@ export function isRootAdmin(userId, email) {
   const adminEmail = getAdminEmail();
   if (adminEmail && email && String(email).toLowerCase().trim() === adminEmail) return true;
   return false;
+}
+
+/*
+  ADMIN_TWO_TIERS_20260729 — hai cấp admin.
+
+  - "admin hệ thống": danh sách email cố định dưới đây (đổi được bằng biến môi trường
+    SYSTEM_ADMIN_EMAILS, phân cách bằng dấu phẩy). Nắm TẤT CẢ quyền, kể cả đổi cấu hình
+    thông báo Discord.
+  - "admin thường": role = 'admin' trong Turso. Làm được mọi việc quản trị nội dung và
+    người dùng, NHƯNG không đổi được cấu hình thông báo Discord.
+
+  Cấp bậc quyết định ở SERVER theo email đã verify bằng token (authUser.email), không bao
+  giờ theo giá trị client gửi lên — cùng nguyên tắc với AUTHZ_SINGLE_SOURCE_20260726.
+*/
+const DEFAULT_SYSTEM_ADMIN_EMAILS = ['trongbm2004@gmail.com', 'trongbm1009@gmail.com'];
+
+export function getSystemAdminEmails() {
+  const raw = cleanStr(process.env.SYSTEM_ADMIN_EMAILS);
+  const fromEnv = raw
+    .split(',')
+    .map(s => s.toLowerCase().trim())
+    .filter(Boolean);
+  const list = fromEnv.length ? fromEnv : [...DEFAULT_SYSTEM_ADMIN_EMAILS];
+  // ADMIN_EMAIL luôn là admin hệ thống, kể cả khi không nằm trong danh sách trên.
+  const adminEmail = getAdminEmail();
+  if (adminEmail && !list.includes(adminEmail)) list.push(adminEmail);
+  return list;
+}
+
+export function isSystemAdmin(email) {
+  const e = String(email || '').toLowerCase().trim();
+  if (!e) return false;
+  return getSystemAdminEmails().includes(e);
 }
 
 const SUPABASE_URL = cleanStr(process.env.SUPABASE_URL) || 'https://kxyukiwhhorvxgxxxmfq.supabase.co';
@@ -118,17 +152,61 @@ export async function broadcastRealtimeUserStatus(targetUserId, reasonData) {
 }
 
 /*
+  RELOAD_NOTICE_BROADCAST_20260729
+  Nhắc TẤT CẢ người dùng tải lại trang. Không thể bắn lần lượt vào topic
+  'user-status-<id>' của từng người (mỗi lần là một HTTP request tới Supabase, vài trăm
+  user là vài trăm request), nên dùng một topic CHUNG mà mọi client đều nghe.
+
+  Payload cũng chỉ là TÍN HIỆU, không mang quyền: client nhận được thì hiện banner
+  "tải lại trang" — thao tác vô hại. Trạng thái thật vẫn nằm ở cột profiles.reload_notice
+  để người đang offline lúc bắn vẫn nhận được ở lần gọi /api/profile kế tiếp.
+*/
+export const GLOBAL_REALTIME_TOPIC = 'lh-global';
+
+export async function broadcastRealtimeGlobal(event, payload) {
+  try {
+    const broadcastUrl = SUPABASE_URL.replace(/\/+$/, '') + '/realtime/v1/api/broadcast';
+    const res = await fetch(broadcastUrl, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_BROADCAST_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_BROADCAST_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        messages: [
+          {
+            topic: GLOBAL_REALTIME_TOPIC,
+            event: String(event || 'reload_notice'),
+            payload: { ...(payload || {}), at: new Date().toISOString() }
+          }
+        ]
+      })
+    });
+    if (!res.ok) {
+      console.warn('[Realtime broadcast global] failed', res.status, event);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn('[Realtime broadcast global] exception', e?.message || e);
+    return false;
+  }
+}
+
+/*
   X. TỐI ƯU TURSO ROWS READ
   - Tìm theo profiles.id (TEXT PRIMARY KEY) -> index lookup, không quét bảng.
   - Chỉ lấy cột cần thiết: cột device_history có thể chứa tới 30 bản ghi JSON,
     `select *` kéo theo nó ở MỌI request là lãng phí thuần túy.
   - LIMIT 1.
-  Fallback `select *`: cột force_logout được thêm bằng ALTER TABLE trong
-  ensureProfileColumns() (api/controllers/profile.js). Trên một DB chưa từng
+  Fallback `select *`: các cột force_logout / reload_notice được thêm bằng ALTER TABLE
+  trong ensureProfileColumns() (api/controllers/profile.js). Trên một DB chưa từng
   chạy migration đó, select hẹp sẽ lỗi -> rơi về select * để không khoá nhầm
   toàn bộ người dùng.
 */
-const PROFILE_COLUMNS = 'id, email, full_name, avatar_url, role, approved, blocked, force_logout, current_subject';
+const PROFILE_COLUMNS =
+  'id, email, full_name, avatar_url, role, approved, blocked, force_logout, reload_notice, current_subject';
 
 async function queryProfileRow(id) {
   try {
@@ -195,6 +273,18 @@ export async function checkUserAccess(authUser, requiredRole = null) {
   } catch (e) {
     // Lỗi hạ tầng, KHÔNG phải "chưa duyệt". Vẫn fail-closed (không cấp quyền)
     // nhưng báo đúng bản chất để client hiện màn hình "Không thể kiểm tra quyền".
+    console.error('[checkUserAccess] không đọc được profile:', e?.stack || e?.message || e);
+    /*
+      SERVER_ERROR_DISCORD_20260729: nhánh này KHÔNG ném ra ngoài (trả về object), nên chốt
+      500 ở api/index.js không thấy — phải tự báo. Đây đúng là loại lỗi cần biết ngay: cả hệ
+      thống không kết luận được quyền. postServerErrorEmbed tự gộp tin nên Turso sập cũng
+      chỉ ra 1 tin mỗi 5 phút.
+    */
+    try {
+      await postServerErrorEmbed('checkUserAccess', e);
+    } catch (notifyErr) {
+      console.warn('[server_error discord] không gửi được:', notifyErr?.message || notifyErr);
+    }
     return { ok: false, status: 500, code: 'INTERNAL_ERROR', error: 'Đã xảy ra lỗi hệ thống' };
   }
   if (!p) {

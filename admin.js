@@ -88,7 +88,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "8a039a5" : null;
+  var currentVersion = true ? "8fc66a0" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -121,10 +121,12 @@
     }
     if (remoteVersion !== currentVersion) {
       updateDetected = true;
-      showUpdateNotification(remoteVersion);
+      showUpdateNotification();
     }
   }
-  function showUpdateNotification(newVersion) {
+  function showUpdateNotification(opts) {
+    const title = opts?.title || "C\xF3 phi\xEAn b\u1EA3n m\u1EDBi";
+    const sub = opts?.sub || "C\u1EADp nh\u1EADt \u0111\u1EC3 t\u1EA3i giao di\u1EC7n v\xE0 d\u1EEF li\u1EC7u m\u1EDBi nh\u1EA5t";
     if (document.getElementById("lhUpdateBanner")) return;
     const styleId = "lhUpdateBannerStyles";
     if (!document.getElementById(styleId)) {
@@ -263,8 +265,8 @@
       </svg>
     </div>
     <div class="lh-update-content">
-      <span class="lh-update-title">C\xF3 phi\xEAn b\u1EA3n m\u1EDBi</span>
-      <span class="lh-update-sub">C\u1EADp nh\u1EADt \u0111\u1EC3 t\u1EA3i giao di\u1EC7n v\xE0 d\u1EEF li\u1EC7u m\u1EDBi nh\u1EA5t</span>
+      <span class="lh-update-title"></span>
+      <span class="lh-update-sub"></span>
     </div>
     <div class="lh-update-actions">
       <button id="lhUpdateReloadBtn" class="lh-update-btn" type="button">C\u1EADp nh\u1EADt ngay</button>
@@ -276,6 +278,8 @@
       </button>
     </div>
   `;
+    banner.querySelector(".lh-update-title").textContent = title;
+    banner.querySelector(".lh-update-sub").textContent = sub;
     document.body.appendChild(banner);
     document.getElementById("lhUpdateReloadBtn")?.addEventListener("click", () => {
       window.location.reload();
@@ -395,7 +399,14 @@
       blocked: p.get("blocked") === "1",
       fail: p.get("fail") || "",
       // '500' | '401' | '403' | ''
-      subject: (p.get("subject") || "MOCK1").toUpperCase()
+      subject: (p.get("subject") || "MOCK1").toUpperCase(),
+      /*
+        ADMIN_TWO_TIERS_20260729: vai admin trong mock mặc định là ADMIN HỆ THỐNG (đổi được
+        cấu hình Discord). Thêm `&sysadmin=0` để giả lập ADMIN THƯỜNG — cần thiết vì hai cấp
+        này nhìn khác nhau và bug hay nằm ở nhánh "bị hạn chế".
+      */
+      systemAdmin: role === "admin" && p.get("sysadmin") !== "0",
+      reloadNotice: p.get("reload_notice") === "1"
     };
   }
   var MOCK_USER = {
@@ -423,6 +434,7 @@
     ["MOCK1_C3", "Ch\u01B0\u01A1ng 3", 8],
     ["MOCK1_C4", "Ch\u01B0\u01A1ng 4 t\xEAn r\u1EA5t d\xE0i \u0111\u1EC3 ki\u1EC3m tra tr\xE0n ch\u1EEF", 20]
   ];
+  var mockFolderNewBadges = ["MOCK1"];
   function mockSubjects() {
     const make = (id, code, name, count) => ({
       id,
@@ -438,6 +450,7 @@
       count
     });
     return {
+      folder_new_badges: [...mockFolderNewBadges],
       data: [
         make(1, "MOCK1", "M\xF4n Mock M\u1ED9t", 4),
         make(2, "MOCK2", "M\xF4n Mock Hai", 2),
@@ -511,9 +524,79 @@
       subjects,
       subject_requests: [],
       deleted_questions: [],
-      deleted_subjects: []
+      deleted_subjects: [],
+      folder_new_badges: [...mockFolderNewBadges],
+      // SUBJECT_FOLDER_NEW_BADGE_20260729
+      // ADMIN_TWO_TIERS_AND_DISCORD_TOGGLES_20260729: khớp đúng các khoá api/controllers/admin.js
+      // gắn thêm vào response (TẦNG TRÊN CÙNG, không bọc trong `data`).
+      is_system_admin: !!opts.systemAdmin,
+      admin_tier: opts.systemAdmin ? "system" : opts.role === "admin" ? "normal" : null,
+      discord_notifications: { ...mockDiscordSettings },
+      discord_notification_kinds: MOCK_DISCORD_KINDS
     };
   }
+  var MOCK_DISCORD_KINDS = [
+    { key: "login", label: "\u0110\u0103ng nh\u1EADp", description: "C\xF3 ng\u01B0\u1EDDi \u0111\u0103ng nh\u1EADp web h\u1ECDc ho\u1EB7c trang admin.", default: true },
+    {
+      key: "action",
+      label: "H\xE0nh \u0111\u1ED9ng c\u1EE7a admin / editor",
+      description: "Duy\u1EC7t, t\u1EEB ch\u1ED1i, block, \u0111\u1ED5i vai tr\xF2, xo\xE1 m\xF4n\u2026 m\u1ED7i thao t\xE1c m\u1ED9t tin.",
+      default: true
+    },
+    {
+      key: "edit_request",
+      label: "Y\xEAu c\u1EA7u s\u1EEDa c\xE2u h\u1ECFi",
+      description: "Ng\u01B0\u1EDDi h\u1ECDc g\u1EEDi b\xE1o c\xE1o / \u0111\u1EC1 xu\u1EA5t s\u1EEDa m\u1ED9t c\xE2u h\u1ECFi.",
+      default: true
+    },
+    {
+      key: "question_edit",
+      label: "N\u1ED9i dung c\xE2u h\u1ECFi b\u1ECB \u0111\u1ED5i (admin th\u01B0\u1EDDng / editor)",
+      description: "Admin th\u01B0\u1EDDng ho\u1EB7c editor th\xEAm / s\u1EEDa / xo\xE1 / \u1EA9n m\u1ED9t c\xE2u h\u1ECFi, k\u1EC3 c\u1EA3 khi duy\u1EC7t y\xEAu c\u1EA7u s\u1EEDa. Thao t\xE1c c\u1EE7a admin h\u1EC7 th\u1ED1ng KH\xD4NG g\u1EEDi tin (\u0111\u1EE1 t\u1EF1 b\xE1o cho ch\xEDnh m\xECnh).",
+      default: true
+    },
+    {
+      key: "new_user",
+      label: "Ng\u01B0\u1EDDi d\xF9ng m\u1EDBi \u0111\u0103ng k\xFD",
+      description: "C\xF3 t\xE0i kho\u1EA3n Google m\u1EDBi v\xE0o h\u1EC7 th\u1ED1ng \u2014 k\xE8m tr\u1EA1ng th\xE1i ch\u1EDD duy\u1EC7t hay \u0111\u01B0\u1EE3c duy\u1EC7t t\u1EF1 \u0111\u1ED9ng.",
+      default: true
+    },
+    {
+      key: "role_change",
+      label: "\u0110\u1ED5i quy\u1EC1n / kho\xE1 ng\u01B0\u1EDDi d\xF9ng",
+      description: "C\u1EA5p ho\u1EB7c g\u1EE1 admin / editor, kho\xE1 \u2013 m\u1EDF kho\xE1, duy\u1EC7t \u2013 t\u1EEB ch\u1ED1i \u2013 thu h\u1ED3i duy\u1EC7t t\xE0i kho\u1EA3n.",
+      default: true
+    },
+    {
+      key: "destructive",
+      label: "Thao t\xE1c n\u1EB7ng tr\xEAn m\xF4n h\u1ECDc (xo\xE1 / \u0111\u1ED5i m\xE3)",
+      description: "Xo\xE1 m\xF4n, xo\xE1 v\u0129nh vi\u1EC5n m\xF4n k\xE8m to\xE0n b\u1ED9 c\xE2u h\u1ECFi, \u0111\u1ED5i m\xE3 m\xF4n.",
+      default: true
+    },
+    {
+      key: "subject_request",
+      label: "Y\xEAu c\u1EA7u th\xEAm m\xF4n c\u1EE7a ng\u01B0\u1EDDi h\u1ECDc",
+      description: "Ng\u01B0\u1EDDi h\u1ECDc g\u1EEDi m\u1ED9t m\xF4n m\u1EDBi ch\u1EDD admin duy\u1EC7t.",
+      default: true
+    },
+    {
+      key: "server_error",
+      label: "L\u1ED7i server (500)",
+      description: "API n\xE9m exception (tr\u1EA3 500 INTERNAL_ERROR). C\xF9ng m\u1ED9t l\u1ED7i ch\u1EC9 g\u1EEDi 1 tin m\u1ED7i 5 ph\xFAt, l\u1EA7n g\u1EEDi sau k\xE8m s\u1ED1 l\u1EA7n \u0111\xE3 b\u1ECB d\u1ED3n \u2014 tr\xE1nh spam khi l\u1ED7i l\u1EB7p li\xEAn t\u1EE5c.",
+      default: true
+    }
+  ];
+  var mockDiscordSettings = {
+    login: true,
+    action: true,
+    edit_request: true,
+    question_edit: true,
+    new_user: true,
+    role_change: true,
+    destructive: true,
+    subject_request: true,
+    server_error: true
+  };
   var SUBJECT_KEY = "learninghub_subject_code_merged_v1";
   var QCACHE_PREFIX = "learninghub_questions_cache_v2_";
   function seedMockSubject(opts) {
@@ -599,7 +682,7 @@
       headers: { "Content-Type": "application/json" }
     });
   }
-  function mockApiResponse(pathname, query, opts) {
+  function mockApiResponse(pathname, query, opts, body) {
     if (opts.fail === "500") {
       return jsonResponse({ error: "L\u1ED7i gi\u1EA3 l\u1EADp", code: "INTERNAL_ERROR" }, 500);
     }
@@ -621,7 +704,7 @@
         return jsonResponse(mockQuestions(subject));
       }
       case "profile":
-        return jsonResponse({ data: mockProfile(opts) });
+        return jsonResponse({ data: mockProfile(opts), reload_notice: !!opts.reloadNotice });
       case "settings":
         return jsonResponse({ data: { maintenance: false, announcement: "" } });
       case "my-edit-requests":
@@ -632,8 +715,29 @@
         return jsonResponse(mockAdminDashboard(opts));
       case "notify":
         return jsonResponse({ ok: true });
-      case "admin-action":
+      case "admin-action": {
+        const action = String(body?.action || "");
+        if (action === "set_discord_notifications") {
+          if (!opts.systemAdmin) {
+            return jsonResponse(
+              { error: "Ch\u1EC9 admin h\u1EC7 th\u1ED1ng m\u1EDBi \u0111\u01B0\u1EE3c \u0111\u1ED5i c\u1EA5u h\xECnh n\xE0y", code: "INSUFFICIENT_ROLE" },
+              403
+            );
+          }
+          const next = body?.payload?.notifications || {};
+          for (const k of MOCK_DISCORD_KINDS) {
+            if (Object.prototype.hasOwnProperty.call(next, k.key)) mockDiscordSettings[k.key] = !!next[k.key];
+          }
+          return jsonResponse({ ok: true, notifications: { ...mockDiscordSettings }, mock: true });
+        }
+        if (action === "set_subject_folder_new_badge") {
+          const base = String(body?.payload?.base || "").toUpperCase();
+          if (!base) return jsonResponse({ error: "Thi\u1EBFu m\xE3 g\u1ED1c th\u01B0 m\u1EE5c" }, 400);
+          mockFolderNewBadges = body?.payload?.enabled ? [.../* @__PURE__ */ new Set([...mockFolderNewBadges, base])] : mockFolderNewBadges.filter((x) => x !== base);
+          return jsonResponse({ ok: true, folder_new_badges: [...mockFolderNewBadges], mock: true });
+        }
         return jsonResponse({ ok: true, data: null, mock: true });
+      }
       default:
         return jsonResponse({ error: `Route gi\u1EA3 l\u1EADp ch\u01B0a h\u1ED7 tr\u1EE3: ${route}`, code: "NOT_FOUND" }, 404);
     }
@@ -687,7 +791,15 @@
       const method = (init2?.method || "GET").toUpperCase();
       const label = query.get("subject_code") ? ` (${query.get("subject_code")})` : "";
       console.log(`[MOCK] ${method} ${pathname}${label} -> d\u1EEF li\u1EC7u gi\u1EA3`);
-      return mockApiResponse(pathname, query, opts);
+      let body = null;
+      if (init2?.body && typeof init2.body === "string") {
+        try {
+          body = JSON.parse(init2.body);
+        } catch (e) {
+          lhWarn("MOCK:body", e);
+        }
+      }
+      return mockApiResponse(pathname, query, opts, body);
     };
   }
   if (isMockMode()) installMockNetwork();
@@ -745,7 +857,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
   var user;
   var profile;
   var activeStatus = "all";
-  var cache = { profiles: [], questions: [], requests: [], history: [], logs: [] };
+  var cache = { profiles: [], questions: [], requests: [], history: [], logs: [], folder_new_badges: [] };
   var $ = (id) => document.getElementById(id);
   var esc = (s) => String(s ?? "").replace(
     /[&<>"']/g,
@@ -797,33 +909,6 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
     document.body.classList.toggle("is-busy", !!on);
     $("refreshBtn").disabled = !!on;
     $("refreshBtn").textContent = on ? label : "T\u1EA3i l\u1EA1i";
-  }
-  function showProgress(title, current, total, detail = "") {
-    let el = $("adminProgressOverlay");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "adminProgressOverlay";
-      el.className = "adminProgressOverlay hidden";
-      el.innerHTML = `
-      <div class="adminProgressBox">
-        <h3 id="adminProgressTitle">\u0110ang x\u1EED l\xFD...</h3>
-        <div class="adminProgressTrack">
-          <div id="adminProgressBar" class="adminProgressBar"></div>
-        </div>
-        <div class="adminProgressSub">
-          <span id="adminProgressPercent" class="adminProgressPercent">0% (0/0)</span>
-          <span id="adminProgressDetail" class="adminProgressDetail"></span>
-        </div>
-      </div>
-    `;
-      document.body.appendChild(el);
-    }
-    const pct = total > 0 ? Math.round(current / total * 100) : 0;
-    $("adminProgressTitle").textContent = title;
-    $("adminProgressBar").style.width = pct + "%";
-    $("adminProgressPercent").textContent = pct + "% (" + current + "/" + total + ")";
-    $("adminProgressDetail").textContent = detail;
-    el.classList.remove("hidden");
   }
   function hideProgress() {
     const el = $("adminProgressOverlay");
@@ -1251,6 +1336,8 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
           if (savedPage === "trash" && typeof window.loadTrash === "function") window.loadTrash();
           if (savedPage === "subjectRequests" && typeof window.loadSubjectRequests === "function")
             window.loadSubjectRequests();
+          if (savedPage === "discordSettings" && typeof window.renderDiscordSettings === "function")
+            window.renderDiscordSettings();
         }
       }
     } catch (e) {
@@ -1508,7 +1595,6 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
     renderUsers();
     renderHistory();
     renderLogs();
-    renderQuestions();
   }
   function renderStats() {
     const pending = cache.requests.filter((x) => x.status === "pending");
@@ -1584,6 +1670,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
   function closeModal() {
     $("modal").classList.add("hidden");
   }
+  window.lhCloseModal = closeModal;
   function formatValue(v) {
     if (Array.isArray(v)) return v.length ? `${v.length} \u1EA3nh` : "Kh\xF4ng c\xF3";
     if (typeof v === "object" && v)
@@ -1658,14 +1745,6 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
     if (!await adminAction("set_user_role", { target_user_id: id, role })) return;
     await logAction("change_role", "profiles", id, { role });
     cache.profiles = (cache.profiles || []).map((p) => String(p.id) === String(id) ? { ...p, role } : p);
-    render();
-    await loadAll();
-  }
-  async function toggleQuestion(id, a) {
-    if (!confirm(`${a ? "Hi\u1EC7n" : "\u1EA8n"} c\xE2u h\u1ECFi n\xE0y?`)) return;
-    if (!await adminAction("toggle_question", { question_id: id, is_active: a })) return;
-    await logAction(a ? "show_question" : "hide_question", "questions", id, {});
-    cache.questions = (cache.questions || []).map((q) => String(q.id) === String(id) ? { ...q, is_active: a } : q);
     render();
     await loadAll();
   }
@@ -1876,7 +1955,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       setBusy(false);
     }
   }
-  Object.assign(window, { rejectReq, toggleBlock, setRole, toggleQuestion, viewUserEdits });
+  Object.assign(window, { rejectReq, toggleBlock, setRole, viewUserEdits });
   (function() {
     if (window.__F5_SUPABASE_MICRO_CACHE_20260629) return;
     window.__F5_SUPABASE_MICRO_CACHE_20260629 = true;
@@ -2032,131 +2111,6 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
     };
   })();
   (function() {
-    let activeQuestionSubject = localStorage.getItem("admin_question_subject_filter_v1") || "all";
-    function isQuestionActiveForDeletedSubjectFix(q) {
-      return !(q?.is_active === false || q?.is_active === 0 || q?.is_active === "0");
-    }
-    function subjectsFromQuestions() {
-      const rows = (cache.questions || []).filter(isQuestionActiveForDeletedSubjectFix);
-      const set = new Set(rows.map((q) => q.subject_code || "HOD102").filter(Boolean));
-      if (!set.size) {
-        set.add("HOD102");
-        set.add("MLN111");
-      }
-      return Array.from(set).sort((a, b) => String(a).localeCompare(String(b)));
-    }
-    function subjectCount(code) {
-      const rows = (cache.questions || []).filter(isQuestionActiveForDeletedSubjectFix);
-      if (code === "all") return rows.length;
-      return rows.filter((q) => (q.subject_code || "HOD102") === code).length;
-    }
-    function currentSubjectForAdd() {
-      if (activeQuestionSubject !== "all") return activeQuestionSubject;
-      return subjectsFromQuestions()[0] || "HOD102";
-    }
-    function nextNumForSubject(code) {
-      const nums = (cache.questions || []).filter((q) => (q.subject_code || "HOD102") === code).map((q) => Number(q.num) || 0);
-      return (nums.length ? Math.max(...nums) : 0) + 1;
-    }
-    function optionText(q, k) {
-      return q?.options?.[k] || "";
-    }
-    function getAddFormHTML() {
-      const subjects = subjectsFromQuestions();
-      const selected = currentSubjectForAdd();
-      const nextNum = nextNumForSubject(selected);
-      return `<div class="adminQuestionForm">
-      <div class="formGrid2">
-        <div class="field"><label>M\xF4n h\u1ECDc</label><select id="newQuestionSubject">${subjects.map((s) => `<option value="${esc(s)}" ${s === selected ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></div>
-        <div class="field"><label>S\u1ED1 c\xE2u</label><input id="newQuestionNum" type="number" value="${esc(nextNum)}" min="1"></div>
-      </div>
-      <div class="field"><label>C\xE2u h\u1ECFi</label><textarea id="newQuestionText" placeholder="Nh\u1EADp n\u1ED9i dung c\xE2u h\u1ECFi..."></textarea></div>
-      <div class="formGrid2">
-        ${["A", "B", "C", "D", "E"].map((k) => `<div class="field"><label>\u0110\xE1p \xE1n ${k}</label><textarea id="newOpt${k}" placeholder="N\u1ED9i dung l\u1EF1a ch\u1ECDn ${k}"></textarea></div>`).join("")}
-      </div>
-      <div class="formGrid2">
-        <div class="field"><label>\u0110\xE1p \xE1n \u0111\xFAng</label><input id="newAnswer" placeholder="VD: A ho\u1EB7c AC"></div>
-        <div class="field"><label>Gi\u1EA3i th\xEDch</label><textarea id="newAnswerText" placeholder="C\xF3 th\u1EC3 b\u1ECF tr\u1ED1ng"></textarea></div>
-      </div>
-      <div class="actions formActions">
-        <button class="act ok" onclick="saveNewQuestionAdmin()">Th\xEAm c\xE2u h\u1ECFi</button>
-        <button class="act" onclick="closeModal()">H\u1EE7y</button>
-      </div>
-    </div>`;
-    }
-    window.openAddQuestionAdmin = function() {
-      openModal("Th\xEAm c\xE2u h\u1ECFi m\u1EDBi", getAddFormHTML());
-      setTimeout(() => {
-        const sub = $("newQuestionSubject");
-        const num = $("newQuestionNum");
-        if (sub && num) {
-          sub.onchange = () => {
-            num.value = nextNumForSubject(sub.value);
-          };
-        }
-      }, 0);
-    };
-    window.saveNewQuestionAdmin = async function() {
-      if (!isEditor()) return alert("Admin ho\u1EB7c Editor m\u1EDBi \u0111\u01B0\u1EE3c th\xEAm c\xE2u h\u1ECFi.");
-      const subject = $("newQuestionSubject")?.value || currentSubjectForAdd();
-      const num = Number($("newQuestionNum")?.value || 0);
-      const question = ($("newQuestionText")?.value || "").trim();
-      const answer = ($("newAnswer")?.value || "").trim().toUpperCase();
-      const answer_text = ($("newAnswerText")?.value || "").trim();
-      const options = {};
-      ["A", "B", "C", "D", "E"].forEach((k) => {
-        const v = ($("newOpt" + k)?.value || "").trim();
-        if (v) options[k] = v;
-      });
-      if (!subject) return alert("Ch\u1ECDn m\xF4n h\u1ECDc tr\u01B0\u1EDBc.");
-      if (!num) return alert("Nh\u1EADp s\u1ED1 c\xE2u.");
-      if (!question) return alert("Nh\u1EADp c\xE2u h\u1ECFi.");
-      if (!answer) return alert("Nh\u1EADp \u0111\xE1p \xE1n \u0111\xFAng.");
-      if (!Object.keys(options).length) return alert("Nh\u1EADp \xEDt nh\u1EA5t 1 l\u1EF1a ch\u1ECDn.");
-      setBusy(true, "\u0110ang th\xEAm...");
-      try {
-        const payload = {
-          subject_code: subject,
-          num,
-          question,
-          options,
-          answer,
-          answer_text,
-          images: [],
-          is_active: true,
-          updated_at: (/* @__PURE__ */ new Date()).toISOString()
-        };
-        if (!await adminAction("add_question", { question_data: payload })) return;
-        await logAction("add_question", "questions", num, { subject_code: subject, num });
-        activeQuestionSubject = subject;
-        localStorage.setItem("admin_question_subject_filter_v1", subject);
-        closeModal();
-        await loadAll();
-        toast("\u0110\xE3 th\xEAm c\xE2u h\u1ECFi");
-      } finally {
-        setBusy(false);
-      }
-    };
-    window.deleteQuestionAdmin = async function(id) {
-      if (!isAdmin()) return alert("Ch\u1EC9 admin m\u1EDBi \u0111\u01B0\u1EE3c x\xF3a.");
-      const q = (cache.questions || []).find((x) => String(x.id) === String(id));
-      if (!q) return alert("Kh\xF4ng t\xECm th\u1EA5y c\xE2u h\u1ECFi.");
-      const ok = confirm(`X\xF3a ${q.subject_code || ""} - C\xE2u ${q.num || q.id}?
-
-C\xE2u h\u1ECFi s\u1EBD \u0111\u01B0\u1EE3c chuy\u1EC3n v\xE0o Th\xF9ng r\xE1c.`);
-      if (!ok) return;
-      setBusy(true, "\u0110ang x\xF3a...");
-      try {
-        if (!await adminAction("delete_question", { question_id: id })) return;
-        await logAction("delete_question", "questions", id, { subject_code: q.subject_code, num: q.num });
-        await loadAll();
-        toast("\u0110\xE3 chuy\u1EC3n v\xE0o Th\xF9ng r\xE1c");
-      } finally {
-        setBusy(false);
-      }
-    };
-  })();
-  (function() {
     let approvalFilter = "pending";
     function pendingUsers() {
       return (cache.profiles || []).filter((p) => p.approved === false);
@@ -2258,352 +2212,6 @@ C\xE2u h\u1ECFi s\u1EBD \u0111\u01B0\u1EE3c chuy\u1EC3n v\xE0o Th\xF9ng r\xE1c.`
     setTimeout(() => window.loadRegistrationMode?.(), 500);
   })();
   (function() {
-    const AI_PROMPT = `B\u1EA1n l\xE0 tr\u1EE3 l\xFD chuy\u1EC3n \u0111\u1ED5i ng\xE2n h\xE0ng c\xE2u h\u1ECFi tr\u1EAFc nghi\u1EC7m sang JSON trong file Markdown.
-
-\u0110\u1ECCC FILE v\xE0 chuy\u1EC3n \u0111\u1ED5i NGUY\xCAN V\u1EB8N (KH\xD4NG t\u1EF1 bi\xEAn th\xEAm, KH\xD4NG b\u1ECF b\u1EDBt).
-
-QUY T\u1EAEC BATCH:
-
-- Sau m\u1ED7i batch D\u1EEANG v\xE0 n\xF3i: "G\xF5 'ti\u1EBFp' \u0111\u1EC3 xu\u1EA5t c\xE2u X-Y."
-- Khi nh\u1EADn "ti\u1EBFp", xu\u1EA5t batch ti\u1EBFp theo, \u0111\xE1nh s\u1ED1 "num" li\xEAn t\u1EE5c.
-- M\u1ED7i batch xu\u1EA5t 1 file .md ho\xE0n ch\u1EC9nh, t\u1EA3i \u0111\u01B0\u1EE3c ngay.
-
-QUY T\u1EAEC CHUY\u1EC2N \u0110\u1ED4I:
-- \u0110\xE1p \xE1n: ch\u1EC9 l\u1EA5y k\xFD t\u1EF1 ch\u1EEF c\xE1i \u0111\u1EA7u ti\xEAn sau "**\u0110\xE1p \xE1n:**" (b\u1ECF m\u1ECDi ch\xFA th\xEDch ph\xEDa sau).
-- N\u1EBFu c\xE2u ch\u1EC9 c\xF3 A/B/C (kh\xF4ng c\xF3 D): b\u1ECF key "D" kh\u1ECFi object options.
-- Gi\u1EEF NGUY\xCAN n\u1ED9i dung c\xE2u h\u1ECFi v\xE0 l\u1EF1a ch\u1ECDn, KH\xD4NG paraphrase.
-- "has_image": false (tr\u1EEB khi c\xE2u \u0111\u1EC1 c\u1EADp h\xECnh \u1EA3nh/bi\u1EC3u \u0111\u1ED3).
-- "error_risk": "low" (c\xE2u ng\u1EAFn, r\xF5) | "medium" (c\xE2u trung b\xECnh) | "high" (c\xE2u d\xE0i, ph\u1EE9c t\u1EA1p, d\u1EC5 nh\u1EA7m).
-
-FORMAT FILE .MD OUTPUT:
----
-# [T\xEAn m\xF4n] - Batch [N] (C\xE2u [X]-[Y])
-> Xu\u1EA5t ng\xE0y: [ng\xE0y h\xF4m nay] | T\u1ED5ng: [s\u1ED1 c\xE2u trong batch] c\xE2u
----
-
-\`\`\`json
-[
-  {
-    "num": 1,
-    "question": "\u2026?",
-    "options": {
-      "A": "\u2026",
-      "B": "\u2026",
-      "C": "\u2026",
-      "D": "\u2026"
-    },
-    "answer": "B",
-    "images": [],
-    "has_image": false,
-    "error_risk": "low"
-  }
-]
-\`\`\`
----
-
-KH\xD4NG th\xEAm b\u1EA5t k\u1EF3 text gi\u1EA3i th\xEDch n\xE0o b\xEAn ngo\xE0i c\u1EA5u tr\xFAc tr\xEAn.
-B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
-    function getSubjects() {
-      const set = new Set((cache.questions || []).map((q) => q.subject_code || "HOD102").filter(Boolean));
-      if (!set.size) {
-        set.add("HOD102");
-        set.add("MLN111");
-      }
-      return Array.from(set).sort();
-    }
-    function getImportHTML() {
-      const subjects = getSubjects();
-      return `<div class="aiImportWrap">
-
-      <div class="aiImportTabs">
-        <button class="aiTab active" onclick="switchImportTab('prompt')">1. L\u1EA5y Prompt</button>
-        <button class="aiTab" onclick="switchImportTab('import')">2. Import d\u1EEF li\u1EC7u</button>
-      </div>
-
-      <div id="aiTabPrompt" class="aiTabContent active">
-        <div class="aiStepCard">
-          <div class="aiStepNum">1</div>
-          <div class="aiStepBody">
-            <h4>Copy prompt b\xEAn d\u01B0\u1EDBi</h4>
-            <p>B\u1EA5m n\xFAt copy \u0111\u1EC3 sao ch\xE9p prompt t\u1EA1o c\xE2u h\u1ECFi.</p>
-          </div>
-        </div>
-        <div class="aiPromptBox">
-          <pre id="aiPromptText">${esc(AI_PROMPT)}</pre>
-          <button class="act ok aiCopyBtn" onclick="copyAIPrompt()">\u{1F4CB} Copy Prompt</button>
-        </div>
-
-        <div class="aiStepCard">
-          <div class="aiStepNum">2</div>
-          <div class="aiStepBody">
-            <h4>M\u1EDF AI v\xE0 g\u1EEDi t\xE0i li\u1EC7u</h4>
-            <p>D\xE1n prompt v\xE0o m\u1ED9t trong c\xE1c AI b\xEAn d\u01B0\u1EDBi, sau \u0111\xF3 upload/g\u1EEDi t\xE0i li\u1EC7u m\xF4n h\u1ECDc k\xE8m theo.</p>
-          </div>
-        </div>
-        <div class="aiToolLinks">
-          <a href="https://gemini.google.com" target="_blank" class="aiToolBtn gemini">
-            <span class="aiToolIcon">\u2726</span> Google Gemini
-          </a>
-          <a href="https://chatgpt.com" target="_blank" class="aiToolBtn chatgpt">
-            <span class="aiToolIcon">\u25C9</span> ChatGPT
-          </a>
-          <a href="https://claude.ai" target="_blank" class="aiToolBtn claude">
-            <span class="aiToolIcon">\u25C8</span> Claude
-          </a>
-        </div>
-
-        <div class="aiStepCard">
-          <div class="aiStepNum">3</div>
-          <div class="aiStepBody">
-            <h4>T\u1EA3i file .md / .txt ho\u1EB7c copy JSON</h4>
-            <p>T\u1EA3i file AI tr\u1EA3 v\u1EC1 r\u1ED3i import, ho\u1EB7c copy JSON v\xE0 d\xE1n v\xE0o tab <b>"Import d\u1EEF li\u1EC7u"</b>.</p>
-          </div>
-        </div>
-        <div class="actions formActions">
-          <button class="act ok" onclick="switchImportTab('import')">Ti\u1EBFp \u2192 Import d\u1EEF li\u1EC7u</button>
-        </div>
-      </div>
-
-      <div id="aiTabImport" class="aiTabContent">
-        <div class="aiImportForm">
-          <div class="field">
-            <label>M\xF4n h\u1ECDc</label>
-            <div class="aiSubjectRow">
-              <select id="aiImportSubject">${subjects.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join("")}</select>
-              <span>ho\u1EB7c</span>
-              <input id="aiImportNewSubject" placeholder="M\xE3 m\xF4n m\u1EDBi (VD: ENG101)" style="width:160px">
-            </div>
-          </div>
-          <div class="field">
-            <label>Import t\u1EEB file .md / .txt</label>
-            <input type="file" id="aiImportFile" accept=".md,.txt,.json" style="width:100%;padding:8px;background:rgba(255,255,255,.035);border:1px solid var(--bd);border-radius:12px;color:var(--fog);">
-            <p style="margin:4px 0 0;font-size:12px;color:var(--mist);">Ch\u1ECDn file .md ho\u1EB7c .txt m\xE0 AI \u0111\xE3 tr\u1EA3 v\u1EC1. H\u1EC7 th\u1ED1ng s\u1EBD t\u1EF1 tr\xEDch xu\u1EA5t JSON t\u1EEB file.</p>
-          </div>
-          <div class="field">
-            <label>Ho\u1EB7c d\xE1n JSON tr\u1EF1c ti\u1EBFp</label>
-            <textarea id="aiImportData" rows="14" placeholder='D\xE1n m\u1EA3ng JSON c\xE2u h\u1ECFi v\xE0o \u0111\xE2y...&#10;&#10;[&#10;  {&#10;    "num": 1,&#10;    "question": "...",&#10;    "options": {"A":"...","B":"...","C":"...","D":"..."},&#10;    "answer": "A",&#10;    "answer_text": "...",&#10;    "images": []&#10;  }&#10;]'></textarea>
-          </div>
-          <div id="aiImportPreview" class="aiImportPreview hidden"></div>
-          <div class="actions formActions">
-            <button class="act" onclick="previewAIImport()">Xem tr\u01B0\u1EDBc</button>
-            <button class="act ok" id="aiImportBtn" onclick="executeAIImport()" disabled>Import c\xE2u h\u1ECFi</button>
-            <button class="act" onclick="closeModal()">H\u1EE7y</button>
-          </div>
-        </div>
-      </div>
-    </div>`;
-    }
-    let parsedQuestions = [];
-    window.switchImportTab = function(tab) {
-      document.querySelectorAll(".aiTab").forEach((b) => b.classList.toggle("active", b.textContent.includes(tab === "prompt" ? "Prompt" : "Import")));
-      document.getElementById("aiTabPrompt")?.classList.toggle("active", tab === "prompt");
-      document.getElementById("aiTabImport")?.classList.toggle("active", tab === "import");
-    };
-    window.copyAIPrompt = function() {
-      const text = AI_PROMPT;
-      navigator.clipboard.writeText(text).then(() => {
-        toast("\u0110\xE3 copy prompt!");
-      }).catch(() => {
-        const el = document.getElementById("aiPromptText");
-        if (el) {
-          const range = document.createRange();
-          range.selectNodeContents(el);
-          const sel = window.getSelection();
-          sel.removeAllRanges();
-          sel.addRange(range);
-          toast("H\xE3y b\u1EA5m Ctrl+C \u0111\u1EC3 copy");
-        }
-      });
-    };
-    window.previewAIImport = function() {
-      const raw = (document.getElementById("aiImportData")?.value || "").trim();
-      const preview = document.getElementById("aiImportPreview");
-      const btn = document.getElementById("aiImportBtn");
-      if (!raw) {
-        alert("Ch\u01B0a d\xE1n d\u1EEF li\u1EC7u JSON.");
-        return;
-      }
-      let data;
-      try {
-        let cleaned = raw;
-        if (cleaned.startsWith("```json")) cleaned = cleaned.replace(/^```json\s*/, "").replace(/```\s*$/, "");
-        else if (cleaned.startsWith("```")) cleaned = cleaned.replace(/^```\s*/, "").replace(/```\s*$/, "");
-        data = JSON.parse(cleaned);
-      } catch (e) {
-        alert("JSON kh\xF4ng h\u1EE3p l\u1EC7. H\xE3y ki\u1EC3m tra l\u1EA1i format.\n\nL\u1ED7i: " + e.message);
-        return;
-      }
-      if (!Array.isArray(data)) {
-        if (data.questions && Array.isArray(data.questions)) data = data.questions;
-        else {
-          alert("D\u1EEF li\u1EC7u ph\u1EA3i l\xE0 m\u1EA3ng JSON [...]");
-          return;
-        }
-      }
-      const errors = [];
-      data.forEach((q, i) => {
-        if (!q.question) errors.push(`C\xE2u ${i + 1}: thi\u1EBFu "question"`);
-        if (!q.options || typeof q.options !== "object") errors.push(`C\xE2u ${i + 1}: thi\u1EBFu "options"`);
-        if (!q.answer) errors.push(`C\xE2u ${i + 1}: thi\u1EBFu "answer"`);
-      });
-      if (errors.length) {
-        alert(
-          "D\u1EEF li\u1EC7u c\xF3 l\u1ED7i:\n\n" + errors.slice(0, 10).join("\n") + (errors.length > 10 ? `
-...v\xE0 ${errors.length - 10} l\u1ED7i kh\xE1c` : "")
-        );
-        return;
-      }
-      parsedQuestions = data;
-      if (preview) {
-        preview.classList.remove("hidden");
-        preview.innerHTML = `
-        <div class="aiPreviewHeader">
-          <b>Xem tr\u01B0\u1EDBc: ${data.length} c\xE2u h\u1ECFi</b>
-        </div>
-        <div class="aiPreviewList">${data.slice(0, 8).map(
-          (q, i) => `
-          <div class="aiPreviewItem">
-            <span class="aiPreviewNum">C\xE2u ${q.num || i + 1}</span>
-            <span class="aiPreviewQ">${esc((q.question || "").substring(0, 100))}${(q.question || "").length > 100 ? "..." : ""}</span>
-            <span class="aiPreviewA">\u0110\xE1p \xE1n: ${esc(q.answer || "?")}</span>
-          </div>
-        `
-        ).join("")}${data.length > 8 ? `<div class="aiPreviewMore">...v\xE0 ${data.length - 8} c\xE2u kh\xE1c</div>` : ""}</div>
-      `;
-      }
-      if (btn) btn.disabled = false;
-      toast("OK! " + data.length + " c\xE2u h\u1ECFi s\u1EB5n s\xE0ng import");
-    };
-    window.executeAIImport = async function() {
-      if (!parsedQuestions.length) return alert("Ch\u01B0a c\xF3 d\u1EEF li\u1EC7u. H\xE3y d\xE1n JSON v\xE0 b\u1EA5m Xem tr\u01B0\u1EDBc.");
-      if (!isEditor()) return alert("Ch\u1EC9 Admin/Editor m\u1EDBi import \u0111\u01B0\u1EE3c.");
-      const subjectSelect = document.getElementById("aiImportSubject")?.value || "";
-      const newSubject = (document.getElementById("aiImportNewSubject")?.value || "").trim().toUpperCase();
-      const subject = newSubject || subjectSelect || "HOD102";
-      if (!confirm(`Import ${parsedQuestions.length} c\xE2u h\u1ECFi v\xE0o m\xF4n "${subject}"?
-
-C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`))
-        return;
-      setBusy(true, "\u0110ang import...");
-      let success = 0, errors = 0;
-      try {
-        const existingNums = new Set(
-          (cache.questions || []).filter((q) => (q.subject_code || "HOD102") === subject).map((q) => Number(q.num))
-        );
-        let nextNum = existingNums.size ? Math.max(...existingNums) + 1 : 1;
-        const total = parsedQuestions.length;
-        for (let i = 0; i < total; i++) {
-          const q = parsedQuestions[i];
-          showProgress(
-            "\u0110ang import c\xE2u h\u1ECFi...",
-            i + 1,
-            total,
-            `\u0110ang nh\u1EADp c\xE2u ${q.num || i + 1}: ${q.question ? q.question.substring(0, 50) + "..." : ""}`
-          );
-          let num = Number(q.num) || nextNum;
-          if (existingNums.has(num)) {
-            num = nextNum;
-          }
-          existingNums.add(num);
-          nextNum = Math.max(nextNum, num) + 1;
-          const list = q.images || [];
-          const localHasImg = !!(list.length || q.has_image);
-          const text = (q.question || "") + " " + Object.values(q.options || {}).join(" ");
-          const needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(text);
-          const hasPlaceholder = list.some((im) => {
-            const src = typeof im === "string" ? im : im.src || im.url || "";
-            return !src || src.includes("URL_") || src.includes("M\xD4_T\u1EA2") || src.includes("PLACEHOLDER");
-          });
-          let risk = q.error_risk || "";
-          let reason = q.error_risk_reason || "";
-          if (!risk) {
-            if (localHasImg && hasPlaceholder || needsImg && list.length === 0) {
-              risk = "high";
-              reason = "C\u1EA7n h\xECnh v\u1EBD/\u1EA3nh minh h\u1ECDa nh\u01B0ng ch\u01B0a c\xF3 \u1EA3nh th\u1EF1c t\u1EBF";
-            } else if ((q.answer || "").length > 1) {
-              risk = "medium";
-              reason = "C\xE2u ch\u1ECDn nhi\u1EC1u \u0111\xE1p \xE1n \u0111\xFAng, c\u1EA7n r\xE0 so\xE1t k\u1EF9";
-            } else {
-              risk = "low";
-            }
-          }
-          const payload = {
-            subject_code: subject,
-            num,
-            question: q.question || "",
-            options: q.options || {},
-            answer: (q.answer || "").toUpperCase(),
-            answer_text: q.answer_text || "",
-            images: q.images || [],
-            is_active: true,
-            updated_at: (/* @__PURE__ */ new Date()).toISOString(),
-            has_image: localHasImg || needsImg,
-            error_risk: risk,
-            error_risk_reason: reason || null
-          };
-          try {
-            const res = await fetch("/api/admin-action", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              cache: "no-store",
-              body: JSON.stringify({ user_id: user?.id, action: "add_question", payload: { question_data: payload } })
-            });
-            const out = await res.json().catch(() => ({}));
-            if (!res.ok || out.error) {
-              console.warn("Import l\u1ED7i c\xE2u " + num + ":", out.error || res.status);
-              errors++;
-            } else success++;
-          } catch (e) {
-            console.warn("Import l\u1ED7i c\xE2u " + num + ":", e.message || e);
-            errors++;
-          }
-        }
-        await logAction("ai_import_questions", "questions", subject, {
-          count: parsedQuestions.length,
-          success,
-          errors,
-          subject_code: subject
-        });
-        closeModal();
-        await loadAll();
-        toast(`Import xong: ${success} th\xE0nh c\xF4ng${errors ? ", " + errors + " l\u1ED7i" : ""}`);
-        parsedQuestions = [];
-      } finally {
-        setBusy(false);
-        hideProgress();
-      }
-    };
-    window.openAddSubjectAI = function() {
-      parsedQuestions = [];
-      openModal("Th\xEAm m\xF4n h\u1ECDc b\u1EB1ng AI", getImportHTML());
-      setTimeout(() => {
-        const fileInput = document.getElementById("aiImportFile");
-        if (fileInput) {
-          fileInput.addEventListener("change", function(e) {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function() {
-              const text = reader.result;
-              let jsonStr = text;
-              const mdMatch = text.match(/```json\s*([\s\S]*?)```/);
-              if (mdMatch) jsonStr = mdMatch[1];
-              else {
-                const jsonMatch = text.match(/```\s*([\s\S]*?)```/);
-                if (jsonMatch) jsonStr = jsonMatch[1];
-              }
-              const ta = document.getElementById("aiImportData");
-              if (ta) ta.value = jsonStr.trim();
-              toast("\u0110\xE3 \u0111\u1ECDc file " + file.name);
-              previewAIImport();
-            };
-            reader.readAsText(file);
-          });
-        }
-      }, 100);
-    };
-  })();
-  (function() {
     const $2 = (id) => document.getElementById(id);
     window.deleteSubjectAdmin = async function(code) {
       if (!isAdmin()) return alert("Ch\u1EC9 admin m\u1EDBi \u0111\u01B0\u1EE3c x\xF3a m\xF4n.");
@@ -2646,7 +2254,7 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`))
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <button class="act" onclick="closeModal()" style="width:100%;text-align:center;padding:10px;font-size:0.88rem;font-weight:bold;border-radius:8px;">H\u1EE7y b\u1ECF</button>
+          <button class="act" onclick="lhCloseModal()" style="width:100%;text-align:center;padding:10px;font-size:0.88rem;font-weight:bold;border-radius:8px;">H\u1EE7y b\u1ECF</button>
           <button class="act bad" id="btnConfirmDeleteSubject" disabled style="width:100%;text-align:center;padding:10px;font-size:0.88rem;font-weight:bold;border-radius:8px;opacity:0.5;cursor:not-allowed;">X\xE1c nh\u1EADn x\xF3a</button>
         </div>
       </div>
@@ -2684,15 +2292,6 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`))
             cache.questions = (cache.questions || []).filter(
               (q) => String(q.subject_code || "").toUpperCase() !== String(code || "").toUpperCase()
             );
-            if (window.__ADMIN_PAGE_STATE__) {
-              window.__ADMIN_PAGE_STATE__.subjects = (window.__ADMIN_PAGE_STATE__.subjects || []).filter(
-                (s) => String(s).toUpperCase() !== String(code || "").toUpperCase()
-              );
-              if (window.__ADMIN_PAGE_STATE__.subject !== "all" && String(window.__ADMIN_PAGE_STATE__.subject).toUpperCase() === String(code || "").toUpperCase()) {
-                window.__ADMIN_PAGE_STATE__.subject = "all";
-                localStorage.setItem("admin_question_subject_filter_v1", "all");
-              }
-            }
             await loadAll();
             if (typeof window.loadSubjectsAdmin === "function") await window.loadSubjectsAdmin();
             toast("\u0110\xE3 chuy\u1EC3n m\xF4n " + code + " v\xE0o Th\xF9ng r\xE1c");
@@ -2756,25 +2355,6 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`))
       origSetPage(id, n);
       if (id === "subjectRequests") loadSubjectRequests();
     };
-    function injectDeleteIcons() {
-      if (!isAdmin()) return;
-      document.querySelectorAll('.subjectTab[onclick*="setQuestionSubjectFilter"]').forEach((btn) => {
-        const match2 = (btn.getAttribute("onclick") || "").match(/setQuestionSubjectFilter\('([^']+)'\)/);
-        const code = match2 ? match2[1] : "";
-        if (code && code !== "all" && !btn.querySelector(".deleteSubjectIcon")) {
-          const del = document.createElement("span");
-          del.className = "deleteSubjectIcon";
-          del.textContent = "\xD7";
-          del.title = "X\xF3a m\xF4n " + code;
-          del.onclick = function(e) {
-            e.stopPropagation();
-            deleteSubjectAdmin(code);
-          };
-          btn.appendChild(del);
-        }
-      });
-    }
-    setInterval(injectDeleteIcons, 800);
   })();
   (function() {
     const $2 = (id) => document.getElementById(id);
@@ -2916,13 +2496,6 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`))
         page.className = "page";
         page.innerHTML = `
         <div class="panel panelFill subjectAdminPanel">
-          <div class="subjectAdminHead">
-            <div>
-              <h3>Qu\u1EA3n l\xFD m\xF4n h\u1ECDc</h3>
-              <p class="muted">S\u1EEDa m\xE3 m\xF4n, t\xEAn m\xF4n v\xE0 m\xF4 t\u1EA3 hi\u1EC3n th\u1ECB \u1EDF m\xE0n h\xECnh ch\u1ECDn m\xF4n.</p>
-            </div>
-            <button class="act ok" type="button" onclick="loadSubjectsAdmin()">T\u1EA3i l\u1EA1i m\xF4n</button>
-          </div>
           <div id="subjectAdminList" class="subjectAdminList pageScroll"></div>
         </div>`;
         ws.appendChild(page);
@@ -3009,7 +2582,7 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`))
         </div>
         <div class="actions editSubjectActions">
           <button class="act ok" type="button" onclick="saveSubjectAdmin()">L\u01B0u thay \u0111\u1ED5i</button>
-          <button class="act" type="button" onclick="closeModal()">\u0110\xF3ng</button>
+          <button class="act" type="button" onclick="lhCloseModal()">\u0110\xF3ng</button>
         </div>
       </div>`
       );
@@ -3099,7 +2672,7 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`))
     const GROUPS = [
       { title: "Duy\u1EC7t", icon: "\u2713", keys: ["approvals", "requests", "subjectRequests"] },
       { title: "N\u1ED9i dung", icon: "\u25A1", keys: ["subjectsAdmin", "trash"] },
-      { title: "H\u1EC7 th\u1ED1ng", icon: "\u2699", keys: ["users", "history", "logs"] }
+      { title: "H\u1EC7 th\u1ED1ng", icon: "\u2699", keys: ["users", "history", "logs", "discordSettings"] }
     ];
     const SHORT = {
       overview: "TQ",
@@ -3107,11 +2680,11 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`))
       requests: "YS",
       subjectRequests: "YM",
       subjectsAdmin: "MH",
-      questions: "CH",
       trash: "TR",
       users: "ND",
       history: "LS",
-      logs: "LG"
+      logs: "LG",
+      discordSettings: "DC"
     };
     const LABEL = {
       overview: "T\u1ED5ng quan",
@@ -3119,11 +2692,11 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`))
       requests: "Y\xEAu c\u1EA7u s\u1EEDa",
       subjectRequests: "Y\xEAu c\u1EA7u th\xEAm m\xF4n",
       subjectsAdmin: "M\xF4n h\u1ECDc",
-      questions: "C\xE2u h\u1ECFi",
       trash: "Th\xF9ng r\xE1c",
       users: "Ng\u01B0\u1EDDi d\xF9ng",
       history: "L\u1ECBch s\u1EED",
-      logs: "Admin logs"
+      logs: "Admin logs",
+      discordSettings: "Th\xF4ng b\xE1o Discord"
     };
     const ICON = {
       overview: "\u2302",
@@ -3131,11 +2704,11 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`))
       requests: "\u270E",
       subjectRequests: "\uFF0B",
       subjectsAdmin: "\u25A1",
-      questions: "?",
       trash: "\xD7",
       users: "\u25CB",
       history: "\u25F7",
       logs: "\u25A4",
+      discordSettings: "\u{1F514}",
       default: "\u2022"
     };
     function collapsedMap() {
@@ -3164,11 +2737,11 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`))
       if (page.includes("subjectrequest") || text.includes("yc th\xEAm m\xF4n") || text.includes("y\xEAu c\u1EA7u th\xEAm m\xF4n"))
         return "subjectRequests";
       if (page === "subjectsadmin" || text === "m\xF4n h\u1ECDc" || text.includes("qu\u1EA3n l\xFD m\xF4n")) return "subjectsAdmin";
-      if (page === "questions" || text.includes("c\xE2u h\u1ECFi")) return "questions";
       if (page.includes("trash") || page.includes("deleted") || text.includes("th\xF9ng r\xE1c")) return "trash";
       if (page === "users" || text.includes("ng\u01B0\u1EDDi d\xF9ng")) return "users";
       if (page === "history" || text.includes("l\u1ECBch s\u1EED")) return "history";
       if (page === "logs" || text.includes("admin logs")) return "logs";
+      if (page === "discordsettings" || text.includes("discord")) return "discordSettings";
       return page || text;
     }
     function applyNav(btn, key2, standalone = false) {
@@ -3208,13 +2781,6 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`))
       const used = /* @__PURE__ */ new Set();
       const state = collapsedMap();
       side.classList.add("adminTreeReady");
-      navs.forEach((n) => {
-        if (navKey(n) === "questions") {
-          used.add(n);
-          n.style.display = "none";
-          n.remove();
-        }
-      });
       const overview = navs.find((n) => !used.has(n) && navKey(n) === "overview");
       if (overview) {
         used.add(overview);
@@ -3483,8 +3049,8 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`))
       <p><b>X\xF3a l\xFAc:</b> ${esc(date(t.deleted_at))}</p>
       <p><b>X\xF3a b\u1EDFi:</b> ${esc(t.deleted_by_email || "")}</p>
       <div class="actions" style="margin-top:12px">
-        <button class="act ok" onclick="restoreQuestion(${arg(t.id)});closeModal();">Kh\xF4i ph\u1EE5c</button>
-        <button class="act bad" onclick="permanentDelete(${arg(t.id)});closeModal();">X\xF3a v\u0129nh vi\u1EC5n</button>
+        <button class="act ok" onclick="restoreQuestion(${arg(t.id)});lhCloseModal();">Kh\xF4i ph\u1EE5c</button>
+        <button class="act bad" onclick="permanentDelete(${arg(t.id)});lhCloseModal();">X\xF3a v\u0129nh vi\u1EC5n</button>
       </div>
     `
       );
@@ -3734,13 +3300,13 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`))
           <div class="thCol">TR\u1EA0NG TH\xC1I & HO\u1EA0T \u0110\u1ED8NG</div>
           <div class="thCol thActions">THAO T\xC1C</div>
         </div>`;
-      const bulkLogoutBar = `<div class="userAdminBulkBar" style="display:flex;justify-space-between;align-items:center;margin-bottom:12px;padding:8px 14px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid rgba(255,255,255,0.08);">
-      <span style="font-size:0.86rem;color:var(--mist);">Qu\u1EA3n l\xFD phi\xEAn l\xE0m vi\u1EC7c &amp; Y\xEAu c\u1EA7u \u0111\u0103ng xu\u1EA5t l\u1EA1i:</span>
-      <button type="button" class="btn bad" style="background:#dc2626;color:#ffffff;border:none;border-radius:6px;padding:6px 14px;font-weight:700;font-size:0.82rem;cursor:pointer;" onclick="forceLogoutAllUsers()">\u{1F6AA} \u0110\u0103ng xu\u1EA5t t\u1EA5t c\u1EA3 ng\u01B0\u1EDDi d\xF9ng</button>
+      const bulkReloadBar = `<div class="userAdminBulkBar" style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;padding:8px 14px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid rgba(255,255,255,0.08);">
+      <span style="font-size:0.86rem;color:var(--mist);">V\u1EEBa c\u1EADp nh\u1EADt web? Nh\u1EAFc m\u1ECDi ng\u01B0\u1EDDi t\u1EA3i l\u1EA1i trang:</span>
+      <button type="button" class="act ok" style="white-space:nowrap;" onclick="notifyReloadAllUsers()">\u{1F514} Nh\u1EAFc t\u1EA5t c\u1EA3 t\u1EA3i l\u1EA1i</button>
     </div>`;
       const helpers = { actText, actTime, date, isBlocked, badge, roleBadgeFinal, avatarButton, esc };
       const rowFn = typeof renderUserRowSaaS === "function" ? renderUserRowSaaS : null;
-      $("userList").innerHTML = bulkLogoutBar + headHTML + (arr.map((p) => {
+      $("userList").innerHTML = bulkReloadBar + headHTML + (arr.map((p) => {
         if (rowFn) return rowFn(p, helpers);
         const activeText = actText(p);
         const activeClass = activeText === "\u0110ang ho\u1EA1t \u0111\u1ED9ng" ? "activityNow" : "";
@@ -3858,284 +3424,6 @@ C\xE2u tr\xF9ng s\u1ED1 s\u1EBD b\u1ECB l\u1ED7i v\xE0 b\u1ECF qua.`))
       ensureFinalRender();
     }, 300);
     setTimeout(run, 1200);
-  })();
-  (function() {
-    const CLOUDINARY_CLOUD_NAME = "ddc4uvm7m";
-    const CLOUDINARY_UPLOAD_PRESET = "learninghub_unsigned";
-    function escAttr(s) {
-      return esc(s).replace(/`/g, "&#96;");
-    }
-    function optVal(q, k) {
-      return q?.options?.[k] || "";
-    }
-    function imgSrc(im) {
-      if (!im) return "";
-      if (typeof im === "string") return im;
-      return im.src || im.url || im.secure_url || im.publicUrl || im.public_url || im.path || "";
-    }
-    async function uploadCloudinary(file) {
-      if (!CLOUDINARY_UPLOAD_PRESET || CLOUDINARY_UPLOAD_PRESET === "YOUR_UNSIGNED_UPLOAD_PRESET")
-        throw new Error("Ch\u01B0a c\xF3 unsigned upload preset Cloudinary.");
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-      fd.append("folder", "learninghub/questions");
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
-        method: "POST",
-        body: fd
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error?.message || "Upload Cloudinary th\u1EA5t b\u1EA1i");
-      return {
-        id: data.public_id,
-        public_id: data.public_id,
-        src: data.secure_url,
-        url: data.secure_url,
-        width: data.width,
-        height: data.height,
-        source: "cloudinary"
-      };
-    }
-    let directEditDraftImages = [];
-    function renderDirectEditImages() {
-      const box = $("dqEditImgs");
-      if (!box) return;
-      if (!directEditDraftImages.length) {
-        box.innerHTML = '<div class="dqNoImage">Ch\u01B0a c\xF3 h\xECnh.</div>';
-        return;
-      }
-      box.innerHTML = directEditDraftImages.map(
-        (im, i) => `<div class="dqEditImg"><button type="button" onclick="removeDirectEditImage(${i})">\xD7</button><img src="${escAttr(imgSrc(im))}" alt="\u1EA2nh c\xE2u h\u1ECFi"></div>`
-      ).join("");
-    }
-    window.removeDirectEditImage = function(i) {
-      directEditDraftImages.splice(i, 1);
-      renderDirectEditImages();
-    };
-    async function getFullQuestion(id) {
-      const r = await client.from("questions").select("*").eq("id", id).maybeSingle();
-      if (r.error) {
-        alert("Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c c\xE2u h\u1ECFi: " + r.error.message);
-        return null;
-      }
-      return r.data || (cache.questions || []).find((x) => String(x.id) === String(id));
-    }
-    window.editQuestionDirect = async function(id) {
-      if (!isEditor()) return alert("Admin ho\u1EB7c Editor m\u1EDBi \u0111\u01B0\u1EE3c s\u1EEDa.");
-      const q = await getFullQuestion(id);
-      if (!q) return;
-      directEditDraftImages = Array.isArray(q.images) ? JSON.parse(JSON.stringify(q.images)) : q.images ? [q.images] : [];
-      openModal(
-        `S\u1EEDa tr\u1EF1c ti\u1EBFp c\xE2u ${q.num || q.id}`,
-        `
-      <div class="directEditAppStyle directEditPolished">
-        <div class="directTopBar"><div class="directHint">\u1EA2nh m\u1EDBi s\u1EBD upload l\xEAn Cloudinary.</div><div class="directTopActions actions"><button class="act ok directSaveBtn" onclick="saveQuestionDirect(${q.id})">L\u01B0u tr\u1EF1c ti\u1EBFp</button><button class="act directCloseBtn" onclick="closeModal()">\u0110\xF3ng</button></div></div>
-        <div class="directEditGrid compactDirectGrid">
-          <section class="directLeft directPanel">
-            <div class="field directQuestionField"><label>C\xE2u h\u1ECFi</label><textarea id="dqQuestion">${esc(q.question || "")}</textarea></div>
-            <div class="directSmallGrid"><div class="field directAnswerField"><label>\u0110\xE1p \xE1n \u0111\xFAng</label><input id="dqAnswer" value="${escAttr(q.answer || "")}" placeholder="VD: A ho\u1EB7c AC"></div><div class="field directImageField"><label>H\xECnh \u1EA3nh</label><input type="file" id="dqImgUpload" accept="image/*" multiple></div></div>
-            <div id="dqEditImgs" class="dqEditImgs"></div>
-          </section>
-          <section class="directRight directPanel">${["A", "B", "C", "D", "E"].map((k) => `<div class="field directOptionField"><label>\u0110\xE1p \xE1n ${k}</label><textarea data-dq-opt="${k}">${esc(optVal(q, k))}</textarea></div>`).join("")}</section>
-        </div>
-      </div>`
-      );
-      setTimeout(() => {
-        renderDirectEditImages();
-        const inp = $("dqImgUpload");
-        if (inp)
-          inp.onchange = async (e) => {
-            const files = Array.from(e.target.files || []);
-            if (!files.length) return;
-            inp.disabled = true;
-            toast("\u0110ang upload \u1EA3nh l\xEAn Cloudinary...");
-            try {
-              for (const file of files) directEditDraftImages.push(await uploadCloudinary(file));
-              renderDirectEditImages();
-              toast("\u0110\xE3 upload \u1EA3nh");
-            } catch (err2) {
-              alert(err2.message || err2);
-            } finally {
-              inp.disabled = false;
-              e.target.value = "";
-            }
-          };
-      }, 0);
-    };
-    window.saveQuestionDirect = async function(id) {
-      if (!isEditor()) return alert("Admin ho\u1EB7c Editor m\u1EDBi \u0111\u01B0\u1EE3c s\u1EEDa.");
-      if (!user) return alert("Ch\u01B0a \u0111\u0103ng nh\u1EADp.");
-      const oldQ = await getFullQuestion(id);
-      if (!oldQ) return;
-      const ops = {};
-      document.querySelectorAll("[data-dq-opt]").forEach((t) => {
-        const v = (t.value || "").trim();
-        if (v) ops[t.dataset.dqOpt] = v;
-      });
-      const question = ($("dqQuestion")?.value || "").trim();
-      const answer = ($("dqAnswer")?.value || "").trim().toUpperCase();
-      if (!question) return alert("C\xE2u h\u1ECFi kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
-      if (!answer) return alert("\u0110\xE1p \xE1n \u0111\xFAng kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
-      let list = Array.isArray(directEditDraftImages) ? directEditDraftImages : [];
-      list = list.map((im) => {
-        if (typeof im === "string")
-          return { src: im, url: im, secure_url: im, source: im.includes("cloudinary.com") ? "cloudinary" : "url" };
-        const src = im.src || im.url || im.secure_url || im.publicUrl || im.public_url || "";
-        return { ...im, src, url: im.url || src, secure_url: im.secure_url || src };
-      }).filter((im) => im && im.src && !String(im.src).startsWith("data:image/"));
-      const localHasImg = list.length > 0;
-      const contentText = question + " " + Object.values(ops).join(" ");
-      const needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(contentText);
-      const payload = {
-        id,
-        subject_code: oldQ.subject_code || null,
-        num: oldQ.num || null,
-        question,
-        options: ops,
-        answer,
-        answer_text: Object.entries(ops).filter(([k]) => answer.includes(k)).map(([k, v]) => `${k}. ${v}`).join("; "),
-        images: list,
-        updated_at: (/* @__PURE__ */ new Date()).toISOString(),
-        has_image: localHasImg || needsImg,
-        error_risk: answer.length > 1 ? "medium" : "low",
-        error_risk_reason: answer.length > 1 ? "C\xE2u ch\u1ECDn nhi\u1EC1u \u0111\xE1p \xE1n \u0111\xFAng, c\u1EA7n r\xE0 so\xE1t k\u1EF9" : null
-      };
-      setBusy(true, "\u0110ang l\u01B0u...");
-      try {
-        const res = await fetch("/api/admin-action", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          cache: "no-store",
-          body: JSON.stringify({
-            user_id: user.id,
-            action: "save_question_direct",
-            payload: { question_id: id, new_data: payload, old_data: oldQ }
-          })
-        });
-        const out = await res.json().catch(() => ({}));
-        if (!res.ok || out.error) return alert(out.error || "Kh\xF4ng l\u01B0u \u0111\u01B0\u1EE3c v\xE0o Turso");
-        if (typeof window.clearLearningHubQuestionCache === "function") window.clearLearningHubQuestionCache();
-        const idx = (cache.questions || []).findIndex((x) => String(x.id) === String(id));
-        if (idx >= 0) cache.questions[idx] = { ...cache.questions[idx], ...payload };
-        closeModal();
-        renderQuestions();
-        toast("\u0110\xE3 s\u1EEDa tr\u1EF1c ti\u1EBFp");
-        await loadAll();
-      } finally {
-        setBusy(false);
-      }
-    };
-  })();
-  (function() {
-    const QUESTION_COLS = "id,num,subject_code,question,options,answer,images,is_active,updated_at,created_at,has_image,error_risk,error_risk_reason";
-    const STATE = window.__ADMIN_PAGE_STATE__ = window.__ADMIN_PAGE_STATE__ || {
-      page: 1,
-      size: 50,
-      total: 0,
-      subject: localStorage.getItem("admin_question_subject_filter_v1") || "all",
-      subjects: []
-    };
-    function search() {
-      return String($("search")?.value || "").trim();
-    }
-    async function safeQ(p) {
-      try {
-        const r = await p;
-        return r.error ? [] : r.data || [];
-      } catch (e) {
-        return [];
-      }
-    }
-    async function loadSubjects() {
-      const subjects = await safeQ(
-        client.from("subjects").select("code,is_active").order("sort_order", { ascending: true }).order("code", { ascending: true })
-      );
-      let set = new Set(subjects.filter((s) => s && s.code && s.is_active !== false).map((s) => s.code));
-      if (!set.size) {
-        const rows = await safeQ(client.from("questions").select("subject_code").limit(1e4));
-        set = new Set(rows.map((x) => x.subject_code || "HOD102").filter(Boolean));
-      }
-      if (!set.size) {
-        set.add("HOD102");
-        set.add("MLN111");
-      }
-      STATE.subjects = [...set].sort();
-      if (STATE.subject !== "all" && !STATE.subjects.includes(STATE.subject)) {
-        STATE.subject = "all";
-        localStorage.setItem("admin_question_subject_filter_v1", "all");
-      }
-    }
-    async function loadQuestionPage() {
-      const from = (STATE.page - 1) * STATE.size, to = from + STATE.size - 1;
-      let q = client.from("questions").select(QUESTION_COLS, { count: "exact" }).order("subject_code", { ascending: true }).order("num", { ascending: true }).range(from, to);
-      if (STATE.subject !== "all") q = q.eq("subject_code", STATE.subject);
-      const s = search();
-      if (s) {
-        if (/^\d+$/.test(s)) q = q.or(`num.eq.${Number(s)},id.eq.${Number(s)}`);
-        else q = q.or(`question.ilike.%${s.replaceAll("%", "")}%,answer.ilike.%${s.replaceAll("%", "")}%`);
-      }
-      const r = await q;
-      if (r.error) {
-        err("L\u1ED7i t\u1EA3i c\xE2u h\u1ECFi: " + r.error.message);
-        STATE.pageRows = [];
-        STATE.total = 0;
-        return;
-      }
-      STATE.pageRows = r.data || [];
-      STATE.total = r.count || (r.data || []).length;
-    }
-    window.__adminSyncQuestionPage = async function() {
-      try {
-        await loadSubjects();
-        await loadQuestionPage();
-      } catch (e) {
-        console.warn("[question page sync]", e);
-      }
-    };
-    window.setQuestionSubjectFilter = function(code) {
-      STATE.subject = code || "all";
-      STATE.page = 1;
-      localStorage.setItem("admin_question_subject_filter_v1", STATE.subject);
-      loadQuestionPage().then(renderQuestions);
-    };
-    window.adminQuestionPage = function(d) {
-      const max = Math.max(1, Math.ceil((STATE.total || 0) / STATE.size));
-      STATE.page = Math.min(max, Math.max(1, STATE.page + d));
-      loadQuestionPage().then(renderQuestions);
-    };
-    window.renderQuestions = renderQuestions = function() {
-      const rows = STATE.pageRows || cache.questions || [];
-      const max = Math.max(1, Math.ceil((STATE.total || 0) / STATE.size));
-      const tabs = `<div class="questionSubjectTabs"><button class="subjectTab ${STATE.subject === "all" ? "active" : ""}" onclick="setQuestionSubjectFilter('all')">T\u1EA5t c\u1EA3</button>${STATE.subjects.map((s) => `<button class="subjectTab ${STATE.subject === s ? "active" : ""}" onclick="setQuestionSubjectFilter('${esc(s)}')">${esc(s)}</button>`).join("")}</div>`;
-      const pager = `<div class="questionPager actions"><button class="act" onclick="adminQuestionPage(-1)" ${STATE.page <= 1 ? "disabled" : ""}>\u2039 Trang tr\u01B0\u1EDBc</button><b>Trang ${STATE.page}/${max}</b><button class="act" onclick="adminQuestionPage(1)" ${STATE.page >= max ? "disabled" : ""}>Trang sau \u203A</button></div>`;
-      const html = rows.map(
-        (q) => `<div class="item questionAdminItem"><div class="head"><div><div class="questionSubjectCode">${esc(q.subject_code || "HOD102")}</div><b>C\xE2u ${esc(q.num || q.id)}</b></div>${q.is_active === false ? badge("hidden") : badge("active")}</div><p>${esc(q.question || "")}</p><p class="muted">\u0110\xE1p \xE1n: ${esc(q.answer || "")}</p><div class="actions"><button class="act" onclick="viewQuestion(${q.id})">Xem</button><button class="act warn" onclick="editQuestionDirect(${q.id})">S\u1EEDa tr\u1EF1c ti\u1EBFp</button><button class="act warn" onclick="toggleQuestion(${q.id},${q.is_active === false})">${q.is_active === false ? "Hi\u1EC7n" : "\u1EA8n"}</button>${isAdmin() ? `<button class="act bad" onclick="deleteQuestionAdmin(${q.id})">X\xF3a</button>` : ""}</div></div>`
-      ).join("") || "<p class=muted>Kh\xF4ng c\xF3 c\xE2u h\u1ECFi.</p>";
-      $("questionList").innerHTML = `<div class="questionToolbar"><div>${tabs}</div><button class="act ok addQuestionBtn" onclick="openAddQuestionAdmin()">+ Th\xEAm c\xE2u h\u1ECFi</button></div><div class="questionResultNote">\u0110ang hi\u1EC3n th\u1ECB ${rows.length}/${STATE.total} c\xE2u. Kh\xF4ng t\u1EA3i \u1EA3nh \u1EDF danh s\xE1ch.</div>` + pager + html + pager;
-    };
-    window.viewQuestion = async function(id) {
-      const r = await client.from("questions").select("*").eq("id", id).maybeSingle();
-      if (r.error) return alert(r.error.message);
-      const q = r.data;
-      if (!q) return;
-      openModal(`C\xE2u ${q.num || q.id}`, `<pre class=raw>${esc(safe(q))}</pre>`);
-    };
-    const inp = $("search");
-    if (inp && !inp.__adminFinalSearch) {
-      inp.__adminFinalSearch = true;
-      let t;
-      inp.addEventListener(
-        "input",
-        () => {
-          clearTimeout(t);
-          t = setTimeout(() => {
-            STATE.page = 1;
-            loadQuestionPage().then(render);
-          }, 350);
-        },
-        { passive: true }
-      );
-    }
   })();
   (function() {
     let subjectReqCache = [];
@@ -4589,9 +3877,6 @@ ${E(val)}</pre>`;
       style.id = "compactDragSubjectStyle";
       style.textContent = `
       #subjectsAdmin .subjectAdminPanel{padding:16px!important;}
-      #subjectsAdmin .subjectAdminHead{padding-bottom:10px!important;margin-bottom:10px!important;}
-      #subjectsAdmin .subjectAdminHead h3{font-size:1.02rem!important;margin-bottom:4px!important;}
-      #subjectsAdmin .subjectAdminHead p{font-size:.86rem!important;}
       #subjectsAdmin .subjectAdminList{gap:7px!important;padding-right:6px!important;}
       #subjectsAdmin .subjectAdminItem{
         min-height:58px!important;
@@ -4950,7 +4235,7 @@ ${E(val)}</pre>`;
         </div>
         <div class="actions editSubjectActions">
           <button class="act ok" type="button" onclick="saveSubjectAdmin()">L\u01B0u thay \u0111\u1ED5i</button>
-          <button class="act" type="button" onclick="closeModal()">\u0110\xF3ng</button>
+          <button class="act" type="button" onclick="lhCloseModal()">\u0110\xF3ng</button>
         </div>
       </div>`
       );
@@ -5074,9 +4359,12 @@ ${E(val)}</pre>`;
     function baseOf(code) {
       return String(code || "").split(/[_\-\s]/)[0].toUpperCase();
     }
-    function folderItems(base) {
-      const src = cardSubjectCache.length ? cardSubjectCache : cache.subjects || [];
-      return src.filter((s) => baseOf(s.code) === String(base || "").toUpperCase());
+    function folderBadgeList() {
+      return Array.isArray(cache.folder_new_badges) ? cache.folder_new_badges : [];
+    }
+    function hasFolderNewBadge(base) {
+      const b = String(base || "").toUpperCase();
+      return folderBadgeList().some((x) => String(x || "").toUpperCase() === b);
     }
     function enhanceFolderRows() {
       const list = document.getElementById("subjectAdminList");
@@ -5086,13 +4374,12 @@ ${E(val)}</pre>`;
         if (!base || row.querySelector(".subjectNewToggle")) return;
         const actions = row.querySelector(".subjectAdminActions");
         if (!actions) return;
-        const items = folderItems(base);
-        const on = items.filter(hasNewBadge).length;
+        const on = hasFolderNewBadge(base);
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = "act subjectNewToggle" + (items.length && on === items.length ? " isOn" : on ? " isPartial" : "");
-        btn.textContent = `NEW ${on}/${items.length}`;
-        btn.title = on ? "B\u1EA5m \u0111\u1EC3 t\u1EAFt NEW cho c\u1EA3 th\u01B0 m\u1EE5c" : "B\u1EA5m \u0111\u1EC3 b\u1EADt NEW cho c\u1EA3 th\u01B0 m\u1EE5c";
+        btn.className = "act subjectNewToggle" + (on ? " isOn" : "");
+        btn.textContent = "NEW";
+        btn.title = on ? "\u0110ang b\u1EADt NEW cho th\u1EBB th\u01B0 m\u1EE5c " + base + " - b\u1EA5m \u0111\u1EC3 t\u1EAFt (kh\xF4ng \u0111\u1EE5ng m\xF4n con)" : "\u0110ang t\u1EAFt NEW cho th\u1EBB th\u01B0 m\u1EE5c " + base + " - b\u1EA5m \u0111\u1EC3 b\u1EADt (kh\xF4ng \u0111\u1EE5ng m\xF4n con)";
         btn.setAttribute("onclick", "toggleSubjectFolderNewBadge('" + escJs(base) + "')");
         actions.insertBefore(btn, actions.firstChild);
       });
@@ -5150,18 +4437,15 @@ ${E(val)}</pre>`;
     };
     window.toggleSubjectFolderNewBadge = async function(base) {
       if (!isEditor()) return alert("Admin ho\u1EB7c Editor m\u1EDBi \u0111\u01B0\u1EE3c s\u1EEDa m\xF4n h\u1ECDc.");
-      const items = folderItems(base);
-      if (!items.length) return alert("Kh\xF4ng t\xECm th\u1EA5y m\xF4n h\u1ECDc trong th\u01B0 m\u1EE5c " + base + ".");
-      const next = !items.every(hasNewBadge);
-      const changed = items.filter((s) => hasNewBadge(s) !== next);
-      if (!changed.length) return;
+      const b = String(base || "").toUpperCase();
+      if (!b) return;
+      const next = !hasFolderNewBadge(b);
       setBusy(true, next ? "\u0110ang b\u1EADt NEW cho th\u01B0 m\u1EE5c..." : "\u0110ang t\u1EAFt NEW cho th\u01B0 m\u1EE5c...");
       try {
-        for (const s of changed) {
-          if (!await adminAction("set_subject_new_badge", { id: s.id, enabled: next })) return;
-          s.cover = makeCover(s.cover || "", next);
-        }
-        toast((next ? "\u0110\xE3 b\u1EADt NEW cho " : "\u0110\xE3 t\u1EAFt NEW cho ") + changed.length + " m\xF4n trong " + base);
+        const out = await adminAction("set_subject_folder_new_badge", { base: b, enabled: next });
+        if (!out) return;
+        cache.folder_new_badges = Array.isArray(out.folder_new_badges) ? out.folder_new_badges : next ? [...folderBadgeList(), b] : folderBadgeList().filter((x) => String(x || "").toUpperCase() !== b);
+        toast((next ? "\u0110\xE3 b\u1EADt NEW cho th\u01B0 m\u1EE5c " : "\u0110\xE3 t\u1EAFt NEW cho th\u01B0 m\u1EE5c ") + b);
         await window.loadSubjectsAdmin?.();
       } finally {
         setBusy(false);
@@ -5273,6 +4557,7 @@ ${E(val)}</pre>`;
         }));
         cache.logs = isAdmin() ? (dash.logs || []).map((l) => ({ ...l, details: pj(l.details, {}) })) : [];
         cache.subjects = dash.subjects || [];
+        cache.folder_new_badges = Array.isArray(dash.folder_new_badges) ? dash.folder_new_badges : [];
         cache.subject_requests = (dash.subject_requests || []).map((s) => ({
           ...s,
           questions_data: pj(s.questions_data, [])
@@ -5285,9 +4570,10 @@ ${E(val)}</pre>`;
           ...d,
           original_data: pj(d.original_data, {})
         }));
-        if (typeof window.__adminSyncQuestionPage === "function") await window.__adminSyncQuestionPage();
+        window.__lhReadAdminTierFromDashboard?.(dash);
         render();
         window.__adminDashRenderedText = r0.text || "";
+        window.dispatchEvent(new CustomEvent("lh:admin-dashboard-loaded"));
         if (typeof loadSubjectRequests === "function") await loadSubjectRequests();
         if (typeof loadRegistrationMode === "function") await loadRegistrationMode();
         toast("\u0110\xE3 t\u1EA3i m\u1EDBi");
@@ -5311,6 +4597,8 @@ ${E(val)}</pre>`;
         if (page === "subjectRequests" && typeof window.loadSubjectRequests === "function")
           await window.loadSubjectRequests();
         if (page === "approvals" && typeof window.renderApprovals === "function") window.renderApprovals();
+        if (page === "discordSettings" && typeof window.renderDiscordSettings === "function")
+          window.renderDiscordSettings();
       };
     }
     document.addEventListener("DOMContentLoaded", () => {
@@ -5391,35 +4679,6 @@ ${E(val)}</pre>`;
         background:
           radial-gradient(circle at 78% 12%, rgba(200,169,110,.09), transparent 30%),
           linear-gradient(145deg,rgba(245,240,232,.065),rgba(255,255,255,.018))!important;
-      }
-      #subjectsAdmin .subjectAdminHead{
-        flex:0 0 auto!important;
-        display:flex!important;
-        align-items:center!important;
-        justify-content:space-between!important;
-        gap:18px!important;
-        margin:0 0 14px!important;
-        padding:0 0 16px!important;
-        border-bottom:1px solid rgba(200,169,110,.16)!important;
-      }
-      #subjectsAdmin .subjectAdminHead h3{
-        margin:0 0 6px!important;
-        font-size:1.18rem!important;
-        color:var(--gold2)!important;
-      }
-      #subjectsAdmin .subjectAdminHead .muted{
-        margin:0!important;
-        color:rgba(245,240,232,.68)!important;
-        line-height:1.45!important;
-      }
-      #subjectsAdmin .subjectAdminHead .act.ok{
-        min-width:124px!important;
-        height:44px!important;
-        padding:0 18px!important;
-        border-radius:999px!important;
-        background:linear-gradient(135deg,rgba(114,197,140,.22),rgba(114,197,140,.12))!important;
-        color:var(--ok)!important;
-        border-color:rgba(114,197,140,.30)!important;
       }
       #subjectsAdmin .subjectAdminList{
         flex:1 1 auto!important;
@@ -5581,8 +4840,6 @@ ${E(val)}</pre>`;
       }
       @media (max-width:680px){
         #subjectsAdmin .subjectAdminPanel{padding:14px!important;}
-        #subjectsAdmin .subjectAdminHead{align-items:flex-start!important;flex-direction:column!important;}
-        #subjectsAdmin .subjectAdminHead .act.ok{width:100%!important;}
         #subjectsAdmin .subjectAdminItem{
           grid-template-columns:38px minmax(0,1fr)!important;
           min-height:0!important;
@@ -5649,7 +4906,6 @@ ${E(val)}</pre>`;
       body #subjectsAdmin .subjectAdminActions .act,
       body #subjectsAdmin .subjectAdminActions button{min-height:38px!important;height:38px!important;padding:0 14px!important;border-radius:999px!important;font-size:.86rem!important;line-height:1!important;white-space:nowrap!important;}
       body #subjectsAdmin .subjectNewToggle{min-width:96px!important;height:38px!important;}
-      body #subjectsAdmin .subjectNewToggle.isPartial{background:linear-gradient(135deg,rgba(255,231,168,.30),rgba(232,196,110,.16))!important;color:#ffe9b8!important;border-color:rgba(232,212,168,.52)!important;}
       body #subjectsAdmin .subjectOrderHint{margin:0 0 10px!important;padding:10px 14px!important;border-radius:16px!important;background:rgba(0,0,0,.18)!important;border:1px solid rgba(200,169,110,.12)!important;}
       /* SUBJECT_FOLDER_DRILLDOWN_20260728 \u2014 h\xE0ng th\u01B0 m\u1EE5c + thanh l\xF9i ra.
          \u0110\u1EB7t trong block n\xE0y v\xEC n\xF3 l\xE0 style \u0111\u01B0\u1EE3c nh\u1ED3i CU\u1ED0I <head> (keepStyleLast), n\xEAn ch\u1EAFc ch\u1EAFn
@@ -5778,7 +5034,9 @@ ${E(val)}</pre>`;
       "trash",
       // Thùng rác
       "trashBin",
-      "deletedQuestions"
+      "deletedQuestions",
+      "discordSettings"
+      // Thông báo Discord (xem được: admin; đổi được: chỉ admin hệ thống)
     ]);
     const EDITOR_ALLOWED_PAGES = /* @__PURE__ */ new Set([
       "overview",
@@ -5788,8 +5046,6 @@ ${E(val)}</pre>`;
       // Yêu cầu thêm môn
       "subjectsAdmin",
       // Môn học
-      "questions",
-      // Câu hỏi
       "history"
       // Lịch sử sửa câu
     ]);
@@ -6430,6 +5686,7 @@ ${E(val)}</pre>`;
         }));
         cache.logs = typeof isAdmin === "function" && isAdmin() ? (dash.logs || []).map((l) => ({ ...l, details: pj(l.details, {}) })) : [];
         cache.subjects = dash.subjects || [];
+        cache.folder_new_badges = Array.isArray(dash.folder_new_badges) ? dash.folder_new_badges : [];
         cache.subject_requests = (dash.subject_requests || []).map((s) => ({
           ...s,
           questions_data: pj(s.questions_data, [])
@@ -6442,7 +5699,7 @@ ${E(val)}</pre>`;
           ...d,
           original_data: pj(d.original_data, {})
         }));
-        if (typeof window.__adminSyncQuestionPage === "function") await window.__adminSyncQuestionPage();
+        window.__lhReadAdminTierFromDashboard?.(dash);
         if (typeof render === "function") render();
         if (typeof renderApprovals === "function") renderApprovals();
       } catch (e) {
@@ -6540,7 +5797,7 @@ ${E(val)}</pre>`;
       const menu = document.createElement("div");
       menu.id = "lhActionMenuFloat";
       menu.innerHTML = isAdmin() ? `<button class="act" onclick="viewUserEdits('${p.id}');closeUserActionMenuFinal();">L\u1ECBch s\u1EED s\u1EEDa c\xE2u</button>
-         <button class="act bad" onclick="forceLogoutUser('${p.id}');closeUserActionMenuFinal();">\u{1F6AA} \u0110\u0103ng xu\u1EA5t ng\u01B0\u1EDDi n\xE0y</button>
+         <button class="act" onclick="notifyReloadUser('${p.id}');closeUserActionMenuFinal();">\u{1F514} Nh\u1EAFc t\u1EA3i l\u1EA1i trang</button>
          <button class="act ${isBlocked(p) ? "ok" : "bad"}" onclick="toggleBlock('${p.id}',${!isBlocked(p)});closeUserActionMenuFinal();">${isBlocked(p) ? "Unblock" : "Block"}</button>
          <button class="act warn" onclick="setRole('${p.id}','${p.role === "editor" ? "user" : "editor"}');closeUserActionMenuFinal();">${p.role === "editor" ? "G\u1EE1 editor" : "Cho editor"}</button>
          <button class="act warn" onclick="setRole('${p.id}','${p.role === "admin" ? "user" : "admin"}');closeUserActionMenuFinal();">${p.role === "admin" ? "G\u1EE1 admin" : "Cho admin"}</button>
@@ -6555,27 +5812,24 @@ ${E(val)}</pre>`;
       menu.style.left = left + "px";
       menu.style.top = top + "px";
     };
-    window.forceLogoutUser = async function(uid) {
+    window.notifyReloadUser = async function(uid) {
       const p = (cache.profiles || []).find((x) => String(x.id) === String(uid));
       const name = p ? p.email || p.full_name || uid : uid;
-      if (!confirm(
-        `\u0110\u0103ng xu\u1EA5t b\u1EAFt bu\u1ED9c \u0111\u1ED1i v\u1EDBi ng\u01B0\u1EDDi d\xF9ng:
+      if (!confirm(`Nh\u1EAFc ng\u01B0\u1EDDi d\xF9ng n\xE0y t\u1EA3i l\u1EA1i trang?
 ${name}
 
-H\u1ECD s\u1EBD b\u1ECB \u0111\u0103ng xu\u1EA5t kh\u1ECFi h\u1EC7 th\u1ED1ng v\xE0 ph\u1EA3i \u0111\u0103ng nh\u1EADp l\u1EA1i \u0111\u1EC3 t\u1EA3i d\u1EEF li\u1EC7u m\u1EDBi.`
-      ))
-        return;
-      if (await adminAction("force_logout_user", { target_user_id: uid })) {
-        alert(`\u2705 \u0110\xE3 y\xEAu c\u1EA7u \u0111\u0103ng xu\u1EA5t ng\u01B0\u1EDDi d\xF9ng ${name}.`);
+H\u1ECD KH\xD4NG b\u1ECB \u0111\u0103ng xu\u1EA5t.`)) return;
+      if (await adminAction("notify_reload_user", { target_user_id: uid })) {
+        toast(`\u0110\xE3 g\u1EEDi nh\u1EAFc t\u1EA3i l\u1EA1i t\u1EDBi ${name}`);
       }
     };
-    window.forceLogoutAllUsers = async function() {
+    window.notifyReloadAllUsers = async function() {
       if (!confirm(
-        "\u26A0\uFE0F B\u1EA0N C\xD3 CH\u1EAEC MU\u1ED0N \u0110\u0102NG XU\u1EA4T T\u1EA4T C\u1EA2 NG\u01AF\u1EDCI D\xD9NG?\n\nT\u1EA5t c\u1EA3 ng\u01B0\u1EDDi d\xF9ng (tr\u1EEB Admin) s\u1EBD b\u1ECB bu\u1ED9c \u0111\u0103ng xu\u1EA5t v\xE0 ph\u1EA3i \u0111\u0103ng nh\u1EADp l\u1EA1i \u0111\u1EC3 l\xE0m m\u1EDBi d\u1EEF li\u1EC7u."
+        'Nh\u1EAFc T\u1EA4T C\u1EA2 ng\u01B0\u1EDDi d\xF9ng t\u1EA3i l\u1EA1i trang?\n\nM\u1ECDi ng\u01B0\u1EDDi (tr\u1EEB b\u1EA1n) s\u1EBD th\u1EA5y banner "H\u1EC7 th\u1ED1ng v\u1EEBa c\u1EADp nh\u1EADt \u2014 T\u1EA3i l\u1EA1i".\nKH\xD4NG ai b\u1ECB \u0111\u0103ng xu\u1EA5t.'
       ))
         return;
-      if (await adminAction("force_logout_all", {})) {
-        alert("\u2705 \u0110\xE3 y\xEAu c\u1EA7u \u0111\u0103ng xu\u1EA5t T\u1EA4T C\u1EA2 ng\u01B0\u1EDDi d\xF9ng th\xE0nh c\xF4ng.");
+      if (await adminAction("notify_reload_all", {})) {
+        toast("\u0110\xE3 g\u1EEDi nh\u1EAFc t\u1EA3i l\u1EA1i t\u1EDBi t\u1EA5t c\u1EA3 ng\u01B0\u1EDDi d\xF9ng");
       }
     };
     if (typeof sendLoginToDiscord !== "function") {
@@ -6605,6 +5859,134 @@ H\u1ECD s\u1EBD b\u1ECB \u0111\u0103ng xu\u1EA5t kh\u1ECFi h\u1EC7 th\u1ED1ng v\
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") closeUserActionMenuFinal();
     });
+  })();
+  (function() {
+    if (window.__ADMIN_TWO_TIERS_20260729) return;
+    window.__ADMIN_TWO_TIERS_20260729 = true;
+    const $id = (id) => document.getElementById(id);
+    const TIER = { isSystem: false, kinds: [], settings: {} };
+    window.__lhAdminTier = TIER;
+    window.isSystemAdmin = () => !!TIER.isSystem;
+    function readDashboard(dash) {
+      if (!dash) return;
+      TIER.isSystem = !!dash.is_system_admin;
+      if (Array.isArray(dash.discord_notification_kinds)) TIER.kinds = dash.discord_notification_kinds;
+      if (dash.discord_notifications && typeof dash.discord_notifications === "object") {
+        TIER.settings = { ...dash.discord_notifications };
+      }
+    }
+    function tierLabel() {
+      if (!profile) return "";
+      if (TIER.isSystem) return "admin h\u1EC7 th\u1ED1ng";
+      return String(profile.role || "");
+    }
+    function renderAdminTierChip() {
+      const chip = $id("adminChip");
+      if (!chip || !profile) return;
+      chip.textContent = `${profile.email || user?.email || ""} \xB7 ${tierLabel()}`;
+      chip.classList.toggle("isSystemAdmin", TIER.isSystem);
+      document.body.classList.toggle("role-system-admin", TIER.isSystem);
+    }
+    function ensureDiscordPage() {
+      if (!$id("discordSettingsNav")) {
+        const side = document.querySelector(".side");
+        const foot = document.querySelector(".foot");
+        if (side) {
+          const btn = document.createElement("button");
+          btn.id = "discordSettingsNav";
+          btn.className = "nav";
+          btn.type = "button";
+          btn.dataset.page = "discordSettings";
+          btn.textContent = "Th\xF4ng b\xE1o Discord";
+          btn.onclick = () => {
+            setPage("discordSettings", "Th\xF4ng b\xE1o Discord");
+            renderDiscordSettings();
+          };
+          side.insertBefore(btn, foot || null);
+          if (typeof window.organizeAdminSidebarTree === "function") window.organizeAdminSidebarTree();
+        }
+      }
+      if (!$id("discordSettings")) {
+        const ws = document.querySelector(".workspace");
+        if (!ws) return;
+        const page = document.createElement("section");
+        page.id = "discordSettings";
+        page.className = "page";
+        page.innerHTML = `
+        <div class="panel panelFill">
+          <h3>Th\xF4ng b\xE1o Discord</h3>
+          <div class="hint" id="discordHint">B\u1EADt/t\u1EAFt t\u1EEBng lo\u1EA1i tin g\u1EEDi l\xEAn Discord. Ch\u1EC9 <b>admin h\u1EC7 th\u1ED1ng</b> \u0111\u01B0\u1EE3c \u0111\u1ED5i.</div>
+          <div id="discordTierNote" class="discordTierNote hidden"></div>
+          <div id="discordToggleList" class="discordToggleList pageScroll"></div>
+        </div>`;
+        ws.appendChild(page);
+      }
+    }
+    function toggleRowHTML(kind) {
+      const on = TIER.settings[kind.key] !== false;
+      const locked = !TIER.isSystem;
+      return `<div class="discordToggleRow ${on ? "isOn" : "isOff"}">
+      <div class="discordToggleInfo">
+        <b>${esc(kind.label || kind.key)}</b>
+        <p class="muted">${esc(kind.description || "")}</p>
+      </div>
+      <div class="discordToggleState">
+        <span class="discordStateText">${on ? "\u0110ang b\u1EADt" : "\u0110ang t\u1EAFt"}</span>
+        <button class="act ${on ? "bad" : "ok"}" type="button"
+          ${locked ? 'disabled title="Ch\u1EC9 admin h\u1EC7 th\u1ED1ng m\u1EDBi \u0111\u1ED5i \u0111\u01B0\u1EE3c"' : ""}
+          onclick="setDiscordNotification('${esc(kind.key)}',${on ? "false" : "true"})">${on ? "T\u1EAFt" : "B\u1EADt"}</button>
+      </div>
+    </div>`;
+    }
+    function renderDiscordSettings() {
+      ensureDiscordPage();
+      const box = $id("discordToggleList");
+      if (!box) return;
+      if (!isAdmin()) {
+        box.innerHTML = '<p class="muted">Ch\u1EC9 admin m\u1EDBi xem \u0111\u01B0\u1EE3c m\u1EE5c n\xE0y.</p>';
+        return;
+      }
+      const note = $id("discordTierNote");
+      if (note) {
+        note.classList.toggle("hidden", TIER.isSystem);
+        if (!TIER.isSystem) {
+          note.textContent = "B\u1EA1n l\xE0 admin th\u01B0\u1EDDng: ch\u1EC9 xem \u0111\u01B0\u1EE3c tr\u1EA1ng th\xE1i. Mu\u1ED1n b\u1EADt/t\u1EAFt th\xEC c\u1EA7n t\xE0i kho\u1EA3n admin h\u1EC7 th\u1ED1ng.";
+        }
+      }
+      const kinds = TIER.kinds.length ? TIER.kinds : Object.keys(TIER.settings).map((k) => ({ key: k, label: k, description: "" }));
+      box.innerHTML = kinds.length ? kinds.map(toggleRowHTML).join("") : '<p class="muted">Ch\u01B0a t\u1EA3i \u0111\u01B0\u1EE3c danh s\xE1ch lo\u1EA1i th\xF4ng b\xE1o. B\u1EA5m "T\u1EA3i l\u1EA1i" \u1EDF thanh tr\xEAn.</p>';
+    }
+    window.setDiscordNotification = async function(key2, enabled) {
+      if (!TIER.isSystem) return alert("Ch\u1EC9 admin h\u1EC7 th\u1ED1ng m\u1EDBi \u0111\u01B0\u1EE3c \u0111\u1ED5i c\u1EA5u h\xECnh th\xF4ng b\xE1o Discord.");
+      const next = { ...TIER.settings, [key2]: !!enabled };
+      setBusy(true, "\u0110ang l\u01B0u...");
+      try {
+        const out = await adminAction("set_discord_notifications", { notifications: next });
+        if (!out) return;
+        TIER.settings = out.notifications && typeof out.notifications === "object" ? out.notifications : next;
+        renderDiscordSettings();
+        toast(enabled ? "\u0110\xE3 b\u1EADt th\xF4ng b\xE1o" : "\u0110\xE3 t\u1EAFt th\xF4ng b\xE1o");
+      } finally {
+        setBusy(false);
+      }
+    };
+    window.renderDiscordSettings = renderDiscordSettings;
+    window.__lhReadAdminTierFromDashboard = function(dash) {
+      readDashboard(dash);
+      renderAdminTierChip();
+      if ($id("discordSettings")?.classList.contains("active")) renderDiscordSettings();
+    };
+    function ensureWhenAdmin() {
+      if (typeof isAdmin === "function" && isAdmin()) {
+        ensureDiscordPage();
+        renderAdminTierChip();
+      }
+    }
+    document.addEventListener("DOMContentLoaded", () => {
+      setTimeout(ensureWhenAdmin, 400);
+      setTimeout(ensureWhenAdmin, 1500);
+    });
+    window.addEventListener("lh:admin-dashboard-loaded", ensureWhenAdmin);
   })();
 
   // src/admin/main.js

@@ -53,11 +53,35 @@ export async function checkForUpdates() {
 
   if (remoteVersion !== currentVersion) {
     updateDetected = true;
-    showUpdateNotification(remoteVersion);
+    showUpdateNotification();
   }
 }
 
-function showUpdateNotification(newVersion) {
+/**
+ * RELOAD_NOTICE_20260729 — admin nhắc người dùng tải lại trang.
+ * main.js gán hàm này vào `window.lhShowReloadNotice` (KHÔNG gán trong initVersionChecker,
+ * vì hàm đó bị bỏ qua ở chế độ ?mock=1 — banner sẽ không test được).
+ */
+export function showAdminReloadNotice() {
+  showUpdateNotification({
+    title: 'Hệ thống vừa cập nhật',
+    sub: 'Hãy tải lại trang để lấy dữ liệu và giao diện mới nhất',
+  });
+}
+
+/**
+ * Banner "có bản mới, tải lại đi".
+ *
+ * RELOAD_NOTICE_20260729: dùng lại đúng banner này cho việc admin nhắc người dùng tải lại
+ * (trước đây admin "đăng xuất bắt buộc": huỷ phiên + alert). Vì vậy tách title/sub ra tham
+ * số thay vì hardcode — đừng tạo banner thứ hai, người dùng phải thấy một kiểu thông báo
+ * duy nhất cho cùng một việc.
+ *
+ * @param {{title?: string, sub?: string}} [opts]
+ */
+export function showUpdateNotification(opts) {
+  const title = opts?.title || 'Có phiên bản mới';
+  const sub = opts?.sub || 'Cập nhật để tải giao diện và dữ liệu mới nhất';
   if (document.getElementById('lhUpdateBanner')) return;
 
   const styleId = 'lhUpdateBannerStyles';
@@ -198,8 +222,8 @@ function showUpdateNotification(newVersion) {
       </svg>
     </div>
     <div class="lh-update-content">
-      <span class="lh-update-title">Có phiên bản mới</span>
-      <span class="lh-update-sub">Cập nhật để tải giao diện và dữ liệu mới nhất</span>
+      <span class="lh-update-title"></span>
+      <span class="lh-update-sub"></span>
     </div>
     <div class="lh-update-actions">
       <button id="lhUpdateReloadBtn" class="lh-update-btn" type="button">Cập nhật ngay</button>
@@ -211,6 +235,11 @@ function showUpdateNotification(newVersion) {
       </button>
     </div>
   `;
+
+  // textContent, không nhúng vào chuỗi HTML: chữ có thể đến từ tham số nên không dựng bằng
+  // template string để khỏi phải nghĩ tới chuyện escape.
+  banner.querySelector('.lh-update-title').textContent = title;
+  banner.querySelector('.lh-update-sub').textContent = sub;
 
   document.body.appendChild(banner);
 

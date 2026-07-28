@@ -1530,6 +1530,47 @@ window.HODSupabase = (() => {
     }
   }
 
+  /*
+    RELOAD_NOTICE_REALTIME_20260729 — kênh CHUNG cho "nhắc tất cả người dùng tải lại".
+
+    Vì sao cần kênh riêng ngoài 'user-status-<id>': nhắc tất cả mà bắn lần lượt vào topic
+    của từng người thì server phải gọi Supabase một lần cho MỖI user. Kênh chung: một lần
+    bắn, mọi client đang mở đều nhận.
+
+    Ở đây được phép tin payload vì việc duy nhất nó gây ra là hiện banner "hãy tải lại" —
+    không liên quan quyền. Mọi thứ dính tới QUYỀN vẫn phải đi qua /api/profile
+    (xem ghi chú V ở trên).
+  */
+  let globalRealtimeChannel = null;
+
+  function subscribeGlobalRealtime() {
+    if (globalRealtimeChannel) return;
+    try {
+      const supa = window.HODSupabase?.__client;
+      if (!supa || typeof supa.channel !== 'function') return;
+      globalRealtimeChannel = supa.channel('lh-global');
+      globalRealtimeChannel.on('broadcast', { event: 'reload_notice' }, () => {
+        window.lhHandleReloadNotice?.();
+      });
+      globalRealtimeChannel.subscribe(status => {
+        if (status === 'SUBSCRIBED') console.log('[Realtime] đã theo dõi kênh chung lh-global');
+      });
+    } catch (e) {
+      lhWarn('RELOAD_NOTICE_REALTIME_20260729', e);
+      globalRealtimeChannel = null;
+    }
+  }
+
+  function unsubscribeGlobalRealtime() {
+    if (!globalRealtimeChannel) return;
+    try {
+      globalRealtimeChannel.unsubscribe();
+    } catch (e) {
+      lhWarn('RELOAD_NOTICE_REALTIME_20260729', e);
+    }
+    globalRealtimeChannel = null;
+  }
+
   function subscribeUserStatusRealtime(userId) {
     // Một user chỉ có ĐÚNG MỘT subscription, kể cả khi lh:profile-ready bắn lại.
     if (!userId || statusRealtimeChannel) return;
@@ -1542,6 +1583,12 @@ window.HODSupabase = (() => {
 
       statusRealtimeChannel.on('broadcast', { event: 'status_changed' }, msg => {
         const data = msg?.payload || {};
+        /*
+          RELOAD_NOTICE_REALTIME_20260729: admin nhắc RIÊNG người này tải lại. Vẫn gọi
+          lhRevalidateAccess (nó đọc /api/profile check_only, chính chỗ trả reload_notice và
+          xoá cờ), nhưng hiện banner ngay để không phải chờ vòng xác minh.
+        */
+        if (data.reason === 'reload_notice') window.lhHandleReloadNotice?.();
         onRealtimeSignal(data.reason);
       });
 
@@ -1574,6 +1621,7 @@ window.HODSupabase = (() => {
   window.addEventListener('lh:profile-ready', () => {
     const u = window.HODSupabase?.getUser?.();
     if (u?.id) subscribeUserStatusRealtime(u.id);
+    subscribeGlobalRealtime();
   });
 
   /*
@@ -1638,10 +1686,12 @@ window.HODSupabase = (() => {
           throw new Error(json.error || `Không kiểm tra được quyền (HTTP ${res.status})`);
         }
         currentProfile = json.data || json.profile || json;
-        if (json.force_logout || currentProfile?.force_logout) {
-          await forceLogoutNow();
-          return null;
-        }
+        /*
+          RELOAD_NOTICE_CLIENT_20260729: chỉ hiện banner ở các lần XÁC MINH LẠI
+          (checkOnly = true: realtime / quay lại tab / polling). Lần gọi đầy đủ chạy đúng
+          lúc MỞ TRANG — vừa tải mới xong thì nhắc "hãy tải lại" là vô nghĩa.
+        */
+        if (checkOnly && json.reload_notice) showReloadNoticeNow();
         if (truthyFlag(currentProfile?.blocked)) {
           handleAccessRevoked('Tài khoản đã bị khóa', 'BLOCKED');
           return null;
@@ -1770,41 +1820,35 @@ window.HODSupabase = (() => {
   }
 
   /*
-    FORCE_LOGOUT_REALLY_SIGNS_OUT_20260726
-    Bug cũ: admin bấm "Đăng xuất người dùng" -> server set force_logout=1.
-    Lần gọi /api/profile kế tiếp, server ĐỌC cờ rồi RESET NGAY về 0 và trả force_logout:true.
-    Client chỉ chạy location.reload() — KHÔNG hề signOut. Sau khi reload, session Supabase
-    vẫn còn và cờ đã bị reset => user đăng nhập lại như thường.
-    Kết quả: "Đăng xuất người dùng" chỉ có tác dụng như F5.
-    Sửa: thực sự huỷ session Supabase trước khi reload.
+    RELOAD_NOTICE_CLIENT_20260729 — THAY cho FORCE_LOGOUT_REALLY_SIGNS_OUT_20260726.
+
+    Trước đây admin có nút "Đăng xuất người dùng": server set force_logout=1, client huỷ
+    phiên Supabase + alert "Bạn đã được quản trị viên đăng xuất khỏi hệ thống" rồi reload.
+    Nay đổi thành NHẮC TẢI LẠI: người dùng không bị mất phiên, không có alert chặn màn
+    hình — chỉ hiện đúng banner "Hệ thống vừa cập nhật / Tải lại" như khi deploy bản mới,
+    và họ tự bấm khi thuận tiện.
+
+    Cờ ở DB (profiles.reload_notice) lo cho người đang offline; realtime lo cho người đang
+    mở web. Banner nằm ở src/core/versionChecker.js (showAdminReloadNotice), main.js gán
+    vào window.lhShowReloadNotice.
   */
-  async function forceLogoutNow(reason) {
-    if (window.__LH_FORCE_LOGGING_OUT) return;
-    window.__LH_FORCE_LOGGING_OUT = true;
+  function showReloadNoticeNow() {
+    if (window.__LH_RELOAD_NOTICE_SHOWN) return;
+    window.__LH_RELOAD_NOTICE_SHOWN = true;
     try {
-      purgeOfflineQuestionCache();
+      if (typeof window.lhShowReloadNotice === 'function') window.lhShowReloadNotice();
     } catch (e) {
-      lhWarn('APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627', e);
+      lhWarn('RELOAD_NOTICE_CLIENT_20260729', e);
     }
-    try {
-      await signOut();
-    } catch (e) {
-      console.warn('[forceLogout] signOut failed:', e);
-    }
-    try {
-      alert(reason || 'Bạn đã được quản trị viên đăng xuất khỏi hệ thống.');
-    } catch (e) {
-      lhWarn('APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627', e);
-    }
-    location.reload();
   }
-  window.lhForceLogout = forceLogoutNow;
+  window.lhHandleReloadNotice = showReloadNoticeNow;
 
   async function signOut() {
     if (!client) return;
     // IX: dọn subscription + timer khi đăng xuất, không để timer mồ côi chạy tiếp.
     try {
       unsubscribeUserStatusRealtime();
+      unsubscribeGlobalRealtime(); // RELOAD_NOTICE_REALTIME_20260729
     } catch (e) {
       lhWarn('APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627', e);
     }
@@ -2569,6 +2613,10 @@ installSubjectGate();
       document.querySelector('.subjectGateSubline'),
       document.querySelector('.subjectGateTools'),
       $('subjectGateSearchWrap'),
+      // SUBJECT_FOLDER_BAR_IN_TABS_20260729: thanh thư mục nay nằm TRONG hàng tab, nên phải
+      // nằm trong danh sách ẩn/hiện này — không thì "← Tất cả môn" còn nổi ở tab Thêm môn mới.
+      $('subjectFolderCrumb'),
+      $('subjectFolderCrumbMeta'),
       $('subjectList'),
       $('subjectLoading'),
       $('subjectError'),
@@ -4215,10 +4263,9 @@ if (typeof finalAnswerText !== 'function') {
         }),
       });
       const json = await res.json().catch(() => ({}));
-      if (json && (json.force_logout || json.data?.force_logout)) {
-        // FORCE_LOGOUT_REALLY_SIGNS_OUT_20260726: phải huỷ session, không chỉ reload.
-        if (typeof window.lhForceLogout === 'function') window.lhForceLogout();
-        else location.reload();
+      // RELOAD_NOTICE_CLIENT_20260729: admin nhắc tải lại -> hiện banner, KHÔNG đăng xuất.
+      if (json && (json.reload_notice || json.data?.reload_notice)) {
+        window.lhHandleReloadNotice?.();
       }
     } catch (e) {
       console.warn('[last_activity]', e);
@@ -4238,7 +4285,7 @@ if (typeof finalAnswerText !== 'function') {
   else bindActivityEvents();
   setTimeout(() => touchActivity(true), 2500);
 
-  // === Force-logout polling: check every 30s even if user idle ===
+  // === Polling 60s: nhận cờ "nhắc tải lại" kể cả khi người dùng không thao tác gì ===
   setInterval(async () => {
     const u = user();
     if (!u) return;
@@ -4256,13 +4303,12 @@ if (typeof finalAnswerText !== 'function') {
         }),
       });
       const json = await res.json().catch(() => ({}));
-      if (json && (json.force_logout || json.data?.force_logout)) {
-        // FORCE_LOGOUT_REALLY_SIGNS_OUT_20260726: phải huỷ session, không chỉ reload.
-        if (typeof window.lhForceLogout === 'function') window.lhForceLogout();
-        else location.reload();
+      // RELOAD_NOTICE_CLIENT_20260729: admin nhắc tải lại -> hiện banner, KHÔNG đăng xuất.
+      if (json && (json.reload_notice || json.data?.reload_notice)) {
+        window.lhHandleReloadNotice?.();
       }
     } catch (e) {
-      /* ignore */
+      lhWarn('RELOAD_NOTICE_POLL_20260729', e);
     }
   }, 60000);
 })();
@@ -9547,6 +9593,92 @@ installImgsHTML();
     return tok.trim();
   }
 
+  /*
+    LH_SESSION_REFRESH_20260729 — RỜI WEB LÂU QUAY LẠI KHÔNG BỊ ĐĂNG XUẤT NỮA.
+
+    Bệnh cũ: access_token của Supabase sống 1 giờ. readTokenFromStorage() thấy token hết hạn
+    thì trả '' (đúng — không gắn header rác), request /api/ đi ra không có Authorization,
+    server trả 401 UNAUTHORIZED, handleAccessRevoked('UNAUTHORIZED') GỌI signOut() luôn.
+    Trong khi refresh_token trong localStorage vẫn còn dùng được hàng chục ngày.
+    Máy sleep / tab bị treo mấy tiếng là timer tự làm mới của supabase-js không kịp chạy trước
+    request đầu tiên -> người dùng phải chọn lại mail Google dù chưa hề hết phiên thật.
+
+    Nay: token thiếu/hết hạn thì LÀM MỚI TRƯỚC khi gọi, và 401 thì làm mới rồi THỬ LẠI ĐÚNG
+    MỘT LẦN. Chỉ khi làm mới cũng thất bại (refresh_token hết hạn / bị thu hồi) mới coi là
+    UNAUTHORIZED và đăng xuất. Nhiều request 401 cùng lúc dùng chung một lần làm mới
+    (refreshInFlight), không bắn n request refresh song song.
+  */
+  function storedSession() {
+    try {
+      var url = (window.APP_CONFIG && window.APP_CONFIG.SUPABASE_URL) || '';
+      var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
+      var keys = [];
+      if (m) keys.push('sb-' + m[1] + '-auth-token');
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.slice(0, 3) === 'sb-' && k.slice(-11) === '-auth-token' && keys.indexOf(k) === -1) keys.push(k);
+      }
+      for (var j = 0; j < keys.length; j++) {
+        var raw = localStorage.getItem(keys[j]);
+        if (!raw) continue;
+        var v = JSON.parse(raw);
+        var s = v && v.currentSession ? v.currentSession : v;
+        if (s && (s.access_token || s.refresh_token)) return s;
+      }
+    } catch (e) {
+      lhWarn('LH_SESSION_REFRESH_20260729', e);
+    }
+    return null;
+  }
+  function hasRefreshToken() {
+    var s = storedSession();
+    return !!(s && typeof s.refresh_token === 'string' && s.refresh_token.length > 0);
+  }
+  function authClient() {
+    try {
+      var c = window.HODSupabase && window.HODSupabase.__client;
+      return c && c.auth ? c : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  function freshTokenOf(session) {
+    if (!session) return '';
+    var tok = session.access_token;
+    if (!validToken(tok)) return '';
+    if (session.expires_at && Date.now() / 1000 > session.expires_at - 10) return '';
+    return tok.trim();
+  }
+  var refreshInFlight = null;
+  function lhRefreshToken() {
+    if (refreshInFlight) return refreshInFlight;
+    var c = authClient();
+    // Không có client (chưa init) hoặc không có refresh_token: không có gì để làm mới.
+    if (!c || !hasRefreshToken()) return Promise.resolve('');
+    refreshInFlight = Promise.resolve()
+      .then(function () {
+        // getSession() của supabase-js v2 tự làm mới khi token đã hết hạn.
+        return c.auth.getSession();
+      })
+      .then(function (r) {
+        var tok = freshTokenOf(r && r.data && r.data.session);
+        if (tok) return tok;
+        return c.auth.refreshSession().then(function (r2) {
+          return freshTokenOf(r2 && r2.data && r2.data.session);
+        });
+      })
+      .catch(function (e) {
+        lhWarn('LH_SESSION_REFRESH_20260729', e);
+        return '';
+      })
+      .then(function (tok) {
+        refreshInFlight = null;
+        return tok;
+      });
+    return refreshInFlight;
+  }
+  window.__lhRefreshAccessToken = lhRefreshToken;
+
   function lhToken() {
     try {
       var url = (window.APP_CONFIG && window.APP_CONFIG.SUPABASE_URL) || '';
@@ -9690,6 +9822,40 @@ installImgsHTML();
       });
   }
 
+  /*
+    Gắn Authorization + signal chung vào một request /api/. Trả về [input, init] để gọi
+    originalFetch.apply(). Tách riêng vì phải dùng LẠI khi thử lại sau khi làm mới token
+    (LH_SESSION_REFRESH_20260729) — trước đây phần này viết thẳng trong interceptor.
+  */
+  function withAuth(input, init, tok, force) {
+    try {
+      if (input instanceof Request) {
+        if (tok && (force || !input.headers.has('Authorization'))) {
+          var h = new Headers(input.headers);
+          h.set('Authorization', 'Bearer ' + tok);
+          input = new Request(input, { headers: h });
+        }
+        return [input, init];
+      }
+      init = init ? Object.assign({}, init) : {};
+      var hh = new Headers(init.headers || {});
+      // Lần đầu: KHÔNG ghi đè Authorization do hàm gọi tự đặt. Lúc thử lại (force) thì phải
+      // ghi đè, vì header cũ chính là token vừa hết hạn.
+      if (tok && (force || !hh.has('Authorization'))) hh.set('Authorization', 'Bearer ' + tok);
+      init.headers = hh;
+      // VI: mọi request /api/ đều gắn signal chung để hủy được hàng loạt
+      // ngay khi quyền bị thu hồi.
+      if (!init.signal && typeof window.getLhApiSignal === 'function') {
+        var sig = window.getLhApiSignal();
+        if (sig) init.signal = sig;
+      }
+      return [input, init];
+    } catch (e) {
+      console.warn('[LH fetch] không gắn được Authorization:', e);
+      return [input, init];
+    }
+  }
+
   // ---------- Interceptor ----------
   window.fetch = function (input, init) {
     var url = toUrl(input);
@@ -9713,35 +9879,35 @@ installImgsHTML();
         );
       }
 
+      // Bản chưa dùng, giữ để THỬ LẠI được sau khi làm mới token (body của Request chỉ đọc
+      // được một lần nên phải clone TRƯỚC lần gọi đầu).
+      var retrySrc = input instanceof Request ? input.clone() : input;
+      var retryInit = init;
       var tok = lhToken();
-      try {
-        if (input instanceof Request) {
-          if (tok && !input.headers.has('Authorization')) {
-            var h = new Headers(input.headers);
-            h.set('Authorization', 'Bearer ' + tok);
-            input = new Request(input, { headers: h });
-          }
-        } else {
-          init = init ? Object.assign({}, init) : {};
-          var hh = new Headers(init.headers || {});
-          if (tok && !hh.has('Authorization')) hh.set('Authorization', 'Bearer ' + tok);
-          init.headers = hh;
-          // VI: mọi request /api/ đều gắn signal chung để hủy được hàng loạt
-          // ngay khi quyền bị thu hồi.
-          if (!init.signal && typeof window.getLhApiSignal === 'function') {
-            var sig = window.getLhApiSignal();
-            if (sig) init.signal = sig;
-          }
-        }
-      } catch (e) {
-        console.warn('[LH fetch] không gắn được Authorization:', e);
-      }
+      // Token thiếu/hết hạn nhưng còn refresh_token: làm mới TRƯỚC khi gọi, đừng để server
+      // trả 401 rồi đăng xuất người dùng (LH_SESSION_REFRESH_20260729).
+      var pre = tok || !hasRefreshToken() ? Promise.resolve(tok) : lhRefreshToken();
 
-      return originalFetch(input, init).then(function (res) {
-        if ((res.status === 401 || res.status === 403) && url.pathname.indexOf('/api/version.json') === -1) {
-          inspectDenial(res);
-        }
-        return res;
+      return pre.then(function (token) {
+        return originalFetch.apply(null, withAuth(input, init, token)).then(function (res) {
+          if (url.pathname.indexOf('/api/version.json') !== -1) return res;
+          if (res.status === 401) {
+            // 401 CÓ THỂ chỉ là token vừa hết hạn. Làm mới rồi thử lại đúng một lần.
+            return lhRefreshToken().then(function (fresh) {
+              if (!fresh || fresh === token) {
+                inspectDenial(res);
+                return res;
+              }
+              var args = withAuth(retrySrc, retryInit, fresh, true);
+              return originalFetch.apply(null, args).then(function (res2) {
+                if (res2.status === 401 || res2.status === 403) inspectDenial(res2);
+                return res2;
+              });
+            });
+          }
+          if (res.status === 403) inspectDenial(res);
+          return res;
+        });
       });
       // Lỗi mạng: để promise reject tự nhiên. KHÔNG coi là thu hồi quyền (VIII).
     }

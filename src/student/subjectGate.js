@@ -24,6 +24,23 @@
 import { LHState } from './state.js';
 import { lhWarn } from '../core/log.js';
 
+/**
+ * SUBJECT_FOLDER_NEW_BADGE_20260729 — cờ NEW của THƯ MỤC là cờ RIÊNG của thư mục, không suy ra
+ * từ môn con nữa (trước đây: "có ít nhất một môn con bật thì thư mục sáng NEW").
+ * `/api/subjects` trả `folder_new_badges` = mảng mã gốc đang bật (nguồn:
+ * `site_settings.subject_folder_new_badges`, admin bấm nút NEW ở hàng thư mục).
+ * Để ở tầng module vì HAI block trong file này đều gọi `/api/subjects` (getSubjects của cổng
+ * chọn môn và tursoCounts của số câu) — block nào lấy được thì cả file dùng chung.
+ */
+let folderNewBadges = new Set();
+function rememberFolderNewBadges(json) {
+  if (!json || !Array.isArray(json.folder_new_badges)) return;
+  folderNewBadges = new Set(json.folder_new_badges.map(x => String(x || '').toUpperCase()));
+}
+function isNewFolder(base) {
+  return folderNewBadges.has(String(base || '').toUpperCase());
+}
+
 // ===== LEARNING HUB MERGED SUBJECT PATCH START =====
 export function installSubjectGate() {
   const HUB_URL = window.APP_CONFIG?.SUPABASE_URL || '';
@@ -282,6 +299,7 @@ export function installSubjectGate() {
       const res = await fetch('/api/subjects?ts=' + Date.now(), { cache: 'no-store' });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.error) throw new Error(json.error || 'Không tải được subjects từ Turso');
+      rememberFolderNewBadges(json);
       const rows = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
       if (!rows.length) return fallbackSubjects();
       rows.sort(
@@ -381,7 +399,9 @@ export function installSubjectGate() {
    */
   function folderHTML(g) {
     const total = groupTotal(g);
-    const isNew = g.items.some(isNewSubject);
+    // SUBJECT_FOLDER_NEW_BADGE_20260729: cờ NEW của chính thư mục (admin bật riêng), KHÔNG phải
+    // "có môn con nào bật NEW hay không". Môn con vẫn có NEW riêng của nó ở thẻ bên trong.
+    const isNew = isNewFolder(g.base);
     const holdsPicked = g.items.some(s => s.code === pickedCode);
     const names = esc2(g.items.map(s => displayCode(s.code)).join(' · '));
     // `&#10;` phải là thực thể THÔ (xuống dòng trong tooltip) — ghép sau khi đã esc2 từng phần,
@@ -398,12 +418,64 @@ export function installSubjectGate() {
       </span>
     </button>`;
   }
+  /**
+   * SUBJECT_FOLDER_BAR_IN_TABS_20260729: thanh thư mục KHÔNG còn chiếm một hàng riêng của lưới.
+   * Nút "← Tất cả môn" + mã gốc chèn vào `.subjectGateTabsLeft` (cạnh tab "Danh sách môn học"),
+   * còn "N môn · M câu" nằm bên phải ô tìm kiếm — cả hàng là một khối, danh sách môn được thêm
+   * ~65px chiều cao. Hai ô này do `ensureSubjectGateTabs()` (appCore) dựng thanh tab nên phải
+   * tạo LAZY: thanh tab có thể chưa tồn tại ở lần render đầu.
+   * Còn `folderBarHTML` làm bản dự phòng khi chưa có thanh tab, để nút lùi ra không bao giờ mất.
+   */
   function folderBarHTML(g) {
     return `<div class="subjectFolderBar">
       <button class="subjectFolderBack" type="button" data-folder-back="1">← Tất cả môn</button>
       <span class="subjectFolderBarCode">${esc2(g.base)}</span>
       <span class="subjectFolderBarMeta">${g.items.length} môn · ${groupTotal(g).toLocaleString('vi-VN')} câu</span>
     </div>`;
+  }
+  function tabsBar() {
+    return document.getElementById('subjectGateTabsBar');
+  }
+  function folderCrumbHost() {
+    const bar = tabsBar();
+    if (!bar) return null;
+    let host = $('subjectFolderCrumb');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'subjectFolderCrumb';
+      host.className = 'subjectFolderCrumb hidden';
+      (bar.querySelector('.subjectGateTabsLeft') || bar).appendChild(host);
+    }
+    return host;
+  }
+  function folderMetaHost() {
+    const bar = tabsBar();
+    if (!bar) return null;
+    let host = $('subjectFolderCrumbMeta');
+    if (!host) {
+      host = document.createElement('span');
+      host.id = 'subjectFolderCrumbMeta';
+      host.className = 'subjectFolderCrumbMeta hidden';
+      bar.appendChild(host);
+    }
+    return host;
+  }
+  /** Vẽ thanh thư mục vào hàng tab. Trả về true nếu đã vẽ được (khỏi vẽ bản trong lưới). */
+  function syncFolderCrumb(g) {
+    const crumb = folderCrumbHost();
+    const meta = folderMetaHost();
+    if (!crumb || !meta) return false;
+    crumb.classList.toggle('hidden', !g);
+    meta.classList.toggle('hidden', !g);
+    if (!g) {
+      crumb.innerHTML = '';
+      meta.textContent = '';
+      return true;
+    }
+    crumb.innerHTML = `<button class="subjectFolderBack" type="button" data-folder-back="1">← Tất cả môn</button>
+      <span class="subjectFolderBarCode">${esc2(g.base)}</span>`;
+    meta.textContent = `${g.items.length} môn · ${groupTotal(g).toLocaleString('vi-VN')} câu`;
+    return true;
   }
   function renderSubjects() {
     const list = $('subjectList');
@@ -418,8 +490,12 @@ export function installSubjectGate() {
     const openGroup = q ? null : groups.find(g => g.base === openBase && g.items.length > 1) || null;
     if (!q && !openGroup) openBase = '';
     list.classList.toggle('inFolder', !!openGroup);
+    // Thanh thư mục ưu tiên nằm trong hàng tab; chỉ khi chưa có thanh tab mới vẽ vào lưới.
+    const crumbDone = syncFolderCrumb(openGroup);
+    document.body.classList.toggle('lh-in-subject-folder', !!openGroup && crumbDone);
     if (q) list.innerHTML = arr.map(card).join('');
-    else if (openGroup) list.innerHTML = folderBarHTML(openGroup) + openGroup.items.map(card).join('');
+    else if (openGroup)
+      list.innerHTML = (crumbDone ? '' : folderBarHTML(openGroup)) + openGroup.items.map(card).join('');
     else list.innerHTML = groups.map(g => (g.items.length < 2 ? g.items.map(card).join('') : folderHTML(g))).join('');
     $('subjectEmpty')?.classList.toggle('hidden', !!arr.length);
     list.querySelectorAll('.subjectCard').forEach(
@@ -437,7 +513,8 @@ export function installSubjectGate() {
           list.scrollTop = 0;
         }),
     );
-    list.querySelectorAll('[data-folder-back]').forEach(
+    // Nút lùi ra có thể ở trong lưới (bản dự phòng) HOẶC trong hàng tab — bắt cả hai chỗ.
+    document.querySelectorAll('#subjectGate [data-folder-back]').forEach(
       x =>
         (x.onclick = () => {
           openBase = '';
@@ -448,7 +525,13 @@ export function installSubjectGate() {
     applyPicked();
   }
   let lastRefreshTime = 0;
-  async function refreshSubjects(force = false) {
+  /**
+   * `autoOpenPickedFolder` chỉ bật khi MỞ cổng chọn môn (openGate) — lúc đó mở sẵn thư mục
+   * chứa môn đang học là tiện. Nút "Tải lại" thì KHÔNG: trước đây nó cũng tính lại `openBase`
+   * theo môn đang học nên đang đứng ở "Tất cả môn" mà bấm Tải lại là bị nhảy vào thư mục
+   * MLN122 (SUBJECT_REFRESH_KEEP_FOLDER_20260729). Giữ đúng chỗ người dùng đang đứng.
+   */
+  async function refreshSubjects(force = false, autoOpenPickedFolder = false) {
     const now = Date.now();
     if (!force && now - lastRefreshTime < 2000) {
       return;
@@ -461,9 +544,13 @@ export function installSubjectGate() {
       subjectsCache = await getSubjects();
       if (!pickedCode && subjectCode()) pickedCode = subjectCode();
       if (!pickedCode && subjectsCache[0]) pickedCode = subjectsCache[0].code;
-      // Mở sẵn thư mục chứa môn đang học, để mở cổng lên là thấy ngay môn của mình.
-      const pickedBase = baseCode(pickedCode);
-      openBase = subjectsCache.filter(s => baseCode(s.code) === pickedBase).length > 1 ? pickedBase : '';
+      if (autoOpenPickedFolder) {
+        const pickedBase = baseCode(pickedCode);
+        openBase = subjectsCache.filter(s => baseCode(s.code) === pickedBase).length > 1 ? pickedBase : '';
+      } else if (openBase && subjectsCache.filter(s => baseCode(s.code) === openBase).length < 2) {
+        // Thư mục đang mở vừa biến mất sau khi tải lại (bị xoá / còn 1 môn) thì lùi ra ngoài.
+        openBase = '';
+      }
       renderSubjects();
       syncSubjectTexts();
     } finally {
@@ -482,7 +569,7 @@ export function installSubjectGate() {
     syncGateUserInfo();
     gateOn(true);
     closeAccountMenu();
-    refreshSubjects(true);
+    refreshSubjects(true, true);
   }
   function closeGate() {
     localStorage.setItem('learninghub_subject_gate_open_v1', 'false');
@@ -828,6 +915,7 @@ export function installSubjectCountsCache() {
     try {
       const res = await fetch('/api/subjects?ts=' + now, { cache: 'no-store' });
       const j = await res.json().catch(() => ({}));
+      rememberFolderNewBadges(j); // SUBJECT_FOLDER_NEW_BADGE_20260729
       const map = {};
       (j.data || []).forEach(r => {
         map[String(r.code || '').toUpperCase()] = Number(r.question_count ?? r.questions_count ?? r.count ?? 0);

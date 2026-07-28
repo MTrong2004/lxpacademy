@@ -203,7 +203,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "8a039a5" : null;
+  var currentVersion = true ? "8fc66a0" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -236,10 +236,18 @@
     }
     if (remoteVersion !== currentVersion) {
       updateDetected = true;
-      showUpdateNotification(remoteVersion);
+      showUpdateNotification();
     }
   }
-  function showUpdateNotification(newVersion) {
+  function showAdminReloadNotice() {
+    showUpdateNotification({
+      title: "H\u1EC7 th\u1ED1ng v\u1EEBa c\u1EADp nh\u1EADt",
+      sub: "H\xE3y t\u1EA3i l\u1EA1i trang \u0111\u1EC3 l\u1EA5y d\u1EEF li\u1EC7u v\xE0 giao di\u1EC7n m\u1EDBi nh\u1EA5t"
+    });
+  }
+  function showUpdateNotification(opts) {
+    const title = opts?.title || "C\xF3 phi\xEAn b\u1EA3n m\u1EDBi";
+    const sub = opts?.sub || "C\u1EADp nh\u1EADt \u0111\u1EC3 t\u1EA3i giao di\u1EC7n v\xE0 d\u1EEF li\u1EC7u m\u1EDBi nh\u1EA5t";
     if (document.getElementById("lhUpdateBanner")) return;
     const styleId = "lhUpdateBannerStyles";
     if (!document.getElementById(styleId)) {
@@ -378,8 +386,8 @@
       </svg>
     </div>
     <div class="lh-update-content">
-      <span class="lh-update-title">C\xF3 phi\xEAn b\u1EA3n m\u1EDBi</span>
-      <span class="lh-update-sub">C\u1EADp nh\u1EADt \u0111\u1EC3 t\u1EA3i giao di\u1EC7n v\xE0 d\u1EEF li\u1EC7u m\u1EDBi nh\u1EA5t</span>
+      <span class="lh-update-title"></span>
+      <span class="lh-update-sub"></span>
     </div>
     <div class="lh-update-actions">
       <button id="lhUpdateReloadBtn" class="lh-update-btn" type="button">C\u1EADp nh\u1EADt ngay</button>
@@ -391,6 +399,8 @@
       </button>
     </div>
   `;
+    banner.querySelector(".lh-update-title").textContent = title;
+    banner.querySelector(".lh-update-sub").textContent = sub;
     document.body.appendChild(banner);
     document.getElementById("lhUpdateReloadBtn")?.addEventListener("click", () => {
       window.location.reload();
@@ -443,7 +453,14 @@
       blocked: p.get("blocked") === "1",
       fail: p.get("fail") || "",
       // '500' | '401' | '403' | ''
-      subject: (p.get("subject") || "MOCK1").toUpperCase()
+      subject: (p.get("subject") || "MOCK1").toUpperCase(),
+      /*
+        ADMIN_TWO_TIERS_20260729: vai admin trong mock mặc định là ADMIN HỆ THỐNG (đổi được
+        cấu hình Discord). Thêm `&sysadmin=0` để giả lập ADMIN THƯỜNG — cần thiết vì hai cấp
+        này nhìn khác nhau và bug hay nằm ở nhánh "bị hạn chế".
+      */
+      systemAdmin: role === "admin" && p.get("sysadmin") !== "0",
+      reloadNotice: p.get("reload_notice") === "1"
     };
   }
   var MOCK_USER = {
@@ -471,6 +488,7 @@
     ["MOCK1_C3", "Ch\u01B0\u01A1ng 3", 8],
     ["MOCK1_C4", "Ch\u01B0\u01A1ng 4 t\xEAn r\u1EA5t d\xE0i \u0111\u1EC3 ki\u1EC3m tra tr\xE0n ch\u1EEF", 20]
   ];
+  var mockFolderNewBadges = ["MOCK1"];
   function mockSubjects() {
     const make = (id, code, name, count) => ({
       id,
@@ -486,6 +504,7 @@
       count
     });
     return {
+      folder_new_badges: [...mockFolderNewBadges],
       data: [
         make(1, "MOCK1", "M\xF4n Mock M\u1ED9t", 4),
         make(2, "MOCK2", "M\xF4n Mock Hai", 2),
@@ -559,9 +578,79 @@
       subjects,
       subject_requests: [],
       deleted_questions: [],
-      deleted_subjects: []
+      deleted_subjects: [],
+      folder_new_badges: [...mockFolderNewBadges],
+      // SUBJECT_FOLDER_NEW_BADGE_20260729
+      // ADMIN_TWO_TIERS_AND_DISCORD_TOGGLES_20260729: khớp đúng các khoá api/controllers/admin.js
+      // gắn thêm vào response (TẦNG TRÊN CÙNG, không bọc trong `data`).
+      is_system_admin: !!opts.systemAdmin,
+      admin_tier: opts.systemAdmin ? "system" : opts.role === "admin" ? "normal" : null,
+      discord_notifications: { ...mockDiscordSettings },
+      discord_notification_kinds: MOCK_DISCORD_KINDS
     };
   }
+  var MOCK_DISCORD_KINDS = [
+    { key: "login", label: "\u0110\u0103ng nh\u1EADp", description: "C\xF3 ng\u01B0\u1EDDi \u0111\u0103ng nh\u1EADp web h\u1ECDc ho\u1EB7c trang admin.", default: true },
+    {
+      key: "action",
+      label: "H\xE0nh \u0111\u1ED9ng c\u1EE7a admin / editor",
+      description: "Duy\u1EC7t, t\u1EEB ch\u1ED1i, block, \u0111\u1ED5i vai tr\xF2, xo\xE1 m\xF4n\u2026 m\u1ED7i thao t\xE1c m\u1ED9t tin.",
+      default: true
+    },
+    {
+      key: "edit_request",
+      label: "Y\xEAu c\u1EA7u s\u1EEDa c\xE2u h\u1ECFi",
+      description: "Ng\u01B0\u1EDDi h\u1ECDc g\u1EEDi b\xE1o c\xE1o / \u0111\u1EC1 xu\u1EA5t s\u1EEDa m\u1ED9t c\xE2u h\u1ECFi.",
+      default: true
+    },
+    {
+      key: "question_edit",
+      label: "N\u1ED9i dung c\xE2u h\u1ECFi b\u1ECB \u0111\u1ED5i (admin th\u01B0\u1EDDng / editor)",
+      description: "Admin th\u01B0\u1EDDng ho\u1EB7c editor th\xEAm / s\u1EEDa / xo\xE1 / \u1EA9n m\u1ED9t c\xE2u h\u1ECFi, k\u1EC3 c\u1EA3 khi duy\u1EC7t y\xEAu c\u1EA7u s\u1EEDa. Thao t\xE1c c\u1EE7a admin h\u1EC7 th\u1ED1ng KH\xD4NG g\u1EEDi tin (\u0111\u1EE1 t\u1EF1 b\xE1o cho ch\xEDnh m\xECnh).",
+      default: true
+    },
+    {
+      key: "new_user",
+      label: "Ng\u01B0\u1EDDi d\xF9ng m\u1EDBi \u0111\u0103ng k\xFD",
+      description: "C\xF3 t\xE0i kho\u1EA3n Google m\u1EDBi v\xE0o h\u1EC7 th\u1ED1ng \u2014 k\xE8m tr\u1EA1ng th\xE1i ch\u1EDD duy\u1EC7t hay \u0111\u01B0\u1EE3c duy\u1EC7t t\u1EF1 \u0111\u1ED9ng.",
+      default: true
+    },
+    {
+      key: "role_change",
+      label: "\u0110\u1ED5i quy\u1EC1n / kho\xE1 ng\u01B0\u1EDDi d\xF9ng",
+      description: "C\u1EA5p ho\u1EB7c g\u1EE1 admin / editor, kho\xE1 \u2013 m\u1EDF kho\xE1, duy\u1EC7t \u2013 t\u1EEB ch\u1ED1i \u2013 thu h\u1ED3i duy\u1EC7t t\xE0i kho\u1EA3n.",
+      default: true
+    },
+    {
+      key: "destructive",
+      label: "Thao t\xE1c n\u1EB7ng tr\xEAn m\xF4n h\u1ECDc (xo\xE1 / \u0111\u1ED5i m\xE3)",
+      description: "Xo\xE1 m\xF4n, xo\xE1 v\u0129nh vi\u1EC5n m\xF4n k\xE8m to\xE0n b\u1ED9 c\xE2u h\u1ECFi, \u0111\u1ED5i m\xE3 m\xF4n.",
+      default: true
+    },
+    {
+      key: "subject_request",
+      label: "Y\xEAu c\u1EA7u th\xEAm m\xF4n c\u1EE7a ng\u01B0\u1EDDi h\u1ECDc",
+      description: "Ng\u01B0\u1EDDi h\u1ECDc g\u1EEDi m\u1ED9t m\xF4n m\u1EDBi ch\u1EDD admin duy\u1EC7t.",
+      default: true
+    },
+    {
+      key: "server_error",
+      label: "L\u1ED7i server (500)",
+      description: "API n\xE9m exception (tr\u1EA3 500 INTERNAL_ERROR). C\xF9ng m\u1ED9t l\u1ED7i ch\u1EC9 g\u1EEDi 1 tin m\u1ED7i 5 ph\xFAt, l\u1EA7n g\u1EEDi sau k\xE8m s\u1ED1 l\u1EA7n \u0111\xE3 b\u1ECB d\u1ED3n \u2014 tr\xE1nh spam khi l\u1ED7i l\u1EB7p li\xEAn t\u1EE5c.",
+      default: true
+    }
+  ];
+  var mockDiscordSettings = {
+    login: true,
+    action: true,
+    edit_request: true,
+    question_edit: true,
+    new_user: true,
+    role_change: true,
+    destructive: true,
+    subject_request: true,
+    server_error: true
+  };
   var SUBJECT_KEY = "learninghub_subject_code_merged_v1";
   var QCACHE_PREFIX = "learninghub_questions_cache_v2_";
   function seedMockSubject(opts) {
@@ -647,7 +736,7 @@
       headers: { "Content-Type": "application/json" }
     });
   }
-  function mockApiResponse(pathname, query, opts) {
+  function mockApiResponse(pathname, query, opts, body) {
     if (opts.fail === "500") {
       return jsonResponse({ error: "L\u1ED7i gi\u1EA3 l\u1EADp", code: "INTERNAL_ERROR" }, 500);
     }
@@ -669,7 +758,7 @@
         return jsonResponse(mockQuestions(subject));
       }
       case "profile":
-        return jsonResponse({ data: mockProfile(opts) });
+        return jsonResponse({ data: mockProfile(opts), reload_notice: !!opts.reloadNotice });
       case "settings":
         return jsonResponse({ data: { maintenance: false, announcement: "" } });
       case "my-edit-requests":
@@ -680,8 +769,29 @@
         return jsonResponse(mockAdminDashboard(opts));
       case "notify":
         return jsonResponse({ ok: true });
-      case "admin-action":
+      case "admin-action": {
+        const action = String(body?.action || "");
+        if (action === "set_discord_notifications") {
+          if (!opts.systemAdmin) {
+            return jsonResponse(
+              { error: "Ch\u1EC9 admin h\u1EC7 th\u1ED1ng m\u1EDBi \u0111\u01B0\u1EE3c \u0111\u1ED5i c\u1EA5u h\xECnh n\xE0y", code: "INSUFFICIENT_ROLE" },
+              403
+            );
+          }
+          const next2 = body?.payload?.notifications || {};
+          for (const k of MOCK_DISCORD_KINDS) {
+            if (Object.prototype.hasOwnProperty.call(next2, k.key)) mockDiscordSettings[k.key] = !!next2[k.key];
+          }
+          return jsonResponse({ ok: true, notifications: { ...mockDiscordSettings }, mock: true });
+        }
+        if (action === "set_subject_folder_new_badge") {
+          const base = String(body?.payload?.base || "").toUpperCase();
+          if (!base) return jsonResponse({ error: "Thi\u1EBFu m\xE3 g\u1ED1c th\u01B0 m\u1EE5c" }, 400);
+          mockFolderNewBadges = body?.payload?.enabled ? [.../* @__PURE__ */ new Set([...mockFolderNewBadges, base])] : mockFolderNewBadges.filter((x) => x !== base);
+          return jsonResponse({ ok: true, folder_new_badges: [...mockFolderNewBadges], mock: true });
+        }
         return jsonResponse({ ok: true, data: null, mock: true });
+      }
       default:
         return jsonResponse({ error: `Route gi\u1EA3 l\u1EADp ch\u01B0a h\u1ED7 tr\u1EE3: ${route}`, code: "NOT_FOUND" }, 404);
     }
@@ -735,7 +845,15 @@
       const method = (init2?.method || "GET").toUpperCase();
       const label = query.get("subject_code") ? ` (${query.get("subject_code")})` : "";
       console.log(`[MOCK] ${method} ${pathname}${label} -> d\u1EEF li\u1EC7u gi\u1EA3`);
-      return mockApiResponse(pathname, query, opts);
+      let body = null;
+      if (init2?.body && typeof init2.body === "string") {
+        try {
+          body = JSON.parse(init2.body);
+        } catch (e) {
+          lhWarn("MOCK:body", e);
+        }
+      }
+      return mockApiResponse(pathname, query, opts, body);
     };
   }
   if (isMockMode()) installMockNetwork();
@@ -1089,7 +1207,6 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
         </div>` : "";
       box.innerHTML = `
       <div class="examOnlyStart">
-        <div class="examOnlyBadge">KI\u1EC2M TRA</div>
         <div class="examOnlyLabel">M\xF4n \u0111ang h\u1ECDc</div>
         ${activeCard || '<span style="color:var(--mist)">Ch\u01B0a ch\u1ECDn m\xF4n h\u1ECDc</span>'}
         ${extraChips ? `<div class="examOnlyLabel">G\u1ED9p th\xEAm m\xF4n <span style="font-weight:400;color:var(--mist);font-size:.85rem">(ch\u1ECDn th\xEAm m\xF4n c\xF9ng m\xE3 \u0111\u1EC3 g\u1ED9p \u0111\u1EC1)</span></div><div class="examSubjectChips" id="examSubjectChipsExtra">${extraChips}</div>` : ""}
@@ -3658,6 +3775,14 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
   }
 
   // src/student/subjectGate.js
+  var folderNewBadges = /* @__PURE__ */ new Set();
+  function rememberFolderNewBadges(json) {
+    if (!json || !Array.isArray(json.folder_new_badges)) return;
+    folderNewBadges = new Set(json.folder_new_badges.map((x) => String(x || "").toUpperCase()));
+  }
+  function isNewFolder(base) {
+    return folderNewBadges.has(String(base || "").toUpperCase());
+  }
   function installSubjectGate() {
     const HUB_URL = window.APP_CONFIG?.SUPABASE_URL || "";
     const HUB_KEY = window.APP_CONFIG?.SUPABASE_ANON_KEY || "";
@@ -3890,6 +4015,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         const res = await fetch("/api/subjects?ts=" + Date.now(), { cache: "no-store" });
         const json = await res.json().catch(() => ({}));
         if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c subjects t\u1EEB Turso");
+        rememberFolderNewBadges(json);
         const rows = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
         if (!rows.length) return fallbackSubjects();
         rows.sort(
@@ -3962,7 +4088,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     }
     function folderHTML(g) {
       const total = groupTotal(g);
-      const isNew = g.items.some(isNewSubject);
+      const isNew = isNewFolder(g.base);
       const holdsPicked = g.items.some((s) => s.code === pickedCode);
       const names = esc2(g.items.map((s) => displayCode(s.code)).join(" \xB7 "));
       const title = `${esc2(g.base)} \u2014 ${g.items.length} m\xF4n \xB7 ${total} c\xE2u&#10;${names}`;
@@ -3984,6 +4110,49 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       <span class="subjectFolderBarMeta">${g.items.length} m\xF4n \xB7 ${groupTotal(g).toLocaleString("vi-VN")} c\xE2u</span>
     </div>`;
     }
+    function tabsBar() {
+      return document.getElementById("subjectGateTabsBar");
+    }
+    function folderCrumbHost() {
+      const bar = tabsBar();
+      if (!bar) return null;
+      let host = $2("subjectFolderCrumb");
+      if (!host) {
+        host = document.createElement("div");
+        host.id = "subjectFolderCrumb";
+        host.className = "subjectFolderCrumb hidden";
+        (bar.querySelector(".subjectGateTabsLeft") || bar).appendChild(host);
+      }
+      return host;
+    }
+    function folderMetaHost() {
+      const bar = tabsBar();
+      if (!bar) return null;
+      let host = $2("subjectFolderCrumbMeta");
+      if (!host) {
+        host = document.createElement("span");
+        host.id = "subjectFolderCrumbMeta";
+        host.className = "subjectFolderCrumbMeta hidden";
+        bar.appendChild(host);
+      }
+      return host;
+    }
+    function syncFolderCrumb(g) {
+      const crumb = folderCrumbHost();
+      const meta2 = folderMetaHost();
+      if (!crumb || !meta2) return false;
+      crumb.classList.toggle("hidden", !g);
+      meta2.classList.toggle("hidden", !g);
+      if (!g) {
+        crumb.innerHTML = "";
+        meta2.textContent = "";
+        return true;
+      }
+      crumb.innerHTML = `<button class="subjectFolderBack" type="button" data-folder-back="1">\u2190 T\u1EA5t c\u1EA3 m\xF4n</button>
+      <span class="subjectFolderBarCode">${esc2(g.base)}</span>`;
+      meta2.textContent = `${g.items.length} m\xF4n \xB7 ${groupTotal(g).toLocaleString("vi-VN")} c\xE2u`;
+      return true;
+    }
     function renderSubjects2() {
       const list = $2("subjectList");
       if (!list) return;
@@ -3995,8 +4164,11 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       const openGroup = q ? null : groups.find((g) => g.base === openBase && g.items.length > 1) || null;
       if (!q && !openGroup) openBase = "";
       list.classList.toggle("inFolder", !!openGroup);
+      const crumbDone = syncFolderCrumb(openGroup);
+      document.body.classList.toggle("lh-in-subject-folder", !!openGroup && crumbDone);
       if (q) list.innerHTML = arr.map(card).join("");
-      else if (openGroup) list.innerHTML = folderBarHTML(openGroup) + openGroup.items.map(card).join("");
+      else if (openGroup)
+        list.innerHTML = (crumbDone ? "" : folderBarHTML(openGroup)) + openGroup.items.map(card).join("");
       else list.innerHTML = groups.map((g) => g.items.length < 2 ? g.items.map(card).join("") : folderHTML(g)).join("");
       $2("subjectEmpty")?.classList.toggle("hidden", !!arr.length);
       list.querySelectorAll(".subjectCard").forEach(
@@ -4012,7 +4184,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
           list.scrollTop = 0;
         }
       );
-      list.querySelectorAll("[data-folder-back]").forEach(
+      document.querySelectorAll("#subjectGate [data-folder-back]").forEach(
         (x) => x.onclick = () => {
           openBase = "";
           renderSubjects2();
@@ -4022,7 +4194,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       applyPicked();
     }
     let lastRefreshTime = 0;
-    async function refreshSubjects(force = false) {
+    async function refreshSubjects(force = false, autoOpenPickedFolder = false) {
       const now = Date.now();
       if (!force && now - lastRefreshTime < 2e3) {
         return;
@@ -4035,8 +4207,12 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         subjectsCache = await getSubjects();
         if (!pickedCode && subjectCode()) pickedCode = subjectCode();
         if (!pickedCode && subjectsCache[0]) pickedCode = subjectsCache[0].code;
-        const pickedBase = baseCode(pickedCode);
-        openBase = subjectsCache.filter((s) => baseCode(s.code) === pickedBase).length > 1 ? pickedBase : "";
+        if (autoOpenPickedFolder) {
+          const pickedBase = baseCode(pickedCode);
+          openBase = subjectsCache.filter((s) => baseCode(s.code) === pickedBase).length > 1 ? pickedBase : "";
+        } else if (openBase && subjectsCache.filter((s) => baseCode(s.code) === openBase).length < 2) {
+          openBase = "";
+        }
         renderSubjects2();
         syncSubjectTexts2();
       } finally {
@@ -4055,7 +4231,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       syncGateUserInfo();
       gateOn(true);
       closeAccountMenu();
-      refreshSubjects(true);
+      refreshSubjects(true, true);
     }
     function closeGate() {
       localStorage.setItem("learninghub_subject_gate_open_v1", "false");
@@ -4359,6 +4535,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       try {
         const res = await fetch("/api/subjects?ts=" + now, { cache: "no-store" });
         const j = await res.json().catch(() => ({}));
+        rememberFolderNewBadges(j);
         const map = {};
         (j.data || []).forEach((r) => {
           map[String(r.code || "").toUpperCase()] = Number(r.question_count ?? r.questions_count ?? r.count ?? 0);
@@ -5666,6 +5843,33 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         window.lhRevalidateAccess("realtime:" + (reason || "status_changed"));
       }
     }
+    let globalRealtimeChannel = null;
+    function subscribeGlobalRealtime() {
+      if (globalRealtimeChannel) return;
+      try {
+        const supa = window.HODSupabase?.__client;
+        if (!supa || typeof supa.channel !== "function") return;
+        globalRealtimeChannel = supa.channel("lh-global");
+        globalRealtimeChannel.on("broadcast", { event: "reload_notice" }, () => {
+          window.lhHandleReloadNotice?.();
+        });
+        globalRealtimeChannel.subscribe((status) => {
+          if (status === "SUBSCRIBED") console.log("[Realtime] \u0111\xE3 theo d\xF5i k\xEAnh chung lh-global");
+        });
+      } catch (e) {
+        lhWarn("RELOAD_NOTICE_REALTIME_20260729", e);
+        globalRealtimeChannel = null;
+      }
+    }
+    function unsubscribeGlobalRealtime() {
+      if (!globalRealtimeChannel) return;
+      try {
+        globalRealtimeChannel.unsubscribe();
+      } catch (e) {
+        lhWarn("RELOAD_NOTICE_REALTIME_20260729", e);
+      }
+      globalRealtimeChannel = null;
+    }
     function subscribeUserStatusRealtime(userId) {
       if (!userId || statusRealtimeChannel) return;
       try {
@@ -5674,6 +5878,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         statusRealtimeChannel = supa.channel("user-status-" + userId);
         statusRealtimeChannel.on("broadcast", { event: "status_changed" }, (msg) => {
           const data = msg?.payload || {};
+          if (data.reason === "reload_notice") window.lhHandleReloadNotice?.();
           onRealtimeSignal(data.reason);
         });
         statusRealtimeChannel.subscribe((status) => {
@@ -5702,6 +5907,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     window.addEventListener("lh:profile-ready", () => {
       const u = window.HODSupabase?.getUser?.();
       if (u?.id) subscribeUserStatusRealtime(u.id);
+      subscribeGlobalRealtime();
     });
     let activeProfilePromise = null;
     async function loadProfile(force = false, checkOnly = false) {
@@ -5747,10 +5953,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
             throw new Error(json.error || `Kh\xF4ng ki\u1EC3m tra \u0111\u01B0\u1EE3c quy\u1EC1n (HTTP ${res.status})`);
           }
           currentProfile = json.data || json.profile || json;
-          if (json.force_logout || currentProfile?.force_logout) {
-            await forceLogoutNow();
-            return null;
-          }
+          if (checkOnly && json.reload_notice) showReloadNoticeNow();
           if (truthyFlag(currentProfile?.blocked)) {
             handleAccessRevoked("T\xE0i kho\u1EA3n \u0111\xE3 b\u1ECB kh\xF3a", "BLOCKED");
             return null;
@@ -5861,31 +6064,21 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       if (error) return alert(error.message);
       alert("\u0110\xE3 t\u1EA1o t\xE0i kho\u1EA3n. N\u1EBFu Supabase y\xEAu c\u1EA7u x\xE1c nh\u1EADn email, h\xE3y x\xE1c nh\u1EADn r\u1ED3i \u0111\u0103ng nh\u1EADp.");
     }
-    async function forceLogoutNow(reason) {
-      if (window.__LH_FORCE_LOGGING_OUT) return;
-      window.__LH_FORCE_LOGGING_OUT = true;
+    function showReloadNoticeNow() {
+      if (window.__LH_RELOAD_NOTICE_SHOWN) return;
+      window.__LH_RELOAD_NOTICE_SHOWN = true;
       try {
-        purgeOfflineQuestionCache();
+        if (typeof window.lhShowReloadNotice === "function") window.lhShowReloadNotice();
       } catch (e) {
-        lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
+        lhWarn("RELOAD_NOTICE_CLIENT_20260729", e);
       }
-      try {
-        await signOut();
-      } catch (e) {
-        console.warn("[forceLogout] signOut failed:", e);
-      }
-      try {
-        alert(reason || "B\u1EA1n \u0111\xE3 \u0111\u01B0\u1EE3c qu\u1EA3n tr\u1ECB vi\xEAn \u0111\u0103ng xu\u1EA5t kh\u1ECFi h\u1EC7 th\u1ED1ng.");
-      } catch (e) {
-        lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
-      }
-      location.reload();
     }
-    window.lhForceLogout = forceLogoutNow;
+    window.lhHandleReloadNotice = showReloadNoticeNow;
     async function signOut() {
       if (!client) return;
       try {
         unsubscribeUserStatusRealtime();
+        unsubscribeGlobalRealtime();
       } catch (e) {
         lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
       }
@@ -6572,6 +6765,10 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         document.querySelector(".subjectGateSubline"),
         document.querySelector(".subjectGateTools"),
         $2("subjectGateSearchWrap"),
+        // SUBJECT_FOLDER_BAR_IN_TABS_20260729: thanh thư mục nay nằm TRONG hàng tab, nên phải
+        // nằm trong danh sách ẩn/hiện này — không thì "← Tất cả môn" còn nổi ở tab Thêm môn mới.
+        $2("subjectFolderCrumb"),
+        $2("subjectFolderCrumbMeta"),
         $2("subjectList"),
         $2("subjectLoading"),
         $2("subjectError"),
@@ -8003,9 +8200,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           })
         });
         const json = await res.json().catch(() => ({}));
-        if (json && (json.force_logout || json.data?.force_logout)) {
-          if (typeof window.lhForceLogout === "function") window.lhForceLogout();
-          else location.reload();
+        if (json && (json.reload_notice || json.data?.reload_notice)) {
+          window.lhHandleReloadNotice?.();
         }
       } catch (e) {
         console.warn("[last_activity]", e);
@@ -8038,11 +8234,11 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           })
         });
         const json = await res.json().catch(() => ({}));
-        if (json && (json.force_logout || json.data?.force_logout)) {
-          if (typeof window.lhForceLogout === "function") window.lhForceLogout();
-          else location.reload();
+        if (json && (json.reload_notice || json.data?.reload_notice)) {
+          window.lhHandleReloadNotice?.();
         }
       } catch (e) {
+        lhWarn("RELOAD_NOTICE_POLL_20260729", e);
       }
     }, 6e4);
   })();
@@ -12562,6 +12758,70 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       if (exp && Date.now() / 1e3 > exp - 10) return "";
       return tok.trim();
     }
+    function storedSession() {
+      try {
+        var url = window.APP_CONFIG && window.APP_CONFIG.SUPABASE_URL || "";
+        var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
+        var keys = [];
+        if (m) keys.push("sb-" + m[1] + "-auth-token");
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i);
+          if (k && k.slice(0, 3) === "sb-" && k.slice(-11) === "-auth-token" && keys.indexOf(k) === -1) keys.push(k);
+        }
+        for (var j = 0; j < keys.length; j++) {
+          var raw = localStorage.getItem(keys[j]);
+          if (!raw) continue;
+          var v = JSON.parse(raw);
+          var s = v && v.currentSession ? v.currentSession : v;
+          if (s && (s.access_token || s.refresh_token)) return s;
+        }
+      } catch (e) {
+        lhWarn("LH_SESSION_REFRESH_20260729", e);
+      }
+      return null;
+    }
+    function hasRefreshToken() {
+      var s = storedSession();
+      return !!(s && typeof s.refresh_token === "string" && s.refresh_token.length > 0);
+    }
+    function authClient() {
+      try {
+        var c = window.HODSupabase && window.HODSupabase.__client;
+        return c && c.auth ? c : null;
+      } catch (e) {
+        return null;
+      }
+    }
+    function freshTokenOf(session) {
+      if (!session) return "";
+      var tok = session.access_token;
+      if (!validToken(tok)) return "";
+      if (session.expires_at && Date.now() / 1e3 > session.expires_at - 10) return "";
+      return tok.trim();
+    }
+    var refreshInFlight = null;
+    function lhRefreshToken() {
+      if (refreshInFlight) return refreshInFlight;
+      var c = authClient();
+      if (!c || !hasRefreshToken()) return Promise.resolve("");
+      refreshInFlight = Promise.resolve().then(function() {
+        return c.auth.getSession();
+      }).then(function(r) {
+        var tok = freshTokenOf(r && r.data && r.data.session);
+        if (tok) return tok;
+        return c.auth.refreshSession().then(function(r2) {
+          return freshTokenOf(r2 && r2.data && r2.data.session);
+        });
+      }).catch(function(e) {
+        lhWarn("LH_SESSION_REFRESH_20260729", e);
+        return "";
+      }).then(function(tok) {
+        refreshInFlight = null;
+        return tok;
+      });
+      return refreshInFlight;
+    }
+    window.__lhRefreshAccessToken = lhRefreshToken;
     function lhToken() {
       try {
         var url = window.APP_CONFIG && window.APP_CONFIG.SUPABASE_URL || "";
@@ -12671,6 +12931,30 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         dispatchDenial(res.status === 401 ? "UNAUTHORIZED" : "PENDING_APPROVAL", null);
       });
     }
+    function withAuth(input, init2, tok, force) {
+      try {
+        if (input instanceof Request) {
+          if (tok && (force || !input.headers.has("Authorization"))) {
+            var h = new Headers(input.headers);
+            h.set("Authorization", "Bearer " + tok);
+            input = new Request(input, { headers: h });
+          }
+          return [input, init2];
+        }
+        init2 = init2 ? Object.assign({}, init2) : {};
+        var hh = new Headers(init2.headers || {});
+        if (tok && (force || !hh.has("Authorization"))) hh.set("Authorization", "Bearer " + tok);
+        init2.headers = hh;
+        if (!init2.signal && typeof window.getLhApiSignal === "function") {
+          var sig = window.getLhApiSignal();
+          if (sig) init2.signal = sig;
+        }
+        return [input, init2];
+      } catch (e) {
+        console.warn("[LH fetch] kh\xF4ng g\u1EAFn \u0111\u01B0\u1EE3c Authorization:", e);
+        return [input, init2];
+      }
+    }
     window.fetch = function(input, init2) {
       var url = toUrl(input);
       var method = methodOf(input, init2);
@@ -12684,32 +12968,29 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             })
           );
         }
+        var retrySrc = input instanceof Request ? input.clone() : input;
+        var retryInit = init2;
         var tok = lhToken();
-        try {
-          if (input instanceof Request) {
-            if (tok && !input.headers.has("Authorization")) {
-              var h = new Headers(input.headers);
-              h.set("Authorization", "Bearer " + tok);
-              input = new Request(input, { headers: h });
+        var pre = tok || !hasRefreshToken() ? Promise.resolve(tok) : lhRefreshToken();
+        return pre.then(function(token) {
+          return originalFetch.apply(null, withAuth(input, init2, token)).then(function(res) {
+            if (url.pathname.indexOf("/api/version.json") !== -1) return res;
+            if (res.status === 401) {
+              return lhRefreshToken().then(function(fresh) {
+                if (!fresh || fresh === token) {
+                  inspectDenial(res);
+                  return res;
+                }
+                var args = withAuth(retrySrc, retryInit, fresh, true);
+                return originalFetch.apply(null, args).then(function(res2) {
+                  if (res2.status === 401 || res2.status === 403) inspectDenial(res2);
+                  return res2;
+                });
+              });
             }
-          } else {
-            init2 = init2 ? Object.assign({}, init2) : {};
-            var hh = new Headers(init2.headers || {});
-            if (tok && !hh.has("Authorization")) hh.set("Authorization", "Bearer " + tok);
-            init2.headers = hh;
-            if (!init2.signal && typeof window.getLhApiSignal === "function") {
-              var sig = window.getLhApiSignal();
-              if (sig) init2.signal = sig;
-            }
-          }
-        } catch (e) {
-          console.warn("[LH fetch] kh\xF4ng g\u1EAFn \u0111\u01B0\u1EE3c Authorization:", e);
-        }
-        return originalFetch(input, init2).then(function(res) {
-          if ((res.status === 401 || res.status === 403) && url.pathname.indexOf("/api/version.json") === -1) {
-            inspectDenial(res);
-          }
-          return res;
+            if (res.status === 403) inspectDenial(res);
+            return res;
+          });
         });
       }
       var ttl = url ? restTtl(url, method) : 0;
@@ -13290,6 +13571,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
   var mocking = installMock();
   if (!mocking) clearMockLeftovers();
   if (!mocking) initVersionChecker();
+  window.lhShowReloadNotice = showAdminReloadNotice;
   window.getDeviceTypeString = getDeviceTypeString2;
   window.getSubjectCode = getSubjectCode;
   window.setSubjectHelper = setSubject;

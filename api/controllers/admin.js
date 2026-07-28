@@ -1,7 +1,41 @@
 import { db, json } from '../lib/db.js';
-import { checkUserAccess, getAdminEmail, roleColor, clearProfileCache, broadcastRealtimeUserStatus, isRootAdmin } from '../lib/auth.js';
+import { checkUserAccess, getAdminEmail, roleColor, clearProfileCache, broadcastRealtimeUserStatus, broadcastRealtimeGlobal, isRootAdmin, isSystemAdmin, getSystemAdminEmails } from '../lib/auth.js';
 import { clearQuestionsCache } from './questions.js';
 import { clearSubjectsCache } from './subjects.js';
+import { getDiscordSettings, saveDiscordSettings, postDiscordEmbed, DISCORD_NOTIFICATION_KINDS, SETTINGS_KEY } from '../lib/discord.js';
+import { getFolderNewBadges, setFolderNewBadge, FOLDER_NEW_BADGE_KEY } from '../lib/folderBadges.js';
+
+/*
+  QUESTION_EDIT_DISCORD_20260729
+  Nhãn tiếng Việt cho từng thao tác đụng vào nội dung câu hỏi. Khoá là `actionName` mà
+  logAdminAction nhận được (toggle_question ghi log thành show_question / hide_question).
+*/
+const QUESTION_EDIT_LABELS = {
+  approve_request: 'Duyệt yêu cầu sửa của người học',
+  save_question_direct: 'Sửa + lưu trực tiếp',
+  add_question: 'Thêm câu mới',
+  delete_question: 'Xoá câu (vào thùng rác)',
+  restore_question: 'Khôi phục câu từ thùng rác',
+  permanent_delete_question: 'Xoá vĩnh viễn câu',
+  show_question: 'Hiện lại câu',
+  hide_question: 'Ẩn câu'
+};
+
+/* DISCORD_ACTION_KINDS_20260729 — nhãn cho tin `role_change` và `destructive`. */
+const ROLE_CHANGE_LABELS = {
+  block_user: 'Khoá tài khoản',
+  unblock_user: 'Mở khoá tài khoản',
+  set_user_role: 'Đổi vai trò',
+  approve_user_registration: 'Duyệt tài khoản',
+  reject_user_registration: 'Từ chối + xoá tài khoản',
+  revoke_user_approval: 'Thu hồi duyệt'
+};
+
+const DESTRUCTIVE_LABELS = {
+  delete_subject: 'Xoá môn (còn khôi phục được từ thùng rác)',
+  permanent_delete_subject: 'Xoá vĩnh viễn môn + toàn bộ câu hỏi',
+  rename_subject_code: 'Đổi mã môn'
+};
 
 function parseJson(v, fallback) {
   if (v === null || v === undefined || v === '') return fallback;
@@ -63,8 +97,22 @@ export async function handleAdminDashboard(req, authUser) {
   const access = await checkUserAccess(authUser, 'staff');
   if (!access.ok) return json({ error: access.error, code: access.code }, access.status);
 
+  /*
+    ADMIN_TWO_TIERS_20260729 + DISCORD_NOTIFICATION_TOGGLES_20260729
+    Cấp admin phụ thuộc NGƯỜI ĐANG GỌI nên không được nằm trong _adminDashCache (cache dùng
+    chung cho mọi staff). Vì vậy tính riêng rồi gắn vào response ở cả hai nhánh cache.
+  */
+  const viewer = {
+    is_system_admin: isSystemAdmin(access.profile?.email),
+    admin_tier: isSystemAdmin(access.profile?.email) ? 'system' : access.profile?.role === 'admin' ? 'normal' : null
+  };
+  const discord = {
+    discord_notifications: await getDiscordSettings(),
+    discord_notification_kinds: DISCORD_NOTIFICATION_KINDS
+  };
+
   if (_adminDashCache && Date.now() - _adminDashCacheAt < _ADMIN_DASH_CACHE_TTL) {
-    return json(_adminDashCache);
+    return json({ ..._adminDashCache, ...discord, ...viewer });
   }
 
   const [profiles, questions, requests, history, logs, subjects, subject_requests, deleted_questions, deleted_subjects] = await Promise.all([
@@ -79,7 +127,12 @@ export async function handleAdminDashboard(req, authUser) {
     db.execute('select * from deleted_subjects order by deleted_at desc')
   ]);
 
+  // SUBJECT_FOLDER_NEW_BADGE_20260729: nằm trong `data` (được cache) là an toàn vì MỌI
+  // admin-action đều xoá _adminDashCache, kể cả set_subject_folder_new_badge.
+  const folder_new_badges = await getFolderNewBadges();
+
   const data = {
+    folder_new_badges,
     profiles: profiles.rows || [],
     questions: questions.rows || [],
     requests: requests.rows || [],
@@ -93,7 +146,7 @@ export async function handleAdminDashboard(req, authUser) {
 
   _adminDashCache = data;
   _adminDashCacheAt = Date.now();
-  return json(data);
+  return json({ ...data, ...discord, ...viewer });
 }
 
 export async function handleAdminAction(req, authUser) {
@@ -135,6 +188,8 @@ export async function handleAdminAction(req, authUser) {
   const isConfiguredAdmin = !!adminEmail && !!userProfile?.email && String(userProfile.email).toLowerCase().trim() === adminEmail;
   const isEditorOrAdmin = ['admin', 'editor'].includes(userProfile?.role);
   const isAdminRole = userProfile?.role === 'admin';
+  // ADMIN_TWO_TIERS_20260729: cấp bậc lấy theo email trong profile Turso (đã verify token).
+  const isSysAdmin = isSystemAdmin(userProfile?.email);
 
   const ADMIN_ONLY_ACTIONS = new Set([
     'toggle_user_block',
@@ -142,8 +197,8 @@ export async function handleAdminAction(req, authUser) {
     'approve_user_registration',
     'reject_user_registration',
     'revoke_user_approval',
-    'force_logout_user',
-    'force_logout_all',
+    'notify_reload_user',
+    'notify_reload_all',
     'set_registration_mode',
     'approve_subject_request',
     'reject_subject_request',
@@ -154,21 +209,42 @@ export async function handleAdminAction(req, authUser) {
   ]);
 
   /*
+    ADMIN_TWO_TIERS_20260729 — chỉ ADMIN HỆ THỐNG được đổi cấu hình thông báo Discord.
+    Admin thường bị chặn ngay ở đây, không chỉ ẩn nút bên client: client chỉ là gợi ý,
+    server mới là chốt.
+  */
+  const SYSTEM_ADMIN_ONLY_ACTIONS = new Set(['set_discord_notifications']);
+
+  /*
     checkUserAccess() ở trên đã đảm bảo approved === 1 && blocked === 0, nên ở
     đây chỉ còn phải quyết định VAI TRÒ. `add_subject_request` là hành động của
     người học nên mọi tài khoản đã duyệt đều gọi được.
   */
   const isAllowedAction = act === 'add_subject_request'
     ? true
-    : ADMIN_ONLY_ACTIONS.has(act)
-      ? (isConfiguredAdmin || isAdminRole)
-      : (isConfiguredAdmin || isEditorOrAdmin);
+    : SYSTEM_ADMIN_ONLY_ACTIONS.has(act)
+      ? isSysAdmin
+      : ADMIN_ONLY_ACTIONS.has(act)
+        ? (isConfiguredAdmin || isAdminRole)
+        : (isConfiguredAdmin || isEditorOrAdmin);
 
   if (!isAllowedAction) {
-    return json({ error: 'Bạn không có quyền thực hiện thao tác này', code: 'INSUFFICIENT_ROLE' }, 403);
+    const err = SYSTEM_ADMIN_ONLY_ACTIONS.has(act)
+      ? 'Chỉ admin hệ thống mới được đổi cấu hình này'
+      : 'Bạn không có quyền thực hiện thao tác này';
+    return json({ error: err, code: 'INSUFFICIENT_ROLE' }, 403);
   }
 
-  if (['toggle_user_block', 'set_user_role', 'revoke_user_approval', 'reject_user_registration', 'force_logout_user'].includes(act)) {
+  /*
+    DISCORD_ACTION_KINDS_20260729: giữ lại email/vai trò cũ của người bị tác động để tin
+    `role_change` nói được "ai" thay vì chỉ có uuid. Dùng chính lần đọc đã có sẵn ở hàng rào
+    Root Admin dưới đây, KHÔNG thêm lượt đọc Turso nào.
+    (approve_user_registration không nằm trong danh sách này nên tin của nó chỉ có id — đúng,
+    vì hàng rào Root Admin không cần đọc gì cho thao tác duyệt.)
+  */
+  let targetUserInfo = null;
+
+  if (['toggle_user_block', 'set_user_role', 'revoke_user_approval', 'reject_user_registration'].includes(act)) {
     const targetId = payload?.target_user_id;
     if (targetId) {
       const targetRes = await db.execute({
@@ -176,6 +252,7 @@ export async function handleAdminAction(req, authUser) {
         args: [targetId]
       });
       const targetProfile = targetRes.rows?.[0];
+      targetUserInfo = targetProfile || null;
       if (isRootAdmin(targetId, targetProfile?.email)) {
         return json({ error: 'Không thể hạ quyền, khóa hoặc xóa Root Admin.', code: 'PROTECTED_ROOT_ADMIN' }, 403);
       }
@@ -184,6 +261,119 @@ export async function handleAdminAction(req, authUser) {
 
   const adminEmailStr = userProfile?.email || 'N/A';
   const now = new Date().toISOString();
+
+  /*
+    DISCORD_ACTION_KINDS_20260729 (mở rộng QUESTION_EDIT_DISCORD_20260729)
+    Ba loại tin Discord đều bám vào MỘT chốt là logAdminAction, không rải vào từng case: mọi
+    action đều đã gọi hàm này, nên action thêm sau này chỉ cần thêm tên vào đúng Set là có tin.
+
+      · question_edit — nội dung câu hỏi bị đổi. CỐ Ý bỏ qua admin hệ thống (đỡ tự báo cho
+        chính mình); admin thường / editor thì báo.
+      · role_change   — quyền hoặc trạng thái tài khoản bị đổi. Báo với MỌI cấp, kể cả admin
+        hệ thống: đây là vết cần giữ đủ.
+      · destructive   — xoá môn / xoá vĩnh viễn / đổi mã môn. Cũng báo với mọi cấp.
+
+    Việc bật/tắt do postDiscordEmbed(_, kind) lo (công tắc ở trang admin).
+  */
+  const _ROLE_CHANGE_ACTIONS = new Set([
+    'block_user',
+    'unblock_user',
+    'set_user_role',
+    'approve_user_registration',
+    'reject_user_registration',
+    'revoke_user_approval'
+  ]);
+  const _DESTRUCTIVE_ACTIONS = new Set(['delete_subject', 'permanent_delete_subject', 'rename_subject_code']);
+
+  const actorLine = () => {
+    const role = userProfile?.role || 'user';
+    const tier = isSysAdmin ? 'admin hệ thống' : role === 'admin' ? 'admin thường' : role;
+    return `Người thực hiện: **${adminEmailStr}** | Cấp: \`${tier}\``;
+  };
+  const timeField = () => ({
+    name: 'Thời gian',
+    value: new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }),
+    inline: false
+  });
+
+  const notifyDiscordForAction = async (actionName, targetId, details) => {
+    const role = userProfile?.role || 'user';
+    const d = details || {};
+
+    if (_QUESTION_MUTATIONS.has(act) && !isSysAdmin) {
+      const where =
+        d.subject_code || d.num ? `\`${d.subject_code || '?'}\` · câu **${d.num ?? '?'}**` : '_không rõ môn/số câu_';
+      await postDiscordEmbed(
+        {
+          title: `📝 CÂU HỎI BỊ ĐỔI: ${QUESTION_EDIT_LABELS[actionName] || actionName}`,
+          color: roleColor(role),
+          description: actorLine(),
+          fields: [
+            { name: 'Thao tác', value: `\`${actionName}\``, inline: true },
+            { name: 'ID câu hỏi', value: `\`${d.question_id ?? targetId ?? 'N/A'}\``, inline: true },
+            { name: 'Vị trí', value: where, inline: false },
+            timeField()
+          ],
+          footer: { text: 'Learning Hub · Thay đổi nội dung câu hỏi' },
+          timestamp: now
+        },
+        'question_edit'
+      );
+      return;
+    }
+
+    if (_ROLE_CHANGE_ACTIONS.has(actionName)) {
+      const fields = [
+        { name: 'Thao tác', value: `\`${actionName}\``, inline: true },
+        { name: 'Người bị tác động', value: targetUserInfo?.email || `\`${targetId}\``, inline: true }
+      ];
+      if (d.role) fields.push({ name: 'Vai trò mới', value: `\`${d.role}\``, inline: true });
+      if (targetUserInfo?.role) fields.push({ name: 'Vai trò cũ', value: `\`${targetUserInfo.role}\``, inline: true });
+      fields.push({ name: 'ID', value: `\`${targetId}\``, inline: false }, timeField());
+      await postDiscordEmbed(
+        {
+          title: `🔐 QUYỀN NGƯỜI DÙNG: ${ROLE_CHANGE_LABELS[actionName] || actionName}`,
+          color: roleColor(role),
+          description: actorLine(),
+          fields,
+          footer: { text: 'Learning Hub · Quyền & trạng thái tài khoản' },
+          timestamp: now
+        },
+        'role_change'
+      );
+      return;
+    }
+
+    if (_DESTRUCTIVE_ACTIONS.has(actionName)) {
+      const fields = [{ name: 'Thao tác', value: `\`${actionName}\``, inline: true }];
+      if (actionName === 'rename_subject_code') {
+        fields.push({ name: 'Mã cũ → mã mới', value: `\`${d.old_code}\` → \`${d.new_code}\``, inline: true });
+      } else {
+        fields.push({ name: 'Môn', value: `\`${d.code || '?'}\``, inline: true });
+      }
+      if (d.questions !== undefined) {
+        fields.push({ name: 'Số câu kéo theo', value: String(d.questions), inline: true });
+      }
+      fields.push(timeField());
+      await postDiscordEmbed(
+        {
+          title:
+            actionName === 'permanent_delete_subject'
+              ? '☠️ XOÁ VĨNH VIỄN MÔN + TOÀN BỘ CÂU HỎI'
+              : `⚠️ MÔN HỌC: ${DESTRUCTIVE_LABELS[actionName] || actionName}`,
+          color: actionName === 'permanent_delete_subject' ? 14431557 : 16297114,
+          description:
+            actionName === 'permanent_delete_subject'
+              ? `${actorLine()}\n**KHÔNG khôi phục được.**`
+              : actorLine(),
+          fields,
+          footer: { text: 'Learning Hub · Thao tác nặng trên môn học' },
+          timestamp: now
+        },
+        'destructive'
+      );
+    }
+  };
 
   const logAdminAction = async (actionName, targetType, targetId, details = {}) => {
     try {
@@ -194,6 +384,12 @@ export async function handleAdminAction(req, authUser) {
       });
     } catch (logErr) {
       console.warn('Logging failed:', logErr);
+    }
+    // Discord gửi SAU khi đã ghi log: webhook lỗi thì cũng không được làm mất dòng log.
+    try {
+      await notifyDiscordForAction(actionName, targetId, details);
+    } catch (notifyErr) {
+      console.warn('[discord action notify] không gửi được:', notifyErr?.message || notifyErr);
     }
   };
 
@@ -227,7 +423,7 @@ export async function handleAdminAction(req, authUser) {
   // thấy nhãn cũ tới 5 phút. Bổ sung luôn restore_question/restore_subject/
   // permanent_delete_subject vì trước đây khôi phục/xoá xong vẫn phục vụ dữ liệu cũ.
   const _QUESTION_MUTATIONS = new Set(['approve_request', 'save_question_direct', 'add_question', 'delete_question', 'toggle_question', 'permanent_delete_question', 'restore_question']);
-  const _SUBJECT_MUTATIONS = new Set(['add_subject', 'delete_subject', 'approve_subject_request', 'set_subject_new_badge', 'reorder_subjects', 'move_subject', 'rename_subject_code', 'edit_subject', 'restore_subject', 'permanent_delete_subject']);
+  const _SUBJECT_MUTATIONS = new Set(['add_subject', 'delete_subject', 'approve_subject_request', 'set_subject_new_badge', 'set_subject_folder_new_badge', 'reorder_subjects', 'move_subject', 'rename_subject_code', 'edit_subject', 'restore_subject', 'permanent_delete_subject']);
   /*
     ADMIN_DASH_CACHE_USER_ACTIONS_20260726
     Bug: cache dashboard CHỈ được xoá cho mutation câu hỏi/môn. Các thao tác trên
@@ -305,7 +501,13 @@ export async function handleAdminAction(req, authUser) {
         ]
       });
 
-      await logAdminAction('approve_request', 'edit_requests', request_id, { question_id: request.question_id });
+      // QUESTION_EDIT_DISCORD_20260729: subject_code/num đi kèm để tin Discord (và cả dòng
+      // log) nói được "môn nào, câu số bao nhiêu" thay vì chỉ có id.
+      await logAdminAction('approve_request', 'edit_requests', request_id, {
+        question_id: request.question_id,
+        subject_code: new_data.subject_code ?? old_data.subject_code ?? request.subject_code,
+        num: new_data.num ?? old_data.num ?? request.num
+      });
       return json({ ok: true });
     }
 
@@ -355,7 +557,11 @@ export async function handleAdminAction(req, authUser) {
         ]
       });
 
-      await logAdminAction('save_question_direct', 'questions', question_id);
+      await logAdminAction('save_question_direct', 'questions', question_id, {
+        question_id,
+        subject_code: new_data?.subject_code ?? old_data?.subject_code,
+        num: new_data?.num ?? old_data?.num
+      });
       return json({ ok: true });
     }
 
@@ -409,7 +615,11 @@ export async function handleAdminAction(req, authUser) {
         ]
       });
 
-      await logAdminAction('add_question', 'questions', newId);
+      await logAdminAction('add_question', 'questions', newId, {
+        question_id: newId,
+        subject_code: subjectCode,
+        num: finalNum
+      });
       return json({ ok: true, id: newId });
     }
 
@@ -433,7 +643,11 @@ export async function handleAdminAction(req, authUser) {
         args: [question_id, JSON.stringify(q), now, user_id, adminEmailStr]
       });
 
-      await logAdminAction('delete_question', 'questions', question_id);
+      await logAdminAction('delete_question', 'questions', question_id, {
+        question_id,
+        subject_code: q.subject_code,
+        num: q.num
+      });
       return json({ ok: true });
     }
 
@@ -581,6 +795,22 @@ export async function handleAdminAction(req, authUser) {
       });
       await logAdminAction('set_subject_new_badge', 'subjects', id, { enabled: !!enabled });
       return json({ ok: true });
+    }
+
+    /*
+      SUBJECT_FOLDER_NEW_BADGE_20260729 — NEW của THƯ MỤC (mã gốc) là cờ riêng, KHÔNG ghi gì
+      vào các môn con. Đổi cờ này không làm môn con bật/tắt NEW và ngược lại.
+      payload: { base: 'MLN122', enabled: bool }
+    */
+    case 'set_subject_folder_new_badge': {
+      const { base, enabled } = payload;
+      if (!String(base || '').trim()) return json({ error: 'Thiếu mã gốc thư mục' }, 400);
+      const folders = await setFolderNewBadge(base, !!enabled, user_id);
+      await logAdminAction('set_subject_folder_new_badge', 'site_settings', FOLDER_NEW_BADGE_KEY, {
+        base: String(base).toUpperCase(),
+        enabled: !!enabled
+      });
+      return json({ ok: true, folder_new_badges: folders });
     }
 
     case 'move_subject': {
@@ -896,42 +1126,50 @@ export async function handleAdminAction(req, authUser) {
       return json({ ok: true, realtime_delivered: out.realtime_delivered });
     }
 
-    case 'force_logout_user': {
+    /*
+      RELOAD_NOTICE_20260729 — thay cho force_logout_user / force_logout_all.
+      Admin KHÔNG đá người dùng ra nữa: chỉ đặt cờ reload_notice để client hiện banner
+      "Có bản cập nhật — Tải lại", đúng như khi deploy bản mới. Không huỷ phiên, không
+      alert, người dùng tự bấm tải lại khi thuận tiện.
+
+      Cờ trong DB lo cho người đang offline; broadcast realtime lo cho người đang mở web.
+    */
+    case 'notify_reload_user': {
       const { target_user_id } = payload;
       const targetId = String(target_user_id || '').trim();
       if (!targetId) return json({ error: 'Missing target_user_id' }, 400);
 
-      const targetRes = await db.execute({
-        sql: 'select email from profiles where id = ?',
-        args: [targetId]
-      });
-      const targetProfile = targetRes.rows?.[0];
-      const targetIsAdmin = adminEmail && targetProfile?.email &&
-        String(targetProfile.email).toLowerCase().trim() === adminEmail;
-      if (targetIsAdmin) {
-        return json({ error: 'Không thể đăng xuất tài khoản admin gốc.', code: 'PROTECTED_ROOT_ADMIN' }, 403);
-      }
-
       const out = await applyUserStatusChange(
         targetId,
-        'update profiles set force_logout = 1 where id = ?',
+        'update profiles set reload_notice = 1 where id = ?',
         [targetId],
-        'force_logout'
+        'reload_notice'
       );
       if (!out.ok) return out.res;
-      await logAdminAction('force_logout_user', 'profiles', targetId);
+      await logAdminAction('notify_reload_user', 'profiles', targetId);
       return json({ ok: true, realtime_delivered: out.realtime_delivered });
     }
 
-    case 'force_logout_all': {
-      await db.execute({
-        sql: 'update profiles set force_logout = 1 where email != ?',
-        args: [adminEmail || '']
+    case 'notify_reload_all': {
+      // Trừ chính người bấm — không có lý do gì tự nhắc mình tải lại.
+      const r = await db.execute({
+        sql: 'update profiles set reload_notice = 1 where id != ?',
+        args: [user_id]
       });
-
-      await logAdminAction('force_logout_all', 'profiles', 'all');
       clearProfileCache(); // clear toàn bộ cache
-      return json({ ok: true });
+      const delivered = await broadcastRealtimeGlobal('reload_notice', { reason: 'admin_notify_all' });
+      await logAdminAction('notify_reload_all', 'profiles', 'all', { affected: r?.rowsAffected ?? null });
+      return json({ ok: true, affected: r?.rowsAffected ?? null, realtime_delivered: delivered });
+    }
+
+    /*
+      DISCORD_NOTIFICATION_TOGGLES_20260729 — CHỈ admin hệ thống (chặn ở
+      SYSTEM_ADMIN_ONLY_ACTIONS phía trên). payload: { notifications: { login: bool, ... } }
+    */
+    case 'set_discord_notifications': {
+      const next = await saveDiscordSettings(payload?.notifications ?? payload);
+      await logAdminAction('set_discord_notifications', 'site_settings', SETTINGS_KEY, next);
+      return json({ ok: true, notifications: next });
     }
 
     case 'toggle_question': {
@@ -961,19 +1199,44 @@ export async function handleAdminAction(req, authUser) {
 
     case 'add_subject_request': {
       const { code, name, description, questions_data } = payload;
+      const reqCode = code.toUpperCase().trim();
       await db.execute({
         sql: `insert into subject_requests (code, name, description, questions_data, user_id, user_email, status, created_at)
               values (?, ?, ?, ?, ?, ?, 'pending', ?)`,
-        args: [
-          code.toUpperCase().trim(),
-          name,
-          description || '',
-          toJsonText(questions_data, []),
-          user_id,
-          adminEmailStr,
-          now
-        ]
+        args: [reqCode, name, description || '', toJsonText(questions_data, []), user_id, adminEmailStr, now]
       });
+      /*
+        SUBJECT_REQUEST_DISCORD_20260729
+        Case này là thao tác của NGƯỜI HỌC (xem isAllowedAction ở đầu hàm) nên không ghi
+        admin_logs, tức là không đi qua chốt notifyDiscordForAction — phải gọi thẳng ở đây.
+        Cùng loại việc "có cái đang chờ duyệt" như new_user: không nhắc thì môn nằm im.
+      */
+      try {
+        const qCount = Array.isArray(questions_data) ? questions_data.length : null;
+        await postDiscordEmbed(
+          {
+            title: '📚 YÊU CẦU THÊM MÔN MỚI',
+            color: 6323595,
+            description: `**${adminEmailStr}** gửi một môn chờ duyệt — trang admin → Yêu cầu thêm môn.`,
+            fields: [
+              { name: 'Mã môn', value: `\`${reqCode}\``, inline: true },
+              { name: 'Tên môn', value: String(name || '_không có_').slice(0, 200), inline: true },
+              { name: 'Số câu kèm theo', value: qCount === null ? '_không rõ_' : String(qCount), inline: true },
+              { name: 'Người gửi', value: adminEmailStr, inline: false },
+              {
+                name: 'Thời gian',
+                value: new Date(now).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }),
+                inline: false
+              }
+            ],
+            footer: { text: 'Learning Hub · Yêu cầu thêm môn' },
+            timestamp: now
+          },
+          'subject_request'
+        );
+      } catch (notifyErr) {
+        console.warn('[subject_request discord] không gửi được:', notifyErr?.message || notifyErr);
+      }
       return json({ ok: true });
     }
 

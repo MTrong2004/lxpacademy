@@ -1,24 +1,12 @@
 import { db, json } from '../lib/db.js';
 import { checkUserAccess, loadProfileRow, roleColor, getAdminEmail } from '../lib/auth.js';
+// DISCORD_NOTIFICATION_TOGGLES_20260729: bản chung, tự kiểm tra loại 'edit_request' có bật.
+import { postDiscordEmbed } from '../lib/discord.js';
 
 function parseJson(v, fallback) {
   if (v === null || v === undefined || v === '') return fallback;
   if (typeof v !== 'string') return v;
   try { return JSON.parse(v); } catch { return fallback; }
-}
-
-async function postDiscordEmbed(embed) {
-  const webhookUrl = (process.env.DISCORD_WEBHOOK_URL || '').trim().replace(/(^['"]|['"]$)/g, '');
-  if (!webhookUrl) return;
-  try {
-    await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embeds: [embed] })
-    });
-  } catch (e) {
-    console.warn('Discord notify failed:', e);
-  }
 }
 
 function discordText(value, fallback = 'N/A', maxLength = 1000) {
@@ -93,7 +81,7 @@ async function notifyQuestionChange({ profile, authUser, title, questionNum, sub
     image: newImgUrl ? { url: newImgUrl } : undefined,
     footer: { text: `Learning Hub · Yêu cầu chỉnh sửa · ${new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}` },
     timestamp: new Date().toISOString()
-  });
+  }, 'edit_request');
 }
 
 export async function handleEditRequests(req, authUser) {

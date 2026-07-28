@@ -28,7 +28,31 @@ Frontend thuần JS (không framework), API Vercel Edge, DB Turso, auth Supabase
    (hiện 33 hàm bị xếp lớp) và báo đỏ khi số lớp TĂNG. Dọn bớt được thì hạ mốc bằng
    `npm run check:overrides -- --update` — mốc chỉ đi xuống, không đi lên.
 4. **Không dùng `catch` rỗng.** Dùng `lhWarn('TÊN_BLOCK', e)` (xem phần Debug).
-5. **Không đụng Discord webhook** trong appCore/adminCore.
+5. **Không đụng Discord webhook** trong appCore/adminCore. URL webhook chỉ đọc từ env
+   `DISCORD_WEBHOOK_URL` ở server. Muốn tắt bớt thông báo thì dùng công tắc ở trang admin
+   **Thông báo Discord** (`api/lib/discord.js`), đừng xoá lời gọi trong code.
+   Thêm loại mới = khai báo trong `DISCORD_NOTIFICATION_KINDS` (**nhớ copy sang
+   `MOCK_DISCORD_KINDS` + `mockDiscordSettings` của `src/core/mock.js`**) rồi truyền đúng
+   `kind` khi gọi `postDiscordEmbed` — trang admin tự sinh công tắc. Cấu hình cũ trong DB
+   thiếu khoá mới thì `normalizeDiscordSettings` lấy `default` của khoá đó (đang là bật).
+
+   **9 loại và chỗ bắn tin:**
+
+   | `kind` | Bắn ở đâu |
+   |---|---|
+   | `login`, `action` | `api/controllers/notify.js` — do **CLIENT** gọi `/api/notify`, chặn request là mất tin |
+   | `edit_request` | `api/controllers/editRequests.js` (người học gửi báo cáo/đề xuất sửa) |
+   | `question_edit`, `role_change`, `destructive` | **một chốt duy nhất** trong `logAdminAction` của `api/controllers/admin.js` (`notifyDiscordForAction`) — thêm action mới chỉ cần thêm tên vào đúng `Set` |
+   | `subject_request` | case `add_subject_request` — case này là thao tác của người học nên KHÔNG ghi `admin_logs`, phải gọi thẳng |
+   | `new_user` | `api/controllers/profile.js`, nhánh `else` (chưa có dòng trong `profiles`), gửi **trước** `accessDenialResponse` vì ca chờ duyệt trả 403 |
+   | `server_error` | `postServerErrorEmbed` ở **BA** chốt 500: `api/index.js` (catch chung), `api/controllers/profile.js` (catch riêng), `api/lib/auth.js: checkUserAccess` (trả object, không ném nên chốt chung không thấy) |
+
+   Hai điều cố ý, đừng "sửa lại":
+   - **`question_edit` im lặng với admin hệ thống** (`QUESTION_EDIT_DISCORD_20260729`): chỉ bắn
+     khi người sửa là admin thường / editor. Admin hệ thống tự sửa câu rồi không thấy tin là
+     ĐÚNG. `role_change` và `destructive` thì bắn với MỌI cấp.
+   - **`server_error` gộp tin**: mỗi chữ ký lỗi (endpoint + thông điệp) 1 tin / 5 phút, tin sau
+     kèm số lần đã dồn. Turso sập không làm nổ kênh Discord.
 6. **Ảnh chỉ lưu URL** (Cloudinary), không bao giờ nhúng base64 vào DB.
 
 ## Sửa một lỗi thì gõ `/fix <mô tả lỗi>`
@@ -100,6 +124,27 @@ quãng trước khi `install*()` chạy).
 - Routes (`api/index.js`): `subjects`, `questions`, `profile`, `edit-requests`,
   `my-edit-requests`, `staff-edit-requests`, `settings`, `notify`, `admin-dashboard`,
   `admin-action`. Tất cả trừ `settings` đều cần token.
+- **Hai cấp admin** (`ADMIN_TWO_TIERS_20260729`, `api/lib/auth.js`): *admin hệ thống* là
+  email trong `getSystemAdminEmails()` — mặc định `trongbm2004@gmail.com` +
+  `trongbm1009@gmail.com`, đổi được bằng env `SYSTEM_ADMIN_EMAILS` (phân cách dấu phẩy);
+  *admin thường* là `role='admin'` trong Turso. Khác nhau duy nhất: chỉ admin hệ thống đổi
+  được cấu hình thông báo Discord (`SYSTEM_ADMIN_ONLY_ACTIONS` trong `admin-action`).
+  Cấp bậc do SERVER tính theo email đã verify và trả về ở khoá `is_system_admin` của
+  `/api/admin-dashboard`; client chỉ dùng để vẽ giao diện: chip header của admin hệ thống
+  màu **TÍM** (`.chip.isSystemAdmin` + `body.role-system-admin` trong `admin.css`, biến
+  `--purple`/`--purple2`), admin thường giữ màu vàng của cả trang.
+- **401 KHÔNG đăng xuất ngay: làm mới token rồi thử lại một lần**
+  (`LH_SESSION_REFRESH_20260729`, lớp fetch duy nhất trong appCore). `access_token` Supabase
+  sống 1 giờ, `refresh_token` sống hàng chục ngày. Trước đây token hết hạn →
+  `readTokenFromStorage` trả `''` → server 401 → `handleAccessRevoked('UNAUTHORIZED')` gọi
+  `signOut()`, nên **rời web lâu quay lại là phải chọn lại mail Google** dù phiên chưa hết thật
+  (máy sleep / tab bị treo thì timer tự làm mới của supabase-js không kịp chạy trước request
+  đầu tiên). Nay: token thiếu/hết hạn mà còn `refresh_token` thì `lhRefreshToken()`
+  (`getSession()` → fallback `refreshSession()`) chạy TRƯỚC khi gọi; gặp 401 thì làm mới rồi
+  gọi lại đúng một lần với `withAuth(..., force = true)`. Chỉ khi làm mới cũng thất bại (hoặc
+  trả lại y nguyên token cũ) mới coi là `UNAUTHORIZED`. Nhiều request 401 cùng lúc dùng chung
+  một lần làm mới (`refreshInFlight`). Không có `refresh_token` thì không gọi refresh — giữ
+  đúng hành vi cũ. Đừng bỏ `input.clone()` ở `retrySrc`: body của `Request` chỉ đọc được một lần.
 - **Mã lỗi API có ý nghĩa cố định:** `401 UNAUTHORIZED` = chưa/hết phiên;
   `403 PENDING_APPROVAL | BLOCKED | INSUFFICIENT_ROLE` = quyền thật sự không đủ;
   `500 INTERNAL_ERROR` = **không kết luận được quyền**, client phải hiện "thử lại",
@@ -126,6 +171,8 @@ Không cần DB, không cần Google login, không ghi gì thật (`admin-action
 | `localhost:3000/?mock=1` | Thư viện / Flashcard / Kiểm tra với môn MOCK1 (4 câu), MOCK2 (2 câu) + 4 môn "chương" MOCK1_C1…C4 (34/12/8/20 câu) để test khối **"Gộp thêm môn"** và **khoảng câu** của tab Kiểm tra (MOCK2 khác mã gốc nên không hiện trong khối gộp) |
 | `?mock=1&role=admin` (hoặc `editor`) | Quyền mở dashboard |
 | `admin.html?mock=1&role=admin` | Trang admin **dùng được thật** — mock cấp phiên giả nên `isEditor()` đúng, `cache.*` có dữ liệu (Quản lý môn học, Câu hỏi, Người dùng…) |
+| `admin.html?mock=1&role=admin&sysadmin=0` | Giả lập **admin thường**: trang "Thông báo Discord" chỉ xem, công tắc bị khoá (mặc định vai admin trong mock là admin hệ thống) |
+| `?mock=1&reload_notice=1` | Banner "Hệ thống vừa cập nhật — Cập nhật ngay" (nhắc tải lại). Banner hiện ở lần xác minh quyền, không phải ngay lúc mở trang — gọi `lhRevalidateAccess('test')` trong Console cho nhanh |
 | `?mock=1&pending=1` / `&blocked=1` | Đúng hai màn 403 khác nhau: "Chờ phê duyệt" vs "Tài khoản bị khóa" |
 | `?mock=1&fail=500` | 500 phải ra fallback "thử lại", KHÔNG được coi là mất quyền |
 | `?mock=1&subject=MOCK2` | Đổi môn mặc định |
@@ -171,6 +218,52 @@ Năm điều dễ làm sai khi sửa file này:
 
 ## Quyết định sản phẩm (đừng "sửa lại" thành bug)
 
+- **Trang admin KHÔNG còn tab "Câu hỏi"** (xoá 20260729, chốt với chủ dự án). Nút nav
+  `data-page="questions"` vốn đã bị `n.remove()` từ trước nên cả trang không có đường vào;
+  nay xoá hẳn ~870 dòng: danh sách/phân trang/lọc môn, **thêm câu, sửa trực tiếp + upload
+  Cloudinary, ẩn/hiện, xoá câu**. Sửa câu hỏi giờ chỉ đi qua duyệt "Yêu cầu sửa" của học
+  sinh. Cũng xoá khối **"Thêm môn học bằng AI"** (`openAddSubjectAI` không có nút gọi).
+  **Nguyên văn code đã xoá: `docs/REMOVED_20260729.md`** — đừng thêm lại nếu không có yêu
+  cầu rõ ràng.
+- **Admin KHÔNG đăng xuất người dùng nữa** (`RELOAD_NOTICE_20260729`). Hai nút cũ
+  ("Đăng xuất tất cả" / "Đăng xuất người này") đổi thành **nhắc tải lại trang**:
+  `notify_reload_all` / `notify_reload_user` đặt cờ `profiles.reload_notice`, client hiện
+  đúng banner "Hệ thống vừa cập nhật — Cập nhật ngay" của `src/core/versionChecker.js`.
+  Người dùng **giữ nguyên phiên đăng nhập, không có alert chặn màn hình**. Đừng thêm lại
+  `signOut()` vào luồng này.
+  - Đường đi: cờ trong DB lo cho người offline (đọc ở `/api/profile`, cờ **dùng một lần**),
+    realtime lo cho người đang mở web — kênh riêng `user-status-<id>` (reason
+    `reload_notice`) cho một người, kênh chung `lh-global` cho tất cả.
+  - `loadProfile` bản đầy đủ (lúc mở trang) **bỏ qua** cờ này: vừa tải mới xong thì nhắc
+    tải lại là vô nghĩa. Chỉ các lần xác minh lại (`check_only`) + ping hoạt động + polling
+    60s mới hiện banner.
+- **Panel "Quản lý môn học" KHÔNG còn tiêu đề / mô tả / nút "Tải lại môn"**
+  (`SUBJECT_ADMIN_COMPACT_HEAD_20260729`): cả ba đều trùng với header trang (tên trang +
+  `#refreshBtn`, mà `COPILOT_ADMIN_RELOAD_FIX_20260630` đã cho gọi lại `loadSubjectsAdmin` khi
+  đang ở trang này), bỏ đi để danh sách được thêm ~90px. CSS `.subjectAdminHead` đã xoá ở cả 4
+  chỗ (`admin.css` 2 rule + media query, `injectCompactSubjectStyle` và block polish trong
+  `adminCore.js`) — đừng thêm lại khối `.subjectAdminHead` vào `ensureSubjectAdminPage`.
+- **Tab Kiểm tra KHÔNG còn chip "KIỂM TRA"** (`EXAM_MERGE_LIST_TALLER_20260729`). Chip
+  `.examOnlyBadge` ở đầu `.examOnlyStart` nhắc lại đúng tên tab đang mở, nên bỏ khỏi
+  `exam.js`; hàng `badge` đã xoá khỏi **cả 4** `grid-template-areas` của
+  `#quiz .examOnlyStart` (2 bản desktop + 2 bản `max-width:760px`) — sót một cái là hàng đó
+  thành dòng grid ẩn và lệch cả bảng. Chip của **bảng kết quả** ("KẾT QUẢ KIỂM TRA", cùng
+  class) thì GIỮ. Cùng lúc bỏ `padding:24px` của `.examOnlyStart`: bảng không có nền riêng
+  nên padding đó chỉ cộng vào 18px của `.setup`. Hai việc này trả 80px cho danh sách
+  **"Gộp thêm môn"** → cap `max-height` nới từ `100vh - 380px` lên `100vh - 300px`
+  (màn cao 589/670/900 → 289/370/600px). Đừng hạ dưới 300px: `#quiz` là `overflow:hidden`
+  ở ≥901px nên tràn là cắt mất đáy khung, `-296px` đã thử và tràn 5px. Số đo + cách kiểm
+  lại ghi trong `app.css`, khối `EXAM_MERGE_LIST_TALL_COLUMN_20260728`.
+- **Email đang đăng nhập LUÔN hiện ở cổng chọn môn** (`GATE_EMAIL_KEEP_VISIBLE_20260729).
+  `@media (max-height:680px)` từng `display:none` cho `#subjectUserEmail` để "ép gọn theo chiều
+  cao", nhưng nó nằm CÙNG hàng flex với avatar 32px nên ẩn đi không tiết kiệm một pixel nào —
+  chỉ làm người dùng không biết mình đang đăng nhập bằng mail nào. Nay chỉ thu nhỏ + cắt bằng
+  `ellipsis`. Đừng ẩn lại.
+- **`closeModal` phải gọi qua `lhCloseModal()` trong inline `onclick`**
+  (`FIX_CLOSE_MODAL_INLINE_20260729`). `admin.html` có `<button id="closeModal">` nên
+  `window.closeModal` LÀ phần tử DOM đó → gọi trần `closeModal()` ném
+  "closeModal is not a function" và modal không đóng được. Đừng gán `window.closeModal`.
+
 - **App học sinh KHÔNG có chức năng xóa câu** (bỏ 20260727). Hai block
   `FINAL_DELETE_BUTTON_BESIDE_OPEN_20260614` và `FIX_DELETE_NO_TOGGLE_20260627` đã xóa khỏi
   `appCore.js`. Xóa câu chỉ làm ở **trang admin**; endpoint `delete_question` giữ cho admin.
@@ -186,19 +279,44 @@ Năm điều dễ làm sai khi sửa file này:
   Quy tắc mã gốc (`baseCode`/`baseOf`) nằm ở **BA chỗ phải khớp nhau**: `subjectGate.js`,
   `exam.js` (~96) và `adminCore.js` (block `COPILOT_COMPACT_DRAG_SUBJECT_ORDER_20260630`).
   - **Web học** (`subjectGate.js`): ngoài cùng là lưới thẻ — cụm ≥2 môn thành một
-    `.subjectFolderCard`, cụm 1 môn là thẻ trần. Bấm thư mục → `openBase` + thanh
-    `.subjectFolderBar` có nút "← Tất cả môn". Mở cổng lên thì thư mục chứa môn đang học
-    được mở sẵn. **Đang gõ tìm kiếm thì bỏ thư mục, trải phẳng kết quả**; xóa ô tìm kiếm
-    quay lại đúng thư mục cũ.
+    `.subjectFolderCard`, cụm 1 môn là thẻ trần. Bấm thư mục → `openBase`. Mở cổng lên thì
+    thư mục chứa môn đang học được mở sẵn. **Đang gõ tìm kiếm thì bỏ thư mục, trải phẳng kết
+    quả**; xóa ô tìm kiếm quay lại đúng thư mục cũ.
+  - **Thanh thư mục nằm TRONG hàng tab, không chiếm hàng riêng của lưới**
+    (`SUBJECT_FOLDER_BAR_IN_TABS_20260729`): `syncFolderCrumb` đặt nút "← Tất cả môn" + mã gốc
+    vào `#subjectFolderCrumb` (trong `.subjectGateTabsLeft`, cạnh tab "Danh sách môn học") và
+    "N môn · M câu" vào `#subjectFolderCrumbMeta` (bên phải ô tìm kiếm) — danh sách môn được
+    thêm ~65px. `folderBarHTML` (`.subjectFolderBar` trong lưới) chỉ còn là **bản dự phòng** cho
+    lúc `ensureSubjectGateTabs()` của appCore chưa dựng xong thanh tab; đừng xoá nó, cũng đừng
+    quay lại vẽ thanh vào lưới. Hai chỗ phải sửa kèm khi đổi: danh sách ẩn/hiện của
+    `__switchSubjectGateTab` (appCore ~2615, không thêm thì tab "Thêm môn mới" vẫn thấy nút lùi
+    ra) và `order:-1` ở `max-width:760px` (hàng tab cuộn ngang, để nguyên thứ tự thì nút
+    "← Tất cả môn" nằm ngoài màn hình).
+  - **Nút "Tải lại" giữ nguyên chỗ người dùng đang đứng**
+    (`SUBJECT_REFRESH_KEEP_FOLDER_20260729`): `refreshSubjects(force, autoOpenPickedFolder)` chỉ
+    mở sẵn thư mục của môn đang học khi `autoOpenPickedFolder = true` — và **chỉ `openGate()`
+    truyền true**. Trước đây `refreshSubjects` luôn tính lại `openBase` theo `pickedCode`, nên
+    đang đứng ở "Tất cả môn" mà bấm Tải lại là bị nhảy vào thư mục của môn đang học. Nếu thư
+    mục đang mở biến mất sau khi tải lại (bị xoá / còn 1 môn) thì tự lùi ra ngoài.
   - **Trang admin** (`renderSubjectAdminList`): ngoài cùng là hàng thư mục
-    `.subjectAdminFolder` (mã gốc, danh sách mã con, số môn, số câu, nút `NEW n/m`, nút Mở)
+    `.subjectAdminFolder` (mã gốc, danh sách mã con, số môn, số câu, nút `NEW`, nút Mở)
     xen với hàng môn lẻ; bấm Mở → `openSubjectFolderAdmin(base)`. Kéo thả ở ngoài đổi chỗ
     **cả khối thư mục**, ở trong đổi chỗ môn con — cả hai đều ghi lại `sort_order` phẳng
     1..N qua `commitGroupOrder` nên các môn cùng gốc luôn nằm liền nhau.
-  - **NEW của thư mục không lưu ở đâu cả** — thư mục chỉ là cách nhóm theo mã gốc, không
-    phải một dòng trong `subjects`. Trạng thái suy ra từ môn con (đủ cả = `isOn`, một phần =
-    `isPartial`), `toggleSubjectFolderNewBadge` bật/tắt lần lượt từng môn con qua
-    `set_subject_new_badge`. Thẻ thư mục bên web học hiện NEW khi **có ít nhất một** môn con bật.
+  - **NEW của thư mục là cờ RIÊNG** (`SUBJECT_FOLDER_NEW_BADGE_20260729`, thay cách cũ "suy ra
+    từ môn con"). Bấm NEW ở hàng thư mục **không đụng một môn con nào**, và bật NEW cho môn con
+    cũng không làm thẻ thư mục sáng — hai cờ độc lập, cố ý, đừng "sửa lại".
+    - Thư mục không phải một dòng trong `subjects`, nên cờ lưu ở `site_settings` khoá
+      `subject_folder_new_badges` = **JSON mảng mã gốc đang bật** (`api/lib/folderBadges.js`,
+      một dòng cho tất cả thư mục: đọc 1 query, ghi 1 query).
+    - Ghi qua action `set_subject_folder_new_badge` (`{base, enabled}`); quyền như
+      `set_subject_new_badge` (editor cũng được). Đọc: `/api/subjects` và `/api/admin-dashboard`
+      đều trả thêm khoá **`folder_new_badges`** ở tầng trên cùng → admin dùng
+      `cache.folder_new_badges`, web học dùng `folderNewBadges` (module `subjectGate.js`, nhặt từ
+      CẢ HAI chỗ gọi `/api/subjects`: `getSubjects` và `tursoCounts`).
+    - Cờ NEW của từng môn vẫn nằm trong `subjects.cover` (`set_subject_new_badge`) như cũ.
+    - `?mock=1` mặc định bật NEW cho thư mục MOCK1 trong khi mọi môn con đều tắt — đúng ca cần
+      kiểm; mock nhớ cờ trong phiên (`mockFolderNewBadges`).
   - Số cột `.subjectList`: 4 (>1500px) → 3 (≤1500) → 2 (≤1150) → 1 (≤760); thẻ cao 150px,
     134px khi màn ≤900px — đo để **luôn thấy đủ 3 hàng** mà không phải cuộn. Đổi số cột thì
     phải đo lại `.subjectCardDesc` (đang kẹp 2 dòng, xem `SUBJECT_DESC_LIMIT_20260728`).

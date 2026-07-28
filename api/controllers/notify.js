@@ -1,19 +1,8 @@
 import { json } from '../lib/db.js';
 import { roleColor, getAdminEmail, checkUserAccess } from '../lib/auth.js';
-
-async function postDiscordEmbed(embed) {
-  const webhookUrl = (process.env.DISCORD_WEBHOOK_URL || '').trim().replace(/(^['"]|['"]$)/g, '');
-  if (!webhookUrl) return;
-  try {
-    await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embeds: [embed] })
-    });
-  } catch (e) {
-    console.warn('Discord notify failed:', e);
-  }
-}
+// DISCORD_NOTIFICATION_TOGGLES_20260729: dùng bản chung ở api/lib/discord.js — nó tự kiểm
+// tra loại thông báo có đang bật hay không. Đừng gọi webhook trực tiếp ở đây nữa.
+import { postDiscordEmbed } from '../lib/discord.js';
 
 export async function handleNotify(req, authUser) {
   if (req.method !== 'POST') return json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, 405);
@@ -48,7 +37,7 @@ export async function handleNotify(req, authUser) {
       ],
       footer: { text: 'Learning Hub · Đăng nhập hệ thống' },
       timestamp: new Date().toISOString()
-    });
+    }, 'login');
     return json({ ok: true });
   }
 
@@ -74,7 +63,7 @@ export async function handleNotify(req, authUser) {
       ],
       footer: { text: 'Learning Hub · Hệ thống hành động' },
       timestamp: new Date().toISOString()
-    });
+    }, 'action');
     return json({ ok: true });
   }
 

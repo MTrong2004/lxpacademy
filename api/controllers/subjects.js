@@ -1,5 +1,6 @@
 import { db, json } from '../lib/db.js';
 import { checkUserAccess } from '../lib/auth.js';
+import { getFolderNewBadges } from '../lib/folderBadges.js';
 
 // OPTIM_TURSO_READS_20260726: Cache subjects query server-side.
 // Query này JOIN questions (full table scan) nên rất tốn reads.
@@ -36,7 +37,11 @@ export async function handleSubjects(req, authUser) {
           order by s.sort_order asc, s.code asc`
   });
   
+  // SUBJECT_FOLDER_NEW_BADGE_20260729: cờ NEW của thư mục là cờ riêng, không suy ra từ môn con.
+  const folder_new_badges = await getFolderNewBadges();
+
   const data = {
+    folder_new_badges,
     data: (r.rows || []).map(row => {
       const n = Number(row.question_count || 0);
       return {

@@ -9059,6 +9059,70 @@ body.add-question-modal-open #addQuestionFab::after {
   white-space: nowrap !important
 }
 
+/* SUBJECT_FOLDER_BAR_IN_TABS_20260729: thanh thư mục gộp vào hàng tab thay vì chiếm một hàng
+   riêng của lưới (tiết kiệm ~65px chiều cao). `#subjectFolderCrumb` nằm trong
+   `.subjectGateTabsLeft` cạnh tab "Danh sách môn học", `#subjectFolderCrumbMeta` nằm bên phải
+   ô tìm kiếm. Bản `.subjectFolderBar` trong lưới chỉ dùng khi chưa dựng được thanh tab. */
+#subjectFolderCrumb {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding-left: 8px !important;
+  margin-left: 2px !important;
+  border-left: 1px solid rgba(232, 212, 168, .16) !important
+}
+
+#subjectFolderCrumb.hidden {
+  display: none !important
+}
+
+#subjectFolderCrumb .subjectFolderBack {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 12px !important;
+  font-size: .74rem !important
+}
+
+#subjectFolderCrumb .subjectFolderBarCode {
+  padding: 4px 10px !important;
+  font-size: .74rem !important
+}
+
+#subjectFolderCrumbMeta {
+  margin-left: auto !important;
+  color: rgba(245, 240, 232, .56) !important;
+  font-size: .78rem !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important
+}
+
+#subjectFolderCrumbMeta.hidden {
+  display: none !important
+}
+
+/* Đã gộp lên hàng tab thì lưới không cần chừa chỗ cho thanh cũ nữa. */
+body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
+  margin-top: -8px !important;
+  padding-top: 12px !important
+}
+
+@media (max-width:760px) {
+  /* Hàng tab cuộn ngang trên mobile: để nguyên thứ tự thì "← Tất cả môn" nằm ngoài màn hình,
+     phải kéo ngang mới bấm được. Đẩy nó lên đầu hàng. */
+  #subjectFolderCrumb {
+    order: -1 !important;
+    padding-left: 0 !important;
+    padding-right: 8px !important;
+    margin-left: 0 !important;
+    border-left: none !important;
+    border-right: 1px solid rgba(232, 212, 168, .16) !important
+  }
+
+  #subjectFolderCrumbMeta {
+    display: none !important
+  }
+}
+
 /* SỐ CỘT: 4 cột là mốc chính (thẻ hẹp nhất ~305px ở panel 1360px), rồi hạ dần theo bề rộng.
    Mô tả chỉ còn kẹp 2 dòng nên 305px vẫn đọc được ~70 ký tự; phần bị cắt vẫn xem được ở
    tooltip `title` của thẻ. Đổi số cột thì đo lại `.subjectCardDesc` (xem SUBJECT_DESC_LIMIT). */
@@ -15677,14 +15741,13 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
 #quiz .examOnlyStart {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 1.12fr) !important;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto !important;
-  grid-template-areas: "badge badge" "subject merge" "counts merge" "custom merge" ". merge" "range range" "start start" !important;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto !important;
+  grid-template-areas: "subject merge" "counts merge" "custom merge" ". merge" "range range" "start start" !important;
   gap: 12px 18px !important;
   align-items: start !important
 }
 
 #quiz .examOnlyBadge {
-  grid-area: badge !important;
   width: max-content !important;
   margin: 0 !important;
   padding: 6px 12px !important;
@@ -15863,7 +15926,7 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
   #quiz .examOnlyStart {
     grid-template-columns: 1fr !important;
     grid-template-rows: none !important;
-    grid-template-areas: "badge" "subject" "merge" "counts" "custom" "range" "start" !important;
+    grid-template-areas: "subject" "merge" "counts" "custom" "range" "start" !important;
     gap: 8px !important
   }
 
@@ -16021,10 +16084,14 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
 #quiz .examOnlyStart {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 1.12fr) !important;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto !important;
-  grid-template-areas: "badge badge" "subject merge" "counts merge" "custom merge" ". merge" "range range" "start start" !important;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto !important;
+  grid-template-areas: "subject merge" "counts merge" "custom merge" ". merge" "range range" "start start" !important;
   gap: 12px 18px !important;
-  align-items: start !important
+  align-items: start !important;
+  /* EXAM_MERGE_LIST_TALLER_20260729: bảng này KHÔNG có nền riêng (background trong suốt) nên
+     24px padding của nó chỉ cộng thêm vào 18px padding của .setup — 48px chiều cao trống theo
+     chiều dọc. Bỏ đi để trả hết cho danh sách "Gộp thêm môn". */
+  padding: 0 !important
 }
 
 #quiz .examOnlyStart>.examOnlyLabel {
@@ -16032,7 +16099,6 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
 }
 
 #quiz .examOnlyBadge {
-  grid-area: badge !important;
   margin: 0 !important
 }
 
@@ -16133,7 +16199,7 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
   #quiz .examOnlyStart {
     grid-template-columns: 1fr !important;
     grid-template-rows: none !important;
-    grid-template-areas: "badge" "subject" "merge" "counts" "custom" "range" "start" !important;
+    grid-template-areas: "subject" "merge" "counts" "custom" "range" "start" !important;
     gap: 8px !important
   }
 
@@ -16298,7 +16364,19 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
      phần dư chia đều cho 3 hàng trên và cột trái giãn ra rời rạc ~100px mỗi khe.
    · Bản mobile (max-width:760px) phải `grid-template-rows:none` để không thừa hàng 1fr.
    Cap chiều cao vẫn cần: danh sách dài hơn cột trái thì panel sẽ cao quá khung .setup và
-   nút bắt đầu lại che thẻ môn. */
+   nút bắt đầu lại che thẻ môn.
+
+   EXAM_MERGE_LIST_TALLER_20260729 — nới cap từ `100vh - 380px` lên `100vh - 300px` (+80px,
+   khoảng thêm một hàng thẻ). Chỗ 80px đó lấy từ HAI thứ bỏ đi, không phải nới bừa:
+   · chip "KIỂM TRA" (`.examOnlyBadge`) đã bỏ khỏi `exam.js` — tab đang mở đã tên là
+     "Kiểm tra" nên chip chỉ nhắc lại; hàng `badge` cũng đã xoá khỏi cả 4 `grid-template-areas`.
+   · `padding: 24px` của `.examOnlyStart` — bảng này KHÔNG có nền riêng nên padding đó chỉ
+     cộng vào 18px của `.setup`: 48px chiều cao trống.
+   Đo lại bằng `?mock=1` + nhân bản thẻ cho danh sách dài, ba cỡ màn (bề rộng 1270/1440):
+   cao 589 -> 289px · 670 -> 370px · 900 -> 600px; cả ba đều `setup`/`#quiz` KHÔNG tràn
+   (`scrollHeight - clientHeight` = 0) và nút "Bắt đầu kiểm tra" nằm trọn trong khung.
+   Nới thêm nữa thì `#quiz` (overflow:hidden ở >=901px) cắt mất đáy khung .setup — đã thử
+   `-296px`/`-288px` và bị tràn 5px, đừng hạ con số này xuống dưới 300 mà không đo lại. */
 @media (min-width:761px) {
   #quiz .examSubjectChips {
     grid-area: merge !important;
@@ -16308,7 +16386,7 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
     align-content: flex-start !important;
     gap: 12px !important;
     margin: 0 !important;
-    max-height: max(150px, calc(100vh - 380px)) !important;
+    max-height: max(190px, calc(100vh - 300px)) !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
     padding-right: 6px !important;
@@ -17990,8 +18068,16 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
     font-size: 1.04rem !important
   }
 
+  /* GATE_EMAIL_KEEP_VISIBLE_20260729: trước đây ẩn hẳn email ở màn thấp, nhưng nó nằm CÙNG
+     hàng với avatar 32px nên ẩn đi KHÔNG tiết kiệm được một pixel chiều cao nào — chỉ làm
+     người dùng không còn thấy mình đang đăng nhập bằng mail nào. Giữ lại, chỉ thu nhỏ. */
   #subjectUserEmail {
-    display: none !important
+    display: block !important;
+    font-size: .68rem !important;
+    max-width: 190px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important
   }
 
   .subjectGateFooter {

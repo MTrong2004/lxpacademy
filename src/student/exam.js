@@ -329,7 +329,6 @@ export function installExam() {
 
     box.innerHTML = `
       <div class="examOnlyStart">
-        <div class="examOnlyBadge">KIỂM TRA</div>
         <div class="examOnlyLabel">Môn đang học</div>
         ${activeCard || '<span style="color:var(--mist)">Chưa chọn môn học</span>'}
         ${extraChips ? `<div class="examOnlyLabel">Gộp thêm môn <span style="font-weight:400;color:var(--mist);font-size:.85rem">(chọn thêm môn cùng mã để gộp đề)</span></div><div class="examSubjectChips" id="examSubjectChipsExtra">${extraChips}</div>` : ''}

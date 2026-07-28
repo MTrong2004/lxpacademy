@@ -1,5 +1,6 @@
 import { db, json } from '../lib/db.js';
 import { getAdminEmail, clearProfileCache, loadProfileRow, isTruthyFlag, isRootAdmin } from '../lib/auth.js';
+import { postDiscordEmbed, postServerErrorEmbed } from '../lib/discord.js';
 
 function detectDeviceInfo(req, bodyDevice) {
   if (bodyDevice && typeof bodyDevice === 'string' && bodyDevice.trim()) {
@@ -32,6 +33,8 @@ async function ensureProfileColumns() {
   try { await db.execute("ALTER TABLE profiles ADD COLUMN device_info text;"); } catch (e) { }
   try { await db.execute("ALTER TABLE profiles ADD COLUMN device_history text;"); } catch (e) { }
   try { await db.execute("ALTER TABLE profiles ADD COLUMN force_logout integer default 0;"); } catch (e) { }
+  // RELOAD_NOTICE_20260729: cờ "nhắc tải lại trang" (thay cho đăng xuất bắt buộc).
+  try { await db.execute("ALTER TABLE profiles ADD COLUMN reload_notice integer default 0;"); } catch (e) { }
   try {
     const adminMail = getAdminEmail();
     await db.execute({
@@ -61,6 +64,21 @@ function publicProfile(row) {
     blocked: isTruthyFlag(row.blocked),
     force_logout: isTruthyFlag(row.force_logout)
   };
+}
+
+/*
+  RELOAD_NOTICE_20260729
+  Cờ DÙNG MỘT LẦN, giống force_logout: đọc xong reset ngay, nếu không thì banner "tải lại"
+  hiện lại ở mọi lần kiểm tra quyền (cứ 20s một lần) và không tắt được.
+  Khác force_logout ở chỗ client KHÔNG huỷ phiên — chỉ hiện banner để người dùng tự bấm.
+*/
+async function consumeReloadNotice(id) {
+  try {
+    await db.execute({ sql: 'update profiles set reload_notice = 0 where id = ?', args: [id] });
+    clearProfileCache(id);
+  } catch (e) {
+    console.warn('[profile] không reset được reload_notice:', e?.message || e);
+  }
 }
 
 /*
@@ -154,6 +172,10 @@ export async function handleProfile(req, authUser) {
         }
         return json({ data: publicProfile(row), force_logout: true });
       }
+      if (isTruthyFlag(row.reload_notice)) {
+        await consumeReloadNotice(id);
+        return json({ data: publicProfile(row), reload_notice: true });
+      }
       return json({ data: publicProfile(row) });
     }
 
@@ -195,11 +217,18 @@ export async function handleProfile(req, authUser) {
       const wasApproved = approved === 1 || approved === true || approved === '1';
       const mustForceLogout = existingRow.force_logout === 1 || existingRow.force_logout === true || existingRow.force_logout === '1';
 
+      const mustShowReloadNotice = isTruthyFlag(existingRow.reload_notice);
+
       if (mustForceLogout) {
         try {
           await db.execute({ sql: 'update profiles set force_logout = 0 where id = ?', args: [id] });
-        } catch (e) {}
+        } catch (e) {
+          console.warn('[profile] không reset được force_logout:', e?.message || e);
+        }
       }
+      // RELOAD_NOTICE_20260729: cùng cách xử lý cờ một lần. Người dùng vừa F5 (chính là việc
+      // banner yêu cầu) nên đọc xong là xoá, không nhắc lại.
+      if (mustShowReloadNotice) await consumeReloadNotice(id);
 
       if (isTruthyFlag(existingRow.blocked)) {
         return json({ error: 'Tài khoản đã bị khóa', code: 'BLOCKED' }, 403);
@@ -304,7 +333,17 @@ export async function handleProfile(req, authUser) {
       const denied = accessDenialResponse(updatedRow);
       if (denied) return denied;
 
-      return json({ data: publicProfile(updatedRow), force_logout: mustForceLogout });
+      /*
+        Trả cờ ĐÚNG SỰ THẬT (cờ đã được xoá ở trên, đây là lần đọc duy nhất).
+        Client mới là chỗ quyết định có hiện banner hay không: luồng đầy đủ này chạy cả lúc
+        MỞ TRANG (vừa tải mới => bỏ qua) lẫn lúc ping hoạt động / polling 60s (=> hiện
+        banner). Nếu ở đây trả cứng false thì cờ bị "ăn" mất mà không ai được thông báo.
+      */
+      return json({
+        data: publicProfile(updatedRow),
+        force_logout: mustForceLogout,
+        reload_notice: mustShowReloadNotice
+      });
     } else {
       if (regMode === 'closed' && !isAdminUser) {
         return json({ error: 'Hệ thống đang đóng đăng ký', code: 'REGISTRATION_CLOSED' }, 403);
@@ -322,6 +361,47 @@ export async function handleProfile(req, authUser) {
       });
 
       clearProfileCache(id);
+
+      /*
+        NEW_USER_DISCORD_20260729
+        Đúng chỗ này là "vừa có tài khoản mới": nhánh else = trong `profiles` chưa có dòng nào
+        của id này. Gửi TRƯỚC accessDenialResponse bên dưới, vì người chờ duyệt (regMode
+        'approval') bị trả 403 — mà đó lại chính là ca cần thông báo nhất: không ai nhắc thì
+        họ ngồi chờ tới khi admin tình cờ mở trang Người dùng.
+
+        Không await? Không — Edge runtime có thể cắt promise treo sau khi response trả về.
+        Chấp nhận thêm một lượt gọi webhook, chỉ xảy ra đúng 1 lần trong đời mỗi tài khoản.
+      */
+      try {
+        const approvedNow = approved === 1;
+        await postDiscordEmbed(
+          {
+            title: '🆕 NGƯỜI DÙNG MỚI ĐĂNG KÝ',
+            color: 9127934,
+            description: approvedNow
+              ? `**${trimmedEmail}** đã vào được luôn (chế độ \`${regMode}\`).`
+              : `**${trimmedEmail}** đang **CHỜ DUYỆT** — vào trang admin → Người dùng để duyệt.`,
+            fields: [
+              { name: 'Email', value: trimmedEmail, inline: true },
+              { name: 'Tên', value: full_name || '_không có_', inline: true },
+              { name: 'Trạng thái', value: approvedNow ? '✅ Đã duyệt tự động' : '⏳ Chờ duyệt', inline: true },
+              { name: 'Vai trò', value: `\`${role}\``, inline: true },
+              { name: 'Chế độ đăng ký', value: `\`${regMode}\``, inline: true },
+              { name: 'Thiết bị', value: device || 'Chưa rõ', inline: true },
+              {
+                name: 'Thời gian',
+                value: new Date(now).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }),
+                inline: false
+              }
+            ],
+            footer: { text: 'Learning Hub · Tài khoản mới' },
+            timestamp: now
+          },
+          'new_user'
+        );
+      } catch (notifyErr) {
+        console.warn('[new_user discord] không gửi được:', notifyErr?.message || notifyErr);
+      }
 
       // Dựng dòng vừa insert từ chính giá trị đã ghi, khỏi phải SELECT lại.
       const createdRow = {
@@ -342,6 +422,13 @@ export async function handleProfile(req, authUser) {
   } catch (e) {
     // III: log chi tiết ở server, không trả stack/secret về browser.
     console.error('[API /api/profile Error]', e?.stack || e?.message || e);
+    // SERVER_ERROR_DISCORD_20260729: file này có catch RIÊNG nên lỗi không nổi lên chốt 500
+    // của api/index.js — phải tự báo, không thì mất hẳn loại lỗi hay gặp nhất (upsert profile).
+    try {
+      await postServerErrorEmbed('profile', e);
+    } catch (notifyErr) {
+      console.warn('[server_error discord] không gửi được:', notifyErr?.message || notifyErr);
+    }
     return json({ error: 'Đã xảy ra lỗi hệ thống', code: 'INTERNAL_ERROR' }, 500);
   }
 }

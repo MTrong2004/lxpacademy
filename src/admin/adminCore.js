@@ -12,20 +12,18 @@ NHÓM CHÍNH TRONG admin.js
 - Dùng cho: đăng nhập Google, khởi động admin, đổi tab, nhớ tab đang mở.
 
 3) Load dữ liệu
-- Tìm: loadAll (bản active ở COPILOT_ADMIN_RELOAD_FIX_20260630), __fetchAdminDashboardJSON, __adminSyncQuestionPage, loadQuestionPage, loadSubjects
-- Dùng cho: tải profiles, questions, edit_requests, history, logs, phân trang câu hỏi.
+- Tìm: loadAll (bản active ở COPILOT_ADMIN_RELOAD_FIX_20260630), __fetchAdminDashboardJSON
+- Dùng cho: tải profiles, questions, edit_requests, history, logs.
 
 4) Render tổng quan
 - Tìm: render, renderStats, recentRequests, recentLogs, statUsers, statPending
 - Dùng cho: dashboard, thống kê, danh sách mới nhất.
 
-5) Quản lý câu hỏi
-- Tìm: renderQuestions, setQuestionSubjectFilter, adminQuestionPage, viewQuestion, toggleQuestion, deleteQuestionAdmin
-- Dùng cho: danh sách câu hỏi, lọc theo môn, tìm kiếm, phân trang, ẩn/hiện/xóa.
-
-6) Sửa trực tiếp câu hỏi
-- Tìm: editQuestionDirect, saveQuestionDirect, renderDirectEditImages, removeDirectEditImage, uploadCloudinary
-- Dùng cho: form sửa câu, upload ảnh Cloudinary, lưu lịch sử chỉnh sửa.
+(5, 6 ĐÃ BỎ 20260729: cả trang "Câu hỏi" của admin — danh sách/phân trang/lọc môn, thêm
+ câu, sửa trực tiếp + upload Cloudinary, ẩn/hiện, xóa câu. Nút nav data-page="questions"
+ vốn đã bị xoá khỏi sidebar từ trước nên không còn đường vào. Nguyên văn code đã xoá:
+ docs/REMOVED_20260729.md. ĐỪNG thêm lại nếu không có yêu cầu rõ ràng — sửa/xóa câu hỏi
+ giờ chỉ còn qua duyệt "Yêu cầu sửa" của học sinh.)
 
 7) Duyệt báo cáo sửa câu
 - Tìm: renderRequests, reqHTML, viewReq, approve, rejectReq, compareHTML, changedFields
@@ -43,9 +41,9 @@ NHÓM CHÍNH TRONG admin.js
 - Tìm: ACCESS_APPROVAL_ADMIN, renderApprovals, filterApprovals, registrationMode, loadRegistrationMode, setRegistrationMode
 - Dùng cho: user chờ duyệt, mở/đóng đăng ký.
 
-11) Import câu hỏi bằng AI
-- Tìm: AI_IMPORT_QUESTIONS, AI_PROMPT, openAddSubjectAI, previewAIImport, executeAIImport
-- Dùng cho: copy prompt, đọc file md/txt/json, preview, import câu hỏi.
+(11 ĐÃ BỎ 20260729: khối AI_IMPORT_QUESTIONS_20260624 "Thêm môn học bằng AI" —
+ openAddSubjectAI không có nút nào gọi nên cả khối không có đường vào. Xem
+ docs/REMOVED_20260729.md.)
 
 12) Quản lý môn học
 - Tìm: SUBJECT_MANAGEMENT, loadSubjectsAdmin, deleteSubjectAdmin, editSubjectAdmin, subject_requests, approveSubjectRequest, rejectSubjectRequest
@@ -68,22 +66,21 @@ NHÓM CHÍNH TRONG admin.js
 - Dùng cho: vá giao diện, avatar, menu 3 chấm, ảnh trong request, tối ưu cache.
 
 GỢI Ý AI
-- Lỗi câu hỏi/admin question list: xem nhóm 3 + 5 + 6.
-- Lỗi sửa câu/upload ảnh: xem nhóm 6 + 15 nếu liên quan thông báo.
 - Lỗi duyệt báo cáo: xem nhóm 7 + 8.
-- Lỗi user/quyền/duyệt tài khoản: xem nhóm 9 + 10.
-- Lỗi import/thêm môn: xem nhóm 11 + 12.
+- Lỗi user/quyền/duyệt tài khoản: xem nhóm 9 + 10 + 17.
+- Lỗi thêm môn / môn học: xem nhóm 12.
 - Lỗi thùng rác: xem nhóm 13.
 - Lỗi realtime: xem nhóm 14.
-- NOTE_20260630: Chống mất ảnh khi admin sửa/duyệt: tải cột images, lưu qua /api/admin-action, không lưu base64.
-- NOTE_20260630: Triệt để lỗi mất ảnh admin: QUESTION_COLS có images, realtime không xóa images, reload xóa session cache ảnh.
+- Lỗi thông báo Discord bật/tắt: xem nhóm 15 + 17.
+- NOTE_20260630: Chống mất ảnh khi admin duyệt yêu cầu sửa: tải cột images, lưu qua /api/admin-action, không lưu base64.
 - NOTE_CLEANUP_20260630: Đã rà soát dọn dẹp — admin.js không còn dead code/console.log debug. Các comment "(... removed — superseded by ...)" được giữ lại có chủ đích để đánh dấu hàm cũ đã bị thay thế, tránh AI sau thêm lại.
 - QUY_ƯỚC_CẤU_TRÚC: File là chuỗi bản vá theo ngày, bọc bởi marker "// ===== TÊN_NGÀY =====". KHÔNG xóa marker (là điểm neo tìm kiếm theo nhóm ở trên). Khi sửa, tìm marker liên quan và sửa trong block đó, ưu tiên hợp nhất thay vì vá chồng.
 - KIẾN_TRÚC_20260701 (QUAN TRỌNG): Supabase CHỈ dùng Auth. Mọi dữ liệu admin đọc qua GET /api/admin-dashboard (trả profiles/questions/requests/history/logs/subjects/subject_requests/trash — nhớ parse JSON các cột text), ghi qua helper adminAction(action,payload) → POST /api/admin-action. KHÔNG dùng client.from(...) để đọc/ghi nữa.
 - NHIỀU HÀM BỊ OVERRIDE (định nghĩa sau thắng): khi tìm hàm active, lấy bản window.X = ... CUỐI CÙNG trong file. CLEANUP_20260705: đã XÓA các bản chết bị đè (loadAll cũ x3, approve/viewReq/viewHistory/viewQuestion/compareHTML gốc, renderUsers cũ x3, renderApprovals/renderQuestions cũ, loadRegistrationMode/setRegistrationMode/revokeApproval cũ, loadSubjectRequests cũ, mobile-lite loadAll, MANUAL_ADMIN_RELOAD_ONLY, safeLoad/fetchAllRows/loadLightTables) — mỗi chỗ có comment "removed — superseded by <MARKER>" trỏ tới bản active. Chuỗi saveSubjectAdmin/openEditSubjectAdmin/loadSubjectsAdmin CÒN SỐNG dạng delegation (bản sau gọi bản trước cho case đổi mã môn) — KHÔNG xóa các bản cũ của nhóm môn học. QUY TẮC: gọi hàm chéo block phải qua window.X, không gọi thẳng hàm local của block cũ.
 - compareHTML/viewReq render ẢNH THẬT từ cache Turso. logAction chỉ còn gửi Discord (admin_logs do API tự ghi). Xem thêm [[lxpacademy-data-source-split]] trong memory.
 - NOTE_20260705: GET /api/admin-dashboard đã gộp qua window.__fetchAdminDashboardJSON (single-flight + TTL 4s, POST /api/admin-action tự xóa cache) — F5 chỉ còn 1 request thay vì 5. Tab Phê duyệt: block ACCESS_APPROVAL_ADMIN phải gọi window.renderApprovals (bản FINAL có avatar), không gọi hàm local. renderRequests cập nhật countAll/countPending/countApproved/countRejected.
-- NOTE_20260705b: Polling 20s (FIX_ADMIN_AUTO_REFRESH) chỉ re-render khi JSON dashboard đổi (so sánh __adminDashRenderedText). Tab Câu hỏi: loadQuestionPage ghi vào STATE.pageRows (KHÔNG đè cache.questions), loadAll gọi __adminSyncQuestionPage để nạp STATE.subjects + trang hiện tại; Turso mock đã hỗ trợ range/count/ilike/multi-order. approveSubjectRequest/rejectSubjectRequest đọc cache.subject_requests (mảng subjectRequests local cũ không còn ai đổ dữ liệu → từng luôn báo "Không tìm thấy yêu cầu").
+- NOTE_20260705b: Polling 20s (FIX_ADMIN_AUTO_REFRESH) chỉ re-render khi JSON dashboard đổi (so sánh __adminDashRenderedText). approveSubjectRequest/rejectSubjectRequest đọc cache.subject_requests (mảng subjectRequests local cũ không còn ai đổ dữ liệu → từng luôn báo "Không tìm thấy yêu cầu").
+- NOTE_20260729: `closeModal` phải gọi qua `lhCloseModal()` trong mọi inline onclick. Lý do: admin.html có <button id="closeModal"> nên window.closeModal LÀ phần tử DOM đó, gọi closeModal() trong onclick ném "closeModal is not a function".
 AI_ADMIN_JS_MAP_END */
 
 // LH_ERROR_SURFACING_20260727: mọi catch trong file này dùng lhWarn('<TÊN_BLOCK>', e)
@@ -99,7 +96,7 @@ let client,
   user,
   profile,
   activeStatus = 'all';
-let cache = { profiles: [], questions: [], requests: [], history: [], logs: [] };
+let cache = { profiles: [], questions: [], requests: [], history: [], logs: [], folder_new_badges: [] };
 
 const $ = id => document.getElementById(id);
 const esc = s =>
@@ -676,6 +673,8 @@ async function init() {
         if (savedPage === 'trash' && typeof window.loadTrash === 'function') window.loadTrash();
         if (savedPage === 'subjectRequests' && typeof window.loadSubjectRequests === 'function')
           window.loadSubjectRequests();
+        if (savedPage === 'discordSettings' && typeof window.renderDiscordSettings === 'function')
+          window.renderDiscordSettings();
       }
     }
   } catch (e) {
@@ -880,6 +879,9 @@ async function loadProfile() {
     profile = null;
     return;
   }
+  // ADMIN_TWO_TIERS_20260729: cấp admin do SERVER quyết (khoá is_system_admin trong
+  // /api/admin-dashboard). Lúc này dashboard chưa tải xong nên chip được ghi lại một lần
+  // nữa trong renderAdminTierChip() sau loadAll.
   $('adminChip').textContent = `${profile.email || user.email} · ${profile.role}`;
   document.body.classList.toggle('role-admin', isAdmin());
 
@@ -1008,7 +1010,6 @@ function render() {
   renderUsers();
   renderHistory();
   renderLogs();
-  renderQuestions();
 }
 
 function renderStats() {
@@ -1106,7 +1107,7 @@ function renderLogs() {
     : '<p class=muted>Editor không có quyền xem admin logs.</p>';
 }
 
-// (renderQuestions bản gốc removed — bản active ở COPILOT_ADMIN_QUESTION_PAGE_FINAL_OVERRIDE_20260627)
+// (renderQuestions removed 20260729 — cả trang "Câu hỏi" của admin đã bỏ, xem docs/REMOVED_20260729.md)
 
 function openModal(t, b) {
   $('modalTitle').textContent = t;
@@ -1117,6 +1118,16 @@ function openModal(t, b) {
 function closeModal() {
   $('modal').classList.add('hidden');
 }
+/*
+  FIX_CLOSE_MODAL_INLINE_20260729
+  admin.html có <button id="closeModal"> nên `window.closeModal` LÀ chính phần tử DOM đó
+  (named access của HTML). closeModal() ở trên là hàm module-scope, esbuild không phơi ra
+  global — nên inline onclick gọi trần `closeModal()` sẽ ném
+  "TypeError: closeModal is not a function" và modal không đóng được.
+  Vì vậy phơi ra một TÊN KHÁC (không trùng id nào trong admin.html) và mọi inline onclick
+  phải gọi lhCloseModal(). Đừng gán window.closeModal — sẽ đè named access của nút ×.
+*/
+window.lhCloseModal = closeModal;
 
 function formatValue(v) {
   if (Array.isArray(v)) return v.length ? `${v.length} ảnh` : 'Không có';
@@ -1129,8 +1140,8 @@ function formatValue(v) {
 
 // (compareHTML bản gốc removed — bản active ở FIX_ADMIN_REQUEST_IMAGES_FORCE_20260628, render ảnh thật từ cache Turso.)
 
-// (viewReq/viewHistory/viewQuestion bản gốc removed — bản active: viewReq ở FIX_ADMIN_REQUEST_IMAGES_FORCE_20260628,
-//  viewHistory ở COPILOT_ADMIN_RELOAD_DATA_GUARD_20260628, viewQuestion ở COPILOT_ADMIN_QUESTION_PAGE_FINAL_OVERRIDE_20260627.)
+// (viewReq/viewHistory bản gốc removed — bản active: viewReq ở FIX_ADMIN_REQUEST_IMAGES_FORCE_20260628,
+//  viewHistory ở COPILOT_ADMIN_RELOAD_DATA_GUARD_20260628.)
 
 function viewUserEdits(uid) {
   const p = (cache.profiles || []).find(x => String(x.id) === String(uid));
@@ -1227,15 +1238,6 @@ async function setRole(id, role) {
   if (!(await adminAction('set_user_role', { target_user_id: id, role }))) return;
   await logAction('change_role', 'profiles', id, { role });
   cache.profiles = (cache.profiles || []).map(p => (String(p.id) === String(id) ? { ...p, role } : p));
-  render();
-  await loadAll();
-}
-
-async function toggleQuestion(id, a) {
-  if (!confirm(`${a ? 'Hiện' : 'Ẩn'} câu hỏi này?`)) return;
-  if (!(await adminAction('toggle_question', { question_id: id, is_active: a }))) return;
-  await logAction(a ? 'show_question' : 'hide_question', 'questions', id, {});
-  cache.questions = (cache.questions || []).map(q => (String(q.id) === String(id) ? { ...q, is_active: a } : q));
   render();
   await loadAll();
 }
@@ -1478,8 +1480,8 @@ async function downloadExportFile(type, subjectCode = 'all') {
   }
 }
 
-// (approve/viewReq/viewHistory/viewQuestion không còn export ở đây — các bản active tự gán window.X trong block của chúng.)
-Object.assign(window, { rejectReq, toggleBlock, setRole, toggleQuestion, viewUserEdits });
+// (approve/viewReq/viewHistory không còn export ở đây — các bản active tự gán window.X trong block của chúng.)
+Object.assign(window, { rejectReq, toggleBlock, setRole, viewUserEdits });
 
 // ===== F5_SUPABASE_MICRO_CACHE_20260629 =====
 // Giảm gọi Supabase khi F5: cache/dedupe các GET nhẹ từ Supabase trong thời gian ngắn.
@@ -1680,149 +1682,6 @@ document.addEventListener('DOMContentLoaded', init);
   };
 })();
 
-// ===== FINAL_ADMIN_SUBJECT_TABS_ADD_DELETE_QUESTIONS_20260613 =====
-// Tab Câu hỏi: chia theo môn + thêm câu + xóa vĩnh viễn + ẩn/hiện.
-(function () {
-  let activeQuestionSubject = localStorage.getItem('admin_question_subject_filter_v1') || 'all';
-
-  function isQuestionActiveForDeletedSubjectFix(q) {
-    return !(q?.is_active === false || q?.is_active === 0 || q?.is_active === '0');
-  }
-
-  function subjectsFromQuestions() {
-    const rows = (cache.questions || []).filter(isQuestionActiveForDeletedSubjectFix);
-    const set = new Set(rows.map(q => q.subject_code || 'HOD102').filter(Boolean));
-    if (!set.size) {
-      set.add('HOD102');
-      set.add('MLN111');
-    }
-    return Array.from(set).sort((a, b) => String(a).localeCompare(String(b)));
-  }
-
-  function subjectCount(code) {
-    const rows = (cache.questions || []).filter(isQuestionActiveForDeletedSubjectFix);
-    if (code === 'all') return rows.length;
-    return rows.filter(q => (q.subject_code || 'HOD102') === code).length;
-  }
-
-  function currentSubjectForAdd() {
-    if (activeQuestionSubject !== 'all') return activeQuestionSubject;
-    return subjectsFromQuestions()[0] || 'HOD102';
-  }
-
-  function nextNumForSubject(code) {
-    const nums = (cache.questions || [])
-      .filter(q => (q.subject_code || 'HOD102') === code)
-      .map(q => Number(q.num) || 0);
-    return (nums.length ? Math.max(...nums) : 0) + 1;
-  }
-
-  function optionText(q, k) {
-    return q?.options?.[k] || '';
-  }
-
-  function getAddFormHTML() {
-    const subjects = subjectsFromQuestions();
-    const selected = currentSubjectForAdd();
-    const nextNum = nextNumForSubject(selected);
-    return `<div class="adminQuestionForm">
-      <div class="formGrid2">
-        <div class="field"><label>Môn học</label><select id="newQuestionSubject">${subjects.map(s => `<option value="${esc(s)}" ${s === selected ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></div>
-        <div class="field"><label>Số câu</label><input id="newQuestionNum" type="number" value="${esc(nextNum)}" min="1"></div>
-      </div>
-      <div class="field"><label>Câu hỏi</label><textarea id="newQuestionText" placeholder="Nhập nội dung câu hỏi..."></textarea></div>
-      <div class="formGrid2">
-        ${['A', 'B', 'C', 'D', 'E'].map(k => `<div class="field"><label>Đáp án ${k}</label><textarea id="newOpt${k}" placeholder="Nội dung lựa chọn ${k}"></textarea></div>`).join('')}
-      </div>
-      <div class="formGrid2">
-        <div class="field"><label>Đáp án đúng</label><input id="newAnswer" placeholder="VD: A hoặc AC"></div>
-        <div class="field"><label>Giải thích</label><textarea id="newAnswerText" placeholder="Có thể bỏ trống"></textarea></div>
-      </div>
-      <div class="actions formActions">
-        <button class="act ok" onclick="saveNewQuestionAdmin()">Thêm câu hỏi</button>
-        <button class="act" onclick="closeModal()">Hủy</button>
-      </div>
-    </div>`;
-  }
-
-  window.openAddQuestionAdmin = function () {
-    openModal('Thêm câu hỏi mới', getAddFormHTML());
-    setTimeout(() => {
-      const sub = $('newQuestionSubject');
-      const num = $('newQuestionNum');
-      if (sub && num) {
-        sub.onchange = () => {
-          num.value = nextNumForSubject(sub.value);
-        };
-      }
-    }, 0);
-  };
-
-  window.saveNewQuestionAdmin = async function () {
-    if (!isEditor()) return alert('Admin hoặc Editor mới được thêm câu hỏi.');
-    const subject = $('newQuestionSubject')?.value || currentSubjectForAdd();
-    const num = Number($('newQuestionNum')?.value || 0);
-    const question = ($('newQuestionText')?.value || '').trim();
-    const answer = ($('newAnswer')?.value || '').trim().toUpperCase();
-    const answer_text = ($('newAnswerText')?.value || '').trim();
-    const options = {};
-    ['A', 'B', 'C', 'D', 'E'].forEach(k => {
-      const v = ($('newOpt' + k)?.value || '').trim();
-      if (v) options[k] = v;
-    });
-    if (!subject) return alert('Chọn môn học trước.');
-    if (!num) return alert('Nhập số câu.');
-    if (!question) return alert('Nhập câu hỏi.');
-    if (!answer) return alert('Nhập đáp án đúng.');
-    if (!Object.keys(options).length) return alert('Nhập ít nhất 1 lựa chọn.');
-
-    setBusy(true, 'Đang thêm...');
-    try {
-      const payload = {
-        subject_code: subject,
-        num,
-        question,
-        options,
-        answer,
-        answer_text,
-        images: [],
-        is_active: true,
-        updated_at: new Date().toISOString(),
-      };
-      if (!(await adminAction('add_question', { question_data: payload }))) return;
-      await logAction('add_question', 'questions', num, { subject_code: subject, num });
-      activeQuestionSubject = subject;
-      localStorage.setItem('admin_question_subject_filter_v1', subject);
-      closeModal();
-      await loadAll();
-      toast('Đã thêm câu hỏi');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  window.deleteQuestionAdmin = async function (id) {
-    if (!isAdmin()) return alert('Chỉ admin mới được xóa.');
-    const q = (cache.questions || []).find(x => String(x.id) === String(id));
-    if (!q) return alert('Không tìm thấy câu hỏi.');
-    const ok = confirm(`Xóa ${q.subject_code || ''} - Câu ${q.num || q.id}?\n\nCâu hỏi sẽ được chuyển vào Thùng rác.`);
-    if (!ok) return;
-    setBusy(true, 'Đang xóa...');
-    try {
-      // Server (Turso) soft-delete + tự backup vào deleted_questions.
-      if (!(await adminAction('delete_question', { question_id: id }))) return;
-      await logAction('delete_question', 'questions', id, { subject_code: q.subject_code, num: q.num });
-      await loadAll();
-      toast('Đã chuyển vào Thùng rác');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // (setQuestionSubjectFilter/renderQuestions bản cũ removed — bản active ở COPILOT_ADMIN_QUESTION_PAGE_FINAL_OVERRIDE_20260627.
-  //  Block này chỉ còn giữ phần Thêm câu hỏi + Xóa câu hỏi đang dùng.)
-})();
-
 // ===== ACCESS_APPROVAL_ADMIN_20260624 =====
 (function () {
   let approvalFilter = 'pending';
@@ -1945,386 +1804,6 @@ document.addEventListener('DOMContentLoaded', init);
   setTimeout(() => window.loadRegistrationMode?.(), 500);
 })();
 
-// ===== AI_IMPORT_QUESTIONS_20260624 =====
-(function () {
-  const AI_PROMPT = `Bạn là trợ lý chuyển đổi ngân hàng câu hỏi trắc nghiệm sang JSON trong file Markdown.
-
-ĐỌC FILE và chuyển đổi NGUYÊN VẸN (KHÔNG tự biên thêm, KHÔNG bỏ bớt).
-
-QUY TẮC BATCH:
-
-- Sau mỗi batch DỪNG và nói: "Gõ 'tiếp' để xuất câu X-Y."
-- Khi nhận "tiếp", xuất batch tiếp theo, đánh số "num" liên tục.
-- Mỗi batch xuất 1 file .md hoàn chỉnh, tải được ngay.
-
-QUY TẮC CHUYỂN ĐỔI:
-- Đáp án: chỉ lấy ký tự chữ cái đầu tiên sau "**Đáp án:**" (bỏ mọi chú thích phía sau).
-- Nếu câu chỉ có A/B/C (không có D): bỏ key "D" khỏi object options.
-- Giữ NGUYÊN nội dung câu hỏi và lựa chọn, KHÔNG paraphrase.
-- "has_image": false (trừ khi câu đề cập hình ảnh/biểu đồ).
-- "error_risk": "low" (câu ngắn, rõ) | "medium" (câu trung bình) | "high" (câu dài, phức tạp, dễ nhầm).
-
-FORMAT FILE .MD OUTPUT:
----
-# [Tên môn] - Batch [N] (Câu [X]-[Y])
-> Xuất ngày: [ngày hôm nay] | Tổng: [số câu trong batch] câu
----
-
-\`\`\`json
-[
-  {
-    "num": 1,
-    "question": "…?",
-    "options": {
-      "A": "…",
-      "B": "…",
-      "C": "…",
-      "D": "…"
-    },
-    "answer": "B",
-    "images": [],
-    "has_image": false,
-    "error_risk": "low"
-  }
-]
-\`\`\`
----
-
-KHÔNG thêm bất kỳ text giải thích nào bên ngoài cấu trúc trên.
-Bắt đầu ngay từ câu 1.`;
-
-  function getSubjects() {
-    const set = new Set((cache.questions || []).map(q => q.subject_code || 'HOD102').filter(Boolean));
-    if (!set.size) {
-      set.add('HOD102');
-      set.add('MLN111');
-    }
-    return Array.from(set).sort();
-  }
-
-  function getImportHTML() {
-    const subjects = getSubjects();
-    return `<div class="aiImportWrap">
-
-      <div class="aiImportTabs">
-        <button class="aiTab active" onclick="switchImportTab('prompt')">1. Lấy Prompt</button>
-        <button class="aiTab" onclick="switchImportTab('import')">2. Import dữ liệu</button>
-      </div>
-
-      <div id="aiTabPrompt" class="aiTabContent active">
-        <div class="aiStepCard">
-          <div class="aiStepNum">1</div>
-          <div class="aiStepBody">
-            <h4>Copy prompt bên dưới</h4>
-            <p>Bấm nút copy để sao chép prompt tạo câu hỏi.</p>
-          </div>
-        </div>
-        <div class="aiPromptBox">
-          <pre id="aiPromptText">${esc(AI_PROMPT)}</pre>
-          <button class="act ok aiCopyBtn" onclick="copyAIPrompt()">📋 Copy Prompt</button>
-        </div>
-
-        <div class="aiStepCard">
-          <div class="aiStepNum">2</div>
-          <div class="aiStepBody">
-            <h4>Mở AI và gửi tài liệu</h4>
-            <p>Dán prompt vào một trong các AI bên dưới, sau đó upload/gửi tài liệu môn học kèm theo.</p>
-          </div>
-        </div>
-        <div class="aiToolLinks">
-          <a href="https://gemini.google.com" target="_blank" class="aiToolBtn gemini">
-            <span class="aiToolIcon">✦</span> Google Gemini
-          </a>
-          <a href="https://chatgpt.com" target="_blank" class="aiToolBtn chatgpt">
-            <span class="aiToolIcon">◉</span> ChatGPT
-          </a>
-          <a href="https://claude.ai" target="_blank" class="aiToolBtn claude">
-            <span class="aiToolIcon">◈</span> Claude
-          </a>
-        </div>
-
-        <div class="aiStepCard">
-          <div class="aiStepNum">3</div>
-          <div class="aiStepBody">
-            <h4>Tải file .md / .txt hoặc copy JSON</h4>
-            <p>Tải file AI trả về rồi import, hoặc copy JSON và dán vào tab <b>"Import dữ liệu"</b>.</p>
-          </div>
-        </div>
-        <div class="actions formActions">
-          <button class="act ok" onclick="switchImportTab('import')">Tiếp → Import dữ liệu</button>
-        </div>
-      </div>
-
-      <div id="aiTabImport" class="aiTabContent">
-        <div class="aiImportForm">
-          <div class="field">
-            <label>Môn học</label>
-            <div class="aiSubjectRow">
-              <select id="aiImportSubject">${subjects.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('')}</select>
-              <span>hoặc</span>
-              <input id="aiImportNewSubject" placeholder="Mã môn mới (VD: ENG101)" style="width:160px">
-            </div>
-          </div>
-          <div class="field">
-            <label>Import từ file .md / .txt</label>
-            <input type="file" id="aiImportFile" accept=".md,.txt,.json" style="width:100%;padding:8px;background:rgba(255,255,255,.035);border:1px solid var(--bd);border-radius:12px;color:var(--fog);">
-            <p style="margin:4px 0 0;font-size:12px;color:var(--mist);">Chọn file .md hoặc .txt mà AI đã trả về. Hệ thống sẽ tự trích xuất JSON từ file.</p>
-          </div>
-          <div class="field">
-            <label>Hoặc dán JSON trực tiếp</label>
-            <textarea id="aiImportData" rows="14" placeholder='Dán mảng JSON câu hỏi vào đây...&#10;&#10;[&#10;  {&#10;    "num": 1,&#10;    "question": "...",&#10;    "options": {"A":"...","B":"...","C":"...","D":"..."},&#10;    "answer": "A",&#10;    "answer_text": "...",&#10;    "images": []&#10;  }&#10;]'></textarea>
-          </div>
-          <div id="aiImportPreview" class="aiImportPreview hidden"></div>
-          <div class="actions formActions">
-            <button class="act" onclick="previewAIImport()">Xem trước</button>
-            <button class="act ok" id="aiImportBtn" onclick="executeAIImport()" disabled>Import câu hỏi</button>
-            <button class="act" onclick="closeModal()">Hủy</button>
-          </div>
-        </div>
-      </div>
-    </div>`;
-  }
-
-  let parsedQuestions = [];
-
-  window.switchImportTab = function (tab) {
-    document
-      .querySelectorAll('.aiTab')
-      .forEach(b => b.classList.toggle('active', b.textContent.includes(tab === 'prompt' ? 'Prompt' : 'Import')));
-    document.getElementById('aiTabPrompt')?.classList.toggle('active', tab === 'prompt');
-    document.getElementById('aiTabImport')?.classList.toggle('active', tab === 'import');
-  };
-
-  window.copyAIPrompt = function () {
-    const text = AI_PROMPT;
-    navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        toast('Đã copy prompt!');
-      })
-      .catch(() => {
-        const el = document.getElementById('aiPromptText');
-        if (el) {
-          const range = document.createRange();
-          range.selectNodeContents(el);
-          const sel = window.getSelection();
-          sel.removeAllRanges();
-          sel.addRange(range);
-          toast('Hãy bấm Ctrl+C để copy');
-        }
-      });
-  };
-
-  window.previewAIImport = function () {
-    const raw = (document.getElementById('aiImportData')?.value || '').trim();
-    const preview = document.getElementById('aiImportPreview');
-    const btn = document.getElementById('aiImportBtn');
-    if (!raw) {
-      alert('Chưa dán dữ liệu JSON.');
-      return;
-    }
-
-    let data;
-    try {
-      let cleaned = raw;
-      if (cleaned.startsWith('```json')) cleaned = cleaned.replace(/^```json\s*/, '').replace(/```\s*$/, '');
-      else if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```\s*/, '').replace(/```\s*$/, '');
-      data = JSON.parse(cleaned);
-    } catch (e) {
-      alert('JSON không hợp lệ. Hãy kiểm tra lại format.\n\nLỗi: ' + e.message);
-      return;
-    }
-
-    if (!Array.isArray(data)) {
-      if (data.questions && Array.isArray(data.questions)) data = data.questions;
-      else {
-        alert('Dữ liệu phải là mảng JSON [...]');
-        return;
-      }
-    }
-
-    const errors = [];
-    data.forEach((q, i) => {
-      if (!q.question) errors.push(`Câu ${i + 1}: thiếu "question"`);
-      if (!q.options || typeof q.options !== 'object') errors.push(`Câu ${i + 1}: thiếu "options"`);
-      if (!q.answer) errors.push(`Câu ${i + 1}: thiếu "answer"`);
-    });
-    if (errors.length) {
-      alert(
-        'Dữ liệu có lỗi:\n\n' +
-          errors.slice(0, 10).join('\n') +
-          (errors.length > 10 ? `\n...và ${errors.length - 10} lỗi khác` : ''),
-      );
-      return;
-    }
-
-    parsedQuestions = data;
-    if (preview) {
-      preview.classList.remove('hidden');
-      preview.innerHTML = `
-        <div class="aiPreviewHeader">
-          <b>Xem trước: ${data.length} câu hỏi</b>
-        </div>
-        <div class="aiPreviewList">${data
-          .slice(0, 8)
-          .map(
-            (q, i) => `
-          <div class="aiPreviewItem">
-            <span class="aiPreviewNum">Câu ${q.num || i + 1}</span>
-            <span class="aiPreviewQ">${esc((q.question || '').substring(0, 100))}${(q.question || '').length > 100 ? '...' : ''}</span>
-            <span class="aiPreviewA">Đáp án: ${esc(q.answer || '?')}</span>
-          </div>
-        `,
-          )
-          .join('')}${data.length > 8 ? `<div class="aiPreviewMore">...và ${data.length - 8} câu khác</div>` : ''}</div>
-      `;
-    }
-    if (btn) btn.disabled = false;
-    toast('OK! ' + data.length + ' câu hỏi sẵn sàng import');
-  };
-
-  window.executeAIImport = async function () {
-    if (!parsedQuestions.length) return alert('Chưa có dữ liệu. Hãy dán JSON và bấm Xem trước.');
-    if (!isEditor()) return alert('Chỉ Admin/Editor mới import được.');
-
-    const subjectSelect = document.getElementById('aiImportSubject')?.value || '';
-    const newSubject = (document.getElementById('aiImportNewSubject')?.value || '').trim().toUpperCase();
-    const subject = newSubject || subjectSelect || 'HOD102';
-
-    if (!confirm(`Import ${parsedQuestions.length} câu hỏi vào môn "${subject}"?\n\nCâu trùng số sẽ bị lỗi và bỏ qua.`))
-      return;
-
-    setBusy(true, 'Đang import...');
-    let success = 0,
-      errors = 0;
-    try {
-      const existingNums = new Set(
-        (cache.questions || []).filter(q => (q.subject_code || 'HOD102') === subject).map(q => Number(q.num)),
-      );
-
-      let nextNum = existingNums.size ? Math.max(...existingNums) + 1 : 1;
-
-      const total = parsedQuestions.length;
-      for (let i = 0; i < total; i++) {
-        const q = parsedQuestions[i];
-        showProgress(
-          'Đang import câu hỏi...',
-          i + 1,
-          total,
-          `Đang nhập câu ${q.num || i + 1}: ${q.question ? q.question.substring(0, 50) + '...' : ''}`,
-        );
-
-        let num = Number(q.num) || nextNum;
-        if (existingNums.has(num)) {
-          num = nextNum;
-        }
-        existingNums.add(num);
-        nextNum = Math.max(nextNum, num) + 1;
-
-        const list = q.images || [];
-        const localHasImg = !!(list.length || q.has_image);
-        const text = (q.question || '') + ' ' + Object.values(q.options || {}).join(' ');
-        const needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(text);
-        const hasPlaceholder = list.some(im => {
-          const src = typeof im === 'string' ? im : im.src || im.url || '';
-          return !src || src.includes('URL_') || src.includes('MÔ_TẢ') || src.includes('PLACEHOLDER');
-        });
-
-        let risk = q.error_risk || '';
-        let reason = q.error_risk_reason || '';
-        if (!risk) {
-          if ((localHasImg && hasPlaceholder) || (needsImg && list.length === 0)) {
-            risk = 'high';
-            reason = 'Cần hình vẽ/ảnh minh họa nhưng chưa có ảnh thực tế';
-          } else if ((q.answer || '').length > 1) {
-            risk = 'medium';
-            reason = 'Câu chọn nhiều đáp án đúng, cần rà soát kỹ';
-          } else {
-            risk = 'low';
-          }
-        }
-
-        const payload = {
-          subject_code: subject,
-          num,
-          question: q.question || '',
-          options: q.options || {},
-          answer: (q.answer || '').toUpperCase(),
-          answer_text: q.answer_text || '',
-          images: q.images || [],
-          is_active: true,
-          updated_at: new Date().toISOString(),
-          has_image: localHasImg || needsImg,
-          error_risk: risk,
-          error_risk_reason: reason || null,
-        };
-
-        try {
-          const res = await fetch('/api/admin-action', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            cache: 'no-store',
-            body: JSON.stringify({ user_id: user?.id, action: 'add_question', payload: { question_data: payload } }),
-          });
-          const out = await res.json().catch(() => ({}));
-          if (!res.ok || out.error) {
-            console.warn('Import lỗi câu ' + num + ':', out.error || res.status);
-            errors++;
-          } else success++;
-        } catch (e) {
-          console.warn('Import lỗi câu ' + num + ':', e.message || e);
-          errors++;
-        }
-      }
-
-      await logAction('ai_import_questions', 'questions', subject, {
-        count: parsedQuestions.length,
-        success,
-        errors,
-        subject_code: subject,
-      });
-
-      closeModal();
-      await loadAll();
-      toast(`Import xong: ${success} thành công${errors ? ', ' + errors + ' lỗi' : ''}`);
-      parsedQuestions = [];
-    } finally {
-      setBusy(false);
-      hideProgress();
-    }
-  };
-
-  window.openAddSubjectAI = function () {
-    parsedQuestions = [];
-    openModal('Thêm môn học bằng AI', getImportHTML());
-    setTimeout(() => {
-      const fileInput = document.getElementById('aiImportFile');
-      if (fileInput) {
-        fileInput.addEventListener('change', function (e) {
-          const file = e.target.files?.[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = function () {
-            const text = reader.result;
-            let jsonStr = text;
-            const mdMatch = text.match(/```json\s*([\s\S]*?)```/);
-            if (mdMatch) jsonStr = mdMatch[1];
-            else {
-              const jsonMatch = text.match(/```\s*([\s\S]*?)```/);
-              if (jsonMatch) jsonStr = jsonMatch[1];
-            }
-            const ta = document.getElementById('aiImportData');
-            if (ta) ta.value = jsonStr.trim();
-            toast('Đã đọc file ' + file.name);
-            previewAIImport();
-          };
-          reader.readAsText(file);
-        });
-      }
-    }, 100);
-  };
-})();
-
 // ===== SUBJECT_MANAGEMENT_20260625 =====
 (function () {
   const $ = id => document.getElementById(id);
@@ -2375,7 +1854,7 @@ Bắt đầu ngay từ câu 1.`;
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <button class="act" onclick="closeModal()" style="width:100%;text-align:center;padding:10px;font-size:0.88rem;font-weight:bold;border-radius:8px;">Hủy bỏ</button>
+          <button class="act" onclick="lhCloseModal()" style="width:100%;text-align:center;padding:10px;font-size:0.88rem;font-weight:bold;border-radius:8px;">Hủy bỏ</button>
           <button class="act bad" id="btnConfirmDeleteSubject" disabled style="width:100%;text-align:center;padding:10px;font-size:0.88rem;font-weight:bold;border-radius:8px;opacity:0.5;cursor:not-allowed;">Xác nhận xóa</button>
         </div>
       </div>
@@ -2418,19 +1897,6 @@ Bắt đầu ngay từ câu 1.`;
           cache.questions = (cache.questions || []).filter(
             q => String(q.subject_code || '').toUpperCase() !== String(code || '').toUpperCase(),
           );
-          if (window.__ADMIN_PAGE_STATE__) {
-            window.__ADMIN_PAGE_STATE__.subjects = (window.__ADMIN_PAGE_STATE__.subjects || []).filter(
-              s => String(s).toUpperCase() !== String(code || '').toUpperCase(),
-            );
-            if (
-              window.__ADMIN_PAGE_STATE__.subject !== 'all' &&
-              String(window.__ADMIN_PAGE_STATE__.subject).toUpperCase() === String(code || '').toUpperCase()
-            ) {
-              window.__ADMIN_PAGE_STATE__.subject = 'all';
-              localStorage.setItem('admin_question_subject_filter_v1', 'all');
-            }
-          }
-
           await loadAll();
           if (typeof window.loadSubjectsAdmin === 'function') await window.loadSubjectsAdmin();
           toast('Đã chuyển môn ' + code + ' vào Thùng rác');
@@ -2510,26 +1976,6 @@ Bắt đầu ngay từ câu 1.`;
     origSetPage(id, n);
     if (id === 'subjectRequests') loadSubjectRequests();
   };
-
-  function injectDeleteIcons() {
-    if (!isAdmin()) return;
-    document.querySelectorAll('.subjectTab[onclick*="setQuestionSubjectFilter"]').forEach(btn => {
-      const match = (btn.getAttribute('onclick') || '').match(/setQuestionSubjectFilter\('([^']+)'\)/);
-      const code = match ? match[1] : '';
-      if (code && code !== 'all' && !btn.querySelector('.deleteSubjectIcon')) {
-        const del = document.createElement('span');
-        del.className = 'deleteSubjectIcon';
-        del.textContent = '×';
-        del.title = 'Xóa môn ' + code;
-        del.onclick = function (e) {
-          e.stopPropagation();
-          deleteSubjectAdmin(code);
-        };
-        btn.appendChild(del);
-      }
-    });
-  }
-  setInterval(injectDeleteIcons, 800);
 })();
 
 // (TRASH_SUBJECTS_PATCH_20260625 removed — superseded by FINAL_TRASH_COMPACT_ROBUST_DELETE_20260625)
@@ -2643,8 +2089,7 @@ Bắt đầu ngay từ câu 1.`;
 
   // 2. (loadTrash removed — superseded by FINAL_TRASH_COMPACT_ROBUST_DELETE_20260625)
 
-  // (wrapper renderQuestions cũ removed — nó bọc bản renderQuestions đã bị override nên không còn tác dụng;
-  //  CSS vẫn được tiêm 1 lần ngay dưới đây.)
+  // (wrapper renderQuestions cũ removed 20260729 — cả trang "Câu hỏi" đã bỏ; CSS vẫn tiêm 1 lần ngay dưới đây.)
   injectAdminStyles();
 })();
 
@@ -2691,15 +2136,12 @@ Bắt đầu ngay từ câu 1.`;
       const page = document.createElement('section');
       page.id = 'subjectsAdmin';
       page.className = 'page';
+      // SUBJECT_ADMIN_COMPACT_HEAD_20260729: bỏ tiêu đề + mô tả + nút "Tải lại môn" trong panel
+      // để nhường chỗ cho danh sách. Header trang đã có tên trang ("Quản lý môn học") và nút
+      // "Tải lại" (#refreshBtn — COPILOT_ADMIN_RELOAD_FIX_20260630 gọi lại loadSubjectsAdmin
+      // khi đang ở trang này), nên cả ba thứ đó đều là bản trùng.
       page.innerHTML = `
         <div class="panel panelFill subjectAdminPanel">
-          <div class="subjectAdminHead">
-            <div>
-              <h3>Quản lý môn học</h3>
-              <p class="muted">Sửa mã môn, tên môn và mô tả hiển thị ở màn hình chọn môn.</p>
-            </div>
-            <button class="act ok" type="button" onclick="loadSubjectsAdmin()">Tải lại môn</button>
-          </div>
           <div id="subjectAdminList" class="subjectAdminList pageScroll"></div>
         </div>`;
       ws.appendChild(page);
@@ -2795,7 +2237,7 @@ Bắt đầu ngay từ câu 1.`;
         </div>
         <div class="actions editSubjectActions">
           <button class="act ok" type="button" onclick="saveSubjectAdmin()">Lưu thay đổi</button>
-          <button class="act" type="button" onclick="closeModal()">Đóng</button>
+          <button class="act" type="button" onclick="lhCloseModal()">Đóng</button>
         </div>
       </div>`,
     );
@@ -2898,7 +2340,7 @@ Bắt đầu ngay từ câu 1.`;
   const GROUPS = [
     { title: 'Duyệt', icon: '✓', keys: ['approvals', 'requests', 'subjectRequests'] },
     { title: 'Nội dung', icon: '□', keys: ['subjectsAdmin', 'trash'] },
-    { title: 'Hệ thống', icon: '⚙', keys: ['users', 'history', 'logs'] },
+    { title: 'Hệ thống', icon: '⚙', keys: ['users', 'history', 'logs', 'discordSettings'] },
   ];
   const SHORT = {
     overview: 'TQ',
@@ -2906,11 +2348,11 @@ Bắt đầu ngay từ câu 1.`;
     requests: 'YS',
     subjectRequests: 'YM',
     subjectsAdmin: 'MH',
-    questions: 'CH',
     trash: 'TR',
     users: 'ND',
     history: 'LS',
     logs: 'LG',
+    discordSettings: 'DC',
   };
   const LABEL = {
     overview: 'Tổng quan',
@@ -2918,11 +2360,11 @@ Bắt đầu ngay từ câu 1.`;
     requests: 'Yêu cầu sửa',
     subjectRequests: 'Yêu cầu thêm môn',
     subjectsAdmin: 'Môn học',
-    questions: 'Câu hỏi',
     trash: 'Thùng rác',
     users: 'Người dùng',
     history: 'Lịch sử',
     logs: 'Admin logs',
+    discordSettings: 'Thông báo Discord',
   };
   const ICON = {
     overview: '⌂',
@@ -2930,11 +2372,11 @@ Bắt đầu ngay từ câu 1.`;
     requests: '✎',
     subjectRequests: '＋',
     subjectsAdmin: '□',
-    questions: '?',
     trash: '×',
     users: '○',
     history: '◷',
     logs: '▤',
+    discordSettings: '🔔',
     default: '•',
   };
 
@@ -2968,11 +2410,11 @@ Bắt đầu ngay từ câu 1.`;
     if (page.includes('subjectrequest') || text.includes('yc thêm môn') || text.includes('yêu cầu thêm môn'))
       return 'subjectRequests';
     if (page === 'subjectsadmin' || text === 'môn học' || text.includes('quản lý môn')) return 'subjectsAdmin';
-    if (page === 'questions' || text.includes('câu hỏi')) return 'questions';
     if (page.includes('trash') || page.includes('deleted') || text.includes('thùng rác')) return 'trash';
     if (page === 'users' || text.includes('người dùng')) return 'users';
     if (page === 'history' || text.includes('lịch sử')) return 'history';
     if (page === 'logs' || text.includes('admin logs')) return 'logs';
+    if (page === 'discordsettings' || text.includes('discord')) return 'discordSettings';
     return page || text;
   }
   function applyNav(btn, key, standalone = false) {
@@ -3023,15 +2465,6 @@ Bắt đầu ngay từ câu 1.`;
     const used = new Set();
     const state = collapsedMap();
     side.classList.add('adminTreeReady');
-
-    // Hide Questions tab
-    navs.forEach(n => {
-      if (navKey(n) === 'questions') {
-        used.add(n);
-        n.style.display = 'none';
-        n.remove();
-      }
-    });
 
     const overview = navs.find(n => !used.has(n) && navKey(n) === 'overview');
     if (overview) {
@@ -3331,8 +2764,8 @@ Bắt đầu ngay từ câu 1.`;
       <p><b>Xóa lúc:</b> ${esc(date(t.deleted_at))}</p>
       <p><b>Xóa bởi:</b> ${esc(t.deleted_by_email || '')}</p>
       <div class="actions" style="margin-top:12px">
-        <button class="act ok" onclick="restoreQuestion(${arg(t.id)});closeModal();">Khôi phục</button>
-        <button class="act bad" onclick="permanentDelete(${arg(t.id)});closeModal();">Xóa vĩnh viễn</button>
+        <button class="act ok" onclick="restoreQuestion(${arg(t.id)});lhCloseModal();">Khôi phục</button>
+        <button class="act bad" onclick="permanentDelete(${arg(t.id)});lhCloseModal();">Xóa vĩnh viễn</button>
       </div>
     `,
     );
@@ -3655,16 +3088,19 @@ async function sendLoginToDiscord(email, role) {
           <div class="thCol thActions">THAO TÁC</div>
         </div>`;
 
-    const bulkLogoutBar = `<div class="userAdminBulkBar" style="display:flex;justify-space-between;align-items:center;margin-bottom:12px;padding:8px 14px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid rgba(255,255,255,0.08);">
-      <span style="font-size:0.86rem;color:var(--mist);">Quản lý phiên làm việc &amp; Yêu cầu đăng xuất lại:</span>
-      <button type="button" class="btn bad" style="background:#dc2626;color:#ffffff;border:none;border-radius:6px;padding:6px 14px;font-weight:700;font-size:0.82rem;cursor:pointer;" onclick="forceLogoutAllUsers()">🚪 Đăng xuất tất cả người dùng</button>
+    // RELOAD_NOTICE_20260729: nhắc tải lại thay cho đăng xuất bắt buộc.
+    // (`justify-space-between` ở bản cũ không phải thuộc tính CSS nào cả nên nút không được
+    //  đẩy sang phải — đúng là `justify-content`.)
+    const bulkReloadBar = `<div class="userAdminBulkBar" style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;padding:8px 14px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid rgba(255,255,255,0.08);">
+      <span style="font-size:0.86rem;color:var(--mist);">Vừa cập nhật web? Nhắc mọi người tải lại trang:</span>
+      <button type="button" class="act ok" style="white-space:nowrap;" onclick="notifyReloadAllUsers()">🔔 Nhắc tất cả tải lại</button>
     </div>`;
 
     const helpers = { actText, actTime, date, isBlocked, badge, roleBadgeFinal, avatarButton, esc };
     const rowFn = typeof renderUserRowSaaS === 'function' ? renderUserRowSaaS : null;
 
     $('userList').innerHTML =
-      bulkLogoutBar +
+      bulkReloadBar +
       headHTML +
       (arr
         .map(p => {
@@ -3809,325 +3245,6 @@ async function sendLoginToDiscord(email, role) {
   setTimeout(run, 1200);
 })();
 
-// ===== COPILOT_ADMIN_CLOUDINARY_IMAGE_FIX_20260627 =====
-// Ảnh admin upload sẽ lên Cloudinary, KHÔNG lưu Base64 vào bảng questions.
-(function () {
-  const CLOUDINARY_CLOUD_NAME = 'ddc4uvm7m';
-  const CLOUDINARY_UPLOAD_PRESET = 'learninghub_unsigned';
-  function escAttr(s) {
-    return esc(s).replace(/`/g, '&#96;');
-  }
-  function optVal(q, k) {
-    return q?.options?.[k] || '';
-  }
-  function imgSrc(im) {
-    if (!im) return '';
-    if (typeof im === 'string') return im;
-    return im.src || im.url || im.secure_url || im.publicUrl || im.public_url || im.path || '';
-  }
-  async function uploadCloudinary(file) {
-    if (!CLOUDINARY_UPLOAD_PRESET || CLOUDINARY_UPLOAD_PRESET === 'YOUR_UNSIGNED_UPLOAD_PRESET')
-      throw new Error('Chưa có unsigned upload preset Cloudinary.');
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-    fd.append('folder', 'learninghub/questions');
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
-      method: 'POST',
-      body: fd,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error?.message || 'Upload Cloudinary thất bại');
-    return {
-      id: data.public_id,
-      public_id: data.public_id,
-      src: data.secure_url,
-      url: data.secure_url,
-      width: data.width,
-      height: data.height,
-      source: 'cloudinary',
-    };
-  }
-  let directEditDraftImages = [];
-  function renderDirectEditImages() {
-    const box = $('dqEditImgs');
-    if (!box) return;
-    if (!directEditDraftImages.length) {
-      box.innerHTML = '<div class="dqNoImage">Chưa có hình.</div>';
-      return;
-    }
-    box.innerHTML = directEditDraftImages
-      .map(
-        (im, i) =>
-          `<div class="dqEditImg"><button type="button" onclick="removeDirectEditImage(${i})">×</button><img src="${escAttr(imgSrc(im))}" alt="Ảnh câu hỏi"></div>`,
-      )
-      .join('');
-  }
-  window.removeDirectEditImage = function (i) {
-    directEditDraftImages.splice(i, 1);
-    renderDirectEditImages();
-  };
-  async function getFullQuestion(id) {
-    const r = await client.from('questions').select('*').eq('id', id).maybeSingle();
-    if (r.error) {
-      alert('Không tải được câu hỏi: ' + r.error.message);
-      return null;
-    }
-    return r.data || (cache.questions || []).find(x => String(x.id) === String(id));
-  }
-  window.editQuestionDirect = async function (id) {
-    if (!isEditor()) return alert('Admin hoặc Editor mới được sửa.');
-    const q = await getFullQuestion(id);
-    if (!q) return;
-    directEditDraftImages = Array.isArray(q.images) ? JSON.parse(JSON.stringify(q.images)) : q.images ? [q.images] : [];
-    openModal(
-      `Sửa trực tiếp câu ${q.num || q.id}`,
-      `
-      <div class="directEditAppStyle directEditPolished">
-        <div class="directTopBar"><div class="directHint">Ảnh mới sẽ upload lên Cloudinary.</div><div class="directTopActions actions"><button class="act ok directSaveBtn" onclick="saveQuestionDirect(${q.id})">Lưu trực tiếp</button><button class="act directCloseBtn" onclick="closeModal()">Đóng</button></div></div>
-        <div class="directEditGrid compactDirectGrid">
-          <section class="directLeft directPanel">
-            <div class="field directQuestionField"><label>Câu hỏi</label><textarea id="dqQuestion">${esc(q.question || '')}</textarea></div>
-            <div class="directSmallGrid"><div class="field directAnswerField"><label>Đáp án đúng</label><input id="dqAnswer" value="${escAttr(q.answer || '')}" placeholder="VD: A hoặc AC"></div><div class="field directImageField"><label>Hình ảnh</label><input type="file" id="dqImgUpload" accept="image/*" multiple></div></div>
-            <div id="dqEditImgs" class="dqEditImgs"></div>
-          </section>
-          <section class="directRight directPanel">${['A', 'B', 'C', 'D', 'E'].map(k => `<div class="field directOptionField"><label>Đáp án ${k}</label><textarea data-dq-opt="${k}">${esc(optVal(q, k))}</textarea></div>`).join('')}</section>
-        </div>
-      </div>`,
-    );
-    setTimeout(() => {
-      renderDirectEditImages();
-      const inp = $('dqImgUpload');
-      if (inp)
-        inp.onchange = async e => {
-          const files = Array.from(e.target.files || []);
-          if (!files.length) return;
-          inp.disabled = true;
-          toast('Đang upload ảnh lên Cloudinary...');
-          try {
-            for (const file of files) directEditDraftImages.push(await uploadCloudinary(file));
-            renderDirectEditImages();
-            toast('Đã upload ảnh');
-          } catch (err) {
-            alert(err.message || err);
-          } finally {
-            inp.disabled = false;
-            e.target.value = '';
-          }
-        };
-    }, 0);
-  };
-  window.saveQuestionDirect = async function (id) {
-    if (!isEditor()) return alert('Admin hoặc Editor mới được sửa.');
-    if (!user) return alert('Chưa đăng nhập.');
-    const oldQ = await getFullQuestion(id);
-    if (!oldQ) return;
-    const ops = {};
-    document.querySelectorAll('[data-dq-opt]').forEach(t => {
-      const v = (t.value || '').trim();
-      if (v) ops[t.dataset.dqOpt] = v;
-    });
-    const question = ($('dqQuestion')?.value || '').trim();
-    const answer = ($('dqAnswer')?.value || '').trim().toUpperCase();
-    if (!question) return alert('Câu hỏi không được để trống.');
-    if (!answer) return alert('Đáp án đúng không được để trống.');
-    let list = Array.isArray(directEditDraftImages) ? directEditDraftImages : [];
-    list = list
-      .map(im => {
-        if (typeof im === 'string')
-          return { src: im, url: im, secure_url: im, source: im.includes('cloudinary.com') ? 'cloudinary' : 'url' };
-        const src = im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '';
-        return { ...im, src, url: im.url || src, secure_url: im.secure_url || src };
-      })
-      .filter(im => im && im.src && !String(im.src).startsWith('data:image/'));
-    const localHasImg = list.length > 0;
-    const contentText = question + ' ' + Object.values(ops).join(' ');
-    const needsImg = /(hình vẽ|hình bên|đồ thị|bảng biến thiên|sơ đồ)/gi.test(contentText);
-    const payload = {
-      id,
-      subject_code: oldQ.subject_code || null,
-      num: oldQ.num || null,
-      question,
-      options: ops,
-      answer,
-      answer_text: Object.entries(ops)
-        .filter(([k]) => answer.includes(k))
-        .map(([k, v]) => `${k}. ${v}`)
-        .join('; '),
-      images: list,
-      updated_at: new Date().toISOString(),
-      has_image: localHasImg || needsImg,
-      error_risk: answer.length > 1 ? 'medium' : 'low',
-      error_risk_reason: answer.length > 1 ? 'Câu chọn nhiều đáp án đúng, cần rà soát kỹ' : null,
-    };
-    setBusy(true, 'Đang lưu...');
-    try {
-      const res = await fetch('/api/admin-action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        cache: 'no-store',
-        body: JSON.stringify({
-          user_id: user.id,
-          action: 'save_question_direct',
-          payload: { question_id: id, new_data: payload, old_data: oldQ },
-        }),
-      });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok || out.error) return alert(out.error || 'Không lưu được vào Turso');
-      if (typeof window.clearLearningHubQuestionCache === 'function') window.clearLearningHubQuestionCache();
-      const idx = (cache.questions || []).findIndex(x => String(x.id) === String(id));
-      if (idx >= 0) cache.questions[idx] = { ...cache.questions[idx], ...payload };
-      closeModal();
-      renderQuestions();
-      toast('Đã sửa trực tiếp');
-      await loadAll();
-    } finally {
-      setBusy(false);
-    }
-  };
-})();
-
-// ===== COPILOT_ADMIN_QUESTION_PAGE_FINAL_OVERRIDE_20260627 =====
-// Chỉ tải 50 câu/trang, CÓ tải cột images để tránh lưu đè làm mất ảnh.
-(function () {
-  const QUESTION_COLS =
-    'id,num,subject_code,question,options,answer,images,is_active,updated_at,created_at,has_image,error_risk,error_risk_reason';
-  const STATE = (window.__ADMIN_PAGE_STATE__ = window.__ADMIN_PAGE_STATE__ || {
-    page: 1,
-    size: 50,
-    total: 0,
-    subject: localStorage.getItem('admin_question_subject_filter_v1') || 'all',
-    subjects: [],
-  });
-  function search() {
-    return String($('search')?.value || '').trim();
-  }
-  async function safeQ(p) {
-    try {
-      const r = await p;
-      return r.error ? [] : r.data || [];
-    } catch (e) {
-      return [];
-    }
-  }
-  async function loadSubjects() {
-    // FIX: tab môn phải lấy từ bảng subjects, không lấy từ questions.
-    // Nếu lấy từ questions thì môn đã xóa vẫn hiện khi còn câu hỏi cũ/cache.
-    const subjects = await safeQ(
-      client
-        .from('subjects')
-        .select('code,is_active')
-        .order('sort_order', { ascending: true })
-        .order('code', { ascending: true }),
-    );
-    let set = new Set(subjects.filter(s => s && s.code && s.is_active !== false).map(s => s.code));
-    if (!set.size) {
-      const rows = await safeQ(client.from('questions').select('subject_code').limit(10000));
-      set = new Set(rows.map(x => x.subject_code || 'HOD102').filter(Boolean));
-    }
-    if (!set.size) {
-      set.add('HOD102');
-      set.add('MLN111');
-    }
-    STATE.subjects = [...set].sort();
-    if (STATE.subject !== 'all' && !STATE.subjects.includes(STATE.subject)) {
-      STATE.subject = 'all';
-      localStorage.setItem('admin_question_subject_filter_v1', 'all');
-    }
-  }
-  async function loadQuestionPage() {
-    // FIX_20260705: kết quả trang lưu vào STATE.pageRows, KHÔNG đè cache.questions —
-    // cache.questions phải giữ nguyên danh sách đầy đủ cho đếm câu/sửa trực tiếp/so sánh yêu cầu.
-    const from = (STATE.page - 1) * STATE.size,
-      to = from + STATE.size - 1;
-    let q = client
-      .from('questions')
-      .select(QUESTION_COLS, { count: 'exact' })
-      .order('subject_code', { ascending: true })
-      .order('num', { ascending: true })
-      .range(from, to);
-    if (STATE.subject !== 'all') q = q.eq('subject_code', STATE.subject);
-    const s = search();
-    if (s) {
-      if (/^\d+$/.test(s)) q = q.or(`num.eq.${Number(s)},id.eq.${Number(s)}`);
-      else q = q.or(`question.ilike.%${s.replaceAll('%', '')}%,answer.ilike.%${s.replaceAll('%', '')}%`);
-    }
-    const r = await q;
-    if (r.error) {
-      err('Lỗi tải câu hỏi: ' + r.error.message);
-      STATE.pageRows = [];
-      STATE.total = 0;
-      return;
-    }
-    STATE.pageRows = r.data || [];
-    STATE.total = r.count || (r.data || []).length;
-  }
-  // FIX_20260705: loadAll bản active (COPILOT_ADMIN_RELOAD_FIX_20260630) gọi hàm này để đồng bộ
-  // tab môn + phân trang tab Câu hỏi. Trước đây STATE.subjects không được ai nạp nên tab môn biến mất.
-  window.__adminSyncQuestionPage = async function () {
-    try {
-      await loadSubjects();
-      await loadQuestionPage();
-    } catch (e) {
-      console.warn('[question page sync]', e);
-    }
-  };
-  // (loadLightTables + loadAll bản "admin-lite" + startAdminRealtime bản subscribe cũ removed —
-  //  loadAll active ở COPILOT_ADMIN_RELOAD_FIX_20260630, realtime đã tắt hẳn ở COPILOT_DISABLE_ALL_ADMIN_REALTIME_FINAL_20260629.)
-  window.setQuestionSubjectFilter = function (code) {
-    STATE.subject = code || 'all';
-    STATE.page = 1;
-    localStorage.setItem('admin_question_subject_filter_v1', STATE.subject);
-    loadQuestionPage().then(renderQuestions);
-  };
-  window.adminQuestionPage = function (d) {
-    const max = Math.max(1, Math.ceil((STATE.total || 0) / STATE.size));
-    STATE.page = Math.min(max, Math.max(1, STATE.page + d));
-    loadQuestionPage().then(renderQuestions);
-  };
-  window.renderQuestions = renderQuestions = function () {
-    const rows = STATE.pageRows || cache.questions || [];
-    const max = Math.max(1, Math.ceil((STATE.total || 0) / STATE.size));
-    const tabs = `<div class="questionSubjectTabs"><button class="subjectTab ${STATE.subject === 'all' ? 'active' : ''}" onclick="setQuestionSubjectFilter('all')">Tất cả</button>${STATE.subjects.map(s => `<button class="subjectTab ${STATE.subject === s ? 'active' : ''}" onclick="setQuestionSubjectFilter('${esc(s)}')">${esc(s)}</button>`).join('')}</div>`;
-    const pager = `<div class="questionPager actions"><button class="act" onclick="adminQuestionPage(-1)" ${STATE.page <= 1 ? 'disabled' : ''}>‹ Trang trước</button><b>Trang ${STATE.page}/${max}</b><button class="act" onclick="adminQuestionPage(1)" ${STATE.page >= max ? 'disabled' : ''}>Trang sau ›</button></div>`;
-    const html =
-      rows
-        .map(
-          q =>
-            `<div class="item questionAdminItem"><div class="head"><div><div class="questionSubjectCode">${esc(q.subject_code || 'HOD102')}</div><b>Câu ${esc(q.num || q.id)}</b></div>${q.is_active === false ? badge('hidden') : badge('active')}</div><p>${esc(q.question || '')}</p><p class="muted">Đáp án: ${esc(q.answer || '')}</p><div class="actions"><button class="act" onclick="viewQuestion(${q.id})">Xem</button><button class="act warn" onclick="editQuestionDirect(${q.id})">Sửa trực tiếp</button><button class="act warn" onclick="toggleQuestion(${q.id},${q.is_active === false})">${q.is_active === false ? 'Hiện' : 'Ẩn'}</button>${isAdmin() ? `<button class="act bad" onclick="deleteQuestionAdmin(${q.id})">Xóa</button>` : ''}</div></div>`,
-        )
-        .join('') || '<p class=muted>Không có câu hỏi.</p>';
-    $('questionList').innerHTML =
-      `<div class="questionToolbar"><div>${tabs}</div><button class="act ok addQuestionBtn" onclick="openAddQuestionAdmin()">+ Thêm câu hỏi</button></div><div class="questionResultNote">Đang hiển thị ${rows.length}/${STATE.total} câu. Không tải ảnh ở danh sách.</div>` +
-      pager +
-      html +
-      pager;
-  };
-  window.viewQuestion = async function (id) {
-    const r = await client.from('questions').select('*').eq('id', id).maybeSingle();
-    if (r.error) return alert(r.error.message);
-    const q = r.data;
-    if (!q) return;
-    openModal(`Câu ${q.num || q.id}`, `<pre class=raw>${esc(safe(q))}</pre>`);
-  };
-  const inp = $('search');
-  if (inp && !inp.__adminFinalSearch) {
-    inp.__adminFinalSearch = true;
-    let t;
-    inp.addEventListener(
-      'input',
-      () => {
-        clearTimeout(t);
-        t = setTimeout(() => {
-          STATE.page = 1;
-          loadQuestionPage().then(render);
-        }, 350);
-      },
-      { passive: true },
-    );
-  }
-})();
-
 // ===== FINAL_FIX_REQUESTS_AND_SUBJECT_REQUESTS_20260627 =====
 // Fix: tab Yêu cầu sửa và Yêu cầu thêm môn không hiện data do bản tối ưu trước đó load thiếu cột/không gọi load subject_requests.
 (function () {
@@ -4135,8 +3252,7 @@ async function sendLoginToDiscord(email, role) {
   let subjectReqFilter = 'pending';
 
   // (loadCoreTablesFixed/loadSubjectsLite/loadQuestionPageLite + loadAll + viewReq bản cũ removed —
-  //  loadAll active ở COPILOT_ADMIN_RELOAD_FIX_20260630, viewReq active ở FIX_ADMIN_REQUEST_IMAGES_FORCE_20260628,
-  //  tab môn/phân trang do __adminSyncQuestionPage ở COPILOT_ADMIN_QUESTION_PAGE_FINAL_OVERRIDE_20260627 lo.)
+  //  loadAll active ở COPILOT_ADMIN_RELOAD_FIX_20260630, viewReq active ở FIX_ADMIN_REQUEST_IMAGES_FORCE_20260628.)
 
   // Load + render Yêu cầu thêm môn độc lập, không phụ thuộc render() cũ.
   window.loadSubjectRequests = async function () {
@@ -4730,9 +3846,6 @@ ${E(val)}</pre>`;
     style.id = 'compactDragSubjectStyle';
     style.textContent = `
       #subjectsAdmin .subjectAdminPanel{padding:16px!important;}
-      #subjectsAdmin .subjectAdminHead{padding-bottom:10px!important;margin-bottom:10px!important;}
-      #subjectsAdmin .subjectAdminHead h3{font-size:1.02rem!important;margin-bottom:4px!important;}
-      #subjectsAdmin .subjectAdminHead p{font-size:.86rem!important;}
       #subjectsAdmin .subjectAdminList{gap:7px!important;padding-right:6px!important;}
       #subjectsAdmin .subjectAdminItem{
         min-height:58px!important;
@@ -5165,7 +4278,7 @@ ${E(val)}</pre>`;
         </div>
         <div class="actions editSubjectActions">
           <button class="act ok" type="button" onclick="saveSubjectAdmin()">Lưu thay đổi</button>
-          <button class="act" type="button" onclick="closeModal()">Đóng</button>
+          <button class="act" type="button" onclick="lhCloseModal()">Đóng</button>
         </div>
       </div>`,
     );
@@ -5315,18 +4428,23 @@ ${E(val)}</pre>`;
   }
 
   /**
-   * SUBJECT_FOLDER_DRILLDOWN_20260728: hàng thư mục cũng có nút NEW, bật/tắt cho CẢ cụm.
-   * Trạng thái đọc từ các môn con: đủ cả = isOn, một phần = isPartial. Không lưu cờ NEW riêng
-   * cho thư mục ở đâu cả — thư mục chỉ là cách nhóm theo mã gốc, không phải một dòng trong DB.
+   * SUBJECT_FOLDER_NEW_BADGE_20260729 (thay cách làm của SUBJECT_FOLDER_DRILLDOWN_20260728):
+   * NEW của thư mục là cờ RIÊNG của chính thư mục đó, KHÔNG suy ra từ môn con và bật/tắt nó
+   * cũng KHÔNG ghi gì vào môn con. Môn con có nút NEW riêng (`toggleSubjectNewBadgeFromCard`).
+   * Cờ thư mục lưu ở `site_settings.subject_folder_new_badges` (mảng mã gốc) vì thư mục không
+   * phải một dòng trong bảng `subjects` — xem `api/lib/folderBadges.js`.
    */
   function baseOf(code) {
     return String(code || '')
       .split(/[_\-\s]/)[0]
       .toUpperCase();
   }
-  function folderItems(base) {
-    const src = cardSubjectCache.length ? cardSubjectCache : cache.subjects || [];
-    return src.filter(s => baseOf(s.code) === String(base || '').toUpperCase());
+  function folderBadgeList() {
+    return Array.isArray(cache.folder_new_badges) ? cache.folder_new_badges : [];
+  }
+  function hasFolderNewBadge(base) {
+    const b = String(base || '').toUpperCase();
+    return folderBadgeList().some(x => String(x || '').toUpperCase() === b);
   }
   function enhanceFolderRows() {
     const list = document.getElementById('subjectAdminList');
@@ -5336,13 +4454,14 @@ ${E(val)}</pre>`;
       if (!base || row.querySelector('.subjectNewToggle')) return;
       const actions = row.querySelector('.subjectAdminActions');
       if (!actions) return;
-      const items = folderItems(base);
-      const on = items.filter(hasNewBadge).length;
+      const on = hasFolderNewBadge(base);
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'act subjectNewToggle' + (items.length && on === items.length ? ' isOn' : on ? ' isPartial' : '');
-      btn.textContent = `NEW ${on}/${items.length}`;
-      btn.title = on ? 'Bấm để tắt NEW cho cả thư mục' : 'Bấm để bật NEW cho cả thư mục';
+      btn.className = 'act subjectNewToggle' + (on ? ' isOn' : '');
+      btn.textContent = 'NEW';
+      btn.title = on
+        ? 'Đang bật NEW cho thẻ thư mục ' + base + ' - bấm để tắt (không đụng môn con)'
+        : 'Đang tắt NEW cho thẻ thư mục ' + base + ' - bấm để bật (không đụng môn con)';
       btn.setAttribute('onclick', "toggleSubjectFolderNewBadge('" + escJs(base) + "')");
       actions.insertBefore(btn, actions.firstChild);
     });
@@ -5406,20 +4525,22 @@ ${E(val)}</pre>`;
     }
   };
 
+  // Chỉ đổi cờ của CHÍNH thư mục. Môn con giữ nguyên cờ NEW của nó — cố ý, đừng "sửa lại".
   window.toggleSubjectFolderNewBadge = async function (base) {
     if (!isEditor()) return alert('Admin hoặc Editor mới được sửa môn học.');
-    const items = folderItems(base);
-    if (!items.length) return alert('Không tìm thấy môn học trong thư mục ' + base + '.');
-    const next = !items.every(hasNewBadge); // còn môn nào chưa bật thì bật hết, đủ cả thì tắt hết
-    const changed = items.filter(s => hasNewBadge(s) !== next);
-    if (!changed.length) return;
+    const b = String(base || '').toUpperCase();
+    if (!b) return;
+    const next = !hasFolderNewBadge(b);
     setBusy(true, next ? 'Đang bật NEW cho thư mục...' : 'Đang tắt NEW cho thư mục...');
     try {
-      for (const s of changed) {
-        if (!(await adminAction('set_subject_new_badge', { id: s.id, enabled: next }))) return;
-        s.cover = makeCover(s.cover || '', next);
-      }
-      toast((next ? 'Đã bật NEW cho ' : 'Đã tắt NEW cho ') + changed.length + ' môn trong ' + base);
+      const out = await adminAction('set_subject_folder_new_badge', { base: b, enabled: next });
+      if (!out) return;
+      cache.folder_new_badges = Array.isArray(out.folder_new_badges)
+        ? out.folder_new_badges
+        : next
+          ? [...folderBadgeList(), b]
+          : folderBadgeList().filter(x => String(x || '').toUpperCase() !== b);
+      toast((next ? 'Đã bật NEW cho thư mục ' : 'Đã tắt NEW cho thư mục ') + b);
       await window.loadSubjectsAdmin?.();
     } finally {
       setBusy(false);
@@ -5550,6 +4671,9 @@ ${E(val)}</pre>`;
       }));
       cache.logs = isAdmin() ? (dash.logs || []).map(l => ({ ...l, details: pj(l.details, {}) })) : [];
       cache.subjects = dash.subjects || [];
+      // SUBJECT_FOLDER_NEW_BADGE_20260729: mảng mã gốc đang bật NEW ở cấp THƯ MỤC — cờ riêng,
+      // không dính gì tới cover.new_badge của từng môn con.
+      cache.folder_new_badges = Array.isArray(dash.folder_new_badges) ? dash.folder_new_badges : [];
       cache.subject_requests = (dash.subject_requests || []).map(s => ({
         ...s,
         questions_data: pj(s.questions_data, []),
@@ -5562,11 +4686,12 @@ ${E(val)}</pre>`;
         ...d,
         original_data: pj(d.original_data, {}),
       }));
-      // FIX_20260705: đồng bộ tab môn + trang hiện tại của tab Câu hỏi (trước đây STATE.subjects
-      // không được nạp nên tab Câu hỏi mất tabs môn và mất phân trang).
-      if (typeof window.__adminSyncQuestionPage === 'function') await window.__adminSyncQuestionPage();
+      // ADMIN_TWO_TIERS_AND_DISCORD_TOGGLES_20260729: cấp admin + cấu hình Discord đến kèm
+      // dashboard (khoá is_system_admin / discord_notifications ở TẦNG TRÊN CÙNG).
+      window.__lhReadAdminTierFromDashboard?.(dash);
       render();
       window.__adminDashRenderedText = r0.text || '';
+      window.dispatchEvent(new CustomEvent('lh:admin-dashboard-loaded'));
       if (typeof loadSubjectRequests === 'function') await loadSubjectRequests();
       if (typeof loadRegistrationMode === 'function') await loadRegistrationMode();
       toast('Đã tải mới');
@@ -5591,6 +4716,8 @@ ${E(val)}</pre>`;
       if (page === 'subjectRequests' && typeof window.loadSubjectRequests === 'function')
         await window.loadSubjectRequests();
       if (page === 'approvals' && typeof window.renderApprovals === 'function') window.renderApprovals();
+      if (page === 'discordSettings' && typeof window.renderDiscordSettings === 'function')
+        window.renderDiscordSettings();
     };
   }
 
@@ -5691,35 +4818,6 @@ ${E(val)}</pre>`;
         background:
           radial-gradient(circle at 78% 12%, rgba(200,169,110,.09), transparent 30%),
           linear-gradient(145deg,rgba(245,240,232,.065),rgba(255,255,255,.018))!important;
-      }
-      #subjectsAdmin .subjectAdminHead{
-        flex:0 0 auto!important;
-        display:flex!important;
-        align-items:center!important;
-        justify-content:space-between!important;
-        gap:18px!important;
-        margin:0 0 14px!important;
-        padding:0 0 16px!important;
-        border-bottom:1px solid rgba(200,169,110,.16)!important;
-      }
-      #subjectsAdmin .subjectAdminHead h3{
-        margin:0 0 6px!important;
-        font-size:1.18rem!important;
-        color:var(--gold2)!important;
-      }
-      #subjectsAdmin .subjectAdminHead .muted{
-        margin:0!important;
-        color:rgba(245,240,232,.68)!important;
-        line-height:1.45!important;
-      }
-      #subjectsAdmin .subjectAdminHead .act.ok{
-        min-width:124px!important;
-        height:44px!important;
-        padding:0 18px!important;
-        border-radius:999px!important;
-        background:linear-gradient(135deg,rgba(114,197,140,.22),rgba(114,197,140,.12))!important;
-        color:var(--ok)!important;
-        border-color:rgba(114,197,140,.30)!important;
       }
       #subjectsAdmin .subjectAdminList{
         flex:1 1 auto!important;
@@ -5881,8 +4979,6 @@ ${E(val)}</pre>`;
       }
       @media (max-width:680px){
         #subjectsAdmin .subjectAdminPanel{padding:14px!important;}
-        #subjectsAdmin .subjectAdminHead{align-items:flex-start!important;flex-direction:column!important;}
-        #subjectsAdmin .subjectAdminHead .act.ok{width:100%!important;}
         #subjectsAdmin .subjectAdminItem{
           grid-template-columns:38px minmax(0,1fr)!important;
           min-height:0!important;
@@ -5955,7 +5051,6 @@ ${E(val)}</pre>`;
       body #subjectsAdmin .subjectAdminActions .act,
       body #subjectsAdmin .subjectAdminActions button{min-height:38px!important;height:38px!important;padding:0 14px!important;border-radius:999px!important;font-size:.86rem!important;line-height:1!important;white-space:nowrap!important;}
       body #subjectsAdmin .subjectNewToggle{min-width:96px!important;height:38px!important;}
-      body #subjectsAdmin .subjectNewToggle.isPartial{background:linear-gradient(135deg,rgba(255,231,168,.30),rgba(232,196,110,.16))!important;color:#ffe9b8!important;border-color:rgba(232,212,168,.52)!important;}
       body #subjectsAdmin .subjectOrderHint{margin:0 0 10px!important;padding:10px 14px!important;border-radius:16px!important;background:rgba(0,0,0,.18)!important;border:1px solid rgba(200,169,110,.12)!important;}
       /* SUBJECT_FOLDER_DRILLDOWN_20260728 — hàng thư mục + thanh lùi ra.
          Đặt trong block này vì nó là style được nhồi CUỐI <head> (keepStyleLast), nên chắc chắn
@@ -6095,6 +5190,7 @@ ${E(val)}</pre>`;
     'trash', // Thùng rác
     'trashBin',
     'deletedQuestions',
+    'discordSettings', // Thông báo Discord (xem được: admin; đổi được: chỉ admin hệ thống)
   ]);
 
   const EDITOR_ALLOWED_PAGES = new Set([
@@ -6102,7 +5198,6 @@ ${E(val)}</pre>`;
     'requests', // Yêu cầu sửa
     'subjectRequests', // Yêu cầu thêm môn
     'subjectsAdmin', // Môn học
-    'questions', // Câu hỏi
     'history', // Lịch sử sửa câu
   ]);
 
@@ -6896,6 +5991,9 @@ ${E(val)}</pre>`;
           ? (dash.logs || []).map(l => ({ ...l, details: pj(l.details, {}) }))
           : [];
       cache.subjects = dash.subjects || [];
+      // SUBJECT_FOLDER_NEW_BADGE_20260729: mảng mã gốc đang bật NEW ở cấp THƯ MỤC — cờ riêng,
+      // không dính gì tới cover.new_badge của từng môn con.
+      cache.folder_new_badges = Array.isArray(dash.folder_new_badges) ? dash.folder_new_badges : [];
       cache.subject_requests = (dash.subject_requests || []).map(s => ({
         ...s,
         questions_data: pj(s.questions_data, []),
@@ -6909,7 +6007,7 @@ ${E(val)}</pre>`;
         original_data: pj(d.original_data, {}),
       }));
 
-      if (typeof window.__adminSyncQuestionPage === 'function') await window.__adminSyncQuestionPage();
+      window.__lhReadAdminTierFromDashboard?.(dash); // ADMIN_TWO_TIERS_20260729
       if (typeof render === 'function') render();
       if (typeof renderApprovals === 'function') renderApprovals();
     } catch (e) {
@@ -7037,7 +6135,7 @@ ${E(val)}</pre>`;
     menu.id = 'lhActionMenuFloat';
     menu.innerHTML = isAdmin()
       ? `<button class="act" onclick="viewUserEdits('${p.id}');closeUserActionMenuFinal();">Lịch sử sửa câu</button>
-         <button class="act bad" onclick="forceLogoutUser('${p.id}');closeUserActionMenuFinal();">🚪 Đăng xuất người này</button>
+         <button class="act" onclick="notifyReloadUser('${p.id}');closeUserActionMenuFinal();">🔔 Nhắc tải lại trang</button>
          <button class="act ${isBlocked(p) ? 'ok' : 'bad'}" onclick="toggleBlock('${p.id}',${!isBlocked(p)});closeUserActionMenuFinal();">${isBlocked(p) ? 'Unblock' : 'Block'}</button>
          <button class="act warn" onclick="setRole('${p.id}','${p.role === 'editor' ? 'user' : 'editor'}');closeUserActionMenuFinal();">${p.role === 'editor' ? 'Gỡ editor' : 'Cho editor'}</button>
          <button class="act warn" onclick="setRole('${p.id}','${p.role === 'admin' ? 'user' : 'admin'}');closeUserActionMenuFinal();">${p.role === 'admin' ? 'Gỡ admin' : 'Cho admin'}</button>
@@ -7055,31 +6153,33 @@ ${E(val)}</pre>`;
     menu.style.top = top + 'px';
   };
 
-  window.forceLogoutUser = async function (uid) {
+  /*
+    RELOAD_NOTICE_20260729 — thay cho forceLogoutUser / forceLogoutAllUsers.
+    KHÔNG đăng xuất người dùng nữa: chỉ hiện banner "Hệ thống vừa cập nhật — Tải lại" trên
+    máy họ (đúng banner như khi deploy bản mới). Họ giữ nguyên phiên đăng nhập.
+    Người đang mở web nhận qua realtime gần như tức thì; người đang offline nhận ở lần mở
+    web / lần xác minh quyền kế tiếp nhờ cờ profiles.reload_notice.
+  */
+  window.notifyReloadUser = async function (uid) {
     const p = (cache.profiles || []).find(x => String(x.id) === String(uid));
     const name = p ? p.email || p.full_name || uid : uid;
-    if (
-      !confirm(
-        `Đăng xuất bắt buộc đối với người dùng:\n${name}\n\nHọ sẽ bị đăng xuất khỏi hệ thống và phải đăng nhập lại để tải dữ liệu mới.`,
-      )
-    )
-      return;
+    if (!confirm(`Nhắc người dùng này tải lại trang?\n${name}\n\nHọ KHÔNG bị đăng xuất.`)) return;
 
-    if (await adminAction('force_logout_user', { target_user_id: uid })) {
-      alert(`✅ Đã yêu cầu đăng xuất người dùng ${name}.`);
+    if (await adminAction('notify_reload_user', { target_user_id: uid })) {
+      toast(`Đã gửi nhắc tải lại tới ${name}`);
     }
   };
 
-  window.forceLogoutAllUsers = async function () {
+  window.notifyReloadAllUsers = async function () {
     if (
       !confirm(
-        '⚠️ BẠN CÓ CHẮC MUỐN ĐĂNG XUẤT TẤT CẢ NGƯỜI DÙNG?\n\nTất cả người dùng (trừ Admin) sẽ bị buộc đăng xuất và phải đăng nhập lại để làm mới dữ liệu.',
+        'Nhắc TẤT CẢ người dùng tải lại trang?\n\nMọi người (trừ bạn) sẽ thấy banner "Hệ thống vừa cập nhật — Tải lại".\nKHÔNG ai bị đăng xuất.',
       )
     )
       return;
 
-    if (await adminAction('force_logout_all', {})) {
-      alert('✅ Đã yêu cầu đăng xuất TẤT CẢ người dùng thành công.');
+    if (await adminAction('notify_reload_all', {})) {
+      toast('Đã gửi nhắc tải lại tới tất cả người dùng');
     }
   };
 
@@ -7114,3 +6214,166 @@ ${E(val)}</pre>`;
   });
 })();
 // ===== END DEVICE_HISTORY_AND_DOTS_MENU_FINAL_20260725 =====
+
+// ===== ADMIN_TWO_TIERS_AND_DISCORD_TOGGLES_20260729 =====
+// Hai cấp admin + trang bật/tắt thông báo Discord.
+//
+//  - "Admin hệ thống": email nằm trong danh sách ở api/lib/auth.js (getSystemAdminEmails).
+//    Nắm tất cả quyền, kể cả đổi cấu hình thông báo Discord.
+//  - "Admin thường": role = 'admin' trong Turso. Làm mọi việc quản trị, NHƯNG chỉ XEM được
+//    cấu hình thông báo Discord, không đổi.
+//
+// Cấp bậc do SERVER trả về (khoá is_system_admin của GET /api/admin-dashboard), client chỉ
+// dùng để vẽ giao diện. Ai sửa DevTools cho isSystemAdmin() = true thì action
+// set_discord_notifications vẫn bị server trả 403 (SYSTEM_ADMIN_ONLY_ACTIONS).
+(function () {
+  if (window.__ADMIN_TWO_TIERS_20260729) return;
+  window.__ADMIN_TWO_TIERS_20260729 = true;
+
+  const $id = id => document.getElementById(id);
+
+  // Trạng thái đọc từ dashboard. Mặc định "không phải admin hệ thống" — fail-closed.
+  const TIER = { isSystem: false, kinds: [], settings: {} };
+  window.__lhAdminTier = TIER;
+  window.isSystemAdmin = () => !!TIER.isSystem;
+
+  function readDashboard(dash) {
+    if (!dash) return;
+    TIER.isSystem = !!dash.is_system_admin;
+    if (Array.isArray(dash.discord_notification_kinds)) TIER.kinds = dash.discord_notification_kinds;
+    if (dash.discord_notifications && typeof dash.discord_notifications === 'object') {
+      TIER.settings = { ...dash.discord_notifications };
+    }
+  }
+
+  function tierLabel() {
+    if (!profile) return '';
+    if (TIER.isSystem) return 'admin hệ thống';
+    return String(profile.role || '');
+  }
+
+  function renderAdminTierChip() {
+    const chip = $id('adminChip');
+    if (!chip || !profile) return;
+    chip.textContent = `${profile.email || user?.email || ''} · ${tierLabel()}`;
+    chip.classList.toggle('isSystemAdmin', TIER.isSystem);
+    document.body.classList.toggle('role-system-admin', TIER.isSystem);
+  }
+
+  function ensureDiscordPage() {
+    if (!$id('discordSettingsNav')) {
+      const side = document.querySelector('.side');
+      const foot = document.querySelector('.foot');
+      if (side) {
+        const btn = document.createElement('button');
+        btn.id = 'discordSettingsNav';
+        btn.className = 'nav';
+        btn.type = 'button';
+        btn.dataset.page = 'discordSettings';
+        btn.textContent = 'Thông báo Discord';
+        btn.onclick = () => {
+          setPage('discordSettings', 'Thông báo Discord');
+          renderDiscordSettings();
+        };
+        side.insertBefore(btn, foot || null);
+        // Sidebar dạng cây (SIDEBAR_TREE_LAYOUT_20260625) chạy lúc DOMContentLoaded, nút này
+        // sinh ra sau nên phải nhờ nó xếp lại, không thì nút nằm lạc ngoài mọi nhóm.
+        if (typeof window.organizeAdminSidebarTree === 'function') window.organizeAdminSidebarTree();
+      }
+    }
+
+    if (!$id('discordSettings')) {
+      const ws = document.querySelector('.workspace');
+      if (!ws) return;
+      const page = document.createElement('section');
+      page.id = 'discordSettings';
+      page.className = 'page';
+      page.innerHTML = `
+        <div class="panel panelFill">
+          <h3>Thông báo Discord</h3>
+          <div class="hint" id="discordHint">Bật/tắt từng loại tin gửi lên Discord. Chỉ <b>admin hệ thống</b> được đổi.</div>
+          <div id="discordTierNote" class="discordTierNote hidden"></div>
+          <div id="discordToggleList" class="discordToggleList pageScroll"></div>
+        </div>`;
+      ws.appendChild(page);
+    }
+  }
+
+  function toggleRowHTML(kind) {
+    const on = TIER.settings[kind.key] !== false;
+    const locked = !TIER.isSystem;
+    return `<div class="discordToggleRow ${on ? 'isOn' : 'isOff'}">
+      <div class="discordToggleInfo">
+        <b>${esc(kind.label || kind.key)}</b>
+        <p class="muted">${esc(kind.description || '')}</p>
+      </div>
+      <div class="discordToggleState">
+        <span class="discordStateText">${on ? 'Đang bật' : 'Đang tắt'}</span>
+        <button class="act ${on ? 'bad' : 'ok'}" type="button"
+          ${locked ? 'disabled title="Chỉ admin hệ thống mới đổi được"' : ''}
+          onclick="setDiscordNotification('${esc(kind.key)}',${on ? 'false' : 'true'})">${on ? 'Tắt' : 'Bật'}</button>
+      </div>
+    </div>`;
+  }
+
+  function renderDiscordSettings() {
+    ensureDiscordPage();
+    const box = $id('discordToggleList');
+    if (!box) return;
+    if (!isAdmin()) {
+      box.innerHTML = '<p class="muted">Chỉ admin mới xem được mục này.</p>';
+      return;
+    }
+    const note = $id('discordTierNote');
+    if (note) {
+      note.classList.toggle('hidden', TIER.isSystem);
+      if (!TIER.isSystem) {
+        note.textContent =
+          'Bạn là admin thường: chỉ xem được trạng thái. Muốn bật/tắt thì cần tài khoản admin hệ thống.';
+      }
+    }
+    const kinds = TIER.kinds.length
+      ? TIER.kinds
+      : Object.keys(TIER.settings).map(k => ({ key: k, label: k, description: '' }));
+    box.innerHTML = kinds.length
+      ? kinds.map(toggleRowHTML).join('')
+      : '<p class="muted">Chưa tải được danh sách loại thông báo. Bấm "Tải lại" ở thanh trên.</p>';
+  }
+
+  window.setDiscordNotification = async function (key, enabled) {
+    if (!TIER.isSystem) return alert('Chỉ admin hệ thống mới được đổi cấu hình thông báo Discord.');
+    const next = { ...TIER.settings, [key]: !!enabled };
+    setBusy(true, 'Đang lưu...');
+    try {
+      const out = await adminAction('set_discord_notifications', { notifications: next });
+      if (!out) return;
+      // Lấy lại đúng giá trị server đã chuẩn hoá, không tin bản dựng ở client.
+      TIER.settings = out.notifications && typeof out.notifications === 'object' ? out.notifications : next;
+      renderDiscordSettings();
+      toast(enabled ? 'Đã bật thông báo' : 'Đã tắt thông báo');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  window.renderDiscordSettings = renderDiscordSettings;
+  window.__lhReadAdminTierFromDashboard = function (dash) {
+    readDashboard(dash);
+    renderAdminTierChip();
+    if ($id('discordSettings')?.classList.contains('active')) renderDiscordSettings();
+  };
+
+  // Trang chỉ dựng khi đã biết là admin — dựng sớm thì editor thấy nút rồi mới bị ẩn, nháy.
+  function ensureWhenAdmin() {
+    if (typeof isAdmin === 'function' && isAdmin()) {
+      ensureDiscordPage();
+      renderAdminTierChip();
+    }
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(ensureWhenAdmin, 400);
+    setTimeout(ensureWhenAdmin, 1500);
+  });
+  window.addEventListener('lh:admin-dashboard-loaded', ensureWhenAdmin);
+})();
+// ===== END ADMIN_TWO_TIERS_AND_DISCORD_TOGGLES_20260729 =====

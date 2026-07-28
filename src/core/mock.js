@@ -54,6 +54,13 @@ function readOptions() {
     blocked: p.get('blocked') === '1',
     fail: p.get('fail') || '', // '500' | '401' | '403' | ''
     subject: (p.get('subject') || 'MOCK1').toUpperCase(),
+    /*
+      ADMIN_TWO_TIERS_20260729: vai admin trong mock mặc định là ADMIN HỆ THỐNG (đổi được
+      cấu hình Discord). Thêm `&sysadmin=0` để giả lập ADMIN THƯỜNG — cần thiết vì hai cấp
+      này nhìn khác nhau và bug hay nằm ở nhánh "bị hạn chế".
+    */
+    systemAdmin: role === 'admin' && p.get('sysadmin') !== '0',
+    reloadNotice: p.get('reload_notice') === '1',
   };
 }
 
@@ -90,6 +97,14 @@ const MOCK_CHAPTERS = [
   ['MOCK1_C4', 'Chương 4 tên rất dài để kiểm tra tràn chữ', 20],
 ];
 
+/*
+  SUBJECT_FOLDER_NEW_BADGE_20260729 — cờ NEW của THƯ MỤC (mã gốc) là cờ riêng, thật thì nằm ở
+  site_settings.subject_folder_new_badges. Mock phải "nhớ" trong phiên, nếu không thì bấm bật
+  xong nó lại hiện tắt và trông y như bug. Mặc định bật MOCK1 để thấy ngay thẻ thư mục sáng NEW
+  trong khi các môn con MOCK1_C* đều đang tắt — đúng cái cần kiểm: hai cờ độc lập.
+*/
+let mockFolderNewBadges = ['MOCK1'];
+
 /** Khớp đúng cột mà api/controllers/subjects.js trả về. */
 function mockSubjects() {
   const make = (id, code, name, count) => ({
@@ -106,6 +121,7 @@ function mockSubjects() {
     count,
   });
   return {
+    folder_new_badges: [...mockFolderNewBadges],
     data: [
       make(1, 'MOCK1', 'Môn Mock Một', 4),
       make(2, 'MOCK2', 'Môn Mock Hai', 2),
@@ -184,8 +200,85 @@ function mockAdminDashboard(opts) {
     subject_requests: [],
     deleted_questions: [],
     deleted_subjects: [],
+    folder_new_badges: [...mockFolderNewBadges], // SUBJECT_FOLDER_NEW_BADGE_20260729
+    // ADMIN_TWO_TIERS_AND_DISCORD_TOGGLES_20260729: khớp đúng các khoá api/controllers/admin.js
+    // gắn thêm vào response (TẦNG TRÊN CÙNG, không bọc trong `data`).
+    is_system_admin: !!opts.systemAdmin,
+    admin_tier: opts.systemAdmin ? 'system' : opts.role === 'admin' ? 'normal' : null,
+    discord_notifications: { ...mockDiscordSettings },
+    discord_notification_kinds: MOCK_DISCORD_KINDS,
   };
 }
+
+/** Khớp DISCORD_NOTIFICATION_KINDS trong api/lib/discord.js. */
+const MOCK_DISCORD_KINDS = [
+  { key: 'login', label: 'Đăng nhập', description: 'Có người đăng nhập web học hoặc trang admin.', default: true },
+  {
+    key: 'action',
+    label: 'Hành động của admin / editor',
+    description: 'Duyệt, từ chối, block, đổi vai trò, xoá môn… mỗi thao tác một tin.',
+    default: true,
+  },
+  {
+    key: 'edit_request',
+    label: 'Yêu cầu sửa câu hỏi',
+    description: 'Người học gửi báo cáo / đề xuất sửa một câu hỏi.',
+    default: true,
+  },
+  {
+    key: 'question_edit',
+    label: 'Nội dung câu hỏi bị đổi (admin thường / editor)',
+    description:
+      'Admin thường hoặc editor thêm / sửa / xoá / ẩn một câu hỏi, kể cả khi duyệt yêu cầu sửa. ' +
+      'Thao tác của admin hệ thống KHÔNG gửi tin (đỡ tự báo cho chính mình).',
+    default: true,
+  },
+  {
+    key: 'new_user',
+    label: 'Người dùng mới đăng ký',
+    description: 'Có tài khoản Google mới vào hệ thống — kèm trạng thái chờ duyệt hay được duyệt tự động.',
+    default: true,
+  },
+  {
+    key: 'role_change',
+    label: 'Đổi quyền / khoá người dùng',
+    description: 'Cấp hoặc gỡ admin / editor, khoá – mở khoá, duyệt – từ chối – thu hồi duyệt tài khoản.',
+    default: true,
+  },
+  {
+    key: 'destructive',
+    label: 'Thao tác nặng trên môn học (xoá / đổi mã)',
+    description: 'Xoá môn, xoá vĩnh viễn môn kèm toàn bộ câu hỏi, đổi mã môn.',
+    default: true,
+  },
+  {
+    key: 'subject_request',
+    label: 'Yêu cầu thêm môn của người học',
+    description: 'Người học gửi một môn mới chờ admin duyệt.',
+    default: true,
+  },
+  {
+    key: 'server_error',
+    label: 'Lỗi server (500)',
+    description:
+      'API ném exception (trả 500 INTERNAL_ERROR). Cùng một lỗi chỉ gửi 1 tin mỗi 5 phút, ' +
+      'lần gửi sau kèm số lần đã bị dồn — tránh spam khi lỗi lặp liên tục.',
+    default: true,
+  },
+];
+
+// Giữ trong bộ nhớ để bật/tắt trong mock có phản hồi thật (server giả cũng phải "nhớ").
+let mockDiscordSettings = {
+  login: true,
+  action: true,
+  edit_request: true,
+  question_edit: true,
+  new_user: true,
+  role_change: true,
+  destructive: true,
+  subject_request: true,
+  server_error: true,
+};
 
 const SUBJECT_KEY = 'learninghub_subject_code_merged_v1';
 const QCACHE_PREFIX = 'learninghub_questions_cache_v2_';
@@ -312,8 +405,9 @@ function jsonResponse(body, status = 200) {
 /**
  * Bảng route giả — khớp danh sách route thật trong api/index.js.
  * @param {URLSearchParams} query  query của CHÍNH request, không phải của URL trang.
+ * @param {object} [body]          body đã parse của request POST (nếu có).
  */
-function mockApiResponse(pathname, query, opts) {
+function mockApiResponse(pathname, query, opts, body) {
   // Mô phỏng đúng ba loại mã lỗi có ý nghĩa cố định (xem CLAUDE.md).
   if (opts.fail === '500') {
     return jsonResponse({ error: 'Lỗi giả lập', code: 'INTERNAL_ERROR' }, 500);
@@ -340,7 +434,8 @@ function mockApiResponse(pathname, query, opts) {
       return jsonResponse(mockQuestions(subject));
     }
     case 'profile':
-      return jsonResponse({ data: mockProfile(opts) });
+      // ?mock=1&reload_notice=1 -> thử banner "Hệ thống vừa cập nhật" mà không cần admin thật.
+      return jsonResponse({ data: mockProfile(opts), reload_notice: !!opts.reloadNotice });
     case 'settings':
       return jsonResponse({ data: { maintenance: false, announcement: '' } });
     case 'my-edit-requests':
@@ -354,9 +449,35 @@ function mockApiResponse(pathname, query, opts) {
       return jsonResponse(mockAdminDashboard(opts));
     case 'notify':
       return jsonResponse({ ok: true });
-    case 'admin-action':
-      // Không ghi gì cả — chỉ báo thành công để UI đi hết luồng.
+    case 'admin-action': {
+      // Không ghi gì cả — chỉ báo thành công để UI đi hết luồng. Ngoại lệ: cấu hình thông
+      // báo Discord phải "nhớ" trong phiên, nếu không thì bấm Tắt xong nó lại hiện Bật và
+      // trông y như bug.
+      const action = String(body?.action || '');
+      if (action === 'set_discord_notifications') {
+        if (!opts.systemAdmin) {
+          return jsonResponse(
+            { error: 'Chỉ admin hệ thống mới được đổi cấu hình này', code: 'INSUFFICIENT_ROLE' },
+            403,
+          );
+        }
+        const next = body?.payload?.notifications || {};
+        for (const k of MOCK_DISCORD_KINDS) {
+          if (Object.prototype.hasOwnProperty.call(next, k.key)) mockDiscordSettings[k.key] = !!next[k.key];
+        }
+        return jsonResponse({ ok: true, notifications: { ...mockDiscordSettings }, mock: true });
+      }
+      // SUBJECT_FOLDER_NEW_BADGE_20260729: cùng lý do "phải nhớ trong phiên" như Discord.
+      if (action === 'set_subject_folder_new_badge') {
+        const base = String(body?.payload?.base || '').toUpperCase();
+        if (!base) return jsonResponse({ error: 'Thiếu mã gốc thư mục' }, 400);
+        mockFolderNewBadges = body?.payload?.enabled
+          ? [...new Set([...mockFolderNewBadges, base])]
+          : mockFolderNewBadges.filter(x => x !== base);
+        return jsonResponse({ ok: true, folder_new_badges: [...mockFolderNewBadges], mock: true });
+      }
       return jsonResponse({ ok: true, data: null, mock: true });
+    }
     default:
       return jsonResponse({ error: `Route giả lập chưa hỗ trợ: ${route}`, code: 'NOT_FOUND' }, 404);
   }
@@ -423,7 +544,16 @@ function installMockNetwork() {
     const method = (init?.method || 'GET').toUpperCase();
     const label = query.get('subject_code') ? ` (${query.get('subject_code')})` : '';
     console.log(`[MOCK] ${method} ${pathname}${label} -> dữ liệu giả`);
-    return mockApiResponse(pathname, query, opts);
+    // Body cần cho set_discord_notifications (server giả phải nhớ trạng thái bật/tắt).
+    let body = null;
+    if (init?.body && typeof init.body === 'string') {
+      try {
+        body = JSON.parse(init.body);
+      } catch (e) {
+        lhWarn('MOCK:body', e);
+      }
+    }
+    return mockApiResponse(pathname, query, opts, body);
   };
 }
 
