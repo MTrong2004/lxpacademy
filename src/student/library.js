@@ -320,11 +320,11 @@ export function installLibrary() {
     const isAllOpen = v === 'full';
 
     box.innerHTML = `
-      <div class="libStableFilterLine" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <div class="libStableFilterLine">
+        <div class="libStableFilterGroup">
           ${filters.map(x => `<button type="button" class="${f === x[0] ? 'active' : ''}" data-stable-filter="${x[0]}">${x[1]} <small>${x[2]}</small></button>`).join('')}
         </div>
-        <div style="display:flex;gap:6px;align-items:center;">
+        <div class="libStableToggleGroup">
           <button type="button" class="v7FilterBtn ${isAllOpen ? 'active' : ''}" data-stable-toggle-all="${isAllOpen ? 'compact' : 'full'}" title="Mở hoặc thu gọn tất cả câu hỏi trong danh sách">
             ${isAllOpen ? '📑 Thu gọn tất cả' : '📂 Mở tất cả'}
           </button>

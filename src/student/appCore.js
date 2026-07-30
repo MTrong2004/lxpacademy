@@ -4200,9 +4200,9 @@ if (typeof finalAnswerText !== 'function') {
     nav.id = 'mobileCardNav';
     nav.className = 'mobileCardNav';
     nav.innerHTML = `
-      <button id="mobilePrev" type="button" aria-label="Câu trước">‹</button>
+      <button id="mobilePrev" type="button" aria-label="Câu trước"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <div class="mobileSwipeHint">Vuốt trái / phải để đổi câu</div>
-      <button id="mobileNext" type="button" aria-label="Câu sau">›</button>`;
+      <button id="mobileNext" type="button" aria-label="Câu sau"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>`;
     zone.appendChild(nav);
     try {
       if (localStorage.getItem('learninghub_swipe_hint_seen_v1') === '1') zone.classList.add('swiped');

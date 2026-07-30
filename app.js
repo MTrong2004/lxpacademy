@@ -2605,7 +2605,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "8b21c6f" : null;
+  var currentVersion = true ? "5f900c3" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -6000,11 +6000,11 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       ];
       const isAllOpen = v === "full";
       box.innerHTML = `
-      <div class="libStableFilterLine" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <div class="libStableFilterLine">
+        <div class="libStableFilterGroup">
           ${filters.map((x) => `<button type="button" class="${f === x[0] ? "active" : ""}" data-stable-filter="${x[0]}">${x[1]} <small>${x[2]}</small></button>`).join("")}
         </div>
-        <div style="display:flex;gap:6px;align-items:center;">
+        <div class="libStableToggleGroup">
           <button type="button" class="v7FilterBtn ${isAllOpen ? "active" : ""}" data-stable-toggle-all="${isAllOpen ? "compact" : "full"}" title="M\u1EDF ho\u1EB7c thu g\u1ECDn t\u1EA5t c\u1EA3 c\xE2u h\u1ECFi trong danh s\xE1ch">
             ${isAllOpen ? "\u{1F4D1} Thu g\u1ECDn t\u1EA5t c\u1EA3" : "\u{1F4C2} M\u1EDF t\u1EA5t c\u1EA3"}
           </button>
@@ -10677,9 +10677,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       nav.id = "mobileCardNav";
       nav.className = "mobileCardNav";
       nav.innerHTML = `
-      <button id="mobilePrev" type="button" aria-label="C\xE2u tr\u01B0\u1EDBc">\u2039</button>
+      <button id="mobilePrev" type="button" aria-label="C\xE2u tr\u01B0\u1EDBc"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <div class="mobileSwipeHint">Vu\u1ED1t tr\xE1i / ph\u1EA3i \u0111\u1EC3 \u0111\u1ED5i c\xE2u</div>
-      <button id="mobileNext" type="button" aria-label="C\xE2u sau">\u203A</button>`;
+      <button id="mobileNext" type="button" aria-label="C\xE2u sau"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>`;
       zone.appendChild(nav);
       try {
         if (localStorage.getItem("learninghub_swipe_hint_seen_v1") === "1") zone.classList.add("swiped");
