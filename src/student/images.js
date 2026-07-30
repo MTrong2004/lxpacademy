@@ -59,7 +59,7 @@ export function installUploadDiagnostics() {
     }
     return st;
   }
-  async function directUpload(file) {
+  async function directUpload(file, fileName) {
     const url =
       CFG.CLOUDINARY_UPLOAD_URL ||
       (CFG.CLOUDINARY_CLOUD_NAME
@@ -68,7 +68,8 @@ export function installUploadDiagnostics() {
     const preset = CFG.CLOUDINARY_UPLOAD_PRESET;
     if (!url || !preset) throw new Error('Thiếu Cloudinary config / upload preset.');
     const fd = new FormData();
-    fd.append('file', file);
+    const nameToUse = fileName || file.name || 'image.png';
+    fd.append('file', file, nameToUse);
     fd.append('upload_preset', preset);
     if (CFG.CLOUDINARY_UPLOAD_FOLDER) fd.append('folder', CFG.CLOUDINARY_UPLOAD_FOLDER);
     const res = await fetch(url, { method: 'POST', body: fd });
@@ -85,7 +86,7 @@ export function installUploadDiagnostics() {
     };
     return img;
   }
-  window.__LHUploadCloudinary = window.__LHUploadCloudinary || directUpload;
+  window.__LHUploadCloudinary = directUpload;
   window.__LHTestCloudinaryConfig = function () {
     console.log('[Cloudinary config]', {
       url: CFG.CLOUDINARY_UPLOAD_URL,

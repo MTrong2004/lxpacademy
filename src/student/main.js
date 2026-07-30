@@ -28,7 +28,10 @@ if (!mocking) initVersionChecker();
 // Gán KHÔNG phụ thuộc `mocking` để ?mock=1 test được banner này.
 window.lhShowReloadNotice = showAdminReloadNotice;
 
+import * as subjectImport from './subjectImport.js';
+
 // Global helper attachments
+window.LHSubjectImport = subjectImport;
 window.getDeviceTypeString = getDeviceTypeString;
 window.getSubjectCode = getSubjectCode;
 window.setSubjectHelper = setSubject;

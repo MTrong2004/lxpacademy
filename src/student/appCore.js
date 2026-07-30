@@ -2904,8 +2904,8 @@ Bắt đầu ngay từ câu 1.`;
         <div class="importUnifiedBox">
           <div class="userFileInputWrap" id="importDropZone" onclick="document.getElementById('userImportFile').click()">
             <span class="icon">☁️</span>
-            <p><b>Kéo thả file .md hoặc .txt vào đây</b><br><span style="font-size:0.85rem; opacity:0.6;">Hoặc bấm để chọn file từ máy</span></p>
-            <input type="file" id="userImportFile" accept=".md,.txt,.json" style="display:none;">
+            <p><b>Kéo thả file .json hoặc .zip (gồm JSON & hình ảnh) vào đây</b><br><span style="font-size:0.85rem; opacity:0.6;">Hoặc bấm để chọn file từ máy (.json, .zip, .md, .txt)</span></p>
+            <input type="file" id="userImportFile" accept=".json,.zip,.md,.txt" style="display:none;">
           </div>
 
           <textarea id="userImportData" class="hiddenImportData" aria-hidden="true"></textarea>
@@ -3007,6 +3007,35 @@ Bắt đầu ngay từ câu 1.`;
   function handleFileImport(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (file.name.toLowerCase().endsWith('.zip')) {
+      window.__selectedImportFile = file;
+      localStorage.setItem('learninghub_add_subject_file_name_v1', file.name);
+      localStorage.setItem('learninghub_add_subject_file_size_v1', String(file.size));
+      localStorage.removeItem('learninghub_add_subject_file_data_v1');
+      localStorage.removeItem('learninghub_add_subject_file_previewed_v1');
+
+      const dropZone = $('importDropZone');
+      const card = $('userImportFileCard');
+      const nameEl = $('userImportFileName');
+      const metaEl = $('userImportFileMeta');
+      if (dropZone) dropZone.classList.add('hidden');
+      if (card) card.classList.remove('hidden');
+      if (nameEl) nameEl.textContent = file.name;
+      if (metaEl) metaEl.textContent = (file.size / (1024 * 1024)).toFixed(1) + ' MB · File ZIP (JSON & ảnh) · Sẵn sàng xem trước';
+      const pv = $('previewImportBtn');
+      if (pv) {
+        pv.classList.remove('hidden');
+        pv.disabled = false;
+      }
+      const saveBtn = $('userImportBtn');
+      if (saveBtn) saveBtn.disabled = true;
+      parsedQuestions = [];
+      notify('Đã chọn file ZIP ' + file.name + '. Bấm Xem trước để kiểm tra & giải nén.');
+      return;
+    }
+
+    window.__selectedImportFile = null;
     const reader = new FileReader();
     reader.onload = function () {
       const text = reader.result;
@@ -3144,11 +3173,72 @@ Bắt đầu ngay từ câu 1.`;
   };
   // ===== END QUIZLET_IMPORT_AUTODETECT_20260701 =====
 
-  window.__previewUserImport = function () {
+  window.__previewUserImport = async function () {
+    if (window.__selectedImportFile && window.__selectedImportFile.name.toLowerCase().endsWith('.zip')) {
+      try {
+        const importer = window.LHSubjectImport;
+        if (!importer) {
+          alert('Module LHSubjectImport chưa sẵn sàng.');
+          return;
+        }
+
+        const res = await importer.readAndValidateZipFile(window.__selectedImportFile);
+        let parsedZipData = res;
+
+        if (res.needSelectJson) {
+          const selected = prompt(
+            'File ZIP chứa nhiều file JSON câu hỏi:\n\n' +
+            res.jsonCandidates.join('\n') +
+            '\n\nVui lòng nhập đúng tên file JSON bạn muốn dùng:',
+            res.jsonCandidates[0]
+          );
+          if (!selected) return;
+
+          const chosen = res.jsonCandidates.find(p => p.toLowerCase() === selected.toLowerCase().trim());
+          if (!chosen) {
+            alert('File JSON đã chọn không có trong danh sách.');
+            return;
+          }
+
+          const imageEntries = new Map();
+          Object.keys(res.zipInstance.files).forEach(k => {
+            const ext = k.slice(k.lastIndexOf('.')).toLowerCase();
+            if (['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext)) {
+              imageEntries.set(k, res.zipInstance.files[k]);
+            }
+          });
+
+          parsedZipData = await importer.processSelectedJsonFromZip(res.zipInstance, chosen, imageEntries, res.zipFile.name);
+        }
+
+        const questions = parsedZipData.questions;
+        window.__previewImportData = questions;
+        parsedQuestions = questions;
+        localStorage.setItem('learninghub_add_subject_file_previewed_v1', 'true');
+
+        const codeInp = $('addSubjectCode');
+        if (codeInp && !codeInp.value.trim() && parsedZipData.suggestedCode) {
+          codeInp.value = parsedZipData.suggestedCode;
+        }
+
+        const metaEl = $('userImportFileMeta');
+        if (metaEl) metaEl.textContent = questions.length + ' câu hỏi đã kiểm tra · Sẵn sàng lưu';
+        const btn = $('userImportBtn');
+        if (btn) btn.disabled = false;
+
+        // Mở giao diện Import chuẩn của Learning Hub
+        window.__openImportPreviewModal(questions);
+        notify('OK! ' + questions.length + ' câu hỏi sẵn sàng');
+      } catch (err) {
+        alert('Lỗi kiểm tra ZIP:\n' + (err.message || err));
+      }
+      return;
+    }
+
     const raw = ($('userImportData')?.value || '').trim();
     const btn = $('userImportBtn');
     if (!raw) {
-      alert('Bạn hãy chọn file .md / .txt / .json trước.');
+      alert('Bạn hãy chọn file .zip / .json / .md / .txt trước.');
       return;
     }
 
@@ -5701,6 +5791,11 @@ if (typeof finalAnswerText !== 'function') {
     else console.log(msg);
   }
   window.__clearUserImportFile = function () {
+    window.__selectedImportFile = null;
+    if (window.LHSubjectImport) {
+      window.LHSubjectImport.resetSubjectImportState();
+    }
+
     const fileInput = $('userImportFile');
     const hiddenData = $('userImportData');
     const dropZone = $('importDropZone');
@@ -9500,6 +9595,12 @@ installImgsHTML();
     }
 
     try {
+      if (window.LHSubjectImport?.prepareZipQuestionsBeforeSave) {
+        await window.LHSubjectImport.prepareZipQuestionsBeforeSave(questions, (done, total, text) => {
+          prog('Đang upload ảnh Cloudinary...', done, total, text);
+        });
+      }
+
       if (canManage()) {
         const rs =
           questions.length > LARGE_LIMIT

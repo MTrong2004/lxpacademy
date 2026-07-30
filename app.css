@@ -11516,12 +11516,15 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
 .v7ImportBox {
   width: min(1320px, 98vw) !important;
   max-height: 94dvh !important;
-  padding: 14px !important;
-  border-radius: 22px !important;
+  padding: 16px !important;
+  border-radius: 20px !important;
   overflow: hidden !important;
   display: flex !important;
   flex-direction: column !important;
-  gap: 10px !important
+  gap: 12px !important;
+  background: #0f121a !important; /* Nền tối đặc solid, không dùng kính mờ */
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  box-shadow: 0 25px 65px rgba(0, 0, 0, 0.95) !important
 }
 
 .v7Head {
@@ -11537,10 +11540,10 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
   width: max-content !important;
   padding: 4px 10px !important;
   border-radius: 999px !important;
-  border: 1px solid rgba(232, 212, 168, .24) !important;
-  background: rgba(232, 212, 168, .08) !important;
-  color: var(--gold2, #e8d4a8) !important;
-  font-size: .66rem !important;
+  border: 1px solid rgba(232, 212, 168, .35) !important;
+  background: rgba(232, 212, 168, .12) !important;
+  color: var(--gold2, #f3e5c8) !important;
+  font-size: .68rem !important;
   font-weight: 950 !important;
   letter-spacing: .12em !important;
   margin-bottom: 5px !important
@@ -11548,16 +11551,17 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
 
 .v7Head h2 {
   margin: 0 !important;
-  color: #fff !important;
-  font-size: 1.42rem !important;
-  line-height: 1.12 !important
+  color: #ffffff !important;
+  font-size: 1.45rem !important;
+  line-height: 1.15 !important;
+  font-weight: 800 !important
 }
 
 .v7Hint {
   margin: 4px 0 0 !important;
-  color: rgba(245, 240, 232, .68) !important;
-  font-size: .9rem !important;
-  line-height: 1.32 !important
+  color: #cbd5e1 !important;
+  font-size: .92rem !important;
+  line-height: 1.35 !important
 }
 
 .v7TopActions {
@@ -11578,11 +11582,11 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
 }
 
 .v7Stats {
-  padding: 9px 12px !important;
+  padding: 10px 14px !important;
   border-radius: 14px !important;
-  border: 1px solid rgba(232, 212, 168, .14) !important;
-  background: rgba(232, 212, 168, .07) !important;
-  color: var(--gold2, #e8d4a8) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: #171b28 !important; /* Nền tối đặc */
+  color: var(--gold2, #f3e5c8) !important;
   font-weight: 900 !important;
   display: grid !important;
   gap: 8px !important
@@ -11603,11 +11607,11 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
 
 .v7FilterBtn {
   height: 34px !important;
-  padding: 0 13px !important;
+  padding: 0 14px !important;
   border-radius: 999px !important;
-  border: 1px solid rgba(232, 212, 168, .24) !important;
-  background: rgba(255, 255, 255, .035) !important;
-  color: rgba(245, 240, 232, .78) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  background: #202637 !important; /* Nền đặc */
+  color: #e2e8f0 !important;
   font-weight: 900 !important
 }
 
@@ -11618,19 +11622,19 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
 }
 
 .v7FilterBtn[data-v7-filter="high"] {
-  border-color: rgba(231, 76, 60, .65) !important
+  border-color: rgba(231, 76, 60, .85) !important
 }
 
 .v7FilterBtn[data-v7-filter="medium"] {
-  border-color: rgba(243, 156, 18, .7) !important
+  border-color: rgba(243, 156, 18, .85) !important
 }
 
 .v7FilterBtn[data-v7-filter="low"] {
-  border-color: rgba(39, 174, 96, .7) !important
+  border-color: rgba(39, 174, 96, .85) !important
 }
 
 .v7FilterBtn[data-v7-filter="has_image"] {
-  border-color: rgba(52, 152, 219, .65) !important
+  border-color: rgba(52, 152, 219, .85) !important
 }
 
 .v7List {
@@ -11649,12 +11653,12 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
 }
 
 .v7Card {
-  border: 1px solid rgba(200, 169, 110, .22) !important;
-  border-left: 3px solid rgba(232, 212, 168, .55) !important;
-  border-radius: 15px !important;
-  background: linear-gradient(145deg, rgba(245, 240, 232, .055), rgba(255, 255, 255, .018)) !important;
-  padding: 10px 12px !important;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, .18) !important
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-left: 4px solid rgba(232, 212, 168, .75) !important;
+  border-radius: 14px !important;
+  background: #181d2a !important; /* Nền card tối đặc tương phản rõ nét */
+  padding: 12px 14px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .4) !important
 }
 
 .v7Row {
@@ -11665,7 +11669,7 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
 }
 
 .v7Num {
-  color: var(--gold2, #e8d4a8) !important;
+  color: var(--gold2, #f3e5c8) !important;
   font-weight: 950 !important;
   white-space: nowrap !important
 }
@@ -11677,13 +11681,11 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
 }
 
 .v7Question {
-  color: #fff !important;
+  color: #ffffff !important; /* Chữ trắng sáng nổi bật */
   font-size: .98rem !important;
-  line-height: 1.32 !important;
+  line-height: 1.45 !important;
   font-weight: 700 !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important
+  word-break: break-word !important
 }
 
 .v7Answer {
@@ -11691,12 +11693,10 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
   align-items: center !important;
   gap: 8px !important;
   min-width: 0 !important;
-  color: rgba(245, 240, 232, .78) !important;
+  color: #cbd5e1 !important; /* Chữ phụ ghi xám sáng rõ ràng */
   font-size: .9rem !important;
-  line-height: 1.28 !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important
+  line-height: 1.35 !important;
+  word-break: break-word !important
 }
 
 .v7Answer b {
