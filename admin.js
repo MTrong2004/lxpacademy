@@ -88,7 +88,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "f3bbf8d" : null;
+  var currentVersion = true ? "d55ef38" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
