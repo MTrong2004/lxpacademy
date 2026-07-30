@@ -2605,7 +2605,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "53e6f54" : null;
+  var currentVersion = true ? "35b3fe5" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -2647,10 +2647,26 @@
       sub: "H\xE3y t\u1EA3i l\u1EA1i trang \u0111\u1EC3 l\u1EA5y d\u1EEF li\u1EC7u v\xE0 giao di\u1EC7n m\u1EDBi nh\u1EA5t"
     });
   }
-  function showUpdateNotification(opts) {
+  async function showUpdateNotification(opts) {
     const title = opts?.title || "C\xF3 phi\xEAn b\u1EA3n m\u1EDBi";
     const sub = opts?.sub || "C\u1EADp nh\u1EADt \u0111\u1EC3 t\u1EA3i giao di\u1EC7n v\xE0 d\u1EEF li\u1EC7u m\u1EDBi nh\u1EA5t";
     if (document.getElementById("lhUpdateBanner")) return;
+    let releaseNotes = null;
+    try {
+      const [settingsRes, verRes] = await Promise.all([
+        fetch("/api/settings?ts=" + Date.now(), { cache: "no-store" }).then((r) => r.ok ? r.json() : {}).catch(() => ({})),
+        fetch("/version.json?ts=" + Date.now(), { cache: "no-store" }).then((r) => r.ok ? r.json() : {}).catch(() => ({}))
+      ]);
+      const enabled = settingsRes?.release_notes?.enabled !== false;
+      if (enabled) {
+        if (settingsRes?.release_notes?.content && settingsRes.release_notes.content.trim()) {
+          releaseNotes = settingsRes.release_notes.content.trim();
+        } else if (Array.isArray(verRes?.recent_commits) && verRes.recent_commits.length > 0) {
+          releaseNotes = verRes.recent_commits.map((c) => "\u2022 " + String(c).replace(/^•\s*/, "")).join("\n");
+        }
+      }
+    } catch (e) {
+    }
     const styleId = "lhUpdateBannerStyles";
     if (!document.getElementById(styleId)) {
       const styleEl = document.createElement("style");
@@ -2662,10 +2678,11 @@
         right: 24px;
         z-index: 2147483647;
         display: flex;
-        align-items: center;
-        gap: 14px;
-        padding: 14px 20px;
-        background: rgba(18, 24, 38, 0.95);
+        flex-direction: column;
+        gap: 12px;
+        width: min(420px, calc(100vw - 32px));
+        padding: 16px 18px;
+        background: rgba(18, 24, 38, 0.96);
         border: 1px solid rgba(255, 255, 255, 0.16);
         border-left: 4px solid #3b82f6;
         border-radius: 16px;
@@ -2680,10 +2697,21 @@
         from { opacity: 0; transform: translateY(24px) scale(0.94); }
         to { opacity: 1; transform: translateY(0) scale(1); }
       }
+      .lh-update-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .lh-update-main {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
       .lh-update-icon {
-        width: 38px;
-        height: 38px;
-        border-radius: 12px;
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
         background: linear-gradient(135deg, #3b82f6, #1d4ed8);
         display: flex;
         align-items: center;
@@ -2692,8 +2720,8 @@
         box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
       }
       .lh-update-icon svg {
-        width: 20px;
-        height: 20px;
+        width: 18px;
+        height: 18px;
         fill: none;
         stroke: #ffffff;
         stroke-width: 2.2;
@@ -2715,24 +2743,52 @@
         font-size: 12px;
         color: #94a3b8;
       }
+      .lh-update-notes-box {
+        margin-top: 2px;
+        padding: 10px 12px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        font-size: 12px;
+        color: #cbd5e1;
+        max-height: 140px;
+        overflow-y: auto;
+      }
+      .lh-update-notes-title {
+        color: #60a5fa;
+        font-weight: 700;
+        font-size: 12px;
+        margin-bottom: 4px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .lh-update-notes-body {
+        white-space: pre-wrap;
+        line-height: 1.5;
+        color: #e2e8f0;
+      }
       .lh-update-actions {
         display: flex;
         align-items: center;
+        justify-content: flex-end;
         gap: 8px;
-        margin-left: 6px;
+        margin-top: 4px;
       }
       .lh-update-btn {
         background: linear-gradient(135deg, #2563eb, #1d4ed8);
         color: #ffffff;
         border: none;
-        border-radius: 10px;
-        padding: 8px 16px;
+        border-radius: 8px;
+        padding: 7px 16px;
         font-size: 13px;
         font-weight: 600;
         cursor: pointer;
         transition: all 0.2s ease;
         box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
         white-space: nowrap;
+        width: 100%;
+        text-align: center;
       }
       .lh-update-btn:hover {
         background: linear-gradient(135deg, #3b82f6, #2563eb);
@@ -2747,8 +2803,8 @@
         border: none;
         color: #64748b;
         cursor: pointer;
-        padding: 6px;
-        border-radius: 8px;
+        padding: 4px;
+        border-radius: 6px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -2760,14 +2816,10 @@
       }
       @media (max-width: 640px) {
         .lh-update-banner {
-          left: 12px;
-          right: 12px;
+          left: 16px;
+          right: 16px;
           bottom: 16px;
-          padding: 12px 14px;
-          gap: 10px;
-        }
-        .lh-update-sub {
-          display: none;
+          width: auto;
         }
       }
     `;
@@ -2779,20 +2831,21 @@
     banner.setAttribute("role", "alert");
     banner.setAttribute("aria-live", "assertive");
     banner.innerHTML = `
-    <div class="lh-update-icon">
-      <svg viewBox="0 0 24 24">
-        <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-        <path d="M3 3v5h5"></path>
-        <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
-        <path d="M16 16h5v5"></path>
-      </svg>
-    </div>
-    <div class="lh-update-content">
-      <span class="lh-update-title"></span>
-      <span class="lh-update-sub"></span>
-    </div>
-    <div class="lh-update-actions">
-      <button id="lhUpdateReloadBtn" class="lh-update-btn" type="button">C\u1EADp nh\u1EADt ngay</button>
+    <div class="lh-update-header">
+      <div class="lh-update-main">
+        <div class="lh-update-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+            <path d="M3 3v5h5"></path>
+            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+            <path d="M16 16h5v5"></path>
+          </svg>
+        </div>
+        <div class="lh-update-content">
+          <span class="lh-update-title"></span>
+          <span class="lh-update-sub"></span>
+        </div>
+      </div>
       <button id="lhUpdateCloseBtn" class="lh-update-close" type="button" aria-label="\u0110\xF3ng th\xF4ng b\xE1o">
         <svg style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2" viewBox="0 0 24 24">
           <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -2800,9 +2853,20 @@
         </svg>
       </button>
     </div>
+    ${releaseNotes ? `
+    <div class="lh-update-notes-box">
+      <div class="lh-update-notes-title">\u2728 C\xF3 g\xEC m\u1EDBi trong b\u1EA3n n\xE0y:</div>
+      <div class="lh-update-notes-body"></div>
+    </div>` : ""}
+    <div class="lh-update-actions">
+      <button id="lhUpdateReloadBtn" class="lh-update-btn" type="button">C\u1EADp nh\u1EADt ngay</button>
+    </div>
   `;
     banner.querySelector(".lh-update-title").textContent = title;
     banner.querySelector(".lh-update-sub").textContent = sub;
+    if (releaseNotes && banner.querySelector(".lh-update-notes-body")) {
+      banner.querySelector(".lh-update-notes-body").textContent = releaseNotes;
+    }
     document.body.appendChild(banner);
     document.getElementById("lhUpdateReloadBtn")?.addEventListener("click", () => {
       window.location.reload();
@@ -16005,6 +16069,61 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       inflight = fetchNow();
       return inflight;
     }
+    window.jumpToQuestionInLibrary = function(num, subjectCode) {
+      closeModal();
+      try {
+        localStorage.setItem("learninghub_library_filter_v1", "all");
+      } catch (e) {
+        lhWarn("HEADER_EDIT_REQUEST_BELL_20260726", e);
+      }
+      const targetSubject = String(subjectCode || "").trim();
+      const currentSubject = (localStorage.getItem("learninghub_subject_code_merged_v1") || "").trim();
+      let needReloadSubject = false;
+      if (targetSubject && targetSubject !== currentSubject) {
+        try {
+          localStorage.setItem("learninghub_subject_code_merged_v1", targetSubject);
+          needReloadSubject = true;
+          if ($2("subjectInlineText")) $2("subjectInlineText").textContent = targetSubject;
+          if ($2("hodAccountSubjectText")) $2("hodAccountSubjectText").textContent = targetSubject;
+        } catch (e) {
+          lhWarn("HEADER_EDIT_REQUEST_BELL_20260726", e);
+        }
+      }
+      const tabBtn = document.querySelector('.tab[data-tab="study"]');
+      if (typeof switchTab === "function") {
+        switchTab("study", tabBtn);
+      } else if (tabBtn) {
+        tabBtn.click();
+      }
+      if (needReloadSubject) {
+        if (typeof window.loadCurrentSubjectOnly === "function") {
+          window.loadCurrentSubjectOnly(true);
+        } else if (typeof window.loadSubjectLight === "function") {
+          window.loadSubjectLight(true);
+        }
+      }
+      const searchInput = document.getElementById("search") || document.getElementById("studySearch");
+      if (searchInput) {
+        searchInput.value = "#" + num;
+        try {
+          localStorage.setItem("learninghub_library_search_v1", "#" + num);
+        } catch (e) {
+        }
+        searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+        searchInput.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      if (typeof window.renderStudy === "function") {
+        try {
+          window.renderStudy();
+        } catch (e) {
+          lhWarn("HEADER_EDIT_REQUEST_BELL_20260726", e);
+        }
+      }
+      setTimeout(() => {
+        const list = document.getElementById("studyList") || document.getElementById("study");
+        if (list) list.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 150);
+    };
     function renderList() {
       const box = $2("hodEditRequestList");
       if (!box) return;
@@ -16025,11 +16144,17 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
               Duy\u1EC7t ngay \u2197
             </a>
           </div>
-          ${staffPendingItems.slice(0, 3).map((r) => `
-            <div style="font-size:12px; color:#e2d8c3; margin-top:6px; padding-top:6px; border-top:1px dashed rgba(200, 169, 110, 0.2); line-height:1.45;">
-              <b style="color:#ffffff;">C\xE2u ${esc2(r.question_num || r.new_data?.num || "?")}</b> (${esc2(r.subject_code || "")}) - <span style="color:var(--gold2, #e8d4a8); font-weight:500;">${esc2(r.user_email || "H\u1ECDc sinh")}</span>: <span style="color:#c8bba6; font-style:italic;">"${esc2(r.reason || "\u0110\u1EC1 xu\u1EA5t s\u1EEDa c\xE2u h\u1ECFi")}"</span>
-            </div>
-          `).join("")}
+          ${staffPendingItems.slice(0, 3).map((r) => {
+            const n = r.question_num || r.new_data?.num || "?";
+            const sc = r.subject_code || r.new_data?.subject_code || "";
+            return `
+            <div style="font-size:12px; color:#e2d8c3; margin-top:6px; padding-top:6px; border-top:1px dashed rgba(200, 169, 110, 0.2); line-height:1.45; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+              <div>
+                <b style="color:#ffffff;">C\xE2u ${esc2(n)}</b> (${esc2(sc)}) - <span style="color:var(--gold2, #e8d4a8); font-weight:500;">${esc2(r.user_email || "H\u1ECDc sinh")}</span>: <span style="color:#c8bba6; font-style:italic;">"${esc2(r.reason || "\u0110\u1EC1 xu\u1EA5t s\u1EEDa c\xE2u h\u1ECFi")}"</span>
+              </div>
+              ${n !== "?" ? `<button type="button" onclick="window.jumpToQuestionInLibrary('${esc2(n)}', '${esc2(sc)}')" style="font-size:11px; font-weight:600; padding:2px 8px; border-radius:6px; background:rgba(200, 169, 110, 0.15); border:1px solid rgba(200, 169, 110, 0.3); color:var(--gold2, #e8d4a8); cursor:pointer; white-space:nowrap;">Tra c\xE2u \u2197</button>` : ""}
+            </div>`;
+          }).join("")}
           ${staffPendingItems.length > 3 ? `<div style="font-size:11px; color:#c8bba6; margin-top:6px; font-style:italic;">...v\xE0 ${staffPendingItems.length - 3} y\xEAu c\u1EA7u kh\xE1c</div>` : ""}
         </div>`;
         } else {
@@ -16056,8 +16181,14 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           <b>C\xE2u ${esc2(num)}${code ? " \xB7 " + esc2(code) : ""}</b>
           <span class="hodEditRequestStatus ${statusClass(r.status)}">${esc2(statusText(r.status))}</span>
         </div>
-        <p class="hodEditRequestMeta">G\u1EEDi: ${esc2(timeText(r.created_at))}${r.reviewed_at ? " \xB7 Ph\u1EA3n h\u1ED3i: " + esc2(timeText(r.reviewed_at)) : ""}</p>
-        ${r.admin_note ? `<p class="hodEditRequestNote">Ghi ch\xFA admin: ${esc2(r.admin_note)}</p>` : ""}
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; gap:8px;">
+          <p class="hodEditRequestMeta" style="margin:0;">G\u1EEDi: ${esc2(timeText(r.created_at))}${r.reviewed_at ? " \xB7 Ph\u1EA3n h\u1ED3i: " + esc2(timeText(r.reviewed_at)) : ""}</p>
+          ${num !== "?" ? `
+          <button type="button" class="hodJumpStudyBtn" data-num="${esc2(num)}" data-subject="${esc2(code)}" style="font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: rgba(200, 169, 110, 0.15); border: 1px solid rgba(200, 169, 110, 0.35); color: var(--gold2, #e8d4a8); cursor: pointer; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; flex-shrink: 0;">
+            \u{1F50D} Tra c\xE2u \u2197
+          </button>` : ""}
+        </div>
+        ${r.admin_note ? `<p class="hodEditRequestNote" style="margin-top:4px;">Ghi ch\xFA admin: ${esc2(r.admin_note)}</p>` : ""}
         ${fresh ? '<span class="hodEditRequestNew">M\u1EDBi</span>' : ""}
       </div>`;
       }).join("");
@@ -16104,6 +16235,18 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         modal.__lhBellBound = true;
         modal.addEventListener("mousedown", (e) => {
           if (e.target === modal) closeModal();
+        });
+      }
+      const listEl = $2("hodEditRequestList");
+      if (listEl && !listEl.__lhJumpBound) {
+        listEl.__lhJumpBound = true;
+        listEl.addEventListener("click", (e) => {
+          const btn = e.target.closest(".hodJumpStudyBtn");
+          if (btn) {
+            const num = btn.dataset.num;
+            const subject = btn.dataset.subject || "";
+            if (num && num !== "?") window.jumpToQuestionInLibrary(num, subject);
+          }
         });
       }
     }

@@ -1,4 +1,14 @@
 {
-  "version": "53e6f54",
-  "timestamp": 1785431416487
+  "version": "35b3fe5",
+  "timestamp": 1785432446062,
+  "recent_commits": [
+    "✨ Tính năng mới: Thêm thông báo cho Admin khi học sinh gửi yêu cầu sửa câu hỏi",
+    "✨ Cập nhật: Cập nhật phiên bản hệ thống",
+    "✨ Tính năng mới: Cập nhật phiên bản hệ thống",
+    "✨ Cập nhật: Tối ưu hiển thị văn bản",
+    "✨ Tính năng mới: Cải tiến giao diện và cấu trúc ứng dụng",
+    "✨ Cập nhật: Enhance card UI styling",
+    "✨ Cập nhật: Add JSZip support for file imports.",
+    "✨ Tính năng mới: Cấu hình prompt trợ lý AI"
+  ]
 }

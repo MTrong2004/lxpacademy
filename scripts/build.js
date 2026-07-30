@@ -25,15 +25,95 @@ function getBuildVersion() {
   }
 }
 
+function translateCommitToVietnamese(msg) {
+  let str = String(msg || '').trim();
+  if (!str) return '';
+
+  if (/[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i.test(str)) {
+    return str.replace(/^(feat|fix|refactor|docs|style|perf|chore)(\([^\)]+\))?:\s*/i, '');
+  }
+
+  let category = '✨ Cập nhật: ';
+  if (/^feat/i.test(str)) category = '✨ Tính năng mới: ';
+  else if (/^fix/i.test(str)) category = '🐛 Sửa lỗi: ';
+  else if (/^refactor|^perf/i.test(str)) category = '⚡ Tối ưu hệ thống: ';
+  else if (/^style/i.test(str)) category = '🎨 Giao diện: ';
+  else if (/^docs/i.test(str)) category = '📝 Tài liệu: ';
+
+  let body = str.replace(/^(feat|fix|refactor|docs|style|perf|chore)(\([^\)]+\))?:\s*/i, '').trim();
+
+  const dict = [
+    [/staff notification system.*pending edit requests/i, 'Thêm thông báo cho Admin khi học sinh gửi yêu cầu sửa câu hỏi'],
+    [/staff notification/i, 'Thêm hệ thống thông báo cho Admin'],
+    [/edit request bell|request bell|bell layout/i, 'Tối ưu giao diện chuông thông báo'],
+    [/jump to question|search.*library/i, 'Thêm tính năng tra nhanh câu hỏi trực tiếp trong Thư viện'],
+    [/release notes|changelog/i, 'Thêm Ghi chú cập nhật phiên bản mới'],
+    [/modular.*student.*core|modularize admin and student core/i, 'Cải tiến giao diện và cấu trúc ứng dụng'],
+    [/subject request/i, 'Quản lý yêu cầu môn học'],
+    [/ai prompt/i, 'Cấu hình prompt trợ lý AI'],
+    [/update application version|version hash/i, 'Cập nhật phiên bản hệ thống'],
+    [/line-clamp|css/i, 'Tối ưu hiển thị văn bản'],
+    [/document|readme/i, 'Cập nhật tài liệu hướng dẫn']
+  ];
+
+  for (const [pattern, translation] of dict) {
+    if (pattern.test(body)) {
+      return category + translation;
+    }
+  }
+
+  body = body.charAt(0).toUpperCase() + body.slice(1);
+  return category + body;
+}
+
+function processCommitText(rawText, commitsArr) {
+  if (!rawText) return;
+  const parts = rawText
+    .split(/\r?\n|;|,|\band\b/i)
+    .map(s => s.trim())
+    .filter(s => s.length > 3);
+
+  for (const p of parts) {
+    if (!p.startsWith('Merge branch') && !p.startsWith('Merge pull request')) {
+      const translated = translateCommitToVietnamese(p);
+      if (translated && !commitsArr.includes(translated)) {
+        commitsArr.push(translated);
+      }
+    }
+  }
+}
+
+function getRecentCommits() {
+  const commits = [];
+  if (process.env.VERCEL_GIT_COMMIT_MESSAGE) {
+    processCommitText(process.env.VERCEL_GIT_COMMIT_MESSAGE, commits);
+  }
+  try {
+    const raw = execSync('git log -n 5 --pretty=format:"%B"', { stdio: ['pipe', 'pipe', 'ignore'] }).toString();
+    processCommitText(raw, commits);
+  } catch (e) {
+    try {
+      const rawSubject = execSync('git log -n 5 --pretty=format:"%s"', { stdio: ['pipe', 'pipe', 'ignore'] }).toString();
+      processCommitText(rawSubject, commits);
+    } catch (err) {}
+  }
+  return commits.slice(0, 8);
+}
+
 async function main() {
   await rm(dist, { recursive: true, force: true });
   await mkdir(dist, { recursive: true });
 
   const buildVersion = getBuildVersion();
-  const versionData = JSON.stringify({ version: buildVersion, timestamp: Date.now() }, null, 2);
+  const recentCommits = getRecentCommits();
+  const versionData = JSON.stringify({
+    version: buildVersion,
+    timestamp: Date.now(),
+    recent_commits: recentCommits
+  }, null, 2);
   await writeFile(path.join(dist, 'version.json'), versionData);
   await writeFile(path.join(root, 'version.json'), versionData);
-  console.log(`📌 Generated version.json (${buildVersion})`);
+  console.log(`📌 Generated version.json (${buildVersion}) with ${recentCommits.length} commit notes`);
 
   for (const f of HTML_FILES) {
     await copyFile(path.join(root, f), path.join(dist, f));

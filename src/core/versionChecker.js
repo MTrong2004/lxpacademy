@@ -79,10 +79,27 @@ export function showAdminReloadNotice() {
  *
  * @param {{title?: string, sub?: string}} [opts]
  */
-export function showUpdateNotification(opts) {
+export async function showUpdateNotification(opts) {
   const title = opts?.title || 'Có phiên bản mới';
   const sub = opts?.sub || 'Cập nhật để tải giao diện và dữ liệu mới nhất';
   if (document.getElementById('lhUpdateBanner')) return;
+
+  let releaseNotes = null;
+  try {
+    const [settingsRes, verRes] = await Promise.all([
+      fetch('/api/settings?ts=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+      fetch('/version.json?ts=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({}))
+    ]);
+
+    const enabled = settingsRes?.release_notes?.enabled !== false;
+    if (enabled) {
+      if (settingsRes?.release_notes?.content && settingsRes.release_notes.content.trim()) {
+        releaseNotes = settingsRes.release_notes.content.trim();
+      } else if (Array.isArray(verRes?.recent_commits) && verRes.recent_commits.length > 0) {
+        releaseNotes = verRes.recent_commits.map(c => '• ' + String(c).replace(/^•\s*/, '')).join('\n');
+      }
+    }
+  } catch (e) {}
 
   const styleId = 'lhUpdateBannerStyles';
   if (!document.getElementById(styleId)) {
@@ -95,10 +112,11 @@ export function showUpdateNotification(opts) {
         right: 24px;
         z-index: 2147483647;
         display: flex;
-        align-items: center;
-        gap: 14px;
-        padding: 14px 20px;
-        background: rgba(18, 24, 38, 0.95);
+        flex-direction: column;
+        gap: 12px;
+        width: min(420px, calc(100vw - 32px));
+        padding: 16px 18px;
+        background: rgba(18, 24, 38, 0.96);
         border: 1px solid rgba(255, 255, 255, 0.16);
         border-left: 4px solid #3b82f6;
         border-radius: 16px;
@@ -113,10 +131,21 @@ export function showUpdateNotification(opts) {
         from { opacity: 0; transform: translateY(24px) scale(0.94); }
         to { opacity: 1; transform: translateY(0) scale(1); }
       }
+      .lh-update-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .lh-update-main {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
       .lh-update-icon {
-        width: 38px;
-        height: 38px;
-        border-radius: 12px;
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
         background: linear-gradient(135deg, #3b82f6, #1d4ed8);
         display: flex;
         align-items: center;
@@ -125,8 +154,8 @@ export function showUpdateNotification(opts) {
         box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
       }
       .lh-update-icon svg {
-        width: 20px;
-        height: 20px;
+        width: 18px;
+        height: 18px;
         fill: none;
         stroke: #ffffff;
         stroke-width: 2.2;
@@ -148,24 +177,52 @@ export function showUpdateNotification(opts) {
         font-size: 12px;
         color: #94a3b8;
       }
+      .lh-update-notes-box {
+        margin-top: 2px;
+        padding: 10px 12px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        font-size: 12px;
+        color: #cbd5e1;
+        max-height: 140px;
+        overflow-y: auto;
+      }
+      .lh-update-notes-title {
+        color: #60a5fa;
+        font-weight: 700;
+        font-size: 12px;
+        margin-bottom: 4px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .lh-update-notes-body {
+        white-space: pre-wrap;
+        line-height: 1.5;
+        color: #e2e8f0;
+      }
       .lh-update-actions {
         display: flex;
         align-items: center;
+        justify-content: flex-end;
         gap: 8px;
-        margin-left: 6px;
+        margin-top: 4px;
       }
       .lh-update-btn {
         background: linear-gradient(135deg, #2563eb, #1d4ed8);
         color: #ffffff;
         border: none;
-        border-radius: 10px;
-        padding: 8px 16px;
+        border-radius: 8px;
+        padding: 7px 16px;
         font-size: 13px;
         font-weight: 600;
         cursor: pointer;
         transition: all 0.2s ease;
         box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
         white-space: nowrap;
+        width: 100%;
+        text-align: center;
       }
       .lh-update-btn:hover {
         background: linear-gradient(135deg, #3b82f6, #2563eb);
@@ -180,8 +237,8 @@ export function showUpdateNotification(opts) {
         border: none;
         color: #64748b;
         cursor: pointer;
-        padding: 6px;
-        border-radius: 8px;
+        padding: 4px;
+        border-radius: 6px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -193,14 +250,10 @@ export function showUpdateNotification(opts) {
       }
       @media (max-width: 640px) {
         .lh-update-banner {
-          left: 12px;
-          right: 12px;
+          left: 16px;
+          right: 16px;
           bottom: 16px;
-          padding: 12px 14px;
-          gap: 10px;
-        }
-        .lh-update-sub {
-          display: none;
+          width: auto;
         }
       }
     `;
@@ -213,20 +266,21 @@ export function showUpdateNotification(opts) {
   banner.setAttribute('role', 'alert');
   banner.setAttribute('aria-live', 'assertive');
   banner.innerHTML = `
-    <div class="lh-update-icon">
-      <svg viewBox="0 0 24 24">
-        <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-        <path d="M3 3v5h5"></path>
-        <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
-        <path d="M16 16h5v5"></path>
-      </svg>
-    </div>
-    <div class="lh-update-content">
-      <span class="lh-update-title"></span>
-      <span class="lh-update-sub"></span>
-    </div>
-    <div class="lh-update-actions">
-      <button id="lhUpdateReloadBtn" class="lh-update-btn" type="button">Cập nhật ngay</button>
+    <div class="lh-update-header">
+      <div class="lh-update-main">
+        <div class="lh-update-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+            <path d="M3 3v5h5"></path>
+            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+            <path d="M16 16h5v5"></path>
+          </svg>
+        </div>
+        <div class="lh-update-content">
+          <span class="lh-update-title"></span>
+          <span class="lh-update-sub"></span>
+        </div>
+      </div>
       <button id="lhUpdateCloseBtn" class="lh-update-close" type="button" aria-label="Đóng thông báo">
         <svg style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2" viewBox="0 0 24 24">
           <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -234,17 +288,25 @@ export function showUpdateNotification(opts) {
         </svg>
       </button>
     </div>
+    ${releaseNotes ? `
+    <div class="lh-update-notes-box">
+      <div class="lh-update-notes-title">✨ Có gì mới trong bản này:</div>
+      <div class="lh-update-notes-body"></div>
+    </div>` : ''}
+    <div class="lh-update-actions">
+      <button id="lhUpdateReloadBtn" class="lh-update-btn" type="button">Cập nhật ngay</button>
+    </div>
   `;
 
-  // textContent, không nhúng vào chuỗi HTML: chữ có thể đến từ tham số nên không dựng bằng
-  // template string để khỏi phải nghĩ tới chuyện escape.
   banner.querySelector('.lh-update-title').textContent = title;
   banner.querySelector('.lh-update-sub').textContent = sub;
+  if (releaseNotes && banner.querySelector('.lh-update-notes-body')) {
+    banner.querySelector('.lh-update-notes-body').textContent = releaseNotes;
+  }
 
   document.body.appendChild(banner);
 
   document.getElementById('lhUpdateReloadBtn')?.addEventListener('click', () => {
-    // Không bao giờ tự reload khi người dùng không chủ động click, khi click nút reload ngay:
     window.location.reload();
   });
 

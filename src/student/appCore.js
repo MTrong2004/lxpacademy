@@ -10633,6 +10633,74 @@ installImgsHTML();
     return inflight;
   }
 
+  window.jumpToQuestionInLibrary = function (num, subjectCode) {
+    closeModal();
+
+    // 1. Reset bộ lọc thư viện về "Tất cả" (all)
+    try {
+      localStorage.setItem('learninghub_library_filter_v1', 'all');
+    } catch (e) {
+      lhWarn('HEADER_EDIT_REQUEST_BELL_20260726', e);
+    }
+
+    // 2. Tự động chuyển sang môn học tương ứng nếu câu hỏi thuộc môn khác
+    const targetSubject = String(subjectCode || '').trim();
+    const currentSubject = (localStorage.getItem('learninghub_subject_code_merged_v1') || '').trim();
+    let needReloadSubject = false;
+
+    if (targetSubject && targetSubject !== currentSubject) {
+      try {
+        localStorage.setItem('learninghub_subject_code_merged_v1', targetSubject);
+        needReloadSubject = true;
+        if ($('subjectInlineText')) $('subjectInlineText').textContent = targetSubject;
+        if ($('hodAccountSubjectText')) $('hodAccountSubjectText').textContent = targetSubject;
+      } catch (e) {
+        lhWarn('HEADER_EDIT_REQUEST_BELL_20260726', e);
+      }
+    }
+
+    // 3. Chuyển tab sang Thư viện (study)
+    const tabBtn = document.querySelector('.tab[data-tab="study"]');
+    if (typeof switchTab === 'function') {
+      switchTab('study', tabBtn);
+    } else if (tabBtn) {
+      tabBtn.click();
+    }
+
+    // 4. Nếu đổi môn, gọi nạp lại dữ liệu môn mới
+    if (needReloadSubject) {
+      if (typeof window.loadCurrentSubjectOnly === 'function') {
+        window.loadCurrentSubjectOnly(true);
+      } else if (typeof window.loadSubjectLight === 'function') {
+        window.loadSubjectLight(true);
+      }
+    }
+
+    // 5. Điền mã câu vào ô tìm kiếm (#num)
+    const searchInput = document.getElementById('search') || document.getElementById('studySearch');
+    if (searchInput) {
+      searchInput.value = '#' + num;
+      try {
+        localStorage.setItem('learninghub_library_search_v1', '#' + num);
+      } catch (e) {}
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+      searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // 6. Vẽ lại giao diện Thư viện & cuộn tới câu hỏi
+    if (typeof window.renderStudy === 'function') {
+      try {
+        window.renderStudy();
+      } catch (e) {
+        lhWarn('HEADER_EDIT_REQUEST_BELL_20260726', e);
+      }
+    }
+    setTimeout(() => {
+      const list = document.getElementById('studyList') || document.getElementById('study');
+      if (list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
+  };
+
   function renderList() {
     const box = $('hodEditRequestList');
     if (!box) return;
@@ -10654,11 +10722,17 @@ installImgsHTML();
               Duyệt ngay ↗
             </a>
           </div>
-          ${staffPendingItems.slice(0, 3).map(r => `
-            <div style="font-size:12px; color:#e2d8c3; margin-top:6px; padding-top:6px; border-top:1px dashed rgba(200, 169, 110, 0.2); line-height:1.45;">
-              <b style="color:#ffffff;">Câu ${esc(r.question_num || r.new_data?.num || '?')}</b> (${esc(r.subject_code || '')}) - <span style="color:var(--gold2, #e8d4a8); font-weight:500;">${esc(r.user_email || 'Học sinh')}</span>: <span style="color:#c8bba6; font-style:italic;">"${esc(r.reason || 'Đề xuất sửa câu hỏi')}"</span>
-            </div>
-          `).join('')}
+          ${staffPendingItems.slice(0, 3).map(r => {
+            const n = r.question_num || r.new_data?.num || '?';
+            const sc = r.subject_code || r.new_data?.subject_code || '';
+            return `
+            <div style="font-size:12px; color:#e2d8c3; margin-top:6px; padding-top:6px; border-top:1px dashed rgba(200, 169, 110, 0.2); line-height:1.45; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+              <div>
+                <b style="color:#ffffff;">Câu ${esc(n)}</b> (${esc(sc)}) - <span style="color:var(--gold2, #e8d4a8); font-weight:500;">${esc(r.user_email || 'Học sinh')}</span>: <span style="color:#c8bba6; font-style:italic;">"${esc(r.reason || 'Đề xuất sửa câu hỏi')}"</span>
+              </div>
+              ${n !== '?' ? `<button type="button" onclick="window.jumpToQuestionInLibrary('${esc(n)}', '${esc(sc)}')" style="font-size:11px; font-weight:600; padding:2px 8px; border-radius:6px; background:rgba(200, 169, 110, 0.15); border:1px solid rgba(200, 169, 110, 0.3); color:var(--gold2, #e8d4a8); cursor:pointer; white-space:nowrap;">Tra câu ↗</button>` : ''}
+            </div>`;
+          }).join('')}
           ${staffPendingItems.length > 3 ? `<div style="font-size:11px; color:#c8bba6; margin-top:6px; font-style:italic;">...và ${staffPendingItems.length - 3} yêu cầu khác</div>` : ''}
         </div>`;
       } else {
@@ -10692,8 +10766,14 @@ installImgsHTML();
           <b>Câu ${esc(num)}${code ? ' · ' + esc(code) : ''}</b>
           <span class="hodEditRequestStatus ${statusClass(r.status)}">${esc(statusText(r.status))}</span>
         </div>
-        <p class="hodEditRequestMeta">Gửi: ${esc(timeText(r.created_at))}${r.reviewed_at ? ' · Phản hồi: ' + esc(timeText(r.reviewed_at)) : ''}</p>
-        ${r.admin_note ? `<p class="hodEditRequestNote">Ghi chú admin: ${esc(r.admin_note)}</p>` : ''}
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; gap:8px;">
+          <p class="hodEditRequestMeta" style="margin:0;">Gửi: ${esc(timeText(r.created_at))}${r.reviewed_at ? ' · Phản hồi: ' + esc(timeText(r.reviewed_at)) : ''}</p>
+          ${num !== '?' ? `
+          <button type="button" class="hodJumpStudyBtn" data-num="${esc(num)}" data-subject="${esc(code)}" style="font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: rgba(200, 169, 110, 0.15); border: 1px solid rgba(200, 169, 110, 0.35); color: var(--gold2, #e8d4a8); cursor: pointer; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; flex-shrink: 0;">
+            🔍 Tra câu ↗
+          </button>` : ''}
+        </div>
+        ${r.admin_note ? `<p class="hodEditRequestNote" style="margin-top:4px;">Ghi chú admin: ${esc(r.admin_note)}</p>` : ''}
         ${fresh ? '<span class="hodEditRequestNew">Mới</span>' : ''}
       </div>`;
       })
@@ -10747,6 +10827,18 @@ installImgsHTML();
       modal.__lhBellBound = true;
       modal.addEventListener('mousedown', e => {
         if (e.target === modal) closeModal();
+      });
+    }
+    const listEl = $('hodEditRequestList');
+    if (listEl && !listEl.__lhJumpBound) {
+      listEl.__lhJumpBound = true;
+      listEl.addEventListener('click', e => {
+        const btn = e.target.closest('.hodJumpStudyBtn');
+        if (btn) {
+          const num = btn.dataset.num;
+          const subject = btn.dataset.subject || '';
+          if (num && num !== '?') window.jumpToQuestionInLibrary(num, subject);
+        }
       });
     }
   }

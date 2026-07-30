@@ -131,8 +131,30 @@ export async function handleAdminDashboard(req, authUser) {
   // admin-action đều xoá _adminDashCache, kể cả set_subject_folder_new_badge.
   const folder_new_badges = await getFolderNewBadges();
 
+  let release_notes_enabled = false;
+  let release_notes_content = '';
+  try {
+    const settingsRows = await db.execute({
+      sql: "select key, value from site_settings where key in ('release_notes_enabled', 'release_notes_content')",
+      args: []
+    });
+    if (settingsRows.rows) {
+      settingsRows.rows.forEach(row => {
+        const k = row.key;
+        const v = row.value;
+        const strVal = typeof v === 'string' ? v.replace(/^"+|"+$/g, '') : String(v || '');
+        if (k === 'release_notes_enabled') release_notes_enabled = strVal === 'true';
+        if (k === 'release_notes_content') release_notes_content = strVal || '';
+      });
+    }
+  } catch (e) {}
+
   const data = {
     folder_new_badges,
+    release_notes: {
+      enabled: release_notes_enabled,
+      content: release_notes_content
+    },
     profiles: profiles.rows || [],
     questions: questions.rows || [],
     requests: requests.rows || [],
@@ -1207,6 +1229,21 @@ export async function handleAdminAction(req, authUser) {
       });
       await logAdminAction('set_add_subject_ai_prompt', 'site_settings', 'add_subject_ai_prompt', { prompt_len: prompt.length });
       return json({ ok: true, prompt });
+    }
+
+    case 'set_release_notes': {
+      const enabled = payload.enabled ? 'true' : 'false';
+      const content = String(payload.content || '').trim();
+      await db.execute({
+        sql: "insert into site_settings (key, value, updated_at, updated_by) values ('release_notes_enabled', ?, ?, ?) on conflict(key) do update set value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by",
+        args: [enabled, now, user_id]
+      });
+      await db.execute({
+        sql: "insert into site_settings (key, value, updated_at, updated_by) values ('release_notes_content', ?, ?, ?) on conflict(key) do update set value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by",
+        args: [content, now, user_id]
+      });
+      await logAdminAction('set_release_notes', 'site_settings', 'release_notes', { enabled: !!payload.enabled, content_len: content.length });
+      return json({ ok: true, release_notes: { enabled: !!payload.enabled, content } });
     }
 
     case 'add_subject_request': {

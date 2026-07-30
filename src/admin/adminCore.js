@@ -6272,7 +6272,102 @@ ${E(val)}</pre>`;
     if (dash.discord_notifications && typeof dash.discord_notifications === 'object') {
       TIER.settings = { ...dash.discord_notifications };
     }
+    if (dash.release_notes && typeof dash.release_notes === 'object') {
+      TIER.releaseNotes = { ...dash.release_notes };
+    }
   }
+
+  function ensureReleaseNotesPage() {
+    if (!$id('releaseNotesNav')) {
+      const side = document.querySelector('.side');
+      const foot = document.querySelector('.foot');
+      if (side) {
+        const btn = document.createElement('button');
+        btn.id = 'releaseNotesNav';
+        btn.className = 'nav';
+        btn.type = 'button';
+        btn.dataset.page = 'releaseNotes';
+        btn.textContent = 'Ghi chú phiên bản';
+        btn.onclick = () => {
+          if (typeof setPage === 'function') setPage('releaseNotes', 'Ghi chú phiên bản');
+          renderReleaseNotesSettings();
+        };
+        side.insertBefore(btn, foot || null);
+        if (typeof window.organizeAdminSidebarTree === 'function') window.organizeAdminSidebarTree();
+      }
+    }
+
+    if (!$id('releaseNotes')) {
+      const ws = document.querySelector('.workspace');
+      if (!ws) return;
+      const page = document.createElement('section');
+      page.id = 'releaseNotes';
+      page.className = 'page';
+      page.innerHTML = `
+        <div class="panel panelFill">
+          <h3>Ghi chú cập nhật phiên bản (Release Notes)</h3>
+          <div class="hint">Bật/tắt và soạn nội dung danh sách cập nhật mới để hiển thị cho người học.</div>
+          <div id="releaseNotesContent" style="margin-top: 16px; max-width: 700px;"></div>
+        </div>`;
+      ws.appendChild(page);
+    }
+  }
+
+  function renderReleaseNotesSettings() {
+    ensureReleaseNotesPage();
+    const box = $id('releaseNotesContent');
+    if (!box) return;
+
+    const rn = TIER.releaseNotes || { enabled: false, content: '' };
+    const enabled = !!rn.enabled;
+    const content = String(rn.content || '');
+
+    box.innerHTML = `
+      <div style="display: flex; flex-direction: column; gap: 18px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;">
+          <div>
+            <b style="font-size: 14px; color: var(--text, #fff);">Hiển thị Ghi chú phiên bản cho Người học</b>
+            <p class="muted" style="font-size: 12px; margin-top: 4px;">Khi BẬT, thông báo cập nhật phiên bản mới sẽ đi kèm danh sách các điểm mới do bạn soạn bên dưới.</p>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:13px; font-weight:600; color: ${enabled ? '#10b981' : '#ef4444'};">${enabled ? 'Đang Bật' : 'Đang Tắt'}</span>
+            <button id="rnToggleBtn" class="act ${enabled ? 'bad' : 'ok'}" type="button" onclick="window.saveReleaseNotes(!${enabled}, null)">
+              ${enabled ? 'Tắt' : 'Bật'}
+            </button>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <label style="font-weight: 600; font-size: 13px; color: var(--text, #fff);">Nội dung các điểm cập nhật mới (Mỗi dòng một mục):</label>
+          <textarea id="rnContentInput" rows="7" placeholder="Ví dụ:&#10;• Nâng cấp quả chuông thông báo cho Admin & Học sinh&#10;• Thêm tính năng tra nhanh câu hỏi trong Thư viện&#10;• Tối ưu tốc độ nạp câu hỏi" style="width: 100%; padding: 12px; border-radius: 10px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-family: inherit; font-size: 13px; line-height: 1.6; resize: vertical;">${esc(content)}</textarea>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <button class="primary" type="button" onclick="window.saveReleaseNotes(null, document.getElementById('rnContentInput').value)" style="padding: 10px 24px; font-weight: 700;">
+            Lưu ghi chú
+          </button>
+        </div>
+      </div>`;
+  }
+
+  window.saveReleaseNotes = async function (nextEnabled, nextContent) {
+    const current = TIER.releaseNotes || { enabled: false, content: '' };
+    const enabled = nextEnabled !== null ? !!nextEnabled : !!current.enabled;
+    const content = nextContent !== null ? nextContent : String(current.content || '');
+
+    setBusy(true, 'Đang lưu...');
+    try {
+      const out = await adminAction('set_release_notes', { enabled, content });
+      if (!out) return;
+      TIER.releaseNotes = { enabled, content };
+      renderReleaseNotesSettings();
+      toast('Đã lưu cấu hình Ghi chú phiên bản');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  window.renderReleaseNotesSettings = renderReleaseNotesSettings;
 
   function tierLabel() {
     if (!profile) return '';
@@ -6400,14 +6495,17 @@ ${E(val)}</pre>`;
   window.__lhReadAdminTierFromDashboard = function (dash) {
     readDashboard(dash);
     renderAdminTierChip();
+    ensureReleaseNotesPage();
     if (TIER.isSystem) ensureDiscordPage();
     if (typeof window.hideDeniedMenus === 'function') window.hideDeniedMenus();
     if (TIER.isSystem && $id('discordSettings')?.classList.contains('active')) renderDiscordSettings();
+    if ($id('releaseNotes')?.classList.contains('active')) renderReleaseNotesSettings();
   };
 
   // Trang chỉ dựng khi đã biết là admin — dựng sớm thì editor thấy nút rồi mới bị ẩn, nháy.
   function ensureWhenAdmin() {
     if (typeof isAdmin === 'function' && isAdmin()) {
+      ensureReleaseNotesPage();
       if (window.isSystemAdmin && window.isSystemAdmin()) {
         ensureDiscordPage();
       }
