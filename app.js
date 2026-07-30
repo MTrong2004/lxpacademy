@@ -2605,7 +2605,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "87bfc1f" : null;
+  var currentVersion = true ? "a3c58af" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -8060,11 +8060,11 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       }
       if (e.key === "ArrowRight") {
         e.preventDefault();
-        typeof slideChange === "function" ? slideChange("next") : next();
+        typeof slideChange === "function" ? slideChange("next", e.repeat) : next();
       }
       if (e.key === "ArrowLeft") {
         e.preventDefault();
-        typeof slideChange === "function" ? slideChange("prev") : prev();
+        typeof slideChange === "function" ? slideChange("prev", e.repeat) : prev();
       }
       if (e.key.toLowerCase() === "r") triggerReset();
       if (e.key.toLowerCase() === "e") openEditor2();
@@ -10509,7 +10509,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       return wrap;
     }
     let __sliding = false;
-    function slideChange2(dir) {
+    let __activeFinishSlide = null;
+    function slideChange2(dir, isRepeat = false) {
       const zone = $2("zone");
       if (!zone) {
         dir === "next" ? goNext() : goPrev();
@@ -10520,9 +10521,20 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         dir === "next" ? goNext() : goPrev();
         return;
       }
-      if (__sliding) return;
+      if (__sliding && typeof __activeFinishSlide === "function") {
+        __activeFinishSlide();
+      }
+      if (isRepeat) {
+        dir === "next" ? goNext() : goPrev();
+        return;
+      }
       __sliding = true;
       window.__lhSuppressFlip = true;
+      try {
+        zone.querySelectorAll(".lhGhost").forEach((g) => g.remove());
+      } catch (e) {
+        lhWarn("MOBILE_FLASHCARD_NAVIGATION_20260702", e);
+      }
       const zr = zone.getBoundingClientRect();
       const r = wrap.getBoundingClientRect();
       const ghost = wrap.cloneNode(true);
@@ -10538,21 +10550,16 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const fromX = dir === "next" ? "100%" : "-100%";
       const toX = dir === "next" ? "-100%" : "100%";
       wrap.style.transform = "translateX(" + fromX + ")";
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (!__sliding) return;
-          const ease = "transform .26s cubic-bezier(.22,.61,.36,1)";
-          wrap.style.transition = ease;
-          ghost.style.transition = ease + ", opacity .26s ease";
-          wrap.style.transform = "translateX(0)";
-          ghost.style.transform = "translateX(" + toX + ")";
-          ghost.style.opacity = ".35";
-        });
-      });
+      let animFrame1 = null;
+      let animFrame2 = null;
+      let slideTimeout = null;
       let __slideDone = false;
       function finishSlide() {
         if (__slideDone) return;
         __slideDone = true;
+        if (animFrame1) cancelAnimationFrame(animFrame1);
+        if (animFrame2) cancelAnimationFrame(animFrame2);
+        if (slideTimeout) clearTimeout(slideTimeout);
         wrap.removeEventListener("transitionend", finishSlide);
         ghost.remove();
         wrap.style.transition = "";
@@ -10561,9 +10568,24 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         wrap.classList.remove("lhSliding");
         __sliding = false;
         window.__lhSuppressFlip = false;
+        if (__activeFinishSlide === finishSlide) {
+          __activeFinishSlide = null;
+        }
       }
+      __activeFinishSlide = finishSlide;
+      animFrame1 = requestAnimationFrame(() => {
+        animFrame2 = requestAnimationFrame(() => {
+          if (!__sliding || __slideDone) return;
+          const ease = "transform .22s cubic-bezier(.22,.61,.36,1)";
+          wrap.style.transition = ease;
+          ghost.style.transition = ease + ", opacity .22s ease";
+          wrap.style.transform = "translateX(0)";
+          ghost.style.transform = "translateX(" + toX + ")";
+          ghost.style.opacity = ".35";
+        });
+      });
       wrap.addEventListener("transitionend", finishSlide);
-      setTimeout(finishSlide, 480);
+      slideTimeout = setTimeout(finishSlide, 350);
     }
     function bindHoldRepeat(btn, dir) {
       if (!btn) return;

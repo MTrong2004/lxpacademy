@@ -1095,11 +1095,11 @@ function init() {
     }
     if (e.key === 'ArrowRight') {
       e.preventDefault();
-      typeof slideChange === 'function' ? slideChange('next') : next();
+      typeof slideChange === 'function' ? slideChange('next', e.repeat) : next();
     }
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      typeof slideChange === 'function' ? slideChange('prev') : prev();
+      typeof slideChange === 'function' ? slideChange('prev', e.repeat) : prev();
     }
     if (e.key.toLowerCase() === 'r') triggerReset();
     if (e.key.toLowerCase() === 'e') openEditor();
@@ -3986,8 +3986,9 @@ if (typeof finalAnswerText !== 'function') {
   }
 
   let __sliding = false;
+  let __activeFinishSlide = null;
   // Trượt liền mạch: câu cũ (ghost) và câu mới (wrap) chạy song song cùng hướng.
-  function slideChange(dir) {
+  function slideChange(dir, isRepeat = false) {
     const zone = $('zone');
     // Chỉ bọc #card vào wrapper trên mobile — bọc trên desktop sẽ đổi #card từ flex item
     // trực tiếp của .zone thành con của 1 div thường, có thể làm lệch layout desktop.
@@ -4000,9 +4001,30 @@ if (typeof finalAnswerText !== 'function') {
       dir === 'next' ? goNext() : goPrev();
       return;
     }
-    if (__sliding) return;
+
+    // Nếu đang trượt dở mà nhận thêm lệnh mới (ví dụ nhấp nhanh nhiều lần hoặc giữ phím),
+    // kết thúc ngay slide trước để trả giao diện về vị trí chuẩn và tiến hành câu mới lập tức.
+    if (__sliding && typeof __activeFinishSlide === 'function') {
+      __activeFinishSlide();
+    }
+
+    // Khi giữ phím (isRepeat / e.repeat): chuyển câu trực tiếp không chạy animation trượt 220ms
+    // để giao diện tua nhanh mượt mà ở tốc độ phím gõ (30-50ms/câu).
+    if (isRepeat) {
+      dir === 'next' ? goNext() : goPrev();
+      return;
+    }
+
     __sliding = true;
     window.__lhSuppressFlip = true;
+
+    // Dọn các ghost cũ nếu còn sót lại trên DOM
+    try {
+      zone.querySelectorAll('.lhGhost').forEach(g => g.remove());
+    } catch (e) {
+      lhWarn('MOBILE_FLASHCARD_NAVIGATION_20260702', e);
+    }
+
     const zr = zone.getBoundingClientRect();
     const r = wrap.getBoundingClientRect();
     // ghost = ảnh chụp câu cũ ngay tại vị trí đang thấy (kể cả khi đang kéo dở).
@@ -4034,24 +4056,17 @@ if (typeof finalAnswerText !== 'function') {
     const toX = dir === 'next' ? '-100%' : '100%'; // câu cũ (ghost) ra cùng hướng vuốt
     wrap.style.transform = 'translateX(' + fromX + ')';
 
-    // Double rAF: đảm bảo trình duyệt vẽ xong vị trí xuất phát ở 1 frame riêng
-    // trước khi bắt đầu transition, tránh gộp frame/giật hình trên máy yếu.
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (!__sliding) return; // đã bị huỷ/dọn dẹp trước đó thì thôi
-        const ease = 'transform .26s cubic-bezier(.22,.61,.36,1)';
-        wrap.style.transition = ease;
-        ghost.style.transition = ease + ', opacity .26s ease';
-        wrap.style.transform = 'translateX(0)'; // câu mới vào giữa
-        ghost.style.transform = 'translateX(' + toX + ')'; // câu cũ ra
-        ghost.style.opacity = '.35';
-      });
-    });
-
+    let animFrame1 = null;
+    let animFrame2 = null;
+    let slideTimeout = null;
     let __slideDone = false;
+
     function finishSlide() {
       if (__slideDone) return;
       __slideDone = true;
+      if (animFrame1) cancelAnimationFrame(animFrame1);
+      if (animFrame2) cancelAnimationFrame(animFrame2);
+      if (slideTimeout) clearTimeout(slideTimeout);
       wrap.removeEventListener('transitionend', finishSlide);
       ghost.remove();
       wrap.style.transition = '';
@@ -4060,9 +4075,29 @@ if (typeof finalAnswerText !== 'function') {
       wrap.classList.remove('lhSliding');
       __sliding = false;
       window.__lhSuppressFlip = false;
+      if (__activeFinishSlide === finishSlide) {
+        __activeFinishSlide = null;
+      }
     }
+
+    __activeFinishSlide = finishSlide;
+
+    // Double rAF: đảm bảo trình duyệt vẽ xong vị trí xuất phát ở 1 frame riêng
+    // trước khi bắt đầu transition, tránh gộp frame/giật hình trên máy yếu.
+    animFrame1 = requestAnimationFrame(() => {
+      animFrame2 = requestAnimationFrame(() => {
+        if (!__sliding || __slideDone) return;
+        const ease = 'transform .22s cubic-bezier(.22,.61,.36,1)';
+        wrap.style.transition = ease;
+        ghost.style.transition = ease + ', opacity .22s ease';
+        wrap.style.transform = 'translateX(0)'; // câu mới vào giữa
+        ghost.style.transform = 'translateX(' + toX + ')'; // câu cũ ra
+        ghost.style.opacity = '.35';
+      });
+    });
+
     wrap.addEventListener('transitionend', finishSlide);
-    setTimeout(finishSlide, 480);
+    slideTimeout = setTimeout(finishSlide, 350);
   }
 
   // Bấm nhanh (tap): chuyển 1 câu có hiệu ứng trượt (slideChange).
