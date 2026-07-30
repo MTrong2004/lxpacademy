@@ -144,18 +144,59 @@
                 </div>
             </section>
             <section id="subjectRequests" class="page">
-                <div class="panel panelFill">
-                    <h3>Yêu cầu thêm môn học</h3>
-                    <div class="hint">Người dùng gửi yêu cầu thêm môn học mới kèm câu hỏi. Admin duyệt hoặc từ chối.
+                <div class="panel promptConfigPanel" id="promptConfigPanel" style="margin-bottom: 16px;">
+                    <div class="promptHeaderRow" style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h3 style="display: flex; align-items: center; gap: 8px; margin: 0;">
+                                <span>🤖 Tùy chỉnh Prompt AI tạo môn mới</span>
+                                <span class="promptBadge" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: rgba(200, 169, 110, 0.18); color: var(--gold2); border: 1px solid rgba(232, 212, 168, 0.25);">Cấu hình AI</span>
+                            </h3>
+                            <div class="hint" style="margin-top: 4px;">Nội dung prompt mà sinh viên sẽ sao chép gửi AI (Gemini/ChatGPT) khi đề xuất môn mới.</div>
+                        </div>
+                        <button type="button" class="act ok" onclick="openAdminPromptModal()" style="font-size: 0.82rem; padding: 7px 16px; white-space: nowrap;">✏️ Xem &amp; chỉnh sửa Prompt</button>
                     </div>
-                    <div class="approvalFilters"><button class="subjectReqFilter active" data-srf="pending"
-                            onclick="filterSubjectRequests('pending')">Chờ duyệt <b
-                                id="srfPending">0</b></button><button class="subjectReqFilter" data-srf="approved"
-                            onclick="filterSubjectRequests('approved')">Đã duyệt <b
-                                id="srfApproved">0</b></button><button class="subjectReqFilter" data-srf="rejected"
-                            onclick="filterSubjectRequests('rejected')">Từ chối <b
-                                id="srfRejected">0</b></button><button class="subjectReqFilter" data-srf="all"
-                            onclick="filterSubjectRequests('all')">Tất cả <b id="srfAll">0</b></button></div>
+                </div>
+                <div class="panel panelFill sreqPagePanel">
+                    <div class="sreqPageHeader">
+                        <div class="sreqPageTitleRow">
+                            <div class="sreqPageIcon">📬</div>
+                            <div>
+                                <h3 class="sreqPageTitle">Yêu cầu thêm môn học</h3>
+                                <div class="sreqPageSubtitle">Người dùng gửi yêu cầu thêm môn học mới kèm câu hỏi. Admin duyệt hoặc từ chối.</div>
+                            </div>
+                        </div>
+                        <div class="sreqStatBar">
+                            <div class="sreqStatChip sreqStatPending">
+                                <span class="sreqStatDot"></span>
+                                <span class="sreqStatLabel">Chờ duyệt</span>
+                                <b id="srfPending" class="sreqStatNum">0</b>
+                            </div>
+                            <div class="sreqStatChip sreqStatApproved">
+                                <span class="sreqStatDot"></span>
+                                <span class="sreqStatLabel">Đã duyệt</span>
+                                <b id="srfApproved" class="sreqStatNum">0</b>
+                            </div>
+                            <div class="sreqStatChip sreqStatRejected">
+                                <span class="sreqStatDot"></span>
+                                <span class="sreqStatLabel">Từ chối</span>
+                                <b id="srfRejected" class="sreqStatNum">0</b>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="sreqFilterRow">
+                        <button class="subjectReqFilter active" data-srf="pending" onclick="filterSubjectRequests('pending')">
+                            <span class="sreqFilterIcon">⏳</span> Chờ duyệt <b id="srfPendingTab">0</b>
+                        </button>
+                        <button class="subjectReqFilter" data-srf="approved" onclick="filterSubjectRequests('approved')">
+                            <span class="sreqFilterIcon">✅</span> Đã duyệt <b id="srfApprovedTab">0</b>
+                        </button>
+                        <button class="subjectReqFilter" data-srf="rejected" onclick="filterSubjectRequests('rejected')">
+                            <span class="sreqFilterIcon">❌</span> Từ chối <b id="srfRejectedTab">0</b>
+                        </button>
+                        <button class="subjectReqFilter" data-srf="all" onclick="filterSubjectRequests('all')">
+                            <span class="sreqFilterIcon">📋</span> Tất cả <b id="srfAll">0</b>
+                        </button>
+                    </div>
                     <div id="subjectRequestList" class="scrollArea pageScroll"></div>
                 </div>
             </section>
@@ -178,6 +219,28 @@
         </div>
     </div>
     <div id="toast" class="toast hidden"></div>
+    <!-- ADMIN_PROMPT_MODAL_20260730 -->
+    <div id="adminPromptModal" class="modal userPromptModal hidden" onclick="if(event.target===this)closeAdminPromptModal()">
+        <div class="adminPromptBox">
+            <div class="adminPromptHeader">
+                <div class="adminPromptTitleGroup">
+                    <span class="adminPromptIcon">🤖</span>
+                    <div>
+                        <div class="adminPromptTitle">Prompt AI tạo môn mới</div>
+                        <div class="adminPromptSub">Chỉnh sửa và lưu để cập nhật prompt cho sinh viên</div>
+                    </div>
+                </div>
+                <div class="adminPromptHeaderActions">
+                    <button class="adminPromptCopyBtn" type="button" onclick="copyAdminAiPrompt()">📋 Sao chép</button>
+                    <button class="adminPromptSaveBtn" type="button" onclick="saveAdminAiPrompt()">💾 Lưu</button>
+                    <button class="adminPromptCloseBtn" type="button" onclick="closeAdminPromptModal()" aria-label="Đóng">×</button>
+                </div>
+            </div>
+            <div class="adminPromptBody">
+                <textarea id="adminModalPromptInput" class="adminPromptTextarea" oninput="syncAdminModalPromptToInline()" placeholder="Đang tải Prompt AI..."></textarea>
+            </div>
+        </div>
+    </div>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
     <script src="admin.js?v=20260726_v2"></script>

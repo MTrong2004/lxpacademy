@@ -88,7 +88,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "df52fbe" : null;
+  var currentVersion = true ? "bd20e25" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -3475,27 +3475,48 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       if ($("srfApproved")) $("srfApproved").textContent = approved;
       if ($("srfRejected")) $("srfRejected").textContent = rejected;
       if ($("srfAll")) $("srfAll").textContent = subjectReqCache.length;
+      if ($("srfPendingTab")) $("srfPendingTab").textContent = pending;
+      if ($("srfApprovedTab")) $("srfApprovedTab").textContent = approved;
+      if ($("srfRejectedTab")) $("srfRejectedTab").textContent = rejected;
       if (!list.length) {
-        el.innerHTML = '<p class="muted">Kh\xF4ng c\xF3 y\xEAu c\u1EA7u th\xEAm m\xF4n.</p>';
+        const emptyMap = {
+          pending: { icon: "\u23F3", title: "Ch\u01B0a c\xF3 y\xEAu c\u1EA7u n\xE0o \u0111ang ch\u1EDD", hint: "Khi sinh vi\xEAn g\u1EEDi y\xEAu c\u1EA7u th\xEAm m\xF4n m\u1EDBi, ch\xFAng s\u1EBD xu\u1EA5t hi\u1EC7n t\u1EA1i \u0111\xE2y." },
+          approved: { icon: "\u2705", title: "Ch\u01B0a c\xF3 y\xEAu c\u1EA7u n\xE0o \u0111\u01B0\u1EE3c duy\u1EC7t", hint: "C\xE1c y\xEAu c\u1EA7u \u0111\xE3 ph\xEA duy\u1EC7t s\u1EBD hi\u1EC3n th\u1ECB \u1EDF \u0111\xE2y." },
+          rejected: { icon: "\u274C", title: "Ch\u01B0a c\xF3 y\xEAu c\u1EA7u n\xE0o b\u1ECB t\u1EEB ch\u1ED1i", hint: "C\xE1c y\xEAu c\u1EA7u \u0111\xE3 t\u1EEB ch\u1ED1i s\u1EBD hi\u1EC3n th\u1ECB \u1EDF \u0111\xE2y." },
+          all: { icon: "\u{1F4EC}", title: "Ch\u01B0a c\xF3 y\xEAu c\u1EA7u th\xEAm m\xF4n n\xE0o", hint: "Khi c\xF3 y\xEAu c\u1EA7u t\u1EEB sinh vi\xEAn, b\u1EA1n s\u1EBD th\u1EA5y ch\xFAng \u1EDF \u0111\xE2y." }
+        };
+        const em = emptyMap[filter] || emptyMap.all;
+        el.innerHTML = `<div class="sreqEmptyState">
+        <div class="sreqEmptyIcon">${em.icon}</div>
+        <div class="sreqEmptyTitle">${em.title}</div>
+        <div class="sreqEmptyHint">${em.hint}</div>
+      </div>`;
         return;
       }
       el.innerHTML = list.map((r) => {
         const qs = Array.isArray(r.questions_data) ? r.questions_data : [];
         const status = r.status || "pending";
         const statusText = status === "approved" ? "\u0110\xE3 duy\u1EC7t" : status === "rejected" ? "T\u1EEB ch\u1ED1i" : "Ch\u1EDD duy\u1EC7t";
-        return `<div class="item subjectRequestItem">
-        <div class="head">
-          <div>
-            <b>${esc(r.code || "?")}</b> - ${esc(r.name || "")} <span class="badge ${esc(status)}">${statusText}</span>
-            <br><span class="muted">${esc(r.user_email || r.user_id || "?")} \xB7 ${r.created_at ? new Date(r.created_at).toLocaleString("vi-VN") : ""}</span>
-            ${r.description ? `<br><span class="muted">M\xF4 t\u1EA3: ${esc(r.description)}</span>` : ""}
-            <br><span class="muted">${qs.length} c\xE2u h\u1ECFi \u0111\xEDnh k\xE8m</span>
-            ${r.admin_note ? `<br><span class="muted">Ghi ch\xFA: ${esc(r.admin_note)}</span>` : ""}
+        const statusAccent = status === "approved" ? "#34d399" : status === "rejected" ? "#f87171" : "#e2b86b";
+        const dateStr = r.created_at ? new Date(r.created_at).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "M\u1EDBi g\u1EEDi";
+        return `<div class="item subjectRequestItem" data-srid="${r.id}" style="border-left: 3px solid ${statusAccent}33;">
+        <div class="sreqTopRow">
+          <div class="sreqTitleGroup">
+            <span class="sreqCodeBadge">${esc(r.code || "?")}</span>
+            <span class="sreqName">${esc(r.name || "Ch\u01B0a c\xF3 t\xEAn")}</span>
+            <span class="badge ${esc(status)}">${statusText}</span>
           </div>
         </div>
-        <div class="actions">
-          ${qs.length ? `<button class="act" onclick="previewSubjectRequestQuestionsFixed(${r.id})">Xem c\xE2u h\u1ECFi</button>` : ""}
-          ${status === "pending" ? `<button class="act ok" onclick="approveSubjectRequest(${r.id})">Duy\u1EC7t</button><button class="act bad" onclick="rejectSubjectRequest(${r.id})">T\u1EEB ch\u1ED1i</button>` : ""}
+        <div class="sreqMetaGrid">
+          <div class="sreqMetaTag"><span>\u{1F464}</span> <span>${esc(r.user_email || r.user_id || "\u1EA8n danh")}</span></div>
+          <div class="sreqMetaTag"><span>\u{1F552}</span> <span>${dateStr}</span></div>
+          ${qs.length ? `<div class="sreqMetaTag isQuestionCount"><span>\u{1F4E6}</span> <span>${qs.length} c\xE2u h\u1ECFi k\xE8m</span></div>` : '<div class="sreqMetaTag"><span>\u{1F4ED}</span> <span style="opacity:.55">Kh\xF4ng c\xF3 c\xE2u h\u1ECFi</span></div>'}
+        </div>
+        ${r.description ? `<div class="sreqDescBox"><b>M\xF4 t\u1EA3:</b> ${esc(r.description)}</div>` : ""}
+        ${r.admin_note ? `<div class="sreqNoteBox"><b>\u{1F4AC} Ghi ch\xFA Admin:</b> ${esc(r.admin_note)}</div>` : ""}
+        <div class="actions sreqActions">
+          ${qs.length ? `<button class="act" onclick="previewSubjectRequestQuestionsFixed(${r.id})">\u{1F441} Xem ${qs.length} c\xE2u h\u1ECFi</button>` : ""}
+          ${status === "pending" ? `<button class="act ok" onclick="approveSubjectRequest(${r.id})">\u2713 Ph\xEA duy\u1EC7t</button><button class="act bad" onclick="rejectSubjectRequest(${r.id})">\u2715 T\u1EEB ch\u1ED1i</button>` : ""}
         </div>
       </div>`;
       }).join("");
@@ -6008,6 +6029,167 @@ H\u1ECD KH\xD4NG b\u1ECB \u0111\u0103ng xu\u1EA5t.`)) return;
       setTimeout(ensureWhenAdmin, 1500);
     });
     window.addEventListener("lh:admin-dashboard-loaded", ensureWhenAdmin);
+    const DEFAULT_AI_PROMPT = `B\u1EA1n l\xE0 tr\u1EE3 l\xFD chuy\u1EC3n \u0111\u1ED5i ng\xE2n h\xE0ng c\xE2u h\u1ECFi tr\u1EAFc nghi\u1EC7m sang JSON trong file Markdown.
+
+\u0110\u1ECCC FILE v\xE0 chuy\u1EC3n \u0111\u1ED5i NGUY\xCAN V\u1EB8N (KH\xD4NG t\u1EF1 bi\xEAn th\xEAm, KH\xD4NG b\u1ECF b\u1EDBt).
+
+QUY T\u1EAEC BATCH:
+
+- Sau m\u1ED7i batch D\u1EEANG v\xE0 n\xF3i: "G\xF5 'ti\u1EBFp' \u0111\u1EC3 xu\u1EA5t c\xE2u X-Y."
+- Khi nh\u1EADn "ti\u1EBFp", xu\u1EA5t batch ti\u1EBFp theo, \u0111\xE1nh s\u1ED1 "num" li\xEAn t\u1EE5c.
+- M\u1ED7i batch xu\u1EA5t 1 file .md ho\xE0n ch\u1EC9nh, t\u1EA3i \u0111\u01B0\u1EE3c ngay.
+
+QUY T\u1EAEC CHUY\u1EC2N \u0110\u1ED4I:
+- \u0110\xE1p \xE1n: ch\u1EC9 l\u1EA5y k\xFD t\u1EF1 ch\u1EEF c\xE1i \u0111\u1EA7u ti\xEAn sau "**\u0110\xE1p \xE1n:**" (b\u1ECF m\u1ECDi ch\xFA th\xEDch ph\xEDa sau).
+- N\u1EBFu c\xE2u ch\u1EC9 c\xF3 A/B/C (kh\xF4ng c\xF3 D): b\u1ECF key "D" kh\u1ECFi object options.
+- Gi\u1EEF NGUY\xCAN n\u1ED9i dung c\xE2u h\u1ECFi v\xE0 l\u1EF1a ch\u1ECDn, KH\xD4NG paraphrase.
+- "has_image": false (tr\u1EEB khi c\xE2u \u0111\u1EC1 c\u1EADp h\xECnh \u1EA3nh/bi\u1EC3u \u0111\u1ED3).
+- "error_risk": "low" (c\xE2u ng\u1EAFn, r\xF5) | "medium" (c\xE2u trung b\xECnh) | "high" (c\xE2u d\xE0i, ph\u1EE9c t\u1EA1p, d\u1EC5 nh\u1EA7m).
+
+FORMAT FILE .MD OUTPUT:
+---
+# [T\xEAn m\xF4n] - Batch [N] (C\xE2u [X]-[Y])
+> Xu\u1EA5t ng\xE0y: [ng\xE0y h\xF4m nay] | T\u1ED5ng: [s\u1ED1 c\xE2u trong batch] c\xE2u
+---
+
+\`\`\`json
+[
+  {
+    "num": 1,
+    "question": "\u2026?",
+    "options": {
+      "A": "\u2026",
+      "B": "\u2026",
+      "C": "\u2026",
+      "D": "\u2026"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low"
+  }
+]
+\`\`\`
+---
+
+KH\xD4NG th\xEAm b\u1EA5t k\u1EF3 text gi\u1EA3i th\xEDch n\xE0o b\xEAn ngo\xE0i c\u1EA5u tr\xFAc tr\xEAn.
+B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
+    window.adjustAdminAiPromptHeight = function() {
+      const input = document.getElementById("adminAiPromptInput");
+      if (!input) return;
+      input.style.height = "auto";
+      input.style.height = Math.max(260, input.scrollHeight + 12) + "px";
+    };
+    window.loadAddSubjectAiPrompt = async function() {
+      const input = document.getElementById("adminAiPromptInput");
+      const modalInput = document.getElementById("adminModalPromptInput");
+      if (!input && !modalInput) return;
+      try {
+        const res = await fetch("/api/settings", { cache: "no-store" });
+        const json = await res.json().catch(() => ({}));
+        const val = json && json.add_subject_ai_prompt ? json.add_subject_ai_prompt : DEFAULT_AI_PROMPT;
+        if (input) input.value = val;
+        if (modalInput) modalInput.value = val;
+      } catch (e) {
+        console.warn("[loadAddSubjectAiPrompt]", e);
+        if (input && !input.value) input.value = DEFAULT_AI_PROMPT;
+        if (modalInput && !modalInput.value) modalInput.value = DEFAULT_AI_PROMPT;
+      } finally {
+        setTimeout(window.adjustAdminAiPromptHeight, 50);
+      }
+    };
+    window.saveAdminAiPrompt = async function() {
+      const input = document.getElementById("adminAiPromptInput");
+      const modalInput = document.getElementById("adminModalPromptInput");
+      const promptText = (modalInput && modalInput.value.trim() || input && input.value.trim() || "").trim();
+      if (!promptText) return alert("Prompt kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 r\u1ED7ng.");
+      if (typeof setBusy === "function") setBusy(true, "\u0110ang l\u01B0u Prompt AI...");
+      try {
+        const out = await adminAction("set_add_subject_ai_prompt", { prompt: promptText });
+        if (out && out.ok) {
+          if (input) input.value = promptText;
+          if (modalInput) modalInput.value = promptText;
+          if (typeof toast === "function") toast("\u0110\xE3 l\u01B0u Prompt AI th\xE0nh c\xF4ng!");
+          else alert("\u0110\xE3 l\u01B0u Prompt AI th\xE0nh c\xF4ng!");
+          setTimeout(() => window.closeAdminPromptModal?.(), 600);
+        } else {
+          alert(out?.error || "Kh\xF4ng th\u1EC3 l\u01B0u Prompt AI.");
+        }
+      } catch (e) {
+        alert("L\u1ED7i l\u01B0u Prompt AI: " + (e.message || e));
+      } finally {
+        if (typeof setBusy === "function") setBusy(false);
+      }
+    };
+    window.resetAdminAiPrompt = function() {
+      const input = document.getElementById("adminAiPromptInput");
+      const modalInput = document.getElementById("adminModalPromptInput");
+      if (input) {
+        input.value = DEFAULT_AI_PROMPT;
+        window.adjustAdminAiPromptHeight();
+      }
+      if (modalInput) modalInput.value = DEFAULT_AI_PROMPT;
+    };
+    window.copyAdminAiPrompt = function() {
+      const input = document.getElementById("adminModalPromptInput") || document.getElementById("adminAiPromptInput");
+      if (!input || !input.value.trim()) return alert("Kh\xF4ng c\xF3 n\u1ED9i dung prompt \u0111\u1EC3 sao ch\xE9p.");
+      const text = input.value.trim();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          if (typeof toast === "function") toast("\u0110\xE3 sao ch\xE9p Prompt AI!");
+          else alert("\u0110\xE3 sao ch\xE9p Prompt AI!");
+        }).catch(() => fallbackCopy(input));
+      } else {
+        fallbackCopy(input);
+      }
+    };
+    window.openAdminPromptModal = function() {
+      const modal = document.getElementById("adminPromptModal");
+      const inlineInput = document.getElementById("adminAiPromptInput");
+      const modalInput = document.getElementById("adminModalPromptInput");
+      if (!modal) return;
+      if (inlineInput && modalInput) {
+        modalInput.value = inlineInput.value;
+      } else if (modalInput && !modalInput.value.trim()) {
+        modalInput.value = DEFAULT_AI_PROMPT;
+        if (typeof window.loadAddSubjectAiPrompt === "function") window.loadAddSubjectAiPrompt();
+      }
+      modal.classList.remove("hidden");
+    };
+    window.closeAdminPromptModal = function() {
+      const modal = document.getElementById("adminPromptModal");
+      if (modal) modal.classList.add("hidden");
+    };
+    window.syncAdminModalPromptToInline = function() {
+      const inlineInput = document.getElementById("adminAiPromptInput");
+      const modalInput = document.getElementById("adminModalPromptInput");
+      if (inlineInput && modalInput) {
+        inlineInput.value = modalInput.value;
+        window.adjustAdminAiPromptHeight();
+      }
+    };
+    function fallbackCopy(input) {
+      input.select();
+      document.execCommand("copy");
+      if (typeof toast === "function") toast("\u0110\xE3 sao ch\xE9p Prompt AI!");
+      else alert("\u0110\xE3 sao ch\xE9p Prompt AI!");
+    }
+    window.togglePromptConfigPanel = function() {
+      const body = document.getElementById("promptConfigBody");
+      const btn = document.getElementById("promptToggleBtn");
+      if (!body) return;
+      const isHidden = body.style.display === "none";
+      body.style.display = isHidden ? "block" : "none";
+      if (btn) btn.textContent = isHidden ? "\u25B2 Thu g\u1ECDn" : "\u25BC \u1EA8n/Hi\u1EC7n Prompt";
+      if (isHidden) setTimeout(window.adjustAdminAiPromptHeight, 40);
+    };
+    document.addEventListener("DOMContentLoaded", () => {
+      setTimeout(() => {
+        if (document.getElementById("adminAiPromptInput")) {
+          window.loadAddSubjectAiPrompt();
+        }
+      }, 600);
+    });
   })();
 
   // src/admin/main.js

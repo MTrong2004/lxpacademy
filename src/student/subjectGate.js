@@ -409,8 +409,8 @@ export function installSubjectGate() {
     const title = `${esc2(g.base)} — ${g.items.length} môn · ${total} câu&#10;${names}`;
     return `<button class="subjectFolderCard${isNew ? ' hasNewBadge' : ''}${holdsPicked ? ' holdsPicked' : ''}" type="button" data-folder="${esc2(g.base)}" title="${title}">
       ${isNew ? '<span class="subjectNewBadge">NEW</span>' : ''}
-      <span class="subjectCardCode"><span>${esc2(g.base)}</span></span>
-      <span class="subjectFolderTag">${g.items.length} môn</span>
+      <span class="subjectCardCode"><span class="subjectFolderIcon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></span><span>${esc2(g.base)}</span></span>
+      <span class="subjectFolderTag"><span class="subjectFolderBadgeText">THƯ MỤC</span> · ${g.items.length} môn</span>
       <span class="subjectFolderNames">${names}</span>
       <span class="subjectMeta">
         <span>${total.toLocaleString('vi-VN')} câu</span>
@@ -523,6 +523,8 @@ export function installSubjectGate() {
         }),
     );
     applyPicked();
+    const searchVal = $('subjectSearch')?.value || '';
+    if ($('subjectSearchClear')) $('subjectSearchClear').classList.toggle('hidden', !searchVal);
   }
   let lastRefreshTime = 0;
   /**
@@ -736,7 +738,19 @@ export function installSubjectGate() {
     patchSignOut();
     syncSubjectTexts();
     $('subjectRefresh')?.addEventListener('click', () => refreshSubjects(true));
-    $('subjectSearch')?.addEventListener('input', renderSubjects);
+    $('subjectSearch')?.addEventListener('input', () => {
+      if ($('subjectSearchClear')) $('subjectSearchClear').classList.toggle('hidden', !$('subjectSearch').value);
+      renderSubjects();
+    });
+    $('subjectSearchClear')?.addEventListener('click', () => {
+      const inp = $('subjectSearch');
+      if (inp) {
+        inp.value = '';
+        inp.focus();
+      }
+      if ($('subjectSearchClear')) $('subjectSearchClear').classList.add('hidden');
+      renderSubjects();
+    });
     $('subjectEnter')?.addEventListener('click', enterSubject);
     $('subjectLogout')?.addEventListener('click', logoutGate);
 
@@ -759,6 +773,19 @@ export function installSubjectGate() {
     window.__LHTriggerSubjectCheck = runSubjectCheckOnce;
     runSubjectCheckOnce();
     setTimeout(runSubjectCheckOnce, 800);
+    setTimeout(syncSiteSettingsPrompt, 500);
+  }
+
+  async function syncSiteSettingsPrompt() {
+    try {
+      const res = await fetch('/api/settings?ts=' + Date.now(), { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      if (json && json.add_subject_ai_prompt) {
+        window.__ADD_SUBJECT_AI_PROMPT = json.add_subject_ai_prompt;
+      }
+    } catch (e) {
+      console.warn('[syncSiteSettingsPrompt]', e);
+    }
   }
   window.getSubjectsCache = () => subjectsCache;
   window.loadBySubject = loadBySubject;

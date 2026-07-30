@@ -3305,12 +3305,28 @@ async function sendLoginToDiscord(email, role) {
     const pending = subjectReqCache.filter(r => (r.status || 'pending') === 'pending').length;
     const approved = subjectReqCache.filter(r => r.status === 'approved').length;
     const rejected = subjectReqCache.filter(r => r.status === 'rejected').length;
+    // Update stat chips in header
     if ($('srfPending')) $('srfPending').textContent = pending;
     if ($('srfApproved')) $('srfApproved').textContent = approved;
     if ($('srfRejected')) $('srfRejected').textContent = rejected;
     if ($('srfAll')) $('srfAll').textContent = subjectReqCache.length;
+    // Update filter tab counts
+    if ($('srfPendingTab')) $('srfPendingTab').textContent = pending;
+    if ($('srfApprovedTab')) $('srfApprovedTab').textContent = approved;
+    if ($('srfRejectedTab')) $('srfRejectedTab').textContent = rejected;
     if (!list.length) {
-      el.innerHTML = '<p class="muted">Không có yêu cầu thêm môn.</p>';
+      const emptyMap = {
+        pending: { icon: '⏳', title: 'Chưa có yêu cầu nào đang chờ', hint: 'Khi sinh viên gửi yêu cầu thêm môn mới, chúng sẽ xuất hiện tại đây.' },
+        approved: { icon: '✅', title: 'Chưa có yêu cầu nào được duyệt', hint: 'Các yêu cầu đã phê duyệt sẽ hiển thị ở đây.' },
+        rejected: { icon: '❌', title: 'Chưa có yêu cầu nào bị từ chối', hint: 'Các yêu cầu đã từ chối sẽ hiển thị ở đây.' },
+        all: { icon: '📬', title: 'Chưa có yêu cầu thêm môn nào', hint: 'Khi có yêu cầu từ sinh viên, bạn sẽ thấy chúng ở đây.' },
+      };
+      const em = emptyMap[filter] || emptyMap.all;
+      el.innerHTML = `<div class="sreqEmptyState">
+        <div class="sreqEmptyIcon">${em.icon}</div>
+        <div class="sreqEmptyTitle">${em.title}</div>
+        <div class="sreqEmptyHint">${em.hint}</div>
+      </div>`;
       return;
     }
     el.innerHTML = list
@@ -3318,19 +3334,26 @@ async function sendLoginToDiscord(email, role) {
         const qs = Array.isArray(r.questions_data) ? r.questions_data : [];
         const status = r.status || 'pending';
         const statusText = status === 'approved' ? 'Đã duyệt' : status === 'rejected' ? 'Từ chối' : 'Chờ duyệt';
-        return `<div class="item subjectRequestItem">
-        <div class="head">
-          <div>
-            <b>${esc(r.code || '?')}</b> - ${esc(r.name || '')} <span class="badge ${esc(status)}">${statusText}</span>
-            <br><span class="muted">${esc(r.user_email || r.user_id || '?')} · ${r.created_at ? new Date(r.created_at).toLocaleString('vi-VN') : ''}</span>
-            ${r.description ? `<br><span class="muted">Mô tả: ${esc(r.description)}</span>` : ''}
-            <br><span class="muted">${qs.length} câu hỏi đính kèm</span>
-            ${r.admin_note ? `<br><span class="muted">Ghi chú: ${esc(r.admin_note)}</span>` : ''}
+        const statusAccent = status === 'approved' ? '#34d399' : status === 'rejected' ? '#f87171' : '#e2b86b';
+        const dateStr = r.created_at ? new Date(r.created_at).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : 'Mới gửi';
+        return `<div class="item subjectRequestItem" data-srid="${r.id}" style="border-left: 3px solid ${statusAccent}33;">
+        <div class="sreqTopRow">
+          <div class="sreqTitleGroup">
+            <span class="sreqCodeBadge">${esc(r.code || '?')}</span>
+            <span class="sreqName">${esc(r.name || 'Chưa có tên')}</span>
+            <span class="badge ${esc(status)}">${statusText}</span>
           </div>
         </div>
-        <div class="actions">
-          ${qs.length ? `<button class="act" onclick="previewSubjectRequestQuestionsFixed(${r.id})">Xem câu hỏi</button>` : ''}
-          ${status === 'pending' ? `<button class="act ok" onclick="approveSubjectRequest(${r.id})">Duyệt</button><button class="act bad" onclick="rejectSubjectRequest(${r.id})">Từ chối</button>` : ''}
+        <div class="sreqMetaGrid">
+          <div class="sreqMetaTag"><span>👤</span> <span>${esc(r.user_email || r.user_id || 'Ẩn danh')}</span></div>
+          <div class="sreqMetaTag"><span>🕒</span> <span>${dateStr}</span></div>
+          ${qs.length ? `<div class="sreqMetaTag isQuestionCount"><span>📦</span> <span>${qs.length} câu hỏi kèm</span></div>` : '<div class="sreqMetaTag"><span>📭</span> <span style="opacity:.55">Không có câu hỏi</span></div>'}
+        </div>
+        ${r.description ? `<div class="sreqDescBox"><b>Mô tả:</b> ${esc(r.description)}</div>` : ''}
+        ${r.admin_note ? `<div class="sreqNoteBox"><b>💬 Ghi chú Admin:</b> ${esc(r.admin_note)}</div>` : ''}
+        <div class="actions sreqActions">
+          ${qs.length ? `<button class="act" onclick="previewSubjectRequestQuestionsFixed(${r.id})">👁 Xem ${qs.length} câu hỏi</button>` : ''}
+          ${status === 'pending' ? `<button class="act ok" onclick="approveSubjectRequest(${r.id})">✓ Phê duyệt</button><button class="act bad" onclick="rejectSubjectRequest(${r.id})">✕ Từ chối</button>` : ''}
         </div>
       </div>`;
       })
@@ -6397,5 +6420,182 @@ ${E(val)}</pre>`;
     setTimeout(ensureWhenAdmin, 1500);
   });
   window.addEventListener('lh:admin-dashboard-loaded', ensureWhenAdmin);
+
+  // ===== ADMIN_CUSTOMIZE_ADD_SUBJECT_AI_PROMPT_20260730 =====
+  const DEFAULT_AI_PROMPT = `Bạn là trợ lý chuyển đổi ngân hàng câu hỏi trắc nghiệm sang JSON trong file Markdown.
+
+ĐỌC FILE và chuyển đổi NGUYÊN VẸN (KHÔNG tự biên thêm, KHÔNG bỏ bớt).
+
+QUY TẮC BATCH:
+
+- Sau mỗi batch DỪNG và nói: "Gõ 'tiếp' để xuất câu X-Y."
+- Khi nhận "tiếp", xuất batch tiếp theo, đánh số "num" liên tục.
+- Mỗi batch xuất 1 file .md hoàn chỉnh, tải được ngay.
+
+QUY TẮC CHUYỂN ĐỔI:
+- Đáp án: chỉ lấy ký tự chữ cái đầu tiên sau "**Đáp án:**" (bỏ mọi chú thích phía sau).
+- Nếu câu chỉ có A/B/C (không có D): bỏ key "D" khỏi object options.
+- Giữ NGUYÊN nội dung câu hỏi và lựa chọn, KHÔNG paraphrase.
+- "has_image": false (trừ khi câu đề cập hình ảnh/biểu đồ).
+- "error_risk": "low" (câu ngắn, rõ) | "medium" (câu trung bình) | "high" (câu dài, phức tạp, dễ nhầm).
+
+FORMAT FILE .MD OUTPUT:
+---
+# [Tên môn] - Batch [N] (Câu [X]-[Y])
+> Xuất ngày: [ngày hôm nay] | Tổng: [số câu trong batch] câu
+---
+
+\`\`\`json
+[
+  {
+    "num": 1,
+    "question": "…?",
+    "options": {
+      "A": "…",
+      "B": "…",
+      "C": "…",
+      "D": "…"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low"
+  }
+]
+\`\`\`
+---
+
+KHÔNG thêm bất kỳ text giải thích nào bên ngoài cấu trúc trên.
+Bắt đầu ngay từ câu 1.`;
+
+  window.adjustAdminAiPromptHeight = function () {
+    const input = document.getElementById('adminAiPromptInput');
+    if (!input) return;
+    input.style.height = 'auto';
+    input.style.height = Math.max(260, input.scrollHeight + 12) + 'px';
+  };
+
+  window.loadAddSubjectAiPrompt = async function () {
+    const input = document.getElementById('adminAiPromptInput');
+    const modalInput = document.getElementById('adminModalPromptInput');
+    if (!input && !modalInput) return;
+    try {
+      const res = await fetch('/api/settings', { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      const val = (json && json.add_subject_ai_prompt) ? json.add_subject_ai_prompt : DEFAULT_AI_PROMPT;
+      if (input) input.value = val;
+      if (modalInput) modalInput.value = val;
+    } catch (e) {
+      console.warn('[loadAddSubjectAiPrompt]', e);
+      if (input && !input.value) input.value = DEFAULT_AI_PROMPT;
+      if (modalInput && !modalInput.value) modalInput.value = DEFAULT_AI_PROMPT;
+    } finally {
+      setTimeout(window.adjustAdminAiPromptHeight, 50);
+    }
+  };
+
+  window.saveAdminAiPrompt = async function () {
+    const input = document.getElementById('adminAiPromptInput');
+    const modalInput = document.getElementById('adminModalPromptInput');
+    const promptText = ((modalInput && modalInput.value.trim()) || (input && input.value.trim()) || '').trim();
+    if (!promptText) return alert('Prompt không được để rỗng.');
+    if (typeof setBusy === 'function') setBusy(true, 'Đang lưu Prompt AI...');
+    try {
+      const out = await adminAction('set_add_subject_ai_prompt', { prompt: promptText });
+      if (out && out.ok) {
+        if (input) input.value = promptText;
+        if (modalInput) modalInput.value = promptText;
+        if (typeof toast === 'function') toast('Đã lưu Prompt AI thành công!');
+        else alert('Đã lưu Prompt AI thành công!');
+        setTimeout(() => window.closeAdminPromptModal?.(), 600);
+      } else {
+        alert(out?.error || 'Không thể lưu Prompt AI.');
+      }
+    } catch (e) {
+      alert('Lỗi lưu Prompt AI: ' + (e.message || e));
+    } finally {
+      if (typeof setBusy === 'function') setBusy(false);
+    }
+  };
+
+  window.resetAdminAiPrompt = function () {
+    const input = document.getElementById('adminAiPromptInput');
+    const modalInput = document.getElementById('adminModalPromptInput');
+    if (input) {
+      input.value = DEFAULT_AI_PROMPT;
+      window.adjustAdminAiPromptHeight();
+    }
+    if (modalInput) modalInput.value = DEFAULT_AI_PROMPT;
+  };
+
+  window.copyAdminAiPrompt = function () {
+    const input = document.getElementById('adminModalPromptInput') || document.getElementById('adminAiPromptInput');
+    if (!input || !input.value.trim()) return alert('Không có nội dung prompt để sao chép.');
+    const text = input.value.trim();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        if (typeof toast === 'function') toast('Đã sao chép Prompt AI!');
+        else alert('Đã sao chép Prompt AI!');
+      }).catch(() => fallbackCopy(input));
+    } else {
+      fallbackCopy(input);
+    }
+  };
+
+  window.openAdminPromptModal = function () {
+    const modal = document.getElementById('adminPromptModal');
+    const inlineInput = document.getElementById('adminAiPromptInput');
+    const modalInput = document.getElementById('adminModalPromptInput');
+    if (!modal) return;
+    if (inlineInput && modalInput) {
+      // Inline textarea still exists — sync its value into modal (legacy path).
+      modalInput.value = inlineInput.value;
+    } else if (modalInput && !modalInput.value.trim()) {
+      // Modal hasn't been populated yet (API call still in flight) — use default as placeholder.
+      modalInput.value = DEFAULT_AI_PROMPT;
+      if (typeof window.loadAddSubjectAiPrompt === 'function') window.loadAddSubjectAiPrompt();
+    }
+    // If modalInput already has content (loaded by loadAddSubjectAiPrompt), leave it untouched.
+    modal.classList.remove('hidden');
+  };
+
+  window.closeAdminPromptModal = function () {
+    const modal = document.getElementById('adminPromptModal');
+    if (modal) modal.classList.add('hidden');
+  };
+
+  window.syncAdminModalPromptToInline = function () {
+    const inlineInput = document.getElementById('adminAiPromptInput');
+    const modalInput = document.getElementById('adminModalPromptInput');
+    if (inlineInput && modalInput) {
+      inlineInput.value = modalInput.value;
+      window.adjustAdminAiPromptHeight();
+    }
+  };
+
+  function fallbackCopy(input) {
+    input.select();
+    document.execCommand('copy');
+    if (typeof toast === 'function') toast('Đã sao chép Prompt AI!');
+    else alert('Đã sao chép Prompt AI!');
+  }
+
+  window.togglePromptConfigPanel = function () {
+    const body = document.getElementById('promptConfigBody');
+    const btn = document.getElementById('promptToggleBtn');
+    if (!body) return;
+    const isHidden = body.style.display === 'none';
+    body.style.display = isHidden ? 'block' : 'none';
+    if (btn) btn.textContent = isHidden ? '▲ Thu gọn' : '▼ Ẩn/Hiện Prompt';
+    if (isHidden) setTimeout(window.adjustAdminAiPromptHeight, 40);
+  };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+      if (document.getElementById('adminAiPromptInput')) {
+        window.loadAddSubjectAiPrompt();
+      }
+    }, 600);
+  });
 })();
 // ===== END ADMIN_TWO_TIERS_AND_DISCORD_TOGGLES_20260729 =====

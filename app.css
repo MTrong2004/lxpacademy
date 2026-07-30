@@ -20084,3 +20084,284 @@ body .subjectFolderCard .subjectNewBadge {
   right: 12px !important;
   z-index: 50 !important;
 }
+
+/* ============================================================
+   SUBJECT_GATE_UX_UI_POLISH_20260730
+   Cải thiện UX/UI cho Cổng chọn môn học (Subject Gate):
+   1. Visual distinction for folder cards (.subjectFolderCard) with dark glass skill
+   2. Remove duplicate ▣ icon from folder card code
+   3. Align grid items & prevent text collision with count line
+   4. Search clear button (#subjectSearchClear) & search container polish
+   5. Keyboard focus & accessibility outlines (:focus-visible)
+   ============================================================ */
+
+/* Remove duplicate ▣ icon from folder cards */
+.subjectFolderCard .subjectCardCode::before {
+  content: none !important;
+}
+
+/* Remove duplicate arrow on #subjectEnter */
+#subjectEnter:after,
+#subjectEnter::after {
+  content: none !important;
+}
+
+/* Restore & align CSS Grid layout for cards */
+.subjectCard,
+.subjectFolderCard {
+  display: grid !important;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) !important;
+  grid-template-rows: auto 1fr auto !important;
+  row-gap: 8px !important;
+  align-items: center !important;
+  min-height: 145px !important;
+  height: 100% !important;
+  padding: 14px 16px !important;
+  border-radius: 14px !important;
+}
+
+/* Dark Glass skill styling for folder cards */
+.subjectFolderCard {
+  border: 1px solid rgba(232, 212, 168, 0.28) !important;
+  background: linear-gradient(145deg, rgba(32, 28, 22, 0.92), rgba(20, 18, 14, 0.96)) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 235, 180, 0.12) !important;
+  position: relative !important;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease !important;
+}
+
+.subjectFolderCard::after {
+  content: "" !important;
+  position: absolute !important;
+  top: -4px !important;
+  left: 12px !important;
+  right: 12px !important;
+  height: 4px !important;
+  border-radius: 4px 4px 0 0 !important;
+  background: rgba(232, 212, 168, 0.22) !important;
+  border: 1px solid rgba(232, 212, 168, 0.25) !important;
+  border-bottom: none !important;
+  pointer-events: none !important;
+}
+
+.subjectFolderCard:hover {
+  transform: translateY(-2px) !important;
+  border-color: rgba(232, 212, 168, 0.65) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 14px rgba(232, 212, 168, 0.18) !important;
+}
+
+.subjectFolderIcon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin-right: 5px !important;
+  color: var(--gold, #e8d4a8) !important;
+  vertical-align: middle !important;
+}
+
+.subjectFolderBadgeText {
+  background: rgba(200, 169, 110, 0.22) !important;
+  color: var(--gold, #e8d4a8) !important;
+  padding: 2px 7px !important;
+  border-radius: 4px !important;
+  font-size: 0.64rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.04em !important;
+}
+
+/* Align Grid elements inside cards */
+.subjectCardCode {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  justify-self: start !important;
+  align-self: center !important;
+  margin: 0 !important;
+}
+
+.subjectCardTitle {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+  justify-self: end !important;
+  align-self: center !important;
+  margin: 0 !important;
+  padding-left: 8px !important;
+  font-size: 0.85rem !important;
+  font-weight: 700 !important;
+  color: rgba(245, 240, 232, 0.9) !important;
+  max-width: 180px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.subjectCardDesc,
+.subjectFolderNames {
+  grid-column: 1 / -1 !important;
+  grid-row: 2 !important;
+  align-self: start !important;
+  margin: 4px 0 8px 0 !important;
+  font-size: 0.78rem !important;
+  line-height: 1.35 !important;
+  color: rgba(245, 240, 232, 0.6) !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+  min-height: 36px !important;
+}
+
+.subjectMeta {
+  grid-column: 1 / -1 !important;
+  grid-row: 3 !important;
+  margin-top: auto !important;
+  padding-top: 8px !important;
+  border-top: 1px solid rgba(232, 212, 168, 0.12) !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  min-height: 32px !important;
+  height: 32px !important;
+}
+
+.subjectMeta > span:first-child {
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  color: rgba(245, 240, 232, 0.75) !important;
+}
+
+.subjectChoose,
+.subjectFolderOpen {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 14px !important;
+  border-radius: 999px !important;
+  font-size: 0.75rem !important;
+  font-weight: 800 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all 0.15s ease !important;
+}
+
+.subjectFolderOpen {
+  background: rgba(200, 169, 110, 0.15) !important;
+  color: var(--gold, #e8d4a8) !important;
+  border: 1px solid rgba(232, 212, 168, 0.35) !important;
+}
+
+.subjectCard:hover .subjectChoose,
+.subjectFolderCard:hover .subjectFolderOpen {
+  background: rgba(200, 169, 110, 0.28) !important;
+  border-color: var(--gold, #e8d4a8) !important;
+  color: #fff !important;
+}
+
+/* Badge NEW positioning polish */
+.subjectCard .subjectNewBadge,
+.subjectFolderCard .subjectNewBadge {
+  top: -9px !important;
+  right: 14px !important;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35), 0 0 10px rgba(255, 215, 0, 0.35) !important;
+}
+
+/* Search Box Container & Clear Button */
+.subjectGateTools {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.subjectGateSearchWrap {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  width: 100% !important;
+}
+
+.subjectSearchClear {
+  position: absolute !important;
+  right: 12px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  border: none !important;
+  border-radius: 50% !important;
+  width: 22px !important;
+  height: 22px !important;
+  padding: 0 !important;
+  font-size: 12px !important;
+  line-height: 22px !important;
+  text-align: center !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  z-index: 5 !important;
+}
+
+.subjectSearchClear:hover {
+  background: rgba(255, 255, 255, 0.25) !important;
+  color: #fff !important;
+}
+
+/* Focus Outlines */
+.subjectCard:focus-visible,
+.subjectFolderCard:focus-visible,
+#subjectEnter:focus-visible,
+.subjectFolderBack:focus-visible,
+.subjectSearchClear:focus-visible {
+  outline: 2px solid var(--gold, #e8d4a8) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 10px rgba(232, 212, 168, 0.4) !important;
+}
+
+/* Responsive Grid Adjustments */
+@media (max-width: 1100px) {
+  .subjectList {
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)) !important;
+    gap: 12px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .subjectGatePanel.polishedSubjectPanel {
+    max-width: 95vw !important;
+    max-height: 90vh !important;
+    padding: 16px 14px !important;
+  }
+
+  .subjectList {
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)) !important;
+    gap: 10px !important;
+    max-height: 54vh !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .subjectGatePanel.polishedSubjectPanel {
+    width: 98vw !important;
+    padding: 12px 10px !important;
+    border-radius: 16px !important;
+  }
+
+  .subjectList {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+    max-height: 50vh !important;
+  }
+
+  .subjectCard, .subjectFolderCard {
+    min-height: 135px !important;
+    padding: 12px 14px !important;
+  }
+
+  .subjectGateFooter {
+    flex-direction: column !important;
+    gap: 10px !important;
+    align-items: stretch !important;
+  }
+
+  #subjectEnter {
+    width: 100% !important;
+    min-height: 44px !important;
+    font-size: 0.95rem !important;
+  }
+}

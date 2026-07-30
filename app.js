@@ -203,7 +203,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "df52fbe" : null;
+  var currentVersion = true ? "bd20e25" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -4095,8 +4095,8 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       const title = `${esc2(g.base)} \u2014 ${g.items.length} m\xF4n \xB7 ${total} c\xE2u&#10;${names}`;
       return `<button class="subjectFolderCard${isNew ? " hasNewBadge" : ""}${holdsPicked ? " holdsPicked" : ""}" type="button" data-folder="${esc2(g.base)}" title="${title}">
       ${isNew ? '<span class="subjectNewBadge">NEW</span>' : ""}
-      <span class="subjectCardCode"><span>${esc2(g.base)}</span></span>
-      <span class="subjectFolderTag">${g.items.length} m\xF4n</span>
+      <span class="subjectCardCode"><span class="subjectFolderIcon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></span><span>${esc2(g.base)}</span></span>
+      <span class="subjectFolderTag"><span class="subjectFolderBadgeText">TH\u01AF M\u1EE4C</span> \xB7 ${g.items.length} m\xF4n</span>
       <span class="subjectFolderNames">${names}</span>
       <span class="subjectMeta">
         <span>${total.toLocaleString("vi-VN")} c\xE2u</span>
@@ -4193,6 +4193,8 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         }
       );
       applyPicked();
+      const searchVal = $2("subjectSearch")?.value || "";
+      if ($2("subjectSearchClear")) $2("subjectSearchClear").classList.toggle("hidden", !searchVal);
     }
     let lastRefreshTime = 0;
     async function refreshSubjects(force = false, autoOpenPickedFolder = false) {
@@ -4379,7 +4381,19 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       patchSignOut();
       syncSubjectTexts2();
       $2("subjectRefresh")?.addEventListener("click", () => refreshSubjects(true));
-      $2("subjectSearch")?.addEventListener("input", renderSubjects2);
+      $2("subjectSearch")?.addEventListener("input", () => {
+        if ($2("subjectSearchClear")) $2("subjectSearchClear").classList.toggle("hidden", !$2("subjectSearch").value);
+        renderSubjects2();
+      });
+      $2("subjectSearchClear")?.addEventListener("click", () => {
+        const inp = $2("subjectSearch");
+        if (inp) {
+          inp.value = "";
+          inp.focus();
+        }
+        if ($2("subjectSearchClear")) $2("subjectSearchClear").classList.add("hidden");
+        renderSubjects2();
+      });
       $2("subjectEnter")?.addEventListener("click", enterSubject);
       $2("subjectLogout")?.addEventListener("click", logoutGate);
       const runSubjectCheckOnce = () => {
@@ -4398,6 +4412,18 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       window.__LHTriggerSubjectCheck = runSubjectCheckOnce;
       runSubjectCheckOnce();
       setTimeout(runSubjectCheckOnce, 800);
+      setTimeout(syncSiteSettingsPrompt, 500);
+    }
+    async function syncSiteSettingsPrompt() {
+      try {
+        const res = await fetch("/api/settings?ts=" + Date.now(), { cache: "no-store" });
+        const json = await res.json().catch(() => ({}));
+        if (json && json.add_subject_ai_prompt) {
+          window.__ADD_SUBJECT_AI_PROMPT = json.add_subject_ai_prompt;
+        }
+      } catch (e) {
+        console.warn("[syncSiteSettingsPrompt]", e);
+      }
     }
     window.getSubjectsCache = () => subjectsCache;
     window.loadBySubject = loadBySubject;

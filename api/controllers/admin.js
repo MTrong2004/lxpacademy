@@ -200,6 +200,7 @@ export async function handleAdminAction(req, authUser) {
     'notify_reload_user',
     'notify_reload_all',
     'set_registration_mode',
+    'set_add_subject_ai_prompt',
     'approve_subject_request',
     'reject_subject_request',
     'permanent_delete_question',
@@ -1195,6 +1196,17 @@ export async function handleAdminAction(req, authUser) {
       });  
       await logAdminAction('set_registration_mode', 'site_settings', 'registration_mode', { mode });  
       return json({ ok: true, mode });  
+    }
+
+    case 'set_add_subject_ai_prompt': {
+      let { prompt } = payload;
+      if (typeof prompt !== 'string') prompt = '';
+      await db.execute({
+        sql: "insert into site_settings (key, value, updated_at, updated_by) values ('add_subject_ai_prompt', ?, ?, ?) on conflict(key) do update set value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by",
+        args: [prompt, now, user_id]
+      });
+      await logAdminAction('set_add_subject_ai_prompt', 'site_settings', 'add_subject_ai_prompt', { prompt_len: prompt.length });
+      return json({ ok: true, prompt });
     }
 
     case 'add_subject_request': {
