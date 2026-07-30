@@ -81,11 +81,18 @@ AI_ADMIN_CSS_MAP_END */
   box-sizing: border-box;
 }
 
+html {
+  background-color: #090b10 !important;
+  background: #090b10 !important;
+  color-scheme: dark !important;
+}
+
 html,
 body,
 button,
 input {
   font-family: var(--font) !important;
+  color-scheme: dark;
 }
 
 .seal.big {

@@ -24,10 +24,18 @@ AI_APP_CSS_MAP_END */
   padding: 0
 }
 
+html {
+  background-color: #070606 !important;
+  background: #070606 !important;
+  color-scheme: dark !important;
+}
+
 html,
 body {
   height: 100%;
-  overflow: hidden
+  overflow: hidden;
+  background-color: #070606 !important;
+  color-scheme: dark !important;
 }
 
 button,
