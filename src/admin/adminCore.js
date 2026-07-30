@@ -3316,10 +3316,26 @@ async function sendLoginToDiscord(email, role) {
     if ($('srfRejectedTab')) $('srfRejectedTab').textContent = rejected;
     if (!list.length) {
       const emptyMap = {
-        pending: { icon: '⏳', title: 'Chưa có yêu cầu nào đang chờ', hint: 'Khi sinh viên gửi yêu cầu thêm môn mới, chúng sẽ xuất hiện tại đây.' },
-        approved: { icon: '✅', title: 'Chưa có yêu cầu nào được duyệt', hint: 'Các yêu cầu đã phê duyệt sẽ hiển thị ở đây.' },
-        rejected: { icon: '❌', title: 'Chưa có yêu cầu nào bị từ chối', hint: 'Các yêu cầu đã từ chối sẽ hiển thị ở đây.' },
-        all: { icon: '📬', title: 'Chưa có yêu cầu thêm môn nào', hint: 'Khi có yêu cầu từ sinh viên, bạn sẽ thấy chúng ở đây.' },
+        pending: {
+          icon: '⏳',
+          title: 'Chưa có yêu cầu nào đang chờ',
+          hint: 'Khi sinh viên gửi yêu cầu thêm môn mới, chúng sẽ xuất hiện tại đây.',
+        },
+        approved: {
+          icon: '✅',
+          title: 'Chưa có yêu cầu nào được duyệt',
+          hint: 'Các yêu cầu đã phê duyệt sẽ hiển thị ở đây.',
+        },
+        rejected: {
+          icon: '❌',
+          title: 'Chưa có yêu cầu nào bị từ chối',
+          hint: 'Các yêu cầu đã từ chối sẽ hiển thị ở đây.',
+        },
+        all: {
+          icon: '📬',
+          title: 'Chưa có yêu cầu thêm môn nào',
+          hint: 'Khi có yêu cầu từ sinh viên, bạn sẽ thấy chúng ở đây.',
+        },
       };
       const em = emptyMap[filter] || emptyMap.all;
       el.innerHTML = `<div class="sreqEmptyState">
@@ -3335,7 +3351,9 @@ async function sendLoginToDiscord(email, role) {
         const status = r.status || 'pending';
         const statusText = status === 'approved' ? 'Đã duyệt' : status === 'rejected' ? 'Từ chối' : 'Chờ duyệt';
         const statusAccent = status === 'approved' ? '#34d399' : status === 'rejected' ? '#f87171' : '#e2b86b';
-        const dateStr = r.created_at ? new Date(r.created_at).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : 'Mới gửi';
+        const dateStr = r.created_at
+          ? new Date(r.created_at).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })
+          : 'Mới gửi';
         return `<div class="item subjectRequestItem" data-srid="${r.id}" style="border-left: 3px solid ${statusAccent}33;">
         <div class="sreqTopRow">
           <div class="sreqTitleGroup">
@@ -6580,7 +6598,7 @@ Bắt đầu ngay từ câu 1.`;
     try {
       const res = await fetch('/api/settings', { cache: 'no-store' });
       const json = await res.json().catch(() => ({}));
-      const val = (json && json.add_subject_ai_prompt) ? json.add_subject_ai_prompt : DEFAULT_AI_PROMPT;
+      const val = json && json.add_subject_ai_prompt ? json.add_subject_ai_prompt : DEFAULT_AI_PROMPT;
       if (input) input.value = val;
       if (modalInput) modalInput.value = val;
     } catch (e) {
@@ -6631,10 +6649,13 @@ Bắt đầu ngay từ câu 1.`;
     if (!input || !input.value.trim()) return alert('Không có nội dung prompt để sao chép.');
     const text = input.value.trim();
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(() => {
-        if (typeof toast === 'function') toast('Đã sao chép Prompt AI!');
-        else alert('Đã sao chép Prompt AI!');
-      }).catch(() => fallbackCopy(input));
+      navigator.clipboard
+        .writeText(text)
+        .then(() => {
+          if (typeof toast === 'function') toast('Đã sao chép Prompt AI!');
+          else alert('Đã sao chép Prompt AI!');
+        })
+        .catch(() => fallbackCopy(input));
     } else {
       fallbackCopy(input);
     }

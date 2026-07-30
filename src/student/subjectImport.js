@@ -19,8 +19,22 @@ const MAX_QUESTIONS_COUNT = 2000;
 
 const ALLOWED_IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
 const DISALLOWED_EXTS = [
-  '.exe', '.bat', '.cmd', '.sh', '.js', '.html', '.htm', '.svg',
-  '.php', '.py', '.dll', '.vbs', '.msi', '.com', '.scr', '.jar'
+  '.exe',
+  '.bat',
+  '.cmd',
+  '.sh',
+  '.js',
+  '.html',
+  '.htm',
+  '.svg',
+  '.php',
+  '.py',
+  '.dll',
+  '.vbs',
+  '.msi',
+  '.com',
+  '.scr',
+  '.jar',
 ];
 
 // Lưu trữ các Object URL đã tạo để thu hồi khi đóng preview
@@ -79,12 +93,17 @@ function isSafeZipPath(pathStr) {
  */
 function getMimeTypeFromExt(ext) {
   switch (ext.toLowerCase()) {
-    case '.png': return 'image/png';
+    case '.png':
+      return 'image/png';
     case '.jpg':
-    case '.jpeg': return 'image/jpeg';
-    case '.webp': return 'image/webp';
-    case '.gif': return 'image/gif';
-    default: return 'application/octet-stream';
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.webp':
+      return 'image/webp';
+    case '.gif':
+      return 'image/gif';
+    default:
+      return 'application/octet-stream';
   }
 }
 
@@ -100,7 +119,9 @@ export async function readAndValidateZipFile(file) {
     throw new Error('Chỉ chấp nhận file định dạng .zip.');
   }
   if (file.size > MAX_ZIP_SIZE) {
-    throw new Error(`Dung lượng file ZIP vượt quá giới hạn 30 MB (Hiện tại: ${(file.size / (1024 * 1024)).toFixed(1)} MB).`);
+    throw new Error(
+      `Dung lượng file ZIP vượt quá giới hạn 30 MB (Hiện tại: ${(file.size / (1024 * 1024)).toFixed(1)} MB).`,
+    );
   }
 
   const arrayBuffer = await file.arrayBuffer();
@@ -178,7 +199,7 @@ export async function readAndValidateZipFile(file) {
         jsonCandidates,
         zipInstance: zip,
         imageEntriesCount: imageEntries.size,
-        zipFile: file
+        zipFile: file,
       };
     }
   }
@@ -227,7 +248,7 @@ export async function processSelectedJsonFromZip(zip, jsonPath, imageEntries, zi
         url: blobUrl,
         size: blob.size,
         mime,
-        path: imgPath
+        path: imgPath,
       };
       currentZipImageBlobs.set(imgPath, item);
       const cleanPath = imgPath.replace(/^\/+/, '');
@@ -246,7 +267,8 @@ export async function processSelectedJsonFromZip(zip, jsonPath, imageEntries, zi
     const item = rawQuestions[i];
     const num = Number(item?.num) || i + 1;
     const questionText = String(item?.question || '').trim();
-    const rawOptions = item?.options && typeof item.options === 'object' && !Array.isArray(item.options) ? item.options : {};
+    const rawOptions =
+      item?.options && typeof item.options === 'object' && !Array.isArray(item.options) ? item.options : {};
     let answer = item?.answer !== undefined && item?.answer !== null ? String(item.answer).trim().toUpperCase() : null;
     if (answer === '') answer = null;
 
@@ -284,7 +306,7 @@ export async function processSelectedJsonFromZip(zip, jsonPath, imageEntries, zi
           src: zipImg.url,
           url: zipImg.url,
           previewUrl: zipImg.url,
-          blob: zipImg.blob
+          blob: zipImg.blob,
         });
       }
     }
@@ -304,7 +326,7 @@ export async function processSelectedJsonFromZip(zip, jsonPath, imageEntries, zi
       images: mappedImages,
       has_image: mappedImages.length > 0,
       error_risk: ['low', 'medium', 'high'].includes(errorRisk) ? errorRisk : 'low',
-      error_risk_reason: item?.error_risk_reason || null
+      error_risk_reason: item?.error_risk_reason || null,
     });
   }
 
@@ -321,7 +343,7 @@ export async function processSelectedJsonFromZip(zip, jsonPath, imageEntries, zi
     jsonPath,
     zipFileName,
     suggestedCode,
-    questions: validatedQuestions
+    questions: validatedQuestions,
   };
 }
 
@@ -396,7 +418,7 @@ export async function uploadZipImagesToCloudinary(onProgress) {
   return {
     success: !hasFailures,
     uploadedMap: currentUploadedImageUrls,
-    failedMap: failedUploads
+    failedMap: failedUploads,
   };
 }
 

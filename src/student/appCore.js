@@ -3022,7 +3022,9 @@ Bắt đầu ngay từ câu 1.`;
       if (dropZone) dropZone.classList.add('hidden');
       if (card) card.classList.remove('hidden');
       if (nameEl) nameEl.textContent = file.name;
-      if (metaEl) metaEl.textContent = (file.size / (1024 * 1024)).toFixed(1) + ' MB · File ZIP (JSON & ảnh) · Sẵn sàng xem trước';
+      if (metaEl)
+        metaEl.textContent =
+          (file.size / (1024 * 1024)).toFixed(1) + ' MB · File ZIP (JSON & ảnh) · Sẵn sàng xem trước';
       const pv = $('previewImportBtn');
       if (pv) {
         pv.classList.remove('hidden');
@@ -3188,9 +3190,9 @@ Bắt đầu ngay từ câu 1.`;
         if (res.needSelectJson) {
           const selected = prompt(
             'File ZIP chứa nhiều file JSON câu hỏi:\n\n' +
-            res.jsonCandidates.join('\n') +
-            '\n\nVui lòng nhập đúng tên file JSON bạn muốn dùng:',
-            res.jsonCandidates[0]
+              res.jsonCandidates.join('\n') +
+              '\n\nVui lòng nhập đúng tên file JSON bạn muốn dùng:',
+            res.jsonCandidates[0],
           );
           if (!selected) return;
 
@@ -3208,7 +3210,12 @@ Bắt đầu ngay từ câu 1.`;
             }
           });
 
-          parsedZipData = await importer.processSelectedJsonFromZip(res.zipInstance, chosen, imageEntries, res.zipFile.name);
+          parsedZipData = await importer.processSelectedJsonFromZip(
+            res.zipInstance,
+            chosen,
+            imageEntries,
+            res.zipFile.name,
+          );
         }
 
         const questions = parsedZipData.questions;
@@ -10590,11 +10597,15 @@ installImgsHTML();
     return (async () => {
       try {
         const promises = [
-          fetch('/api/my-edit-requests?ts=' + Date.now(), { cache: 'no-store' }).then(res => res.ok ? res.json() : {}).catch(() => ({}))
+          fetch('/api/my-edit-requests?ts=' + Date.now(), { cache: 'no-store' })
+            .then(res => (res.ok ? res.json() : {}))
+            .catch(() => ({})),
         ];
         if (isStaff()) {
           promises.push(
-            fetch('/api/staff-edit-requests?ts=' + Date.now(), { cache: 'no-store' }).then(res => res.ok ? res.json() : {}).catch(() => ({}))
+            fetch('/api/staff-edit-requests?ts=' + Date.now(), { cache: 'no-store' })
+              .then(res => (res.ok ? res.json() : {}))
+              .catch(() => ({})),
           );
         }
         const [myOut, staffOut] = await Promise.all(promises);
@@ -10683,7 +10694,9 @@ installImgsHTML();
       searchInput.value = '#' + num;
       try {
         localStorage.setItem('learninghub_library_search_v1', '#' + num);
-      } catch (e) {}
+      } catch (e) {
+        lhWarn('OPEN_QUESTION_LOCALLY_LOCALSTORAGE_SAVE', e);
+      }
       searchInput.dispatchEvent(new Event('input', { bubbles: true }));
       searchInput.dispatchEvent(new Event('change', { bubbles: true }));
     }
@@ -10723,17 +10736,20 @@ installImgsHTML();
               Duyệt ngay ↗
             </a>
           </div>
-          ${staffPendingItems.slice(0, 3).map(r => {
-            const n = r.question_num || r.new_data?.num || '?';
-            const sc = r.subject_code || r.new_data?.subject_code || '';
-            return `
+          ${staffPendingItems
+            .slice(0, 3)
+            .map(r => {
+              const n = r.question_num || r.new_data?.num || '?';
+              const sc = r.subject_code || r.new_data?.subject_code || '';
+              return `
             <div style="font-size:12px; color:#e2d8c3; margin-top:6px; padding-top:6px; border-top:1px dashed rgba(200, 169, 110, 0.2); line-height:1.45; display:flex; justify-content:space-between; align-items:center; gap:8px;">
               <div>
                 <b style="color:#ffffff;">Câu ${esc(n)}</b> (${esc(sc)}) - <span style="color:var(--gold2, #e8d4a8); font-weight:500;">${esc(r.user_email || 'Học sinh')}</span>: <span style="color:#c8bba6; font-style:italic;">"${esc(r.reason || 'Đề xuất sửa câu hỏi')}"</span>
               </div>
               ${n !== '?' ? `<button type="button" onclick="window.jumpToQuestionInLibrary('${esc(n)}', '${esc(sc)}')" style="font-size:11px; font-weight:600; padding:2px 8px; border-radius:6px; background:rgba(200, 169, 110, 0.15); border:1px solid rgba(200, 169, 110, 0.3); color:var(--gold2, #e8d4a8); cursor:pointer; white-space:nowrap;">Tra câu ↗</button>` : ''}
             </div>`;
-          }).join('')}
+            })
+            .join('')}
           ${staffPendingItems.length > 3 ? `<div style="font-size:11px; color:#c8bba6; margin-top:6px; font-style:italic;">...và ${staffPendingItems.length - 3} yêu cầu khác</div>` : ''}
         </div>`;
       } else {
@@ -10769,10 +10785,14 @@ installImgsHTML();
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; gap:8px;">
           <p class="hodEditRequestMeta" style="margin:0;">Gửi: ${esc(timeText(r.created_at))}${r.reviewed_at ? ' · Phản hồi: ' + esc(timeText(r.reviewed_at)) : ''}</p>
-          ${num !== '?' ? `
+          ${
+            num !== '?'
+              ? `
           <button type="button" class="hodJumpStudyBtn" data-num="${esc(num)}" data-subject="${esc(code)}" style="font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: rgba(200, 169, 110, 0.15); border: 1px solid rgba(200, 169, 110, 0.35); color: var(--gold2, #e8d4a8); cursor: pointer; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; flex-shrink: 0;">
             🔍 Tra câu ↗
-          </button>` : ''}
+          </button>`
+              : ''
+          }
         </div>
         ${r.admin_note ? `<p class="hodEditRequestNote" style="margin-top:4px;">Ghi chú admin: ${esc(r.admin_note)}</p>` : ''}
         ${fresh ? '<span class="hodEditRequestNew">Mới</span>' : ''}

@@ -20468,3 +20468,120 @@ body .subjectFolderCard .subjectNewBadge {
   animation: lhPaneFadeInUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   will-change: transform, opacity;
 }
+
+/* ===== MOBILE_FLASHCARD_BOTTOM_OVERLAP_FIX_20260731 ===== */
+@media (max-width: 760px) {
+  #fc .face.front,
+  #fc .face.back {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  #fc .opts {
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+/* ===== MOBILE_SEAMLESS_GLASS_HEADER_TABS_20260731 ===== */
+@media (max-width: 760px) {
+  body {
+    --headH: 100px !important;
+  }
+
+  .globalTop {
+    height: 54px !important;
+    padding: 8px 14px !important;
+    border-bottom: 1px solid rgba(200, 169, 110, 0.1) !important;
+    background: rgba(14, 12, 10, 0.94) !important;
+    backdrop-filter: blur(16px) saturate(140%) !important;
+    -webkit-backdrop-filter: blur(16px) saturate(140%) !important;
+    box-shadow: none !important;
+  }
+
+  .tabs {
+    position: fixed !important;
+    top: 54px !important;
+    left: 0 !important;
+    right: 0 !important;
+    transform: none !important;
+    width: 100% !important;
+    height: 46px !important;
+    margin: 0 !important;
+    padding: 4px 10px !important;
+    border-radius: 0 !important;
+    border: none !important;
+    border-top: 1px solid rgba(200, 169, 110, 0.08) !important;
+    border-bottom: 1px solid rgba(200, 169, 110, 0.2) !important;
+    background: rgba(14, 12, 10, 0.94) !important;
+    backdrop-filter: blur(16px) saturate(140%) !important;
+    -webkit-backdrop-filter: blur(16px) saturate(140%) !important;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35) !important;
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 6px !important;
+    align-items: center !important;
+    z-index: 44 !important;
+  }
+
+  .tab {
+    height: 36px !important;
+    margin: 0 !important;
+    padding: 0 8px !important;
+    font-size: 0.8rem !important;
+    font-weight: 700 !important;
+    border-radius: 10px !important;
+    border: 1px solid rgba(200, 169, 110, 0.12) !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    color: rgba(245, 240, 232, 0.72) !important;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .tab:hover,
+  .tab:active {
+    background: rgba(200, 169, 110, 0.1) !important;
+    color: #ffffff !important;
+  }
+
+  .tab.active {
+    background: linear-gradient(135deg, var(--gold, #c8a96e), var(--gold2, #e8d4a8)) !important;
+    border: 1px solid rgba(255, 255, 255, 0.4) !important;
+    color: #111827 !important;
+    font-weight: 800 !important;
+    box-shadow: 0 4px 14px rgba(200, 169, 110, 0.38) !important;
+  }
+
+  .pane.scroll {
+    padding-top: 108px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  body {
+    --headH: 94px !important;
+  }
+
+  .globalTop {
+    height: 48px !important;
+    padding: 6px 10px !important;
+  }
+
+  .tabs {
+    top: 48px !important;
+    height: 44px !important;
+    padding: 4px 8px !important;
+    gap: 5px !important;
+  }
+
+  .tab {
+    height: 34px !important;
+    font-size: 0.76rem !important;
+    border-radius: 8px !important;
+  }
+
+  .pane.scroll {
+    padding-top: 100px !important;
+  }
+}

@@ -2605,7 +2605,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "0356645" : null;
+  var currentVersion = true ? "87bfc1f" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -2675,6 +2675,7 @@
           }
         }
       } catch (e) {
+        lhWarn("VERSION_CHECKER_NOTES_FETCH", e);
       }
     }
     const styleId = "lhUpdateBannerStyles";
@@ -9670,7 +9671,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         if (dropZone) dropZone.classList.add("hidden");
         if (card) card.classList.remove("hidden");
         if (nameEl) nameEl.textContent = file.name;
-        if (metaEl) metaEl.textContent = (file.size / (1024 * 1024)).toFixed(1) + " MB \xB7 File ZIP (JSON & \u1EA3nh) \xB7 S\u1EB5n s\xE0ng xem tr\u01B0\u1EDBc";
+        if (metaEl)
+          metaEl.textContent = (file.size / (1024 * 1024)).toFixed(1) + " MB \xB7 File ZIP (JSON & \u1EA3nh) \xB7 S\u1EB5n s\xE0ng xem tr\u01B0\u1EDBc";
         const pv = $2("previewImportBtn");
         if (pv) {
           pv.classList.remove("hidden");
@@ -9826,7 +9828,12 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
                 imageEntries.set(k, res.zipInstance.files[k]);
               }
             });
-            parsedZipData = await importer.processSelectedJsonFromZip(res.zipInstance, chosen, imageEntries, res.zipFile.name);
+            parsedZipData = await importer.processSelectedJsonFromZip(
+              res.zipInstance,
+              chosen,
+              imageEntries,
+              res.zipFile.name
+            );
           }
           const questions = parsedZipData.questions;
           window.__previewImportData = questions;
@@ -16158,6 +16165,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           localStorage.setItem("learninghub_library_search_v1", "#" + num);
         } catch (e) {
+          lhWarn("OPEN_QUESTION_LOCALLY_LOCALSTORAGE_SAVE", e);
         }
         searchInput.dispatchEvent(new Event("input", { bubbles: true }));
         searchInput.dispatchEvent(new Event("change", { bubbles: true }));
@@ -16425,7 +16433,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       throw new Error("Ch\u1EC9 ch\u1EA5p nh\u1EADn file \u0111\u1ECBnh d\u1EA1ng .zip.");
     }
     if (file.size > MAX_ZIP_SIZE) {
-      throw new Error(`Dung l\u01B0\u1EE3ng file ZIP v\u01B0\u1EE3t qu\xE1 gi\u1EDBi h\u1EA1n 30 MB (Hi\u1EC7n t\u1EA1i: ${(file.size / (1024 * 1024)).toFixed(1)} MB).`);
+      throw new Error(
+        `Dung l\u01B0\u1EE3ng file ZIP v\u01B0\u1EE3t qu\xE1 gi\u1EDBi h\u1EA1n 30 MB (Hi\u1EC7n t\u1EA1i: ${(file.size / (1024 * 1024)).toFixed(1)} MB).`
+      );
     }
     const arrayBuffer = await file.arrayBuffer();
     const zip = await import_jszip.default.loadAsync(arrayBuffer);

@@ -87,8 +87,75 @@
     }
   }
 
+  // src/core/log.js
+  var MAX_KEEP = 80;
+  var index = /* @__PURE__ */ new Map();
+  var seq = 0;
+  function describe(err2) {
+    if (!err2) return String(err2);
+    if (err2 instanceof Error) return (err2.name || "Error") + ": " + (err2.message || "");
+    if (typeof err2 === "object") {
+      try {
+        return JSON.stringify(err2);
+      } catch (_e) {
+        return Object.prototype.toString.call(err2);
+      }
+    }
+    return String(err2);
+  }
+  function lhWarn(tag, err2) {
+    try {
+      const label = String(tag || "unknown");
+      const msg = describe(err2);
+      const key2 = label + "|" + msg;
+      let row = index.get(key2);
+      if (!row) {
+        row = { tag: label, error: msg, count: 0, at: "", seq: 0 };
+        index.set(key2, row);
+        if (index.size > MAX_KEEP) {
+          let oldestKey = null, oldestSeq = Infinity;
+          for (const [k, v] of index)
+            if (v.seq < oldestSeq) {
+              oldestSeq = v.seq;
+              oldestKey = k;
+            }
+          if (oldestKey !== null) index.delete(oldestKey);
+        }
+      }
+      row.count++;
+      row.at = (/* @__PURE__ */ new Date()).toLocaleTimeString("vi-VN");
+      row.seq = ++seq;
+      if (row.count === 1) console.warn("[" + label + "]", err2);
+      else if (row.count === 10 || row.count === 100 || row.count === 1e3) {
+        console.warn("[" + label + "] l\u1EB7p l\u1EA1i " + row.count + " l\u1EA7n:", msg);
+      }
+    } catch (_e) {
+    }
+  }
+  function lhErrors() {
+    const rows = [...index.values()].sort((a, b) => b.seq - a.seq).map((r) => ({ tag: r.tag, error: r.error, count: r.count, at: r.at }));
+    try {
+      console.table(rows);
+    } catch (_e) {
+      console.log(rows);
+    }
+    return rows;
+  }
+  function lhClearErrors() {
+    index.clear();
+    seq = 0;
+    return true;
+  }
+  if (typeof window !== "undefined") {
+    window.lhWarn = lhWarn;
+    window.lhErrors = lhErrors;
+    window.lhClearErrors = lhClearErrors;
+    window.addEventListener("error", (e) => lhWarn("window.onerror", e?.error || e?.message || e));
+    window.addEventListener("unhandledrejection", (e) => lhWarn("unhandledRejection", e?.reason || e));
+  }
+
   // src/core/versionChecker.js
-  var currentVersion = true ? "0356645" : null;
+  var currentVersion = true ? "87bfc1f" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -151,6 +218,7 @@
           }
         }
       } catch (e) {
+        lhWarn("VERSION_CHECKER_NOTES_FETCH", e);
       }
     }
     const styleId = "lhUpdateBannerStyles";
@@ -382,73 +450,6 @@
     window.addEventListener("focus", () => {
       checkForUpdates();
     });
-  }
-
-  // src/core/log.js
-  var MAX_KEEP = 80;
-  var index = /* @__PURE__ */ new Map();
-  var seq = 0;
-  function describe(err2) {
-    if (!err2) return String(err2);
-    if (err2 instanceof Error) return (err2.name || "Error") + ": " + (err2.message || "");
-    if (typeof err2 === "object") {
-      try {
-        return JSON.stringify(err2);
-      } catch (_e) {
-        return Object.prototype.toString.call(err2);
-      }
-    }
-    return String(err2);
-  }
-  function lhWarn(tag, err2) {
-    try {
-      const label = String(tag || "unknown");
-      const msg = describe(err2);
-      const key2 = label + "|" + msg;
-      let row = index.get(key2);
-      if (!row) {
-        row = { tag: label, error: msg, count: 0, at: "", seq: 0 };
-        index.set(key2, row);
-        if (index.size > MAX_KEEP) {
-          let oldestKey = null, oldestSeq = Infinity;
-          for (const [k, v] of index)
-            if (v.seq < oldestSeq) {
-              oldestSeq = v.seq;
-              oldestKey = k;
-            }
-          if (oldestKey !== null) index.delete(oldestKey);
-        }
-      }
-      row.count++;
-      row.at = (/* @__PURE__ */ new Date()).toLocaleTimeString("vi-VN");
-      row.seq = ++seq;
-      if (row.count === 1) console.warn("[" + label + "]", err2);
-      else if (row.count === 10 || row.count === 100 || row.count === 1e3) {
-        console.warn("[" + label + "] l\u1EB7p l\u1EA1i " + row.count + " l\u1EA7n:", msg);
-      }
-    } catch (_e) {
-    }
-  }
-  function lhErrors() {
-    const rows = [...index.values()].sort((a, b) => b.seq - a.seq).map((r) => ({ tag: r.tag, error: r.error, count: r.count, at: r.at }));
-    try {
-      console.table(rows);
-    } catch (_e) {
-      console.log(rows);
-    }
-    return rows;
-  }
-  function lhClearErrors() {
-    index.clear();
-    seq = 0;
-    return true;
-  }
-  if (typeof window !== "undefined") {
-    window.lhWarn = lhWarn;
-    window.lhErrors = lhErrors;
-    window.lhClearErrors = lhClearErrors;
-    window.addEventListener("error", (e) => lhWarn("window.onerror", e?.error || e?.message || e));
-    window.addEventListener("unhandledrejection", (e) => lhWarn("unhandledRejection", e?.reason || e));
   }
 
   // src/core/mock.js
@@ -3556,10 +3557,26 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       if ($("srfRejectedTab")) $("srfRejectedTab").textContent = rejected;
       if (!list.length) {
         const emptyMap = {
-          pending: { icon: "\u23F3", title: "Ch\u01B0a c\xF3 y\xEAu c\u1EA7u n\xE0o \u0111ang ch\u1EDD", hint: "Khi sinh vi\xEAn g\u1EEDi y\xEAu c\u1EA7u th\xEAm m\xF4n m\u1EDBi, ch\xFAng s\u1EBD xu\u1EA5t hi\u1EC7n t\u1EA1i \u0111\xE2y." },
-          approved: { icon: "\u2705", title: "Ch\u01B0a c\xF3 y\xEAu c\u1EA7u n\xE0o \u0111\u01B0\u1EE3c duy\u1EC7t", hint: "C\xE1c y\xEAu c\u1EA7u \u0111\xE3 ph\xEA duy\u1EC7t s\u1EBD hi\u1EC3n th\u1ECB \u1EDF \u0111\xE2y." },
-          rejected: { icon: "\u274C", title: "Ch\u01B0a c\xF3 y\xEAu c\u1EA7u n\xE0o b\u1ECB t\u1EEB ch\u1ED1i", hint: "C\xE1c y\xEAu c\u1EA7u \u0111\xE3 t\u1EEB ch\u1ED1i s\u1EBD hi\u1EC3n th\u1ECB \u1EDF \u0111\xE2y." },
-          all: { icon: "\u{1F4EC}", title: "Ch\u01B0a c\xF3 y\xEAu c\u1EA7u th\xEAm m\xF4n n\xE0o", hint: "Khi c\xF3 y\xEAu c\u1EA7u t\u1EEB sinh vi\xEAn, b\u1EA1n s\u1EBD th\u1EA5y ch\xFAng \u1EDF \u0111\xE2y." }
+          pending: {
+            icon: "\u23F3",
+            title: "Ch\u01B0a c\xF3 y\xEAu c\u1EA7u n\xE0o \u0111ang ch\u1EDD",
+            hint: "Khi sinh vi\xEAn g\u1EEDi y\xEAu c\u1EA7u th\xEAm m\xF4n m\u1EDBi, ch\xFAng s\u1EBD xu\u1EA5t hi\u1EC7n t\u1EA1i \u0111\xE2y."
+          },
+          approved: {
+            icon: "\u2705",
+            title: "Ch\u01B0a c\xF3 y\xEAu c\u1EA7u n\xE0o \u0111\u01B0\u1EE3c duy\u1EC7t",
+            hint: "C\xE1c y\xEAu c\u1EA7u \u0111\xE3 ph\xEA duy\u1EC7t s\u1EBD hi\u1EC3n th\u1ECB \u1EDF \u0111\xE2y."
+          },
+          rejected: {
+            icon: "\u274C",
+            title: "Ch\u01B0a c\xF3 y\xEAu c\u1EA7u n\xE0o b\u1ECB t\u1EEB ch\u1ED1i",
+            hint: "C\xE1c y\xEAu c\u1EA7u \u0111\xE3 t\u1EEB ch\u1ED1i s\u1EBD hi\u1EC3n th\u1ECB \u1EDF \u0111\xE2y."
+          },
+          all: {
+            icon: "\u{1F4EC}",
+            title: "Ch\u01B0a c\xF3 y\xEAu c\u1EA7u th\xEAm m\xF4n n\xE0o",
+            hint: "Khi c\xF3 y\xEAu c\u1EA7u t\u1EEB sinh vi\xEAn, b\u1EA1n s\u1EBD th\u1EA5y ch\xFAng \u1EDF \u0111\xE2y."
+          }
         };
         const em = emptyMap[filter] || emptyMap.all;
         el.innerHTML = `<div class="sreqEmptyState">

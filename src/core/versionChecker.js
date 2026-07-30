@@ -3,6 +3,8 @@
  * Checks for new deployments on Vercel/server and prompts user to reload.
  */
 
+import { lhWarn } from './log.js';
+
 let currentVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : null;
 let updateDetected = false;
 let lastCheckTime = 0;
@@ -66,7 +68,7 @@ export function showAdminReloadNotice() {
   showUpdateNotification({
     title: 'Hệ thống vừa cập nhật',
     sub: 'Hãy tải lại trang để lấy dữ liệu và giao diện mới nhất',
-    isAdminNotice: true
+    isAdminNotice: true,
   });
 }
 
@@ -93,8 +95,12 @@ export async function showUpdateNotification(opts) {
   if (!isAdminNotice) {
     try {
       const [settingsRes, verRes] = await Promise.all([
-        fetch('/api/settings?ts=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-        fetch('/version.json?ts=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({}))
+        fetch('/api/settings?ts=' + Date.now(), { cache: 'no-store' })
+          .then(r => (r.ok ? r.json() : {}))
+          .catch(() => ({})),
+        fetch('/version.json?ts=' + Date.now(), { cache: 'no-store' })
+          .then(r => (r.ok ? r.json() : {}))
+          .catch(() => ({})),
       ]);
 
       const enabled = settingsRes?.release_notes?.enabled !== false;
@@ -102,13 +108,17 @@ export async function showUpdateNotification(opts) {
         if (settingsRes?.release_notes?.content && settingsRes.release_notes.content.trim()) {
           releaseNotes = settingsRes.release_notes.content.trim();
         } else if (Array.isArray(verRes?.recent_commits) && verRes.recent_commits.length > 0) {
-          releaseNotes = verRes.recent_commits.map(c => {
-            const clean = String(c).replace(/^[\s•\-\*]+/, '');
-            return '• ' + clean;
-          }).join('\n');
+          releaseNotes = verRes.recent_commits
+            .map(c => {
+              const clean = String(c).replace(/^[\s•\-\*]+/, '');
+              return '• ' + clean;
+            })
+            .join('\n');
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      lhWarn('VERSION_CHECKER_NOTES_FETCH', e);
+    }
   }
 
   const styleId = 'lhUpdateBannerStyles';
@@ -304,11 +314,15 @@ export async function showUpdateNotification(opts) {
         </div>
       </div>
     </div>
-    ${releaseNotes ? `
+    ${
+      releaseNotes
+        ? `
     <div class="lh-update-notes-box">
       <div class="lh-update-notes-title">✨ Có gì mới trong bản này:</div>
       <div class="lh-update-notes-body"></div>
-    </div>` : ''}
+    </div>`
+        : ''
+    }
     <div class="lh-update-actions">
       <button id="lhUpdateReloadBtn" class="lh-update-btn" type="button">Cập nhật ngay</button>
     </div>
