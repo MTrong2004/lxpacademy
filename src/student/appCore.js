@@ -10481,11 +10481,17 @@ installImgsHTML();
 
   let bell = null; // giữ tham chiếu vì khi đăng xuất ta tháo nút khỏi DOM
   let items = [];
+  let staffPendingItems = []; // yêu cầu của học sinh chờ admin duyệt
   let loading = false;
   let inflight = null; // promise của lần gọi API đang chạy (chống gọi trùng)
   let lastFetch = 0; // mốc lần GỌI gần nhất (kể cả lỗi) để không spam API
   let loadedOk = false; // đã từng lấy được danh sách -> phân biệt rỗng vs lỗi
   let watchedUser = null; // id user đang theo dõi, đổi user thì nạp lại từ đầu
+
+  function isStaff() {
+    const role = String(window.HODSupabase?.getProfile?.()?.role || '').toLowerCase();
+    return !!user() && (window.HODSupabase?.isAdmin?.() || role === 'admin' || role === 'editor');
+  }
 
   function actionsBar() {
     return (
@@ -10552,14 +10558,26 @@ installImgsHTML();
   function paint() {
     if (!bell || !bell.isConnected) return;
     const seen = readSeen();
-    const n = items.filter(r => isFresh(r, seen)).length;
+    const myFreshCount = items.filter(r => isFresh(r, seen)).length;
+    const staffPendingCount = isStaff() ? staffPendingItems.length : 0;
+    const totalNew = myFreshCount + staffPendingCount;
+
     const badge = $('hodEditRequestBadge');
     if (badge) {
-      badge.textContent = n > 9 ? '9+' : String(n);
-      badge.classList.toggle('hidden', n === 0);
+      badge.textContent = totalNew > 9 ? '9+' : String(totalNew);
+      badge.classList.toggle('hidden', totalNew === 0);
     }
-    bell.classList.toggle('hasNewRequest', n > 0);
-    bell.title = n > 0 ? n + ' yêu cầu sửa vừa có phản hồi' : 'Thông báo yêu cầu sửa câu hỏi';
+    bell.classList.toggle('hasNewRequest', totalNew > 0);
+
+    let titleText = 'Thông báo yêu cầu sửa câu hỏi';
+    if (staffPendingCount > 0 && myFreshCount > 0) {
+      titleText = `${staffPendingCount} yêu cầu học sinh chờ duyệt & ${myFreshCount} phản hồi mới`;
+    } else if (staffPendingCount > 0) {
+      titleText = `${staffPendingCount} yêu cầu sửa từ học sinh đang chờ duyệt`;
+    } else if (myFreshCount > 0) {
+      titleText = `${myFreshCount} yêu cầu sửa vừa có phản hồi`;
+    }
+    bell.title = titleText;
   }
 
   function isModalOpen() {
@@ -10570,13 +10588,23 @@ installImgsHTML();
     loading = true;
     return (async () => {
       try {
-        const res = await fetch('/api/my-edit-requests?ts=' + Date.now(), { cache: 'no-store' });
-        // 401/403 (chưa duyệt, hết phiên) hay 5xx: im lặng, giữ dữ liệu cũ.
-        if (!res.ok) return;
-        const out = await res.json().catch(() => ({}));
-        if (Array.isArray(out?.data)) {
-          items = out.data;
+        const promises = [
+          fetch('/api/my-edit-requests?ts=' + Date.now(), { cache: 'no-store' }).then(res => res.ok ? res.json() : {}).catch(() => ({}))
+        ];
+        if (isStaff()) {
+          promises.push(
+            fetch('/api/staff-edit-requests?ts=' + Date.now(), { cache: 'no-store' }).then(res => res.ok ? res.json() : {}).catch(() => ({}))
+          );
+        }
+        const [myOut, staffOut] = await Promise.all(promises);
+        if (Array.isArray(myOut?.data)) {
+          items = myOut.data;
           loadedOk = true;
+        }
+        if (staffOut && Array.isArray(staffOut?.data)) {
+          staffPendingItems = staffOut.data;
+        } else if (!isStaff()) {
+          staffPendingItems = [];
         }
       } catch (e) {
         console.warn('[bell] không tải được yêu cầu sửa:', e);
@@ -10595,6 +10623,7 @@ installImgsHTML();
   function load(force) {
     if (!user()) {
       items = [];
+      staffPendingItems = [];
       return Promise.resolve();
     }
     if (inflight) return inflight;
@@ -10611,17 +10640,48 @@ installImgsHTML();
       box.innerHTML = '<div class="hodReportEmpty">Đăng nhập để xem thông báo.</div>';
       return;
     }
+
+    let staffHtml = '';
+    if (isStaff()) {
+      if (staffPendingItems.length > 0) {
+        staffHtml = `
+        <div class="hodStaffPendingBlock" style="margin-bottom: 14px; padding: 12px 14px; background: rgba(200, 169, 110, 0.08); border: 1px solid rgba(200, 169, 110, 0.35); border-radius: 14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <strong style="color:var(--gold2, #e8d4a8); font-size:13px; display:flex; align-items:center; gap:6px; font-weight:700;">
+              <span>📌</span> Có ${staffPendingItems.length} yêu cầu từ học sinh chờ duyệt
+            </strong>
+            <a href="admin.html?tab=requests" target="_blank" style="font-size:12px; font-weight:700; color:#111111; text-decoration:none; background:linear-gradient(135deg, #c8a96e, #e8d4a8); padding:5px 12px; border-radius:8px; border:none; display:inline-flex; align-items:center; gap:3px; box-shadow:0 2px 8px rgba(200, 169, 110, 0.3);">
+              Duyệt ngay ↗
+            </a>
+          </div>
+          ${staffPendingItems.slice(0, 3).map(r => `
+            <div style="font-size:12px; color:#e2d8c3; margin-top:6px; padding-top:6px; border-top:1px dashed rgba(200, 169, 110, 0.2); line-height:1.45;">
+              <b style="color:#ffffff;">Câu ${esc(r.question_num || r.new_data?.num || '?')}</b> (${esc(r.subject_code || '')}) - <span style="color:var(--gold2, #e8d4a8); font-weight:500;">${esc(r.user_email || 'Học sinh')}</span>: <span style="color:#c8bba6; font-style:italic;">"${esc(r.reason || 'Đề xuất sửa câu hỏi')}"</span>
+            </div>
+          `).join('')}
+          ${staffPendingItems.length > 3 ? `<div style="font-size:11px; color:#c8bba6; margin-top:6px; font-style:italic;">...và ${staffPendingItems.length - 3} yêu cầu khác</div>` : ''}
+        </div>`;
+      } else {
+        staffHtml = `
+        <div class="hodStaffPendingBlock" style="margin-bottom: 12px; padding: 10px 14px; background: rgba(114, 197, 140, 0.08); border: 1px solid rgba(114, 197, 140, 0.25); border-radius: 12px; font-size:12px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="color:#9ee5b2; font-weight:600; display:flex; align-items:center; gap:6px;">✓ Không có yêu cầu học sinh nào đang chờ duyệt</span>
+          <a href="admin.html?tab=requests" target="_blank" style="color:var(--gold2, #e8d4a8); font-weight:700; text-decoration:none;">Trang Admin ↗</a>
+        </div>`;
+      }
+    }
+
     if (!items.length) {
       // Phân biệt "chưa gửi gì" với "gọi API lỗi" để không báo sai cho người học.
-      box.innerHTML = loading
+      const emptyMsg = loading
         ? '<div class="hodReportEmpty">Đang tải...</div>'
         : loadedOk
           ? '<div class="hodReportEmpty">Bạn chưa gửi yêu cầu sửa nào.</div>'
           : '<div class="hodReportEmpty">Không tải được thông báo. Thử lại sau.</div>';
+      box.innerHTML = staffHtml + emptyMsg;
       return;
     }
     const seen = readSeen();
-    box.innerHTML = items
+    const myItemsHtml = items
       .map(r => {
         const fresh = isFresh(r, seen);
         const num = r.question_num || r.new_data?.num || '?';
@@ -10638,6 +10698,8 @@ installImgsHTML();
       </div>`;
       })
       .join('');
+
+    box.innerHTML = staffHtml + myItemsHtml;
   }
 
   // Mở modal = đã đọc: xoá badge nhưng vẫn giữ nhãn "Mới" của lần mở này.

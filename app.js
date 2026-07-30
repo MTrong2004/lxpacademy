@@ -2605,7 +2605,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "d55ef38" : null;
+  var currentVersion = true ? "53e6f54" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -15875,11 +15875,16 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     const user = () => window.HODSupabase?.getUser?.() || null;
     let bell = null;
     let items = [];
+    let staffPendingItems = [];
     let loading = false;
     let inflight = null;
     let lastFetch = 0;
     let loadedOk = false;
     let watchedUser = null;
+    function isStaff() {
+      const role = String(window.HODSupabase?.getProfile?.()?.role || "").toLowerCase();
+      return !!user() && (window.HODSupabase?.isAdmin?.() || role === "admin" || role === "editor");
+    }
     function actionsBar() {
       return document.querySelector(".globalTop .actions") || document.querySelector("#fc .actions") || document.querySelector(".actions");
     }
@@ -15934,14 +15939,24 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     function paint() {
       if (!bell || !bell.isConnected) return;
       const seen = readSeen();
-      const n = items.filter((r) => isFresh(r, seen)).length;
+      const myFreshCount = items.filter((r) => isFresh(r, seen)).length;
+      const staffPendingCount = isStaff() ? staffPendingItems.length : 0;
+      const totalNew = myFreshCount + staffPendingCount;
       const badge = $2("hodEditRequestBadge");
       if (badge) {
-        badge.textContent = n > 9 ? "9+" : String(n);
-        badge.classList.toggle("hidden", n === 0);
+        badge.textContent = totalNew > 9 ? "9+" : String(totalNew);
+        badge.classList.toggle("hidden", totalNew === 0);
       }
-      bell.classList.toggle("hasNewRequest", n > 0);
-      bell.title = n > 0 ? n + " y\xEAu c\u1EA7u s\u1EEDa v\u1EEBa c\xF3 ph\u1EA3n h\u1ED3i" : "Th\xF4ng b\xE1o y\xEAu c\u1EA7u s\u1EEDa c\xE2u h\u1ECFi";
+      bell.classList.toggle("hasNewRequest", totalNew > 0);
+      let titleText = "Th\xF4ng b\xE1o y\xEAu c\u1EA7u s\u1EEDa c\xE2u h\u1ECFi";
+      if (staffPendingCount > 0 && myFreshCount > 0) {
+        titleText = `${staffPendingCount} y\xEAu c\u1EA7u h\u1ECDc sinh ch\u1EDD duy\u1EC7t & ${myFreshCount} ph\u1EA3n h\u1ED3i m\u1EDBi`;
+      } else if (staffPendingCount > 0) {
+        titleText = `${staffPendingCount} y\xEAu c\u1EA7u s\u1EEDa t\u1EEB h\u1ECDc sinh \u0111ang ch\u1EDD duy\u1EC7t`;
+      } else if (myFreshCount > 0) {
+        titleText = `${myFreshCount} y\xEAu c\u1EA7u s\u1EEDa v\u1EEBa c\xF3 ph\u1EA3n h\u1ED3i`;
+      }
+      bell.title = titleText;
     }
     function isModalOpen() {
       return !!$2("hodEditRequestModal") && !$2("hodEditRequestModal").classList.contains("hidden");
@@ -15950,12 +15965,23 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       loading = true;
       return (async () => {
         try {
-          const res = await fetch("/api/my-edit-requests?ts=" + Date.now(), { cache: "no-store" });
-          if (!res.ok) return;
-          const out = await res.json().catch(() => ({}));
-          if (Array.isArray(out?.data)) {
-            items = out.data;
+          const promises = [
+            fetch("/api/my-edit-requests?ts=" + Date.now(), { cache: "no-store" }).then((res) => res.ok ? res.json() : {}).catch(() => ({}))
+          ];
+          if (isStaff()) {
+            promises.push(
+              fetch("/api/staff-edit-requests?ts=" + Date.now(), { cache: "no-store" }).then((res) => res.ok ? res.json() : {}).catch(() => ({}))
+            );
+          }
+          const [myOut, staffOut] = await Promise.all(promises);
+          if (Array.isArray(myOut?.data)) {
+            items = myOut.data;
             loadedOk = true;
+          }
+          if (staffOut && Array.isArray(staffOut?.data)) {
+            staffPendingItems = staffOut.data;
+          } else if (!isStaff()) {
+            staffPendingItems = [];
           }
         } catch (e) {
           console.warn("[bell] kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c y\xEAu c\u1EA7u s\u1EEDa:", e);
@@ -15970,6 +15996,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     function load(force) {
       if (!user()) {
         items = [];
+        staffPendingItems = [];
         return Promise.resolve();
       }
       if (inflight) return inflight;
@@ -15985,12 +16012,41 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         box.innerHTML = '<div class="hodReportEmpty">\u0110\u0103ng nh\u1EADp \u0111\u1EC3 xem th\xF4ng b\xE1o.</div>';
         return;
       }
+      let staffHtml = "";
+      if (isStaff()) {
+        if (staffPendingItems.length > 0) {
+          staffHtml = `
+        <div class="hodStaffPendingBlock" style="margin-bottom: 14px; padding: 12px 14px; background: rgba(200, 169, 110, 0.08); border: 1px solid rgba(200, 169, 110, 0.35); border-radius: 14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <strong style="color:var(--gold2, #e8d4a8); font-size:13px; display:flex; align-items:center; gap:6px; font-weight:700;">
+              <span>\u{1F4CC}</span> C\xF3 ${staffPendingItems.length} y\xEAu c\u1EA7u t\u1EEB h\u1ECDc sinh ch\u1EDD duy\u1EC7t
+            </strong>
+            <a href="admin.html?tab=requests" target="_blank" style="font-size:12px; font-weight:700; color:#111111; text-decoration:none; background:linear-gradient(135deg, #c8a96e, #e8d4a8); padding:5px 12px; border-radius:8px; border:none; display:inline-flex; align-items:center; gap:3px; box-shadow:0 2px 8px rgba(200, 169, 110, 0.3);">
+              Duy\u1EC7t ngay \u2197
+            </a>
+          </div>
+          ${staffPendingItems.slice(0, 3).map((r) => `
+            <div style="font-size:12px; color:#e2d8c3; margin-top:6px; padding-top:6px; border-top:1px dashed rgba(200, 169, 110, 0.2); line-height:1.45;">
+              <b style="color:#ffffff;">C\xE2u ${esc2(r.question_num || r.new_data?.num || "?")}</b> (${esc2(r.subject_code || "")}) - <span style="color:var(--gold2, #e8d4a8); font-weight:500;">${esc2(r.user_email || "H\u1ECDc sinh")}</span>: <span style="color:#c8bba6; font-style:italic;">"${esc2(r.reason || "\u0110\u1EC1 xu\u1EA5t s\u1EEDa c\xE2u h\u1ECFi")}"</span>
+            </div>
+          `).join("")}
+          ${staffPendingItems.length > 3 ? `<div style="font-size:11px; color:#c8bba6; margin-top:6px; font-style:italic;">...v\xE0 ${staffPendingItems.length - 3} y\xEAu c\u1EA7u kh\xE1c</div>` : ""}
+        </div>`;
+        } else {
+          staffHtml = `
+        <div class="hodStaffPendingBlock" style="margin-bottom: 12px; padding: 10px 14px; background: rgba(114, 197, 140, 0.08); border: 1px solid rgba(114, 197, 140, 0.25); border-radius: 12px; font-size:12px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="color:#9ee5b2; font-weight:600; display:flex; align-items:center; gap:6px;">\u2713 Kh\xF4ng c\xF3 y\xEAu c\u1EA7u h\u1ECDc sinh n\xE0o \u0111ang ch\u1EDD duy\u1EC7t</span>
+          <a href="admin.html?tab=requests" target="_blank" style="color:var(--gold2, #e8d4a8); font-weight:700; text-decoration:none;">Trang Admin \u2197</a>
+        </div>`;
+        }
+      }
       if (!items.length) {
-        box.innerHTML = loading ? '<div class="hodReportEmpty">\u0110ang t\u1EA3i...</div>' : loadedOk ? '<div class="hodReportEmpty">B\u1EA1n ch\u01B0a g\u1EEDi y\xEAu c\u1EA7u s\u1EEDa n\xE0o.</div>' : '<div class="hodReportEmpty">Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c th\xF4ng b\xE1o. Th\u1EED l\u1EA1i sau.</div>';
+        const emptyMsg = loading ? '<div class="hodReportEmpty">\u0110ang t\u1EA3i...</div>' : loadedOk ? '<div class="hodReportEmpty">B\u1EA1n ch\u01B0a g\u1EEDi y\xEAu c\u1EA7u s\u1EEDa n\xE0o.</div>' : '<div class="hodReportEmpty">Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c th\xF4ng b\xE1o. Th\u1EED l\u1EA1i sau.</div>';
+        box.innerHTML = staffHtml + emptyMsg;
         return;
       }
       const seen = readSeen();
-      box.innerHTML = items.map((r) => {
+      const myItemsHtml = items.map((r) => {
         const fresh = isFresh(r, seen);
         const num = r.question_num || r.new_data?.num || "?";
         const code = r.subject_code || r.new_data?.subject_code || "";
@@ -16005,6 +16061,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         ${fresh ? '<span class="hodEditRequestNew">M\u1EDBi</span>' : ""}
       </div>`;
       }).join("");
+      box.innerHTML = staffHtml + myItemsHtml;
     }
     function markAllSeen() {
       const seen = readSeen();
