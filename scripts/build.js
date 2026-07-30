@@ -87,17 +87,18 @@ function getRecentCommits() {
   const commits = [];
   if (process.env.VERCEL_GIT_COMMIT_MESSAGE) {
     processCommitText(process.env.VERCEL_GIT_COMMIT_MESSAGE, commits);
-  }
-  try {
-    const raw = execSync('git log -n 5 --pretty=format:"%B"', { stdio: ['pipe', 'pipe', 'ignore'] }).toString();
-    processCommitText(raw, commits);
-  } catch (e) {
+  } else {
     try {
-      const rawSubject = execSync('git log -n 5 --pretty=format:"%s"', { stdio: ['pipe', 'pipe', 'ignore'] }).toString();
-      processCommitText(rawSubject, commits);
-    } catch (err) {}
+      const raw = execSync('git log -1 --pretty=format:"%B"', { stdio: ['pipe', 'pipe', 'ignore'] }).toString();
+      processCommitText(raw, commits);
+    } catch (e) {
+      try {
+        const rawSubject = execSync('git log -1 --pretty=format:"%s"', { stdio: ['pipe', 'pipe', 'ignore'] }).toString();
+        processCommitText(rawSubject, commits);
+      } catch (err) {}
+    }
   }
-  return commits.slice(0, 8);
+  return commits;
 }
 
 async function main() {

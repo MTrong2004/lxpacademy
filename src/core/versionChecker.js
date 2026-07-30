@@ -66,6 +66,7 @@ export function showAdminReloadNotice() {
   showUpdateNotification({
     title: 'Hệ thống vừa cập nhật',
     sub: 'Hãy tải lại trang để lấy dữ liệu và giao diện mới nhất',
+    isAdminNotice: true
   });
 }
 
@@ -77,29 +78,35 @@ export function showAdminReloadNotice() {
  * số thay vì hardcode — đừng tạo banner thứ hai, người dùng phải thấy một kiểu thông báo
  * duy nhất cho cùng một việc.
  *
- * @param {{title?: string, sub?: string}} [opts]
+ * @param {{title?: string, sub?: string, isAdminNotice?: boolean}} [opts]
  */
 export async function showUpdateNotification(opts) {
   const title = opts?.title || 'Có phiên bản mới';
   const sub = opts?.sub || 'Cập nhật để tải giao diện và dữ liệu mới nhất';
+  const isAdminNotice = !!opts?.isAdminNotice;
   if (document.getElementById('lhUpdateBanner')) return;
 
   let releaseNotes = null;
-  try {
-    const [settingsRes, verRes] = await Promise.all([
-      fetch('/api/settings?ts=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-      fetch('/version.json?ts=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({}))
-    ]);
+  if (!isAdminNotice) {
+    try {
+      const [settingsRes, verRes] = await Promise.all([
+        fetch('/api/settings?ts=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+        fetch('/version.json?ts=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({}))
+      ]);
 
-    const enabled = settingsRes?.release_notes?.enabled !== false;
-    if (enabled) {
-      if (settingsRes?.release_notes?.content && settingsRes.release_notes.content.trim()) {
-        releaseNotes = settingsRes.release_notes.content.trim();
-      } else if (Array.isArray(verRes?.recent_commits) && verRes.recent_commits.length > 0) {
-        releaseNotes = verRes.recent_commits.map(c => '• ' + String(c).replace(/^•\s*/, '')).join('\n');
+      const enabled = settingsRes?.release_notes?.enabled !== false;
+      if (enabled) {
+        if (settingsRes?.release_notes?.content && settingsRes.release_notes.content.trim()) {
+          releaseNotes = settingsRes.release_notes.content.trim();
+        } else if (Array.isArray(verRes?.recent_commits) && verRes.recent_commits.length > 0) {
+          releaseNotes = verRes.recent_commits.map(c => {
+            const clean = String(c).replace(/^[\s•\-\*]+/, '');
+            return '• ' + clean;
+          }).join('\n');
+        }
       }
-    }
-  } catch (e) {}
+    } catch (e) {}
+  }
 
   const styleId = 'lhUpdateBannerStyles';
   if (!document.getElementById(styleId)) {
@@ -117,10 +124,10 @@ export async function showUpdateNotification(opts) {
         width: min(420px, calc(100vw - 32px));
         padding: 16px 18px;
         background: rgba(18, 24, 38, 0.96);
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        border-left: 4px solid #3b82f6;
+        border: 1px solid rgba(200, 169, 110, 0.35);
+        border-left: 4px solid var(--gold, #c8a96e);
         border-radius: 16px;
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 24px rgba(59, 130, 246, 0.25);
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 24px rgba(200, 169, 110, 0.2);
         backdrop-filter: blur(18px);
         color: #f8fafc;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -146,12 +153,12 @@ export async function showUpdateNotification(opts) {
         width: 36px;
         height: 36px;
         border-radius: 10px;
-        background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+        background: linear-gradient(135deg, #c8a96e, #a8894e);
         display: flex;
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
-        box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
+        box-shadow: 0 4px 14px rgba(200, 169, 110, 0.35);
       }
       .lh-update-icon svg {
         width: 18px;
@@ -180,16 +187,27 @@ export async function showUpdateNotification(opts) {
       .lh-update-notes-box {
         margin-top: 2px;
         padding: 10px 12px;
-        background: rgba(255, 255, 255, 0.04);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(200, 169, 110, 0.06);
+        border: 1px solid rgba(200, 169, 110, 0.2);
         border-radius: 10px;
         font-size: 12px;
-        color: #cbd5e1;
+        color: #e2e8f0;
         max-height: 140px;
         overflow-y: auto;
       }
+      .lh-update-notes-box::-webkit-scrollbar {
+        width: 4px;
+      }
+      .lh-update-notes-box::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 4px;
+      }
+      .lh-update-notes-box::-webkit-scrollbar-thumb {
+        background: rgba(200, 169, 110, 0.4);
+        border-radius: 4px;
+      }
       .lh-update-notes-title {
-        color: #60a5fa;
+        color: var(--gold2, #e8d4a8);
         font-weight: 700;
         font-size: 12px;
         margin-bottom: 4px;
@@ -210,24 +228,24 @@ export async function showUpdateNotification(opts) {
         margin-top: 4px;
       }
       .lh-update-btn {
-        background: linear-gradient(135deg, #2563eb, #1d4ed8);
-        color: #ffffff;
+        background: linear-gradient(135deg, #c8a96e, #e8d4a8);
+        color: #111827;
         border: none;
         border-radius: 8px;
-        padding: 7px 16px;
+        padding: 8px 16px;
         font-size: 13px;
-        font-weight: 600;
+        font-weight: 700;
         cursor: pointer;
         transition: all 0.2s ease;
-        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+        box-shadow: 0 4px 14px rgba(200, 169, 110, 0.35);
         white-space: nowrap;
         width: 100%;
         text-align: center;
       }
       .lh-update-btn:hover {
-        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        background: linear-gradient(135deg, #e8d4a8, #f5e6c4);
         transform: translateY(-1px);
-        box-shadow: 0 6px 18px rgba(59, 130, 246, 0.5);
+        box-shadow: 0 6px 18px rgba(200, 169, 110, 0.5);
       }
       .lh-update-btn:active {
         transform: translateY(0);
@@ -281,12 +299,6 @@ export async function showUpdateNotification(opts) {
           <span class="lh-update-sub"></span>
         </div>
       </div>
-      <button id="lhUpdateCloseBtn" class="lh-update-close" type="button" aria-label="Đóng thông báo">
-        <svg style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2" viewBox="0 0 24 24">
-          <line x1="18" y1="6" x2="6" y2="18"></line>
-          <line x1="6" y1="6" x2="18" y2="18"></line>
-        </svg>
-      </button>
     </div>
     ${releaseNotes ? `
     <div class="lh-update-notes-box">
@@ -308,10 +320,6 @@ export async function showUpdateNotification(opts) {
 
   document.getElementById('lhUpdateReloadBtn')?.addEventListener('click', () => {
     window.location.reload();
-  });
-
-  document.getElementById('lhUpdateCloseBtn')?.addEventListener('click', () => {
-    banner.remove();
   });
 }
 
