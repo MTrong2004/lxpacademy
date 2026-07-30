@@ -408,8 +408,39 @@ export function installLibrary() {
     }
     const open = viewVal() === 'full' || libraryOpenNums.has(String(q.num)) || isMatchInDetails || !!rawSearch;
     const bmBtnHTML = typeof window.__getBookmarkBtnHTML === 'function' ? window.__getBookmarkBtnHTML(q) : '';
-    return `<article class="libraryV2Card libraryQuestionCard ${open ? 'open' : ''}" data-num="${esc(q.num || '')}" data-stable-index="${i}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">Câu ${esc(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${hlt(q.question || '')}</div><div class="libraryV2Answer"><b>Đáp án: ${esc(a)}</b><span>${hlt(answerText(q))}</span></div></div>${miniImg(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-stable-study="${i}" title="Học câu này">Học</button>${bmBtnHTML}<button type="button" class="libraryV2Report" data-stable-report="${i}" title="Báo cáo / sửa câu">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${options(q)}</div>${images(q, open)}</div></article>`;
+    return `<article class="libraryV2Card libraryQuestionCard ${open ? 'open' : ''}" data-num="${esc(q.num || '')}" data-stable-index="${i}" style="--card-index:${Math.min(i, 15)}; border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">Câu ${esc(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${hlt(q.question || '')}</div><div class="libraryV2Answer"><b>Đáp án: ${esc(a)}</b><span>${hlt(answerText(q))}</span></div></div>${miniImg(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-stable-study="${i}" title="Học câu này">Học</button>${bmBtnHTML}<button type="button" class="libraryV2Report" data-stable-report="${i}" title="Báo cáo / sửa câu">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${options(q)}</div>${images(q, open)}</div></article>`;
   }
+
+  function showLibrarySkeleton() {
+    const list = $('studyList');
+    if (!list) return;
+    delete list.dataset.renderedHash;
+    list.innerHTML = `
+      <div class="lhSkeletonContainer">
+        <div class="lhSkeletonCard">
+          <div class="lhSkeletonLine title short"></div>
+          <div class="lhSkeletonLine full"></div>
+          <div class="lhSkeletonLine medium"></div>
+        </div>
+        <div class="lhSkeletonCard">
+          <div class="lhSkeletonLine title short"></div>
+          <div class="lhSkeletonLine full"></div>
+          <div class="lhSkeletonLine medium"></div>
+        </div>
+        <div class="lhSkeletonCard">
+          <div class="lhSkeletonLine title short"></div>
+          <div class="lhSkeletonLine full"></div>
+          <div class="lhSkeletonLine medium"></div>
+        </div>
+        <div class="lhSkeletonCard">
+          <div class="lhSkeletonLine title short"></div>
+          <div class="lhSkeletonLine full"></div>
+          <div class="lhSkeletonLine medium"></div>
+        </div>
+      </div>`;
+  }
+  window.showLibrarySkeleton = showLibrarySkeleton;
+
   // Thẻ thư viện KHÔNG có nút xóa: chức năng xóa câu ở app học sinh đã bỏ (20260727).
   // Xóa câu làm ở trang admin. Xem ghi chú "ĐÃ XÓA" tại chỗ 2 block delete cũ.
   function renderUnified() {
@@ -422,9 +453,19 @@ export function installLibrary() {
     renderFilters(base, lastList);
     const list = $('studyList');
     if (!list) return;
-    list.innerHTML = lastList.length
+
+    const newHtml = lastList.length
       ? lastList.map(card).join('')
       : '<div class="libraryStableEmpty"><b>Không có câu phù hợp.</b><button type="button" data-stable-clear-all>Xóa tìm kiếm & bộ lọc</button></div>';
+
+    if (list.dataset.renderedHash === newHtml) {
+      if ($('libStableClear'))
+        $('libStableClear').classList.toggle('show', !!(($('search') || $('studySearch'))?.value || '').trim());
+      return;
+    }
+    list.dataset.renderedHash = newHtml;
+    list.innerHTML = newHtml;
+
     if ($('libStableClear'))
       $('libStableClear').classList.toggle('show', !!(($('search') || $('studySearch'))?.value || '').trim());
   }

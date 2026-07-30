@@ -2605,7 +2605,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "63c73b8" : null;
+  var currentVersion = true ? "0356645" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -2652,7 +2652,10 @@
     const title = opts?.title || "C\xF3 phi\xEAn b\u1EA3n m\u1EDBi";
     const sub = opts?.sub || "C\u1EADp nh\u1EADt \u0111\u1EC3 t\u1EA3i giao di\u1EC7n v\xE0 d\u1EEF li\u1EC7u m\u1EDBi nh\u1EA5t";
     const isAdminNotice = !!opts?.isAdminNotice;
-    if (document.getElementById("lhUpdateBanner")) return;
+    const existingBanner = document.getElementById("lhUpdateBanner");
+    if (existingBanner) {
+      existingBanner.remove();
+    }
     let releaseNotes = null;
     if (!isAdminNotice) {
       try {
@@ -2675,10 +2678,13 @@
       }
     }
     const styleId = "lhUpdateBannerStyles";
-    if (!document.getElementById(styleId)) {
-      const styleEl = document.createElement("style");
+    let styleEl = document.getElementById(styleId);
+    if (!styleEl) {
+      styleEl = document.createElement("style");
       styleEl.id = styleId;
-      styleEl.textContent = `
+      document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = `
       .lh-update-banner {
         position: fixed;
         bottom: 24px;
@@ -2841,8 +2847,6 @@
         }
       }
     `;
-      document.head.appendChild(styleEl);
-    }
     const banner = document.createElement("div");
     banner.id = "lhUpdateBanner";
     banner.className = "lh-update-banner";
@@ -6059,8 +6063,37 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       }
       const open = viewVal() === "full" || libraryOpenNums.has(String(q.num)) || isMatchInDetails || !!rawSearch;
       const bmBtnHTML = typeof window.__getBookmarkBtnHTML === "function" ? window.__getBookmarkBtnHTML(q) : "";
-      return `<article class="libraryV2Card libraryQuestionCard ${open ? "open" : ""}" data-num="${esc2(q.num || "")}" data-stable-index="${i}" style="border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">C\xE2u ${esc2(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${hlt(q.question || "")}</div><div class="libraryV2Answer"><b>\u0110\xE1p \xE1n: ${esc2(a)}</b><span>${hlt(answerText2(q))}</span></div></div>${miniImg(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-stable-study="${i}" title="H\u1ECDc c\xE2u n\xE0y">H\u1ECDc</button>${bmBtnHTML}<button type="button" class="libraryV2Report" data-stable-report="${i}" title="B\xE1o c\xE1o / s\u1EEDa c\xE2u">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${options(q)}</div>${images(q, open)}</div></article>`;
+      return `<article class="libraryV2Card libraryQuestionCard ${open ? "open" : ""}" data-num="${esc2(q.num || "")}" data-stable-index="${i}" style="--card-index:${Math.min(i, 15)}; border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">C\xE2u ${esc2(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${hlt(q.question || "")}</div><div class="libraryV2Answer"><b>\u0110\xE1p \xE1n: ${esc2(a)}</b><span>${hlt(answerText2(q))}</span></div></div>${miniImg(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-stable-study="${i}" title="H\u1ECDc c\xE2u n\xE0y">H\u1ECDc</button>${bmBtnHTML}<button type="button" class="libraryV2Report" data-stable-report="${i}" title="B\xE1o c\xE1o / s\u1EEDa c\xE2u">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${options(q)}</div>${images(q, open)}</div></article>`;
     }
+    function showLibrarySkeleton() {
+      const list = $2("studyList");
+      if (!list) return;
+      delete list.dataset.renderedHash;
+      list.innerHTML = `
+      <div class="lhSkeletonContainer">
+        <div class="lhSkeletonCard">
+          <div class="lhSkeletonLine title short"></div>
+          <div class="lhSkeletonLine full"></div>
+          <div class="lhSkeletonLine medium"></div>
+        </div>
+        <div class="lhSkeletonCard">
+          <div class="lhSkeletonLine title short"></div>
+          <div class="lhSkeletonLine full"></div>
+          <div class="lhSkeletonLine medium"></div>
+        </div>
+        <div class="lhSkeletonCard">
+          <div class="lhSkeletonLine title short"></div>
+          <div class="lhSkeletonLine full"></div>
+          <div class="lhSkeletonLine medium"></div>
+        </div>
+        <div class="lhSkeletonCard">
+          <div class="lhSkeletonLine title short"></div>
+          <div class="lhSkeletonLine full"></div>
+          <div class="lhSkeletonLine medium"></div>
+        </div>
+      </div>`;
+    }
+    window.showLibrarySkeleton = showLibrarySkeleton;
     function renderUnified2() {
       if (typeof window.__LHNormalizeAll === "function") window.__LHNormalizeAll();
       ensureToolbar();
@@ -6069,7 +6102,14 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       renderFilters(base, lastList);
       const list = $2("studyList");
       if (!list) return;
-      list.innerHTML = lastList.length ? lastList.map(card).join("") : '<div class="libraryStableEmpty"><b>Kh\xF4ng c\xF3 c\xE2u ph\xF9 h\u1EE3p.</b><button type="button" data-stable-clear-all>X\xF3a t\xECm ki\u1EBFm & b\u1ED9 l\u1ECDc</button></div>';
+      const newHtml = lastList.length ? lastList.map(card).join("") : '<div class="libraryStableEmpty"><b>Kh\xF4ng c\xF3 c\xE2u ph\xF9 h\u1EE3p.</b><button type="button" data-stable-clear-all>X\xF3a t\xECm ki\u1EBFm & b\u1ED9 l\u1ECDc</button></div>';
+      if (list.dataset.renderedHash === newHtml) {
+        if ($2("libStableClear"))
+          $2("libStableClear").classList.toggle("show", !!(($2("search") || $2("studySearch"))?.value || "").trim());
+        return;
+      }
+      list.dataset.renderedHash = newHtml;
+      list.innerHTML = newHtml;
       if ($2("libStableClear"))
         $2("libStableClear").classList.toggle("show", !!(($2("search") || $2("studySearch"))?.value || "").trim());
     }
@@ -14170,6 +14210,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         }
       }
       if (activeLoadPromises[code]) return activeLoadPromises[code];
+      if (typeof window.showLibrarySkeleton === "function") window.showLibrarySkeleton();
       activeLoadPromises[code] = (async () => {
         try {
           const data = await fetchTursoQuestions(code, force);

@@ -84,7 +84,10 @@ export async function showUpdateNotification(opts) {
   const title = opts?.title || 'Có phiên bản mới';
   const sub = opts?.sub || 'Cập nhật để tải giao diện và dữ liệu mới nhất';
   const isAdminNotice = !!opts?.isAdminNotice;
-  if (document.getElementById('lhUpdateBanner')) return;
+  const existingBanner = document.getElementById('lhUpdateBanner');
+  if (existingBanner) {
+    existingBanner.remove();
+  }
 
   let releaseNotes = null;
   if (!isAdminNotice) {
@@ -109,10 +112,13 @@ export async function showUpdateNotification(opts) {
   }
 
   const styleId = 'lhUpdateBannerStyles';
-  if (!document.getElementById(styleId)) {
-    const styleEl = document.createElement('style');
+  let styleEl = document.getElementById(styleId);
+  if (!styleEl) {
+    styleEl = document.createElement('style');
     styleEl.id = styleId;
-    styleEl.textContent = `
+    document.head.appendChild(styleEl);
+  }
+  styleEl.textContent = `
       .lh-update-banner {
         position: fixed;
         bottom: 24px;
@@ -275,8 +281,6 @@ export async function showUpdateNotification(opts) {
         }
       }
     `;
-    document.head.appendChild(styleEl);
-  }
 
   const banner = document.createElement('div');
   banner.id = 'lhUpdateBanner';

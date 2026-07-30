@@ -88,7 +88,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "63c73b8" : null;
+  var currentVersion = true ? "0356645" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -128,7 +128,10 @@
     const title = opts?.title || "C\xF3 phi\xEAn b\u1EA3n m\u1EDBi";
     const sub = opts?.sub || "C\u1EADp nh\u1EADt \u0111\u1EC3 t\u1EA3i giao di\u1EC7n v\xE0 d\u1EEF li\u1EC7u m\u1EDBi nh\u1EA5t";
     const isAdminNotice = !!opts?.isAdminNotice;
-    if (document.getElementById("lhUpdateBanner")) return;
+    const existingBanner = document.getElementById("lhUpdateBanner");
+    if (existingBanner) {
+      existingBanner.remove();
+    }
     let releaseNotes = null;
     if (!isAdminNotice) {
       try {
@@ -151,10 +154,13 @@
       }
     }
     const styleId = "lhUpdateBannerStyles";
-    if (!document.getElementById(styleId)) {
-      const styleEl = document.createElement("style");
+    let styleEl = document.getElementById(styleId);
+    if (!styleEl) {
+      styleEl = document.createElement("style");
       styleEl.id = styleId;
-      styleEl.textContent = `
+      document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = `
       .lh-update-banner {
         position: fixed;
         bottom: 24px;
@@ -317,8 +323,6 @@
         }
       }
     `;
-      document.head.appendChild(styleEl);
-    }
     const banner = document.createElement("div");
     banner.id = "lhUpdateBanner";
     banner.className = "lh-update-banner";

@@ -8198,6 +8198,7 @@ installLibrary();
       }
     }
     if (activeLoadPromises[code]) return activeLoadPromises[code];
+    if (typeof window.showLibrarySkeleton === 'function') window.showLibrarySkeleton();
     activeLoadPromises[code] = (async () => {
       try {
         const data = await fetchTursoQuestions(code, force);
