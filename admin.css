@@ -815,6 +815,7 @@ pre.raw::-webkit-scrollbar-track,
   max-width: 980px !important;
   display: -webkit-box !important;
   -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
   -webkit-box-orient: vertical !important;
   overflow: hidden !important;
 }
@@ -1372,6 +1373,7 @@ pre.raw::-webkit-scrollbar-track,
     white-space: normal !important;
     display: -webkit-box !important;
     -webkit-line-clamp: 2 !important;
+    line-clamp: 2 !important;
     -webkit-box-orient: vertical !important;
   }
 
@@ -1637,6 +1639,7 @@ pre.raw::-webkit-scrollbar-track,
   line-height: 1.42 !important;
   display: -webkit-box !important;
   -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
   -webkit-box-orient: vertical !important;
   overflow: hidden !important;
 }
@@ -1733,6 +1736,7 @@ pre.raw::-webkit-scrollbar-track,
 
   .historyQuestionText {
     -webkit-line-clamp: 3 !important;
+    line-clamp: 3 !important;
   }
 
   .lastActivity {
@@ -2491,6 +2495,7 @@ body {
   font-size: .80rem !important;
   color: rgba(245, 240, 232, .66) !important;
   -webkit-line-clamp: 1 !important;
+  line-clamp: 1 !important;
 }
 
 #requestList .head .muted,
@@ -2560,6 +2565,7 @@ body {
   #requestList .historyQuestionText,
   #recentRequests .historyQuestionText {
     -webkit-line-clamp: 2 !important;
+    line-clamp: 2 !important;
   }
 }
 
@@ -2784,6 +2790,7 @@ body {
   line-height: 1.25 !important;
   display: -webkit-box !important;
   -webkit-line-clamp: 1 !important;
+  line-clamp: 1 !important;
   -webkit-box-orient: vertical !important;
   overflow: hidden !important;
 }
@@ -4307,6 +4314,7 @@ body:not(.role-admin) [data-admin-only="true"] {
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   -webkit-line-clamp: unset !important;
+  line-clamp: unset !important;
   -webkit-box-orient: unset !important;
 }
 

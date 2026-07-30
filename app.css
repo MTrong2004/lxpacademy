@@ -3494,6 +3494,7 @@ body.has-subject-gate .content {
   line-height: 1.38 !important;
   display: -webkit-box !important;
   -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
   -webkit-box-orient: vertical !important;
   overflow: hidden !important;
   min-height: 0 !important
@@ -5004,7 +5005,6 @@ label,
 .edit,
 .modalX {
   -webkit-tap-highlight-color: transparent !important;
-  tap-highlight-color: transparent !important;
   touch-action: manipulation;
   outline-color: transparent !important
 }
@@ -6131,6 +6131,7 @@ select {
   color: rgba(245, 240, 232, .84) !important;
   display: -webkit-box !important;
   -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
   -webkit-box-orient: vertical !important;
   overflow: hidden !important
 }
@@ -6149,6 +6150,7 @@ select {
 .sitem:focus-within .sq {
   display: block !important;
   -webkit-line-clamp: unset !important;
+  line-clamp: unset !important;
   overflow: visible !important
 }
 
@@ -6606,6 +6608,7 @@ mark.searchMark {
 #study .sitem.autoOpenAnswer .sq {
   display: block !important;
   -webkit-line-clamp: unset !important;
+  line-clamp: unset !important;
   overflow: visible !important;
   white-space: normal !important
 }
@@ -6764,6 +6767,7 @@ mark.searchMark {
   text-shadow: none !important;
   display: -webkit-box !important;
   -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
   -webkit-box-orient: vertical !important;
   overflow: hidden !important;
   white-space: normal !important;
@@ -6868,6 +6872,7 @@ mark.searchMark {
   .sq,
   .compactQuestionText {
     -webkit-line-clamp: 3 !important;
+    line-clamp: 3 !important;
     font-size: .96rem !important;
     line-height: 1.32 !important
   }
@@ -8714,6 +8719,7 @@ body.add-question-modal-open #addQuestionFab::after {
   display: -webkit-box !important;
   -webkit-box-orient: vertical !important;
   -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
   width: 100% !important;
   min-width: 0 !important;
   min-height: 36px !important;
@@ -8981,6 +8987,7 @@ body.add-question-modal-open #addQuestionFab::after {
   display: -webkit-box !important;
   -webkit-box-orient: vertical !important;
   -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
   overflow: hidden !important;
   min-width: 0 !important;
   min-height: 36px !important;
@@ -9144,6 +9151,7 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
   .subjectCardDesc,
   .subjectFolderNames {
     -webkit-line-clamp: 3 !important;
+    line-clamp: 3 !important;
     min-height: 52px !important;
     max-height: 56px !important
   }
@@ -13000,7 +13008,8 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
   .compactQuestionText {
     font-size: .90rem !important;
     line-height: 1.32 !important;
-    -webkit-line-clamp: 2 !important
+    -webkit-line-clamp: 2 !important;
+    line-clamp: 2 !important
   }
 
   .compactCardRight {
@@ -13176,6 +13185,7 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
   font-weight: 620 !important;
   display: -webkit-box !important;
   -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
   -webkit-box-orient: vertical !important;
   overflow: hidden !important
 }
@@ -13291,6 +13301,7 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
 
 .libraryV2Card.open .libraryV2Question {
   -webkit-line-clamp: unset !important;
+  line-clamp: unset !important;
   display: block !important
 }
 
@@ -13355,7 +13366,8 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
 
   .libraryV2Question {
     font-size: .94rem !important;
-    -webkit-line-clamp: 3 !important
+    -webkit-line-clamp: 3 !important;
+    line-clamp: 3 !important
   }
 
   .libraryV2Answer {
@@ -13367,11 +13379,13 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
     white-space: normal !important;
     display: -webkit-box !important;
     -webkit-line-clamp: 1 !important;
+    line-clamp: 1 !important;
     -webkit-box-orient: vertical !important
   }
 
   .libraryV2Card.open .libraryV2Answer span {
-    -webkit-line-clamp: unset !important
+    -webkit-line-clamp: unset !important;
+    line-clamp: unset !important
   }
 
   .libraryV2Actions button {
@@ -15357,6 +15371,7 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
   position: static !important;
   display: -webkit-box !important;
   -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
   -webkit-box-orient: vertical !important;
   flex: 1 1 auto !important;
   height: auto !important;
@@ -15803,6 +15818,7 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
   margin-bottom: 7px !important;
   display: -webkit-box !important;
   -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
   -webkit-box-orient: vertical !important;
   overflow: hidden !important
 }
@@ -15966,7 +15982,8 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
     font-size: .76rem !important;
     line-height: 1.25 !important;
     margin-bottom: 5px !important;
-    -webkit-line-clamp: 1 !important
+    -webkit-line-clamp: 1 !important;
+    line-clamp: 1 !important
   }
 
   #quiz .examActiveSubjectMeta {
@@ -16001,7 +16018,8 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
   #quiz .examSubjectChipDesc {
     font-size: .74rem !important;
     line-height: 1.2 !important;
-    -webkit-line-clamp: 1 !important
+    -webkit-line-clamp: 1 !important;
+    line-clamp: 1 !important
   }
 
   #quiz .examSubjectChipCount {
@@ -16068,7 +16086,8 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
   }
 
   #quiz .examSubjectChipDesc {
-    -webkit-line-clamp: 1 !important
+    -webkit-line-clamp: 1 !important;
+    line-clamp: 1 !important
   }
 
   #quiz .examOnlyCountGrid .cnt,
@@ -16531,6 +16550,7 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
     font-weight: 900 !important;
     background: linear-gradient(135deg, #ffffff 30%, var(--gold2)) !important;
     -webkit-background-clip: text !important;
+    background-clip: text !important;
     -webkit-text-fill-color: transparent !important
   }
 
@@ -16634,6 +16654,7 @@ body:not(.hod-is-admin-final) #adminModal:not(.hidden) {
     white-space: normal !important;
     text-overflow: clip !important;
     -webkit-line-clamp: unset !important;
+    line-clamp: unset !important;
     overflow-wrap: anywhere !important;
     word-break: normal !important
   }
