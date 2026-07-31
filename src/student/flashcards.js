@@ -1,54 +1,26 @@
 /**
- * Student Flashcards Module
+ * Flashcard: hiệu ứng hạt nền + nút "Báo cáo đã gửi" + điều hướng trên điện thoại —
+ * tách khỏi appCore ngày 20260731.
+ *
+ * Ba block nguyên văn từ appCore (cũ 2455–3144): FINAL_FLOATING_PARTICLES_CANVAS_20260613,
+ * FINAL_REPORT_BUTTON_OPEN_TAB_20260613, MOBILE_FLASHCARD_NAVIGATION_20260702. Đây là bản
+ * ĐANG CHẠY — bản cũ trong appCore đã xóa, chỉ còn ba lời gọi install*() đúng chỗ ba block
+ * cũ đứng (thứ tự chạy phải giữ nguyên, xem docs/SPLIT_PLAN.md mục 2).
+ *
+ * Chỉ đổi những chỗ BUỘC phải đổi vì sang file khác — mọi chú thích gốc giữ nguyên:
+ *
+ * - `$` -> khai báo lại tại chỗ (appCore có `const $` riêng ở tầng module).
+ * - `prev` / `next` -> `window.prev` / `window.next`. Hai hàm này bị
+ *   FINAL_IMAGE_NO_FLICKER_HARD_FIX_20260628 bọc thêm một lớp (preload ảnh câu kế); block đó
+ *   gán CẢ binding lẫn window nên bản ở window là bản đủ lớp. Viết rõ `window.` cho khỏi
+ *   hiểu nhầm là đang đọc binding của appCore — đọc trần ở đây KHÔNG thấy binding đó.
  */
+import { lhWarn } from '../core/log.js';
 
-export function shuffleQuestions(array) {
-  const list = [...(array || [])];
-  for (let i = list.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [list[i], list[j]] = [list[j], list[i]];
-  }
-  return list;
-}
+const $ = id => document.getElementById(id);
 
-export function formatFlashcardFront(questionItem) {
-  if (!questionItem) return '';
-  return {
-    num: questionItem.num,
-    question: questionItem.question || '',
-    options: questionItem.options || {},
-    hasImages: Array.isArray(questionItem.images) && questionItem.images.length > 0,
-  };
-}
-
-export function formatFlashcardBack(questionItem) {
-  if (!questionItem) return '';
-  const answer = String(questionItem.answer || '').trim();
-  const options = questionItem.options || {};
-  const optionText = options[answer] || '';
-  const fullAnswerText = questionItem.answer_text || (optionText ? `${answer}. ${optionText}` : answer);
-
-  return {
-    answer,
-    fullAnswerText,
-  };
-}
-
-
-// Exported installation functions for appCore integration
-export function installFloatingParticles() {
 // ===== FINAL_FLOATING_PARTICLES_CANVAS_20260613 =====
-if (typeof finalAnswerText !== 'function') {
-  function finalAnswerText(c) {
-    const raw = String(c?.answer_text ?? '').trim();
-    const ans = String(c?.answer ?? '')
-      .trim()
-      .toUpperCase();
-    if (!raw || raw.toUpperCase() === ans || /^[A-E]+$/i.test(raw)) return answerText(c);
-    return raw;
-  }
-}
-(function () {
+export function installFloatingParticles() {
   let canvas,
     ctx,
     w = 0,
@@ -201,24 +173,11 @@ if (typeof finalAnswerText !== 'function') {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
   window.addEventListener('resize', resizeDebounced, { passive: true });
-})();
-/*
-  ===== IIFE "lưu trực tiếp" cũ trong FINAL_FLOATING_PARTICLES_CANVAS_20260613 — ĐÃ XÓA (20260727) =====
-  171 dòng. Block này lẽ ra chỉ vẽ hạt nền (canvas), nhưng có một IIFE thứ hai vá luồng
-  sửa câu hỏi: bọc saveEditor để admin/editor "lưu trực tiếp", bọc openEditor để đổi chữ
-  nút. Cả hai lớp chết vì apply() của LIBRARY_FILTER_AND_EDIT_PREVIEW_LAYOUT ghi đè ở mốc
-  900ms, và mọi thứ nó chạm (#editQuestion, #editAnswer, #editTitle, #saveEdit,
-  #restoreEdit) đều bị openEditPreview xóa khỏi DOM khi dựng lại #editModal.
-  Không mất hành vi: saveEditPreview lo "lưu trực tiếp" cho admin/editor.
-*/
-
-
 }
 
-export function installReportButtonOpenTab() {
 // ===== FINAL_REPORT_BUTTON_OPEN_TAB_20260613 =====
 // Thay khu vực "Báo cáo đã gửi" trong menu tài khoản thành nút bấm mở tab/modal xem báo cáo.
-(function () {
+export function installReportButtonOpenTab() {
   const $ = id => document.getElementById(id);
   const esc = s =>
     String(s ?? '').replace(
@@ -336,12 +295,8 @@ export function installReportButtonOpenTab() {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
   setInterval(ensureReportButton, 700);
-})();
-
-
 }
 
-export function installMobileFlashcardNavigation() {
 // ===== MOBILE_FLASHCARD_NAVIGATION_20260702 (viết lại) =====
 // Mobile: nút chuyển câu và vuốt trái/phải để đổi flashcard.
 //
@@ -354,15 +309,15 @@ export function installMobileFlashcardNavigation() {
 // Cách sửa: bọc #card trong 1 wrapper riêng (#cardSlideWrap) CHỈ lo việc trượt
 // (translateX). #card bên trong vẫn tự lo việc lật (rotateY) như cũ, không đụng
 // nhau nên không còn xung đột !important nữa.
-(function () {
+export function installMobileFlashcardNavigation() {
   function $(id) {
     return document.getElementById(id);
   }
   function goPrev() {
-    if (typeof prev === 'function') prev();
+    if (typeof window.prev === 'function') window.prev();
   }
   function goNext() {
-    if (typeof next === 'function') next();
+    if (typeof window.next === 'function') window.next();
   }
   const isMobile = () => window.matchMedia('(max-width:760px)').matches;
 
@@ -746,7 +701,4 @@ export function installMobileFlashcardNavigation() {
   else boot();
   setTimeout(boot, 300);
   setTimeout(boot, 1000);
-})();
-
-
 }

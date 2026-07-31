@@ -32,14 +32,19 @@ bắt buộc — mỗi bước dưới đây loại bỏ một nhóm nguyên nh�
 - `catch` phải có `lhWarn('TÊN_BLOCK', e)`.
 - Ghi dữ liệu thì qua `POST /api/admin-action`, không ghi thẳng Supabase.
 
-## 4. Kiểm tra — chạy đủ bốn lệnh
+## 4. Kiểm tra — chạy đủ sáu lệnh
 
 ```
 npm run build
 npm run format
 npm run check:catch
 npm run check:overrides
+npm run check:installs
+npm run check:globals
 ```
+
+`check:globals` bắt lớp lỗi mà 5 lệnh kia KHÔNG thấy: gọi `foo()` của file khác trong khi
+không nơi nào gán `window.foo` — build vẫn xanh, chỉ vỡ lúc bấm nút.
 
 `check:overrides` báo đỏ nghĩa là đã vô tình thêm một lớp ghi đè mới — quay lại bước 3 và
 sửa vào bản đang chạy thay vì thêm lớp. Nếu thêm/xóa block thì chạy thêm `npm run map`.

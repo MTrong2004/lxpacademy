@@ -1,6 +1,8 @@
 import { db, json } from '../lib/db.js';
 import { getAdminEmail, clearProfileCache, loadProfileRow, isTruthyFlag, isRootAdmin } from '../lib/auth.js';
 import { postDiscordEmbed, postServerErrorEmbed } from '../lib/discord.js';
+// DEVICE_ID_AND_SUBJECT_PER_DEVICE_20260731 — hình dạng bản ghi + lý do, xem file đó.
+import { safeDeviceId, touchDeviceHistory } from '../lib/deviceHistory.js';
 
 function detectDeviceInfo(req, bodyDevice) {
   if (bodyDevice && typeof bodyDevice === 'string' && bodyDevice.trim()) {
@@ -136,7 +138,7 @@ export async function handleProfile(req, authUser) {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const { full_name, avatar_url, current_subject, device_info } = body;
+    const { full_name, avatar_url, current_subject, device_info, device_id } = body;
     const id = authUser.id;
     const email = authUser.email || String(body.email || '').toLowerCase().trim();
     if (!id || !email) {
@@ -184,6 +186,7 @@ export async function handleProfile(req, authUser) {
     const isAdminUser = (!!adminEmail && trimmedEmail === adminEmail) || trimmedEmail === 'trongbm2004@gmail.com';
 
     const device = detectDeviceInfo(req, device_info);
+    const deviceId = safeDeviceId(device_id);
     /*
       KEEP_CURRENT_SUBJECT_20260726
       Bug cũ: điều kiện chỉ loại undefined/null, nên chuỗi RỖNG vẫn tính là "có gửi môn"
@@ -270,28 +273,18 @@ export async function handleProfile(req, authUser) {
       if (deviceHistory.length === 0 && existingRow.device_info) {
         deviceHistory.push({
           device: existingRow.device_info,
+          code: existingRow.current_subject || null,
           time: existingRow.last_activity || existingRow.last_login || existingRow.created_at || now
         });
       }
 
-      const existingIndex = deviceHistory.findIndex(x => x && x.device === device);
-      if (existingIndex >= 0) {
-        const item = deviceHistory.splice(existingIndex, 1)[0];
-        item.time = now;
-        deviceHistory.unshift(item);
-      } else {
-        deviceHistory.unshift({ device: device, time: now });
-      }
-
-      const uniqueHistory = [];
-      const seenDevices = new Set();
-      for (const item of deviceHistory) {
-        if (item && item.device && !seenDevices.has(item.device)) {
-          seenDevices.add(item.device);
-          uniqueHistory.push(item);
-        }
-      }
-      deviceHistory = uniqueHistory.slice(0, 30);
+      // DEVICE_ID_AND_SUBJECT_PER_DEVICE_20260731
+      deviceHistory = touchDeviceHistory(deviceHistory, {
+        id: deviceId,
+        device,
+        code: hasSubjectInBody ? subject : null,
+        time: now
+      });
       const deviceHistoryStr = JSON.stringify(deviceHistory);
 
       const finalSubject = hasSubjectInBody ? subject : (existingRow.current_subject || null);
@@ -352,7 +345,9 @@ export async function handleProfile(req, authUser) {
       const isRoot = isRootAdmin(id, trimmedEmail) || isAdminUser;
       const role = isRoot ? 'admin' : 'user';
       const approved = (isRoot || regMode === 'open') ? 1 : 0;
-      const initialDeviceHistory = JSON.stringify([{ device: device, time: now }]);
+      const initialDeviceHistory = JSON.stringify([
+        { id: deviceId, device: device, code: subject || null, time: now }
+      ]);
 
       await db.execute({
         sql: `insert into profiles (id, email, full_name, avatar_url, role, approved, blocked, last_login, last_activity, current_subject, device_info, device_history, created_at)

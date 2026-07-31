@@ -2,17 +2,61 @@
  * Admin User Management (SaaS 4-Column Layout)
  */
 
+/*
+  DEVICE_ID_AND_SUBJECT_PER_DEVICE_20260731
+  Bản ghi thiết bị: { id, device, code, time } — xem api/controllers/profile.js.
+  Dòng cũ chỉ có { device, time }; ai chưa đăng nhập lại từ 20260731 thì `id` và
+  `code` rỗng, giao diện hiện "Thiết bị cũ" / "Chưa rõ môn" thay vì bịa số liệu.
+  Hàm này là chỗ DUY NHẤT đọc device_history: cả hàng danh sách lẫn hai modal
+  trong adminCore đều gọi nó (bridge `window.parseDeviceHistory` ở main.js).
+*/
+export function parseDeviceHistory(p) {
+  if (!p) return [];
+  let list = [];
+  try {
+    if (typeof p.device_history === 'string' && p.device_history) list = JSON.parse(p.device_history);
+    else if (Array.isArray(p.device_history)) list = p.device_history;
+  } catch (e) {
+    list = [];
+  }
+  if (!Array.isArray(list)) list = [];
+  list = list.filter(x => x && typeof x === 'object');
+  if (!list.length && p.device_info) {
+    list = [
+      {
+        device: p.device_info,
+        code: p.current_subject || '',
+        time: p.last_activity || p.last_login || p.created_at || '',
+      },
+    ];
+  }
+  return list.map(x => ({
+    id: String(x.id || ''),
+    device: String(x.device || 'Chưa rõ'),
+    code: String(x.code || ''),
+    time: String(x.time || ''),
+  }));
+}
+
 export function renderUserRowSaaS(p, helpers) {
   const { actText, actTime, date, isBlocked, badge, roleBadgeFinal, avatarButton, esc } = helpers;
   const activeText = actText(p);
   const activeClass = activeText === 'Đang hoạt động' ? 'activityNow' : '';
 
+  /*
+    Cột này từng chỉ in `current_subject` — mà đó là MÔN CỦA LẦN GHI CUỐI CÙNG,
+    không phải "đang học". Điện thoại mở môn khác (hoặc chỉ F5) là ghi đè máy
+    tính. Nay chip cho biết còn N thiết bị đang ở môn khác và bấm vào xem được,
+    giống hệt chip thiết bị bên cạnh.
+  */
+  const devices = parseDeviceHistory(p);
+  const otherSubjectCount = devices.filter(d => d.code && d.code !== (p.current_subject || '')).length;
   const subjectTag = p.current_subject
-    ? `<span class="saasSubjectChip">${esc(p.current_subject)}</span>`
+    ? `<button class="saasSubjectChip saasSubjectBtn" type="button" title="Xem môn đang học theo từng thiết bị" onclick="showUserSubjectByDeviceModal('${esc(p.id)}')">${esc(p.current_subject)}${otherSubjectCount ? `<span class="saasChipMore">+${otherSubjectCount}</span>` : ''}</button>`
     : `<span class="saasMutedChip">Chưa chọn môn</span>`;
 
   const deviceTag = p.device_info
-    ? `<button class="saasDeviceChip saasDeviceBtn" type="button" title="Xem lịch sử thiết bị" onclick="showUserDeviceHistoryModal('${esc(p.id)}')">${esc(p.device_info)}</button>`
+    ? `<button class="saasDeviceChip saasDeviceBtn" type="button" title="Xem lịch sử thiết bị" onclick="showUserDeviceHistoryModal('${esc(p.id)}')">${esc(p.device_info)}${devices.length > 1 ? `<span class="saasChipMore">+${devices.length - 1}</span>` : ''}</button>`
     : `<span class="saasMutedChip">Chưa rõ</span>`;
 
   const statusBadge = isBlocked(p)

@@ -1,6 +1,17 @@
 import { installSubjectDataLoader, installActiveSubjectCountSync, installAppStartupAutoLoad } from './subjects.js';
 import { installSmartSearch, installAddQuestionDisplay } from './search.js';
 import { installHODSupabaseAndAvatar, installUnifiedFetchAndAccess } from './auth.js';
+import { installBookmarks, installHeaderBell } from './bookmarks.js';
+import {
+  installFloatingParticles,
+  installReportButtonOpenTab,
+  installMobileFlashcardNavigation,
+} from './flashcards.js';
+import {
+  installAddSubjectFeature,
+  installImportPreviewInlineEdit,
+  installFastParallelUpload,
+} from './subjectImport.js';
 import { LHState, initState } from './state.js';
 /* AI_JS_MAP_START
 Mục đích: Bản đồ nhanh cho AI đọc app.js, tránh sửa nhầm và tránh vá chồng. Không ảnh hưởng chức năng web.
@@ -337,13 +348,41 @@ window.hideProgress = hideProgress;
 // State dùng chung đã chuyển sang ./state.js (xem docs/SPLIT_PLAN.md bước 1).
 // Mọi chỗ dùng là LHState.<tên>; các file tính năng tách sau này import cùng object này.
 initState(BASE);
-function rebuild() {
+/**
+ * REBUILD_DEAD_LOCAL_20260731 — ĐỔI TÊN, đừng đặt lại thành `rebuild`.
+ *
+ * Hàm này dựng `LHState.RAW` từ `BASE` + `edits` (bản sửa để trong localStorage). Từ khi dữ
+ * liệu chỉ lấy ở Turso thì `BASE` luôn là `[]`, nên nó chỉ còn tác dụng đúng một lần: gieo
+ * state rỗng lúc nạp file. Bản đang chạy của cái tên `rebuild` là `window.rebuild` của block
+ * PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY (~1310) — cũng đặt RAW = [].
+ *
+ * Trước đây nó tên `rebuild`, nên BA chỗ gọi trần `rebuild()` bên dưới (restoreEditor,
+ * importEditsFile, clearEdits) đều rơi vào ĐÂY và **xoá trắng thư viện thành "0 / 0 câu"**.
+ * Cả hai bản đều làm RAW rỗng, nên đổi sang `window.rebuild?.()` KHÔNG chữa được — ba chỗ đó
+ * nay tải lại từ Turso.
+ */
+function seedStateFromBase() {
   LHState.RAW = BASE.map(c => Object.assign(clone(c), edits[c.num] || {}));
   LHState.pool = LHState.pool.length
     ? LHState.pool.map(o => LHState.RAW.find(c => c.num === o.num) || o)
     : [...LHState.RAW];
 }
-rebuild();
+seedStateFromBase();
+/**
+ * Dựng lại danh sách câu sau khi đụng vào `edits` (khôi phục / nhập / xoá bản sửa local).
+ * Nguồn thật là Turso nên phải TẢI LẠI, không dựng từ `BASE`.
+ */
+async function reloadAfterLocalEditChange(tag) {
+  try {
+    if (typeof window.loadCurrentSubjectOnly === 'function') {
+      await window.loadCurrentSubjectOnly(true);
+      return;
+    }
+  } catch (e) {
+    lhWarn(tag, e);
+  }
+  renderAllSafe();
+}
 const $ = id => document.getElementById(id);
 // `esc` đã chuyển sang ./format.js (import ở đầu file) để ./images.js dùng chung.
 // sortAns / answerText / finalAnswerText đã chuyển sang ./format.js (import ở đầu file)
@@ -367,17 +406,24 @@ function imgsHTML(c) {
   if (typeof raw === 'string') {
     const s = raw.trim();
     if ((s.startsWith('[') && s.endsWith(']')) || (s.startsWith('{') && s.endsWith('}'))) {
-      try { raw = JSON.parse(s); } catch (e) { raw = [s]; }
+      try {
+        raw = JSON.parse(s);
+      } catch (e) {
+        raw = [s];
+      }
     } else if (s) raw = [s];
     else raw = [];
   }
   if (!Array.isArray(raw)) raw = [raw];
-  return raw.map(im => {
-    if (!im) return '';
-    const src = typeof im === 'string' ? im : im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '';
-    if (!src || String(src).startsWith('data:image/')) return '';
-    return `<img src="${esc(src)}" alt="" loading="lazy" decoding="async">`;
-  }).join('');
+  return raw
+    .map(im => {
+      if (!im) return '';
+      const src =
+        typeof im === 'string' ? im : im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '';
+      if (!src || String(src).startsWith('data:image/')) return '';
+      return `<img src="${esc(src)}" alt="" loading="lazy" decoding="async">`;
+    })
+    .join('');
 }
 function setv(k, v) {
   document.documentElement.style.setProperty(k, v);
@@ -434,7 +480,7 @@ function renderAllSafe() {
 }
 window.renderAllSafe = renderAllSafe;
 // ===== FIX_LIBRARY_STALE_AFTER_SUBJECT_CHANGE_20260727 END =====
-function renderCard() {
+function renderCardBase() {
   let c = LHState.pool[LHState.ci] || LHState.RAW[0];
   if (!c) return;
   fit(c);
@@ -452,7 +498,7 @@ function renderCard() {
   const __imgEl = $('images');
   if (__imgEl) {
     const __imgHtml = imgsHTML(c);
-    const __hasImg = !!(__imgHtml.trim());
+    const __hasImg = !!__imgHtml.trim();
     __imgEl.innerHTML = __imgHtml;
     __imgEl.style.display = __hasImg ? 'flex' : 'none';
     document.querySelector('#fc .front')?.classList.toggle('hasImg', __hasImg);
@@ -473,6 +519,33 @@ function renderCard() {
   localStorage.setItem('hod102_ci', LHState.ci);
   if (_sc) localStorage.setItem('learninghub_progress_' + _sc, LHState.ci);
   localStorage.setItem('hod102_flip_mode', LHState.flipMode);
+}
+/*
+  RENDER_CARD_WINDOW_BRIDGE_20260731
+
+  `renderCard` bị xếp lớp Ở FILE KHÁC (subjects.js: 3 lớp — lazy ảnh của
+  FINAL_URL_ONLY_IMAGES_AND_CURRENT_RELOAD_20260628 và đồng bộ số câu của
+  ACTIVE_SUBJECT_COUNT_SYNC_20260629). Hồi còn một file, chúng gán thẳng vào binding
+  `renderCard` nên 16 chỗ gọi trong appCore đều nhận đủ chuỗi lớp. Tách file xong thì
+  module ES không cho gán chéo: `renderCard` trong subjects.js là BIẾN TOÀN CỤC
+  (window.renderCard) — mà appCore chưa từng phơi tên này ra window, nên
+  `typeof renderCard === 'function'` ở đó trả false và CẢ BA lớp đều không được cài,
+  đồng thời `window.renderCard` không bao giờ tồn tại → 6 chỗ gọi `window.renderCard?.()`
+  (editor.js, images.js, library.js, subjectGate.js) thành no-op im lặng. Triệu chứng:
+  thêm/xóa ảnh trong form sửa xong thẻ Flashcard KHÔNG vẽ lại, phải lật thẻ hoặc qua câu
+  khác rồi quay lại mới thấy.
+
+  Cách nối lại: bản THẬT đặt tên `renderCardBase` và phơi ra `window.renderCard` ngay tại
+  đây (trước installSubjectDataLoader() ~3582 và installActiveSubjectCountSync() ~4018 —
+  đúng chỗ các lớp cũ đứng). `renderCard` giữ nguyên tên nhưng chỉ còn là hàm CHUYỂN TIẾP
+  đọc `window.renderCard` LÚC GỌI, giống cách renderQuiz/renderStudy/openEditor đang làm.
+  Nhờ vậy cả lời gọi trong appCore lẫn lời gọi từ module khác đều đi qua cùng một chuỗi lớp.
+  Lớp cuối (COPILOT_KEEP_IMPORT_QUESTION_ATTRIBUTES_20260629 ~4222) cũng phải bọc
+  window.renderCard, đừng bọc lại binding này.
+*/
+window.renderCard = renderCardBase;
+function renderCard() {
+  return (window.renderCard || renderCardBase).apply(this, arguments);
 }
 function flip(dir = 'horizontal') {
   LHState.flipDir = dir;
@@ -558,6 +631,9 @@ function switchTab(n, b) {
     }
   if (typeof window.fixCounter === 'function') window.fixCounter();
 }
+// Phơi ra window cho ./bookmarks.js (chuông thông báo bấm vào một yêu cầu sửa thì nhảy
+// sang tab Thư viện). KHÔNG ai bọc thêm lớp cho switchTab nên chỉ cần gán thẳng.
+window.switchTab = switchTab;
 // `sample()` chuyển sang ./exam.js (chỉ bài kiểm tra gọi), `fmt()` sang ./format.js.
 function startTimer() {
   clearInterval(LHState.timerInt);
@@ -751,16 +827,16 @@ function saveLocalEdit(num, patch) {
   localStorage.setItem(STORE, JSON.stringify(edits));
 }
 window.__LHSaveLocalEdit = saveLocalEdit;
-function restoreEditor() {
+async function restoreEditor() {
   delete edits[LHState.editDraft.num];
   localStorage.setItem(STORE, JSON.stringify(edits));
-  rebuild();
-  syncQuizSet();
-  renderCard();
-  renderQuiz();
-  renderStudy();
   $('editModal').classList.add('hidden');
   notify('Đã khôi phục');
+  // REBUILD_DEAD_LOCAL_20260731: trước đây gọi `rebuild()` -> rơi vào hàm local dựng RAW từ
+  // `BASE` (rỗng) nên bấm "Khôi phục" là thư viện về "0 / 0 câu". Bản gốc của câu nằm ở
+  // Turso, nên khôi phục = tải lại, không phải dựng lại từ localStorage.
+  await reloadAfterLocalEditChange('RESTORE_EDITOR');
+  syncQuizSet();
 }
 // Phơi ra window cho ./editor.js (nút "Khôi phục" trong editor gọi hàm này) và cho
 // `notify`. Tên có tiền tố __LH để check:overrides không tưởng là thêm lớp ghi đè cho
@@ -782,10 +858,9 @@ function importEditsFile(f) {
     try {
       edits = JSON.parse(fr.result) || {};
       localStorage.setItem(STORE, JSON.stringify(edits));
-      rebuild();
-      renderCard();
-      renderQuiz();
-      renderStudy();
+      // REBUILD_DEAD_LOCAL_20260731: xem chú thích ở seedStateFromBase — `rebuild()` cũ xoá
+      // trắng danh sách câu.
+      reloadAfterLocalEditChange('IMPORT_EDITS_FILE');
       notify('Đã nhập file sửa');
     } catch (e) {
       alert('File JSON không hợp lệ');
@@ -814,7 +889,7 @@ function applyCardFontSize() {
   if ($('stCardFont')) $('stCardFont').value = Math.round(n * 100);
   if ($('stCardFontState')) $('stCardFontState').textContent = Math.round(n * 100) + '%';
 }
-function updateCardTools() {
+function updateCardToolsBase() {
   LHState.hideOptions = false;
   try {
     localStorage.removeItem('hod102_hide_options');
@@ -828,6 +903,17 @@ function updateCardTools() {
     sh.title = 'Xáo ngẫu nhiên';
   }
   if (eye) eye.remove();
+}
+/*
+  Cùng khuôn với RENDER_CARD_WINDOW_BRIDGE_20260731 (xem chú thích ở renderCardBase):
+  `updateCardTools` bị BOOKMARK_QUESTIONS_FEATURE_20260726 bọc thêm một lớp (vẽ nút 🔖 lên
+  thẻ). Block đó đã dọn sang ./bookmarks.js, mà module khác không gán được vào binding của
+  appCore — nên bản THẬT phải nằm ở `window.updateCardTools`, còn tên này chỉ là hàm CHUYỂN
+  TIẾP đọc window lúc gọi. Bọc thêm lớp thì bọc `window.updateCardTools`, đừng bọc binding.
+*/
+window.updateCardTools = updateCardToolsBase;
+function updateCardTools() {
+  return (window.updateCardTools || updateCardToolsBase).apply(this, arguments);
 }
 function setupGlobalHeader() {
   let top = document.querySelector('#fc .top');
@@ -1083,8 +1169,8 @@ function init() {
     if (confirm('Xóa tất cả chỉnh sửa đã lưu?')) {
       edits = {};
       localStorage.removeItem(STORE);
-      rebuild();
-      renderCard();
+      // REBUILD_DEAD_LOCAL_20260731: xem chú thích ở seedStateFromBase.
+      reloadAfterLocalEditChange('CLEAR_EDITS');
       notify('Đã xóa tất cả sửa');
     }
   };
@@ -1142,1069 +1228,8 @@ installSubjectGate();
 // ===== LEARNING HUB MERGED SUBJECT PATCH END =====
 
 // ===== ADD_SUBJECT_FEATURE_20260625 (UPGRADED TAB UX/UI) =====
-(function () {
-  const HUB_URL = window.APP_CONFIG?.SUPABASE_URL || '';
-  const HUB_KEY = window.APP_CONFIG?.SUPABASE_ANON_KEY || '';
-  const $ = id => document.getElementById(id);
-  let supa = null;
-  function client() {
-    if (!window.supabase) return null;
-    if (!supa) supa = window.supabase.createClient(HUB_URL, HUB_KEY);
-    return supa;
-  }
-  function esc2(s) {
-    return String(s ?? '').replace(
-      /[&<>"']/g,
-      c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-    );
-  }
-
-  function isLoggedIn() {
-    return !!window.HODSupabase?.getUser?.();
-  }
-  function isAdminOrEditor() {
-    const p = window.HODSupabase?.getProfile?.() || null;
-    const role = String(p?.role || '').toLowerCase();
-    return (
-      isLoggedIn() &&
-      (role === 'admin' || role === 'editor') &&
-      !(p?.blocked || p?.is_blocked || p?.status === 'blocked')
-    );
-  }
-  function canAdd() {
-    const p = window.HODSupabase?.getProfile?.() || null;
-    return isLoggedIn() && !(p?.blocked || p?.is_blocked || p?.status === 'blocked');
-  }
-
-  // Tiêm CSS động cho cấu trúc Tab mới trong bảng Chọn môn học
-  function injectStyles() {
-    let style = $('subjectTabsStyle');
-    if (!style) {
-      style = document.createElement('style');
-      style.id = 'subjectTabsStyle';
-      document.head.appendChild(style);
-    }
-    style.textContent = `
-      .subjectGateTabs {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        margin: -5px 0 0 0;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        padding-bottom: 8px;
-        flex-wrap: wrap;
-      }
-      body .polishedSubjectPanel > #subjectList {
-        margin-top: -8px !important;
-        padding-top: 12px !important;
-      }
-      body .polishedSubjectPanel > #subjectList.inFolder {
-        margin-top: -10px !important;
-        padding-top: 4px !important;
-      }
-      body .polishedSubjectPanel > #subjectList.inFolder .subjectFolderBar {
-        margin-top: 0 !important;
-      }
-      body .polishedSubjectPanel .subjectGateFooter {
-        margin-top: 4px !important;
-        padding: 8px 14px !important;
-        border-radius: 16px !important;
-      }
-      body .polishedSubjectPanel .subjectSelectedBox {
-        padding: 2px 0 2px 42px !important;
-      }
-      body .polishedSubjectPanel .subjectSelectedBox::before {
-        width: 28px !important;
-        height: 28px !important;
-        border-radius: 10px !important;
-      }
-      body .polishedSubjectPanel .subjectSelectedBox span {
-        font-size: 0.68rem !important;
-      }
-      body .polishedSubjectPanel .subjectSelectedBox b,
-      body .polishedSubjectPanel .subjectSelectedBox strong {
-        font-size: 0.95rem !important;
-      }
-      body .polishedSubjectPanel #subjectEnter {
-        height: 42px !important;
-        min-height: 42px !important;
-        border-radius: 12px !important;
-        padding: 0 20px !important;
-        font-size: 0.88rem !important;
-      }
-      .subjectGateTabsLeft {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .subjectGateTab {
-        background: none;
-        border: none;
-        color: var(--mist, #a0aec0);
-        padding: 10px 18px;
-        font-size: 0.9rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        border-bottom: 2px solid transparent;
-        margin-bottom: -1px;
-      }
-      .subjectGateTab.active {
-        color: var(--gold, #e8d4a8);
-        border-bottom: 2px solid var(--gold, #e8d4a8);
-      }
-      #subjectGateTabAdd {
-        position: relative;
-        overflow: hidden;
-        background: rgba(200, 169, 110, 0.07);
-        border: 1px solid rgba(232, 212, 168, 0.3);
-        border-radius: 999px;
-        padding: 7px 18px;
-        color: var(--gold, #e8d4a8);
-        font-size: 0.88rem;
-        font-weight: 750;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-        cursor: pointer;
-        transition: all 0.25s ease;
-      }
-      #subjectGateTabAdd::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: -110%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(
-          120deg,
-          transparent 0%,
-          rgba(255, 235, 180, 0) 25%,
-          rgba(255, 235, 180, 0.45) 46%,
-          rgba(255, 255, 255, 0.85) 50%,
-          rgba(255, 235, 180, 0.45) 54%,
-          transparent 75%
-        );
-        animation: glitterShimmer 2.8s infinite ease-in-out;
-        pointer-events: none;
-      }
-      #subjectGateTabAdd:hover {
-        background: rgba(200, 169, 110, 0.15);
-        border-color: rgba(232, 212, 168, 0.65);
-        color: #fff;
-        box-shadow: 0 0 14px rgba(232, 212, 168, 0.25);
-      }
-      #subjectGateTabAdd.active {
-        color: var(--gold, #e8d4a8);
-        border: 1px solid var(--gold, #e8d4a8);
-        background: rgba(200, 169, 110, 0.2);
-        box-shadow: 0 0 16px rgba(232, 212, 168, 0.35);
-      }
-      @keyframes glitterShimmer {
-        0% { left: -110%; }
-        32% { left: 140%; }
-        100% { left: 140%; }
-      }
-      .subjectGateSearchWrap {
-        flex: 1;
-        min-width: 220px;
-        max-width: 480px;
-        display: flex;
-        align-items: center;
-      }
-      .subjectGateSearchWrap input, #subjectSearch {
-        width: 100%;
-        background: rgba(0, 0, 0, 0.25);
-        border: 1px solid rgba(200, 169, 110, 0.22);
-        border-radius: 12px;
-        padding: 8px 16px;
-        color: #fff;
-        font-size: 0.88rem;
-        outline: none;
-        transition: all 0.2s ease;
-      }
-      .subjectGateSearchWrap input:focus, #subjectSearch:focus {
-        border-color: var(--gold2, #e8d4a8);
-        box-shadow: 0 0 12px rgba(232, 212, 168, 0.2);
-        background: rgba(0, 0, 0, 0.4);
-      }
-      .userAddSubjectWrap {
-        animation: fadeInPane 0.25s ease-out;
-        padding-top: 5px;
-      }
-      @keyframes fadeInPane {
-        from { opacity: 0; transform: translateY(6px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-    `;
-  }
-
-  // Hàm chuyển đổi Tab thông minh chuyên biệt
-  window.__switchSubjectGateTab = function (mode) {
-    const isAdd = mode === 'add';
-    localStorage.setItem('learninghub_subject_gate_tab_v1', mode);
-
-    // Cập nhật trạng thái Active trên nút bấm Tab
-    document.querySelectorAll('.subjectGateTab').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.sgtab === mode);
-    });
-
-    // Ẩn/Hiện toàn bộ các thành phần thuộc danh sách môn học cũ
-    const listElements = [
-      document.querySelector('.subjectGateSubline'),
-      document.querySelector('.subjectGateTools'),
-      $('subjectGateSearchWrap'),
-      // SUBJECT_FOLDER_BAR_IN_TABS_20260729: thanh thư mục nay nằm TRONG hàng tab, nên phải
-      // nằm trong danh sách ẩn/hiện này — không thì "← Tất cả môn" còn nổi ở tab Thêm môn mới.
-      $('subjectFolderCrumb'),
-      $('subjectFolderCrumbMeta'),
-      $('subjectList'),
-      $('subjectLoading'),
-      $('subjectError'),
-      $('subjectEmpty'),
-      document.querySelector('.subjectGateFooter'),
-    ];
-
-    listElements.forEach(el => {
-      if (el) el.style.setProperty('display', isAdd ? 'none' : '', isAdd ? 'important' : '');
-    });
-
-    // Quản lý Pane nội dung Form thêm môn học
-    const form = $('addSubjectForm');
-    if (form) {
-      form.classList.toggle('hidden', !isAdd);
-      if (isAdd) {
-        form.innerHTML = getAddSubjectHTML();
-        parsedQuestions = [];
-        restoreAddSubjectState();
-      }
-    }
-  };
-
-  // Khởi tạo thanh Tab điều hướng nằm dưới Header Chọn môn học
-  function ensureSubjectGateTabs() {
-    const panel = document.querySelector('.polishedSubjectPanel');
-    const header = document.querySelector('.subjectGateHeader');
-    if (!panel || !header || $('subjectGateTabsBar')) return;
-
-    injectStyles();
-
-    const tabsBar = document.createElement('div');
-    tabsBar.id = 'subjectGateTabsBar';
-    tabsBar.className = 'subjectGateTabs';
-    tabsBar.innerHTML = `
-      <div class="subjectGateTabsLeft">
-        <button type="button" class="subjectGateTab active" data-sgtab="list">Danh sách môn học</button>
-        <button type="button" class="subjectGateTab" id="subjectGateTabAdd" data-sgtab="add" style="display:none;">Thêm môn mới</button>
-      </div>
-      <div class="subjectGateSearchWrap" id="subjectGateSearchWrap"></div>
-    `;
-
-    header.insertAdjacentElement('afterend', tabsBar);
-
-    // Di chuyển ô tìm kiếm vào thanh Tab
-    const searchInput = $('subjectSearch');
-    const searchWrap = $('subjectGateSearchWrap');
-    if (searchInput && searchWrap) {
-      searchWrap.appendChild(searchInput);
-    }
-    const searchTools = document.querySelector('.subjectGateTools');
-    if (searchTools) searchTools.style.display = 'none';
-
-    // Bỏ nút + Thêm môn cũ bên phải ô tìm kiếm
-    const addBtn = $('addSubjectBtn');
-    if (addBtn) addBtn.remove();
-
-    tabsBar.querySelectorAll('.subjectGateTab').forEach(btn => {
-      btn.onclick = () => window.__switchSubjectGateTab(btn.dataset.sgtab);
-    });
-
-    const savedTab = localStorage.getItem('learninghub_subject_gate_tab_v1') || 'list';
-    if (savedTab === 'add' && canAdd()) {
-      window.__switchSubjectGateTab('add');
-    } else {
-      window.__switchSubjectGateTab('list');
-    }
-  }
-
-  function showAddBtn() {
-    ensureSubjectGateTabs();
-    const btn = $('addSubjectBtn');
-    const tabBtn = $('subjectGateTabAdd');
-    const allowed = canAdd();
-    if (btn) btn.classList.toggle('hidden', !allowed);
-
-    const note = $('userApprovalNote');
-    if (note) {
-      note.style.setProperty('display', allowed && !isAdminOrEditor() ? 'block' : 'none', 'important');
-    }
-
-    if (tabBtn) {
-      const wasHidden = tabBtn.style.display === 'none';
-      tabBtn.style.display = allowed ? 'block' : 'none';
-      if (allowed && wasHidden) {
-        const savedTab = localStorage.getItem('learninghub_subject_gate_tab_v1') || 'list';
-        if (savedTab === 'add') {
-          window.__switchSubjectGateTab('add');
-        }
-      }
-    }
-  }
-
-  const AI_PROMPT = `Bạn là trợ lý chuyển đổi ngân hàng câu hỏi trắc nghiệm sang JSON trong file Markdown.
-
-ĐỌC FILE và chuyển đổi NGUYÊN VẸN (KHÔNG tự biên thêm, KHÔNG bỏ bớt).
-
-QUY TẮC BATCH:
-
-- Sau mỗi batch DỪNG và nói: "Gõ 'tiếp' để xuất câu X-Y."
-- Khi nhận "tiếp", xuất batch tiếp theo, đánh số "num" liên tục.
-- Mỗi batch xuất 1 file .md hoàn chỉnh, tải được ngay.
-
-QUY TẮC CHUYỂN ĐỔI:
-- Đáp án: chỉ lấy ký tự chữ cái đầu tiên sau "**Đáp án:**" (bỏ mọi chú thích phía sau).
-- Nếu câu chỉ có A/B/C (không có D): bỏ key "D" khỏi object options.
-- Giữ NGUYÊN nội dung câu hỏi và lựa chọn, KHÔNG paraphrase.
-- "has_image": false (trừ khi câu đề cập hình ảnh/biểu đồ).
-- "error_risk": "low" (câu ngắn, rõ) | "medium" (câu trung bình) | "high" (câu dài, phức tạp, dễ nhầm).
-
-FORMAT FILE .MD OUTPUT:
----
-# [Tên môn] - Batch [N] (Câu [X]-[Y])
-> Xuất ngày: [ngày hôm nay] | Tổng: [số câu trong batch] câu
----
-
-\`\`\`json
-[
-  {
-    "num": 1,
-    "question": "…?",
-    "options": {
-      "A": "…",
-      "B": "…",
-      "C": "…",
-      "D": "…"
-    },
-    "answer": "B",
-    "images": [],
-    "has_image": false,
-    "error_risk": "low"
-  }
-]
-\`\`\`
----
-
-KHÔNG thêm bất kỳ text giải thích nào bên ngoài cấu trúc trên.
-Bắt đầu ngay từ câu 1.`;
-
-  window.__ADD_SUBJECT_AI_PROMPT = AI_PROMPT;
-  let parsedQuestions = [];
-
-  function clearAddSubjectLocalStorage() {
-    localStorage.removeItem('learninghub_add_subject_code_v1');
-    localStorage.removeItem('learninghub_add_subject_name_v1');
-    localStorage.removeItem('learninghub_add_subject_desc_v1');
-    localStorage.removeItem('learninghub_add_subject_step_v1');
-    localStorage.removeItem('learninghub_add_subject_file_name_v1');
-    localStorage.removeItem('learninghub_add_subject_file_size_v1');
-    localStorage.removeItem('learninghub_add_subject_file_data_v1');
-    localStorage.removeItem('learninghub_add_subject_file_previewed_v1');
-  }
-
-  function restoreAddSubjectState() {
-    const code = localStorage.getItem('learninghub_add_subject_code_v1') || '';
-    const name = localStorage.getItem('learninghub_add_subject_name_v1') || '';
-    const desc = localStorage.getItem('learninghub_add_subject_desc_v1') || '';
-    const savedStep = parseInt(localStorage.getItem('learninghub_add_subject_step_v1') || '1');
-
-    const codeInp = $('addSubjectCode');
-    const nameInp = $('addSubjectName');
-    const descInp = $('addSubjectDesc');
-
-    if (codeInp) codeInp.value = code;
-    if (nameInp) nameInp.value = name;
-    if (descInp) descInp.value = desc;
-
-    codeInp?.addEventListener('input', function () {
-      this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, '');
-      localStorage.setItem('learninghub_add_subject_code_v1', this.value);
-    });
-    nameInp?.addEventListener('input', function () {
-      localStorage.setItem('learninghub_add_subject_name_v1', this.value);
-    });
-    // SUBJECT_DESC_LIMIT_20260728: 160 ký tự là đúng chỗ thẻ môn hiện được (.subjectCardDesc kẹp
-    // 3 dòng). Trước đây form cho gõ 300 nhưng thẻ chỉ hiện ~110 nên phần dư mất hẳn.
-    const syncDescCount = () => {
-      const el = $('addSubjectDescCount');
-      if (!el || !descInp) return;
-      const n = descInp.value.length;
-      el.textContent = n + '/160';
-      el.classList.toggle('nearLimit', n >= 140 && n <= 160);
-      el.classList.toggle('overLimit', n > 160);
-    };
-    syncDescCount();
-    descInp?.addEventListener('input', function () {
-      localStorage.setItem('learninghub_add_subject_desc_v1', this.value);
-      syncDescCount();
-    });
-
-    const fileName = localStorage.getItem('learninghub_add_subject_file_name_v1');
-    const fileSize = localStorage.getItem('learninghub_add_subject_file_size_v1');
-    const fileData = localStorage.getItem('learninghub_add_subject_file_data_v1');
-
-    if (fileName && fileData) {
-      if ($('userImportData')) $('userImportData').value = fileData;
-      const dropZone = $('importDropZone');
-      const card = $('userImportFileCard');
-      const nameEl = $('userImportFileName');
-      const metaEl = $('userImportFileMeta');
-      if (dropZone) dropZone.classList.add('hidden');
-      if (card) card.classList.remove('hidden');
-      if (nameEl) nameEl.textContent = fileName;
-      if (metaEl)
-        metaEl.textContent = Math.max(1, Math.round(parseInt(fileSize || '0') / 1024)) + ' KB · Sẵn sàng xem trước';
-      const pv = $('previewImportBtn');
-      if (pv) {
-        pv.classList.remove('hidden');
-        pv.disabled = false;
-      }
-
-      const wasPreviewed = localStorage.getItem('learninghub_add_subject_file_previewed_v1') === 'true';
-      if (wasPreviewed) {
-        setTimeout(() => {
-          if (typeof window.__previewUserImport === 'function') {
-            window.__previewUserImport();
-          }
-        }, 100);
-      }
-    }
-
-    $('userImportFile')?.addEventListener('change', handleFileImport);
-
-    if (savedStep > 1 && code && name) {
-      setTimeout(() => {
-        window.__switchStep(savedStep);
-      }, 50);
-    }
-  }
-
-  // MÃ MỚI: Giao diện form chia 3 bước (Stepper)
-  function getAddSubjectHTML() {
-    return `<div class="userAddSubjectWrap">
-      <div class="subject-stepper" id="subjectStepper">
-        <div class="step active" data-step="1"><span>1</span> Thông tin</div>
-        <div class="step-line"></div>
-        <div class="step" data-step="2"><span>2</span> Lấy Prompt</div>
-        <div class="step-line"></div>
-        <div class="step" data-step="3"><span>3</span> Import</div>
-      </div>
-
-      <div id="addStep1" class="add-step-content active">
-        <div class="addSubjectFields">
-          <div class="addSubjectField">
-            <label>Mã môn <span class="req">*</span></label>
-            <input id="addSubjectCode" type="text" placeholder="VD: ABC123" maxlength="20">
-          </div>
-          <div class="addSubjectField">
-            <label>Tên môn <span class="req">*</span></label>
-            <input id="addSubjectName" type="text" placeholder="VD: Tên môn học" maxlength="100">
-          </div>
-          <div class="addSubjectField full">
-            <label>Mô tả ngắn <span class="descCounter" id="addSubjectDescCount">0/160</span></label>
-            <textarea id="addSubjectDesc" placeholder="Mô tả môn học..." rows="2" maxlength="160"></textarea>
-          </div>
-        </div>
-        <div class="step-actions right">
-          <button class="primary" type="button" onclick="window.__switchStep(2)">Tiếp tục ➔</button>
-        </div>
-      </div>
-
-      <div id="addStep2" class="add-step-content">
-        <div class="aiStepCard" style="margin-bottom:0;">
-          <p>Copy prompt dưới đây và dán vào AI (Gemini/ChatGPT/Claude) kèm theo tài liệu môn học của bạn.</p>
-        </div>
-        
-        <div class="aiPromptActions">
-          <button class="aiCopyBtn" type="button" onclick="window.__copyUserAIPrompt()" id="btnCopyPrompt">📋 Sao chép prompt</button>
-          <button class="aiViewPromptBtn" type="button" onclick="window.__openUserAIPromptModal()" id="btnViewPrompt">👁 Xem prompt</button>
-        </div>
-
-        <div class="aiToolLinks" style="margin-bottom: 25px;">
-          <a href="https://gemini.google.com" target="_blank" class="aiToolBtn gemini">✦ Gemini</a>
-          <a href="https://chatgpt.com" target="_blank" class="aiToolBtn chatgpt">◉ ChatGPT</a>
-          <a href="https://claude.ai" target="_blank" class="aiToolBtn claude">◈ Claude</a>
-        </div>
-
-        <div class="step-actions">
-          <button class="btn" type="button" onclick="window.__switchStep(1)">⬅ Quay lại</button>
-          <button class="primary" type="button" onclick="window.__switchStep(3)">Đã có file, Tiếp tục ➔</button>
-        </div>
-      </div>
-
-      <div id="addStep3" class="add-step-content">
-        <div class="importUnifiedBox">
-          <div class="userFileInputWrap" id="importDropZone" onclick="document.getElementById('userImportFile').click()">
-            <span class="icon">☁️</span>
-            <p><b>Kéo thả file .json hoặc .zip (gồm JSON & hình ảnh) vào đây</b><br><span style="font-size:0.85rem; opacity:0.6;">Hoặc bấm để chọn file từ máy (.json, .zip, .md, .txt)</span></p>
-            <input type="file" id="userImportFile" accept=".json,.zip,.md,.txt" style="display:none;">
-          </div>
-
-          <textarea id="userImportData" class="hiddenImportData" aria-hidden="true"></textarea>
-          <div id="userImportFileCard" class="userImportFileCard hidden">
-            <div class="fileIcon">📄</div>
-            <div class="fileInfo">
-              <b id="userImportFileName">Chưa chọn file</b>
-              <span id="userImportFileMeta">File import câu hỏi</span>
-            </div>
-            <button class="removeFileBtn" type="button" onclick="window.__clearUserImportFile()">Xóa file</button>
-          </div>
-
-          <div class="step-actions importStepActions">
-            <button class="btn" type="button" onclick="window.__switchStep(2)">⬅ Quay lại</button>
-            <div>
-              <button class="btn previewImportBtn hidden" type="button" id="previewImportBtn" onclick="window.__previewUserImport()">Xem trước</button>
-              <button class="primary" type="button" id="userImportBtn" onclick="window.__submitSubjectRequest()" disabled>Lưu Môn Học</button>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <div class="userApprovalNote" id="userApprovalNote" style="margin-top:15px; display:none;">⏳ Yêu cầu sẽ được gửi cho admin duyệt trước.</div>
-    </div>`;
-  }
-
-  // Logic chuyển bước & Khởi tạo tính năng kéo thả
-  window.__switchStep = function (step) {
-    // Bắt buộc nhập mã môn + tên môn trước khi qua bước 2 (Prompt)
-    if (step >= 2) {
-      const code = (document.getElementById('addSubjectCode')?.value || '').trim();
-      const name = (document.getElementById('addSubjectName')?.value || '').trim();
-      if (!code) {
-        alert('Vui lòng nhập mã môn trước khi tiếp tục.');
-        document.getElementById('addSubjectCode')?.focus();
-        return;
-      }
-      if (!name) {
-        alert('Vui lòng nhập tên môn trước khi tiếp tục.');
-        document.getElementById('addSubjectName')?.focus();
-        return;
-      }
-    }
-
-    localStorage.setItem('learninghub_add_subject_step_v1', step);
-
-    // Ẩn tất cả các bước
-    document.querySelectorAll('.add-step-content').forEach(el => el.classList.remove('active'));
-    // Hiện bước hiện tại
-    const target = document.getElementById('addStep' + step);
-    if (target) target.classList.add('active');
-
-    // Đổi màu thanh tiến trình
-    document.querySelectorAll('.subject-stepper .step').forEach(el => {
-      const s = parseInt(el.getAttribute('data-step'));
-      if (s <= step) el.classList.add('active');
-      else el.classList.remove('active');
-    });
-
-    // Kích hoạt tính năng kéo thả file ở Bước 3
-    if (step === 3 && !window._dropZoneInit) {
-      const dropZone = document.getElementById('importDropZone');
-      const fileInput = document.getElementById('userImportFile');
-      if (dropZone && fileInput) {
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
-          dropZone.addEventListener(
-            evt,
-            e => {
-              e.preventDefault();
-              e.stopPropagation();
-            },
-            false,
-          );
-        });
-        ['dragenter', 'dragover'].forEach(evt => {
-          dropZone.addEventListener(evt, () => dropZone.classList.add('dragover'), false);
-        });
-        ['dragleave', 'drop'].forEach(evt => {
-          dropZone.addEventListener(evt, () => dropZone.classList.remove('dragover'), false);
-        });
-        dropZone.addEventListener(
-          'drop',
-          e => {
-            const dt = e.dataTransfer;
-            if (dt.files && dt.files.length) {
-              const one = new DataTransfer();
-              one.items.add(dt.files[0]);
-              fileInput.files = one.files;
-              fileInput.dispatchEvent(new Event('change')); // Gọi hàm đọc file
-            }
-          },
-          false,
-        );
-        window._dropZoneInit = true; // Đánh dấu đã khởi tạo
-      }
-    }
-  };
-
-  function handleFileImport(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.name.toLowerCase().endsWith('.zip')) {
-      window.__selectedImportFile = file;
-      localStorage.setItem('learninghub_add_subject_file_name_v1', file.name);
-      localStorage.setItem('learninghub_add_subject_file_size_v1', String(file.size));
-      localStorage.removeItem('learninghub_add_subject_file_data_v1');
-      localStorage.removeItem('learninghub_add_subject_file_previewed_v1');
-
-      const dropZone = $('importDropZone');
-      const card = $('userImportFileCard');
-      const nameEl = $('userImportFileName');
-      const metaEl = $('userImportFileMeta');
-      if (dropZone) dropZone.classList.add('hidden');
-      if (card) card.classList.remove('hidden');
-      if (nameEl) nameEl.textContent = file.name;
-      if (metaEl)
-        metaEl.textContent =
-          (file.size / (1024 * 1024)).toFixed(1) + ' MB · File ZIP (JSON & ảnh) · Sẵn sàng xem trước';
-      const pv = $('previewImportBtn');
-      if (pv) {
-        pv.classList.remove('hidden');
-        pv.disabled = false;
-      }
-      const saveBtn = $('userImportBtn');
-      if (saveBtn) saveBtn.disabled = true;
-      parsedQuestions = [];
-      notify('Đã chọn file ZIP ' + file.name + '. Bấm Xem trước để kiểm tra & giải nén.');
-      return;
-    }
-
-    window.__selectedImportFile = null;
-    const reader = new FileReader();
-    reader.onload = function () {
-      const text = reader.result;
-      let jsonStr = text;
-      const mdMatch = text.match(/```json\s*([\s\S]*?)```/);
-      if (mdMatch) jsonStr = mdMatch[1];
-      else {
-        const jsonMatch = text.match(/```\s*([\s\S]*?)```/);
-        if (jsonMatch) jsonStr = jsonMatch[1];
-      }
-      const cleanedData = jsonStr.trim();
-      if ($('userImportData')) $('userImportData').value = cleanedData;
-
-      // Lưu file data vào localStorage
-      localStorage.setItem('learninghub_add_subject_file_name_v1', file.name);
-      localStorage.setItem('learninghub_add_subject_file_size_v1', String(file.size));
-      localStorage.setItem('learninghub_add_subject_file_data_v1', cleanedData);
-      localStorage.removeItem('learninghub_add_subject_file_previewed_v1');
-
-      const dropZone = $('importDropZone');
-      const card = $('userImportFileCard');
-      const nameEl = $('userImportFileName');
-      const metaEl = $('userImportFileMeta');
-      if (dropZone) dropZone.classList.add('hidden');
-      if (card) card.classList.remove('hidden');
-      if (nameEl) nameEl.textContent = file.name;
-      if (metaEl) metaEl.textContent = Math.max(1, Math.round(file.size / 1024)) + ' KB · Sẵn sàng xem trước';
-      const pv = $('previewImportBtn');
-      if (pv) {
-        pv.classList.remove('hidden');
-        pv.disabled = false;
-      }
-      const saveBtn = $('userImportBtn');
-      if (saveBtn) saveBtn.disabled = true;
-      parsedQuestions = [];
-      notify('Đã đọc file ' + file.name + '. Bấm Xem trước để kiểm tra.');
-    };
-    reader.readAsText(file);
-  }
-
-  // ===== QUIZLET_IMPORT_AUTODETECT_20260701 =====
-  // Tự nhận diện & chuyển file export Quizlet sang format app: chấp nhận JSON {terms:[{term,definition}]},
-  // mảng [{term,definition}], hoặc bảng Markdown | Term | Definition |. Trả null nếu không phải Quizlet.
-  // Mỗi câu: error_risk='low' (do trích xuất từ web), has_image=true nếu văn bản nhắc tới ảnh/figure, images rỗng.
-  window.__LHConvertQuizlet = function (raw) {
-    function scanNeedsImage(t) {
-      return /(hình vẽ|hình bên|hình sau|đồ thị|bảng biến thiên|sơ đồ|xem hình|picture shows|shows an image|this (picture|image|figure)|the (image|figure|picture|diagram) (below|above)|following (image|figure|picture|diagram)|shown below|pictured|in the (picture|image|figure))/i.test(
-        String(t || ''),
-      );
-    }
-    function parseTerm(term, def) {
-      var re = /([A-Fa-f])\.(?=\s|[A-Z])/g,
-        m,
-        marks = [];
-      while ((m = re.exec(term)) !== null) marks.push({ L: m[1].toUpperCase(), idx: m.index, end: m.index + 2 });
-      var seq = [],
-        expect = 65;
-      marks.forEach(function (mk) {
-        if (mk.L === String.fromCharCode(expect)) {
-          seq.push(mk);
-          expect++;
-        }
-      });
-      if (seq.length < 2) return null;
-      var question = term.slice(0, seq[0].idx).trim(),
-        options = {};
-      for (var i = 0; i < seq.length; i++) {
-        var s = seq[i].end,
-          e = i + 1 < seq.length ? seq[i + 1].idx : term.length;
-        options[seq[i].L] = term.slice(s, e).trim().replace(/\s+/g, ' ').replace(/\.$/, '').trim();
-      }
-      var ams = (String(def || '').match(/(?:^|\s)([A-Fa-f])\.(?=\s|[A-Z]|$)/g) || []).map(function (x) {
-        return x.trim()[0].toUpperCase();
-      });
-      var answer = ams.length
-        ? Array.from(new Set(ams)).join('')
-        : String(def || '')
-          .toUpperCase()
-          .replace(/[^A-F]/g, '');
-      answer = Array.from(answer)
-        .filter(function (a) {
-          return options[a];
-        })
-        .join('');
-      if (!question || !answer) return null;
-      return { question: question, options: options, answer: answer };
-    }
-    var terms = null;
-    try {
-      var j = JSON.parse(raw);
-      if (j && Array.isArray(j.terms))
-        terms = j.terms.map(function (t) {
-          return { term: t.term, def: t.definition };
-        });
-      else if (Array.isArray(j) && j.length && j[0] && 'term' in j[0] && 'definition' in j[0])
-        terms = j.map(function (t) {
-          return { term: t.term, def: t.definition };
-        });
-    } catch (e) {
-      lhWarn('QUIZLET_IMPORT_AUTODETECT_20260701', e);
-    }
-    if (!terms) {
-      var rows = [];
-      raw.split(/\r?\n/).forEach(function (ln) {
-        if (!ln.trim().startsWith('|')) return;
-        var c = ln.split('|').map(function (s) {
-          return s.trim();
-        });
-        if (!c[1] || c[1] === 'Term' || /^-+$/.test(c[1])) return;
-        rows.push({ term: c[1], def: c[2] });
-      });
-      if (rows.length) terms = rows;
-    }
-    if (!terms || !terms.length) return null;
-    var out = [],
-      seen = {};
-    terms.forEach(function (t) {
-      var p = parseTerm(String(t.term || ''), String(t.def || ''));
-      if (!p) return;
-      var key = p.question.toLowerCase().replace(/\s+/g, ' ').slice(0, 90);
-      if (seen[key]) return;
-      seen[key] = 1;
-      var needImg = scanNeedsImage(p.question + ' ' + Object.values(p.options).join(' '));
-      out.push({
-        question: p.question,
-        options: p.options,
-        answer: p.answer,
-        images: [],
-        has_image: needImg,
-        error_risk: 'low',
-        error_risk_reason: '',
-      });
-    });
-    return out.length ? out : null;
-  };
-  // ===== END QUIZLET_IMPORT_AUTODETECT_20260701 =====
-
-  window.__previewUserImport = async function () {
-    if (window.__selectedImportFile && window.__selectedImportFile.name.toLowerCase().endsWith('.zip')) {
-      try {
-        const importer = window.LHSubjectImport;
-        if (!importer) {
-          alert('Module LHSubjectImport chưa sẵn sàng.');
-          return;
-        }
-
-        const res = await importer.readAndValidateZipFile(window.__selectedImportFile);
-        let parsedZipData = res;
-
-        if (res.needSelectJson) {
-          const selected = prompt(
-            'File ZIP chứa nhiều file JSON câu hỏi:\n\n' +
-            res.jsonCandidates.join('\n') +
-            '\n\nVui lòng nhập đúng tên file JSON bạn muốn dùng:',
-            res.jsonCandidates[0],
-          );
-          if (!selected) return;
-
-          const chosen = res.jsonCandidates.find(p => p.toLowerCase() === selected.toLowerCase().trim());
-          if (!chosen) {
-            alert('File JSON đã chọn không có trong danh sách.');
-            return;
-          }
-
-          const imageEntries = new Map();
-          Object.keys(res.zipInstance.files).forEach(k => {
-            const ext = k.slice(k.lastIndexOf('.')).toLowerCase();
-            if (['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext)) {
-              imageEntries.set(k, res.zipInstance.files[k]);
-            }
-          });
-
-          parsedZipData = await importer.processSelectedJsonFromZip(
-            res.zipInstance,
-            chosen,
-            imageEntries,
-            res.zipFile.name,
-          );
-        }
-
-        const questions = parsedZipData.questions;
-        window.__previewImportData = questions;
-        parsedQuestions = questions;
-        localStorage.setItem('learninghub_add_subject_file_previewed_v1', 'true');
-
-        const codeInp = $('addSubjectCode');
-        if (codeInp && !codeInp.value.trim() && parsedZipData.suggestedCode) {
-          codeInp.value = parsedZipData.suggestedCode;
-        }
-
-        const metaEl = $('userImportFileMeta');
-        if (metaEl) metaEl.textContent = questions.length + ' câu hỏi đã kiểm tra · Sẵn sàng lưu';
-        const btn = $('userImportBtn');
-        if (btn) btn.disabled = false;
-
-        // Mở giao diện Import chuẩn của Learning Hub
-        window.__openImportPreviewModal(questions);
-        notify('OK! ' + questions.length + ' câu hỏi sẵn sàng');
-      } catch (err) {
-        alert('Lỗi kiểm tra ZIP:\n' + (err.message || err));
-      }
-      return;
-    }
-
-    const raw = ($('userImportData')?.value || '').trim();
-    const btn = $('userImportBtn');
-    if (!raw) {
-      alert('Bạn hãy chọn file .zip / .json / .md / .txt trước.');
-      return;
-    }
-
-    let data;
-    try {
-      var quizletData = window.__LHConvertQuizlet ? window.__LHConvertQuizlet(raw) : null;
-      if (quizletData && quizletData.length) {
-        data = quizletData;
-      } else {
-        var jsonBlocks = raw.match(/```json\s*([\s\S]*?)```/g);
-        if (jsonBlocks && jsonBlocks.length > 0) {
-          data = [];
-          jsonBlocks.forEach(function (block) {
-            var cleaned = block.replace(/^```json\s*/, '').replace(/```\s*$/, '');
-            var parsed = JSON.parse(cleaned);
-            if (Array.isArray(parsed)) data = data.concat(parsed);
-            else if (parsed.questions && Array.isArray(parsed.questions)) data = data.concat(parsed.questions);
-          });
-        } else {
-          var cleaned = raw;
-          if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```\w*\s*/, '').replace(/```\s*$/, '');
-          data = JSON.parse(cleaned);
-        }
-      }
-    } catch (e) {
-      localStorage.removeItem('learninghub_add_subject_file_previewed_v1');
-      alert('JSON không hợp lệ. Hãy kiểm tra lại format.\n\nLỗi: ' + e.message);
-      return;
-    }
-
-    if (!Array.isArray(data)) {
-      if (data.questions && Array.isArray(data.questions)) data = data.questions;
-      else {
-        localStorage.removeItem('learninghub_add_subject_file_previewed_v1');
-        alert('Dữ liệu phải là mảng JSON [...]');
-        return;
-      }
-    }
-
-    const errors = [];
-    data.forEach((q, i) => {
-      if (!q.question) errors.push('Câu ' + (i + 1) + ': thiếu "question"');
-      if (!q.options || typeof q.options !== 'object') errors.push('Câu ' + (i + 1) + ': thiếu "options"');
-      if (!q.answer) errors.push('Câu ' + (i + 1) + ': thiếu "answer"');
-    });
-    if (errors.length) {
-      localStorage.removeItem('learninghub_add_subject_file_previewed_v1');
-      alert('Dữ liệu có lỗi:\n\n' + errors.slice(0, 10).join('\n'));
-      return;
-    }
-
-    localStorage.setItem('learninghub_add_subject_file_previewed_v1', 'true');
-    parsedQuestions = data;
-    window.__previewSelections = {};
-    const metaEl = $('userImportFileMeta');
-    if (metaEl) metaEl.textContent = data.length + ' câu hỏi đã kiểm tra · Có thể lưu';
-    if (btn) btn.disabled = false;
-    window.__openImportPreviewModal(data);
-    notify('OK! ' + data.length + ' câu hỏi sẵn sàng');
-  };
-
-  window.__closeImportPreviewModal = function () {
-    document.getElementById('importPreviewModal')?.classList.add('hidden');
-  };
-
-  window.__submitSubjectRequest = async function () {
-    const code = ($('addSubjectCode')?.value || '').trim().toUpperCase();
-    const name = ($('addSubjectName')?.value || '').trim();
-    const desc = ($('addSubjectDesc')?.value || '').trim();
-
-    if (!code) {
-      alert('Vui lòng nhập mã môn');
-      $('addSubjectCode')?.focus();
-      return;
-    }
-    if (!/^[A-Z0-9_]{2,20}$/.test(code)) {
-      alert('Mã môn chỉ gồm chữ, số, gạch dưới (2-20 ký tự)');
-      $('addSubjectCode')?.focus();
-      return;
-    }
-    if (!name) {
-      alert('Vui lòng nhập tên môn');
-      $('addSubjectName')?.focus();
-      return;
-    }
-    if (!parsedQuestions.length) {
-      alert('Bạn cần chọn file và bấm Xem trước trước khi lưu môn học.');
-      return;
-    }
-
-    const c = client();
-    if (!c) {
-      alert('Chưa kết nối Supabase');
-      return;
-    }
-
-    const btn = $('userImportBtn');
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = 'Đang lưu...';
-    }
-
-    // Hiển thị thanh tiến trình ngay từ khi bắt đầu
-    showProgress('Bắt đầu khởi tạo môn học...', 0, 100, 'Đang chuẩn bị dữ liệu...');
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    try {
-      // Cho phép trùng mã môn + tên môn (nhiều bộ câu hỏi cùng mã)
-
-      let successMsg = '';
-      if (isAdminOrEditor()) {
-        // Cho phép thêm nhiều môn cùng mã gốc: HOD102, HOD102_2, HOD102_3...
-        // Như vậy không bị lỗi trùng câu số 1,2,3... trong database.
-        // Tạo môn + nhập toàn bộ câu hỏi (kèm ảnh) trên Turso qua 1 action.
-        showProgress('Đang lưu môn học...', 50, 100, 'Đang tạo môn và nhập câu hỏi lên máy chủ...');
-        const u0 = window.HODSupabase?.getUser?.();
-        const res = await fetch('/api/admin-action', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          cache: 'no-store',
-          body: JSON.stringify({
-            user_id: u0?.id,
-            action: 'add_subject',
-            payload: { code, name: name || code, description: desc || '', questions: parsedQuestions || [] },
-          }),
-        });
-        const out = await res.json().catch(() => ({}));
-        if (!res.ok || out.error) {
-          alert('Lỗi tạo môn: ' + (out.error || res.status));
-          return;
-        }
-        const finalCode = out.code || code;
-        const success = (parsedQuestions || []).length;
-        successMsg = 'Đã thêm môn ' + finalCode + ' với ' + success + ' câu hỏi';
-        try {
-          const key = 'learninghub_subject_counts_cache_v3';
-          const store = JSON.parse(localStorage.getItem(key) || '{}') || {};
-          store.counts = store.counts || {};
-          store.confirmed = store.confirmed || {};
-          store.counts[finalCode] = success;
-          store.confirmed[finalCode] = true;
-          store.updated_at = new Date().toISOString();
-          localStorage.setItem(key, JSON.stringify(store));
-          localStorage.setItem('learninghub_subjects_dirty_v3', String(Date.now()));
-          localStorage.removeItem('learninghub_subjects_cache_v1');
-          sessionStorage.removeItem('learninghub_subject_counts_cache_v1');
-          window.clearLearningHubSupabaseCache?.('subjects');
-          window.clearLearningHubSupabaseCache?.('questions');
-        } catch (e) {
-          lhWarn('appCore', e);
-        }
-        alert(successMsg);
-        notify(successMsg);
-        window.__switchSubjectGateTab('list');
-        try {
-          $('subjectRefresh')?.click();
-          setTimeout(() => $('subjectRefresh')?.click(), 5600);
-          setTimeout(() => window.refreshSubjectCountsOnce?.(), 6500);
-        } catch (e) {
-          lhWarn('appCore', e);
-        }
-      } else {
-        // Học viên/User gửi request: Hiển thị thanh tiến trình khi upload tệp tin lớn
-        showProgress('Đang gửi yêu cầu tạo môn học...', 50, 100, 'Đang tải dữ liệu câu hỏi lên máy chủ...');
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-        const u = window.HODSupabase?.getUser?.();
-        const res = await fetch('/api/admin-action', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          cache: 'no-store',
-          body: JSON.stringify({
-            user_id: u?.id,
-            action: 'add_subject_request',
-            payload: { code, name, description: desc || '', questions_data: parsedQuestions || [] },
-          }),
-        });
-        const out = await res.json().catch(() => ({}));
-        if (!res.ok || out.error) {
-          alert('Lỗi gửi yêu cầu: ' + (out.error || res.status));
-          return;
-        }
-        successMsg = 'Đã gửi yêu cầu thêm môn ' + code + '. Vui lòng chờ admin duyệt.';
-        alert(successMsg);
-        notify(successMsg);
-        window.__switchSubjectGateTab('list');
-      }
-
-      parsedQuestions = [];
-      document.getElementById('importPreviewModal')?.classList.add('hidden');
-      clearAddSubjectLocalStorage();
-    } catch (e) {
-      console.warn('Add subject error:', e);
-      alert('Lỗi khi lưu môn học: ' + (e?.message || e));
-      notify('Lỗi khi lưu môn học');
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = 'Lưu Môn Học';
-      }
-      hideProgress();
-    }
-  };
-
-  window.__closeAddSubject = function () {
-    window.__switchSubjectGateTab('list');
-  };
-
-  function bind() {
-    $('addSubjectBtn')?.addEventListener('click', () => window.__switchSubjectGateTab('add'));
-    showAddBtn();
-    setInterval(showAddBtn, 2000);
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);
-  else bind();
-})();
+// Thân block đã chuyển sang ./subjectImport.js. Gọi đúng chỗ block cũ đứng.
+installAddSubjectFeature();
 // ===== ADD_SUBJECT_FEATURE END =====
 
 // ===== PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY =====
@@ -2253,13 +1278,11 @@ Bắt đầu ngay từ câu 1.`;
       empty('Tài khoản đang chờ duyệt');
       return false;
     }
-    if (typeof syncUserSubjectToProfile === 'function') {
-      try {
-        syncUserSubjectToProfile(subject);
-      } catch (e) {
-        lhWarn('PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY', e);
-      }
-    }
+    // GLOBALS_BRIDGE_20260731: bỏ khối `if (typeof syncUserSubjectToProfile === 'function')`
+    // ở đây. Bản thật nằm ở subjectGate.js (~114) nên tên trần luôn cho `undefined` —
+    // khối này CHƯA TỪNG chạy kể từ lúc tách file. Không nối cầu vì `setSubject()` của
+    // subjectGate đã POST /api/profile mỗi lần đổi môn rồi; nối lại chỉ là gửi trùng một
+    // request ghi mỗi lần tải câu. Cần bật lại thì dùng `window.syncUserSubjectToProfile`.
     try {
       const res = await fetch('/api/questions?subject_code=' + encodeURIComponent(subject) + '&ts=' + Date.now(), {
         cache: 'no-store',
@@ -2275,7 +1298,9 @@ Bắt đầu ngay từ câu 1.`;
         options: r.options || {},
         answer: r.answer,
         answer_text: r.answer_text,
-        images: typeof cleanImages === 'function' ? cleanImages(r.images || []) : r.images || [],
+        // GLOBALS_BRIDGE_20260731: qua window — bản thật ở subjects.js, `typeof cleanImages`
+        // trần luôn false từ lúc tách file nên ảnh chưa từng được lọc ở đây.
+        images: window.cleanImages?.(r.images || []) ?? r.images ?? [],
         has_image: !!(r.has_image || (r.images || []).length),
         error_risk: r.error_risk || 'low',
         error_risk_reason: r.error_risk_reason || '',
@@ -2295,8 +1320,11 @@ Bắt đầu ngay từ câu 1.`;
       }
       renderAllSafe(); // FIX_LIBRARY_STALE_AFTER_SUBJECT_CHANGE_20260727
       try {
-        syncSubjectTexts?.();
-        updateCardTools?.();
+        // GLOBALS_BRIDGE_20260731: cả hai đều là hàm của file khác. `syncSubjectTexts` trần
+        // ném ReferenceError (bản thật ở subjectGate.js) và kéo theo `updateCardTools` không
+        // bao giờ chạy — đổi môn xong là mất nút 🔖 trên thẻ.
+        window.syncSubjectTexts?.();
+        window.updateCardTools?.();
       } catch (e) {
         console.warn('[Turso render]', e);
       }
@@ -2402,160 +1430,8 @@ if (typeof finalAnswerText !== 'function') {
     return raw;
   }
 }
-(function () {
-  let canvas,
-    ctx,
-    w = 0,
-    h = 0,
-    dpr = 1,
-    parts = [],
-    raf = 0,
-    uxInterval = 0,
-    resizeT = 0,
-    running = false;
-  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  function gateActive() {
-    const gate = document.getElementById('hodLoginGate');
-    return !!gate && !gate.classList.contains('hidden') && getComputedStyle(gate).display !== 'none';
-  }
-  function ensureCanvas() {
-    const gate = document.getElementById('hodLoginGate');
-    if (!gate || reduce) return null;
-    canvas = document.getElementById('landingParticles');
-    if (!canvas) {
-      canvas = document.createElement('canvas');
-      canvas.id = 'landingParticles';
-      gate.prepend(canvas);
-    }
-    ctx = canvas.getContext('2d');
-    return gate;
-  }
-  function resize() {
-    if (!canvas || !ctx) return;
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
-    w = window.innerWidth;
-    h = window.innerHeight;
-    canvas.width = Math.floor(w * dpr);
-    canvas.height = Math.floor(h * dpr);
-    canvas.style.width = w + 'px';
-    canvas.style.height = h + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    init();
-  }
-  function resizeDebounced() {
-    clearTimeout(resizeT);
-    resizeT = setTimeout(resize, 150);
-  }
-  function init() {
-    // Giảm số hạt tối thiểu trên màn nhỏ (điện thoại) thay vì luôn ép sàn 55 hạt.
-    const floorCount = w <= 480 ? 26 : w <= 860 ? 40 : 55;
-    const count = Math.min(140, Math.max(floorCount, Math.floor((w * h) / 14000)));
-    parts = Array.from({ length: count }, () => ({
-      x: Math.random() * w,
-      y: Math.random() * h,
-      r: 0.7 + Math.random() * 2.4,
-      vx: (Math.random() - 0.5) * 0.22,
-      vy: -0.1 - Math.random() * 0.42,
-      a: 0.18 + Math.random() * 0.55,
-      p: Math.random() * Math.PI * 2,
-      hue: Math.random() < 0.55 ? '255,255,255' : Math.random() < 0.5 ? '255,226,170' : '135,225,255',
-    }));
-  }
-  function stop() {
-    running = false;
-    cancelAnimationFrame(raf);
-    raf = 0;
-    if (uxInterval) {
-      clearInterval(uxInterval);
-      uxInterval = 0;
-    }
-  }
-  function draw() {
-    if (!running) return;
-    // Dừng hẳn (không chỉ tạm nghỉ) khi landing gate đã bị ẩn/đóng sau đăng nhập, tránh vòng lặp chạy nền vô thời hạn.
-    if (!gateActive()) {
-      stop();
-      return;
-    }
-    if (!ctx || document.hidden) {
-      raf = requestAnimationFrame(draw);
-      return;
-    }
-    ctx.clearRect(0, 0, w, h);
-    ctx.globalCompositeOperation = 'lighter';
-    for (const p of parts) {
-      p.p += 0.012;
-      p.x += p.vx + Math.sin(p.p) * 0.1;
-      p.y += p.vy;
-      if (p.y < -20) {
-        p.y = h + 20;
-        p.x = Math.random() * w;
-      }
-      if (p.x < -30) p.x = w + 30;
-      if (p.x > w + 30) p.x = -30;
-      const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 7);
-      glow.addColorStop(0, `rgba(${p.hue},${p.a})`);
-      glow.addColorStop(0.45, `rgba(${p.hue},${p.a * 0.22})`);
-      glow.addColorStop(1, `rgba(${p.hue},0)`);
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r * 7, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = `rgba(${p.hue},${Math.min(1, p.a + 0.15)})`;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    raf = requestAnimationFrame(draw);
-  }
-  function ux() {
-    if (!gateActive()) {
-      stop();
-      return;
-    }
-    const b = document.getElementById('subjectEnter');
-    if (b) b.textContent = 'Bắt đầu';
-    const i = document.getElementById('subjectSearch');
-    if (i) i.placeholder = 'Tìm môn học...';
-    const l = document.getElementById('subjectLoading'),
-      r = document.getElementById('subjectRefresh');
-    if (l && r) {
-      const on = !l.classList.contains('hidden');
-      r.classList.toggle('is-loading', on);
-      r.setAttribute('aria-busy', on ? 'true' : 'false');
-    }
-  }
-  function parallax() {
-    const g = document.getElementById('hodLoginGate');
-    if (!g || g.__particles3d) return;
-    g.__particles3d = true;
-    g.addEventListener(
-      'pointermove',
-      e => {
-        const r = g.getBoundingClientRect();
-        const x = Math.max(0, Math.min(100, ((e.clientX - r.left) / r.width) * 100));
-        const y = Math.max(0, Math.min(100, ((e.clientY - r.top) / r.height) * 100));
-        g.style.setProperty('--mx', x.toFixed(1) + '%');
-        g.style.setProperty('--my', y.toFixed(1) + '%');
-      },
-      { passive: true },
-    );
-  }
-  function boot() {
-    ux();
-    parallax();
-    if (ensureCanvas()) {
-      resize();
-      cancelAnimationFrame(raf);
-      running = true;
-      draw();
-      if (!uxInterval) uxInterval = setInterval(ux, 150);
-    }
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
-  window.addEventListener('resize', resizeDebounced, { passive: true });
-})();
+// Thân block đã chuyển sang ./flashcards.js. Gọi đúng chỗ block cũ đứng để thứ tự chạy không đổi.
+installFloatingParticles();
 /*
   ===== IIFE "lưu trực tiếp" cũ trong FINAL_FLOATING_PARTICLES_CANVAS_20260613 — ĐÃ XÓA (20260727) =====
   171 dòng. Block này lẽ ra chỉ vẽ hạt nền (canvas), nhưng có một IIFE thứ hai vá luồng
@@ -2567,532 +1443,14 @@ if (typeof finalAnswerText !== 'function') {
 */
 
 // ===== FINAL_REPORT_BUTTON_OPEN_TAB_20260613 =====
-// Thay khu vực "Báo cáo đã gửi" trong menu tài khoản thành nút bấm mở tab/modal xem báo cáo.
-(function () {
-  const $ = id => document.getElementById(id);
-  const esc = s =>
-    String(s ?? '').replace(
-      /[&<>"']/g,
-      c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-    );
-  const user = () => window.HODSupabase?.getUser?.() || null;
-
-  function ensureReportModal() {
-    if ($('hodReportModal')) return;
-    const modal = document.createElement('div');
-    modal.id = 'hodReportModal';
-    modal.className = 'modal hidden hodReportModal';
-    modal.innerHTML = `
-      <div class="box hodReportModalBox">
-        <button class="modalX" id="hodReportModalClose" type="button" title="Đóng">×</button>
-        <div class="hodReportModalHead">
-          <div>
-            <div class="hodReportModalLabel">BÁO CÁO ĐÃ GỬI</div>
-            <h2>Danh sách báo cáo</h2>
-            <p>Xem trạng thái các báo cáo/chỉnh sửa bạn đã gửi cho admin.</p>
-          </div>
-          <button id="hodReportModalReload" class="btn" type="button">Tải lại</button>
-        </div>
-        <div id="hodReportModalList" class="hodReportModalList">Chưa tải.</div>
-      </div>`;
-    document.body.appendChild(modal);
-    $('hodReportModalClose')?.addEventListener('click', () => modal.classList.add('hidden'));
-    $('hodReportModalReload')?.addEventListener('click', loadReportModalList);
-    modal.addEventListener('mousedown', e => {
-      if (e.target === modal) modal.classList.add('hidden');
-    });
-  }
-
-  function ensureReportButton() {
-    const menu = $('hodAccountMenu');
-    if (!menu) return;
-    let box = $('hodReportBox');
-    if (!box) {
-      box = document.createElement('div');
-      box.id = 'hodReportBox';
-      box.className = 'hodReportBox';
-      const logout = $('hodLogoutBtn');
-      logout ? menu.insertBefore(box, logout) : menu.appendChild(box);
-    }
-    box.innerHTML = `
-      <button id="hodOpenReportsBtn" class="hodOpenReportsBtn" type="button">
-        <span>Báo cáo đã gửi</span>
-        <b>Xem</b>
-      </button>`;
-    $('hodOpenReportsBtn')?.addEventListener('click', openReportsTab);
-  }
-
-  function statusText(s) {
-    return { pending: 'Đang chờ', approved: 'Đã duyệt', rejected: 'Từ chối' }[s] || s || 'Không rõ';
-  }
-  function statusClass(s) {
-    return s === 'approved' ? 'approved' : s === 'rejected' ? 'rejected' : 'pending';
-  }
-
-  async function loadReportModalList() {
-    ensureReportModal();
-    const list = $('hodReportModalList');
-    const u = user();
-    if (!list) return;
-    if (!u) {
-      list.innerHTML = '<div class="hodReportEmpty">Đăng nhập để xem báo cáo.</div>';
-      return;
-    }
-    list.innerHTML = '<div class="hodReportEmpty">Đang tải...</div>';
-    // FIX_20260726: trước đây đọc thẳng client.from('edit_requests') của Supabase —
-    // đường đó đã CHẾT (dữ liệu nằm ở Turso, Supabase chỉ còn dùng để auth) nên
-    // danh sách luôn rỗng/lỗi. Dùng chung nguồn với chuông header: /api/my-edit-requests.
-    let data = null;
-    try {
-      const res = await fetch('/api/my-edit-requests?ts=' + Date.now(), { cache: 'no-store' });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok || !Array.isArray(out?.data)) throw new Error(out?.error || res.status);
-      data = out.data;
-    } catch (e) {
-      console.warn('[reports] không tải được báo cáo:', e);
-      list.innerHTML = '<div class="hodReportEmpty">Không tải được báo cáo.</div>';
-      return;
-    }
-    if (!data || !data.length) {
-      list.innerHTML = '<div class="hodReportEmpty">Bạn chưa gửi báo cáo nào.</div>';
-      return;
-    }
-    list.innerHTML = data
-      .map(
-        r => `
-      <div class="hodReportRow">
-        <div class="hodReportRowTop">
-          <b>Câu ${esc(r.question_num || '?')}</b>
-          <span class="hodReportStatus ${statusClass(r.status)}">${esc(statusText(r.status))}</span>
-        </div>
-        <div class="hodReportTime">Gửi: ${esc(new Date(r.created_at).toLocaleString('vi-VN'))}</div>
-        ${r.admin_note ? `<div class="hodReportNote">Ghi chú admin: ${esc(r.admin_note)}</div>` : ''}
-      </div>`,
-      )
-      .join('');
-  }
-
-  async function openReportsTab() {
-    ensureReportModal();
-    $('hodAccountMenu')?.classList.add('hidden');
-    $('hodReportModal')?.classList.remove('hidden');
-    await loadReportModalList();
-  }
-
-  function boot() {
-    ensureReportModal();
-    ensureReportButton();
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
-  setInterval(ensureReportButton, 700);
-})();
+// Thân block đã chuyển sang ./flashcards.js. Gọi đúng chỗ block cũ đứng để thứ tự chạy không đổi.
+installReportButtonOpenTab();
+// ===== END FINAL_REPORT_BUTTON_OPEN_TAB_20260613 =====
 
 // ===== MOBILE_FLASHCARD_NAVIGATION_20260702 (viết lại) =====
-// Mobile: nút chuyển câu và vuốt trái/phải để đổi flashcard.
-//
-// Lý do viết lại: bản cũ trượt trực tiếp trên #card — nhưng #card mang class
-// "dir-horizontal/dir-up/dir-down" + "flip" để lật thẻ bằng CSS:
-//   #fc .card.dir-horizontal.flip{transform:rotateY(180deg) !important}
-// Rule này có !important nên bất cứ khi nào thẻ đang ở trạng thái lật (đang xem
-// đáp án), CSS đè hoàn toàn lên transform trượt (translateX) mà JS gán qua inline
-// style — khiến thẻ không trượt đúng như tính toán, gây cảm giác "trượt sai hướng".
-// Cách sửa: bọc #card trong 1 wrapper riêng (#cardSlideWrap) CHỈ lo việc trượt
-// (translateX). #card bên trong vẫn tự lo việc lật (rotateY) như cũ, không đụng
-// nhau nên không còn xung đột !important nữa.
-(function () {
-  function $(id) {
-    return document.getElementById(id);
-  }
-  function goPrev() {
-    if (typeof prev === 'function') prev();
-  }
-  function goNext() {
-    if (typeof next === 'function') next();
-  }
-  const isMobile = () => window.matchMedia('(max-width:760px)').matches;
-
-  // Bọc #card vào #cardSlideWrap 1 lần duy nhất, giữ nguyên #card và toàn bộ
-  // logic lật/hiển thị đang có — chỉ thêm 1 lớp cha để xử lý trượt riêng.
-  function ensureSlideWrap() {
-    let wrap = $('cardSlideWrap');
-    if (wrap) return wrap;
-    const card = $('card');
-    if (!card || !card.parentNode) return null;
-    wrap = document.createElement('div');
-    wrap.id = 'cardSlideWrap';
-    wrap.style.cssText =
-      'position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;min-height:0;flex:1;max-width:100%;margin:0 auto;';
-    card.parentNode.insertBefore(wrap, card);
-    wrap.appendChild(card);
-    return wrap;
-  }
-
-  let __sliding = false;
-  let __activeFinishSlide = null;
-  // Trượt liền mạch: câu cũ (ghost) và câu mới (wrap) chạy song song cùng hướng.
-  function slideChange(dir, isRepeat = false) {
-    const zone = $('zone');
-    // Chỉ bọc #card vào wrapper trên mobile — bọc trên desktop sẽ đổi #card từ flex item
-    // trực tiếp của .zone thành con của 1 div thường, có thể làm lệch layout desktop.
-    if (!zone) {
-      dir === 'next' ? goNext() : goPrev();
-      return;
-    }
-    const wrap = ensureSlideWrap();
-    if (!wrap) {
-      dir === 'next' ? goNext() : goPrev();
-      return;
-    }
-
-    // Nếu đang trượt dở mà nhận thêm lệnh mới (ví dụ nhấp nhanh nhiều lần hoặc giữ phím),
-    // kết thúc ngay slide trước để trả giao diện về vị trí chuẩn và tiến hành câu mới lập tức.
-    if (__sliding && typeof __activeFinishSlide === 'function') {
-      __activeFinishSlide();
-    }
-
-    // Khi giữ phím (isRepeat / e.repeat): chuyển câu trực tiếp không chạy animation trượt 220ms
-    // để giao diện tua nhanh mượt mà ở tốc độ phím gõ (30-50ms/câu).
-    if (isRepeat) {
-      dir === 'next' ? goNext() : goPrev();
-      return;
-    }
-
-    __sliding = true;
-    window.__lhSuppressFlip = true;
-
-    // Dọn các ghost cũ nếu còn sót lại trên DOM
-    try {
-      zone.querySelectorAll('.lhGhost').forEach(g => g.remove());
-    } catch (e) {
-      lhWarn('MOBILE_FLASHCARD_NAVIGATION_20260702', e);
-    }
-
-    const zr = zone.getBoundingClientRect();
-    const r = wrap.getBoundingClientRect();
-    // ghost = ảnh chụp câu cũ ngay tại vị trí đang thấy (kể cả khi đang kéo dở).
-    // Clone nguyên wrap (gồm cả #card bên trong) nên giữ đúng trạng thái lật hiện tại.
-    const ghost = wrap.cloneNode(true);
-    ghost.removeAttribute('id');
-    ghost.classList.add('lhGhost');
-    ghost.style.cssText +=
-      ';position:absolute;margin:0;pointer-events:none;z-index:6;left:' +
-      (r.left - zr.left) +
-      'px;top:' +
-      (r.top - zr.top) +
-      'px;width:' +
-      r.width +
-      'px;height:' +
-      r.height +
-      'px;transform:none;opacity:1;transition:none;';
-    zone.appendChild(ghost);
-
-    wrap.classList.remove('lhDragging');
-    wrap.classList.add('lhSliding');
-    wrap.style.transition = 'none';
-    // Khi vào đây từ một cú vuốt, touchmove đã hạ opacity của wrap xuống thấp nhất .4
-    // để tạo cảm giác thẻ mờ dần theo ngón tay. Phải trả lại 1 ngay tại đây, nếu không
-    // câu MỚI trượt vào vẫn mang inline opacity cũ và bị tối đi vĩnh viễn.
-    wrap.style.opacity = '1';
-    dir === 'next' ? goNext() : goPrev(); // đổi nội dung #card bên trong wrap
-    const fromX = dir === 'next' ? '100%' : '-100%'; // next: câu mới vào từ bên phải; prev: từ bên trái
-    const toX = dir === 'next' ? '-100%' : '100%'; // câu cũ (ghost) ra cùng hướng vuốt
-    wrap.style.transform = 'translateX(' + fromX + ')';
-
-    let animFrame1 = null;
-    let animFrame2 = null;
-    let slideTimeout = null;
-    let __slideDone = false;
-
-    function finishSlide() {
-      if (__slideDone) return;
-      __slideDone = true;
-      if (animFrame1) cancelAnimationFrame(animFrame1);
-      if (animFrame2) cancelAnimationFrame(animFrame2);
-      if (slideTimeout) clearTimeout(slideTimeout);
-      wrap.removeEventListener('transitionend', finishSlide);
-      ghost.remove();
-      wrap.style.transition = '';
-      wrap.style.transform = '';
-      wrap.style.opacity = '';
-      wrap.classList.remove('lhSliding');
-      __sliding = false;
-      window.__lhSuppressFlip = false;
-      if (__activeFinishSlide === finishSlide) {
-        __activeFinishSlide = null;
-      }
-    }
-
-    __activeFinishSlide = finishSlide;
-
-    // Double rAF: đảm bảo trình duyệt vẽ xong vị trí xuất phát ở 1 frame riêng
-    // trước khi bắt đầu transition, tránh gộp frame/giật hình trên máy yếu.
-    animFrame1 = requestAnimationFrame(() => {
-      animFrame2 = requestAnimationFrame(() => {
-        if (!__sliding || __slideDone) return;
-        const ease = 'transform .22s cubic-bezier(.22,.61,.36,1)';
-        wrap.style.transition = ease;
-        ghost.style.transition = ease + ', opacity .22s ease';
-        wrap.style.transform = 'translateX(0)'; // câu mới vào giữa
-        ghost.style.transform = 'translateX(' + toX + ')'; // câu cũ ra
-        ghost.style.opacity = '.35';
-      });
-    });
-
-    wrap.addEventListener('transitionend', finishSlide);
-    slideTimeout = setTimeout(finishSlide, 350);
-  }
-
-  // Bấm nhanh (tap): chuyển 1 câu có hiệu ứng trượt (slideChange).
-  // Bấm giữ: sau 1 khoảng trễ ngắn, tự động chuyển câu liên tục (không hiệu ứng trượt,
-  // để không bị dồn/giật animation) cho tới khi thả tay ra.
-  function bindHoldRepeat(btn, dir) {
-    if (!btn) return;
-    const REPEAT_DELAY = 420; // chờ trước khi bắt đầu tua nhanh
-    const REPEAT_INTERVAL = 130; // tốc độ tua khi giữ
-    let startTimer = null,
-      repeatTimer = null,
-      repeated = false,
-      touchActive = false;
-
-    function stepOnce() {
-      dir === 'next' ? goNext() : goPrev();
-    }
-    function clearTimers() {
-      if (startTimer) {
-        clearTimeout(startTimer);
-        startTimer = null;
-      }
-      if (repeatTimer) {
-        clearInterval(repeatTimer);
-        repeatTimer = null;
-      }
-    }
-    function startHold() {
-      repeated = false;
-      clearTimers();
-      startTimer = setTimeout(() => {
-        repeated = true;
-        stepOnce();
-        repeatTimer = setInterval(stepOnce, REPEAT_INTERVAL);
-      }, REPEAT_DELAY);
-    }
-    function endHold() {
-      clearTimers();
-    }
-
-    btn.addEventListener(
-      'touchstart',
-      e => {
-        touchActive = true;
-        e.stopPropagation();
-        startHold();
-      },
-      { passive: true },
-    );
-    btn.addEventListener(
-      'touchend',
-      e => {
-        e.stopPropagation();
-        endHold();
-        setTimeout(() => {
-          touchActive = false;
-        }, 400);
-      },
-      { passive: true },
-    );
-    btn.addEventListener(
-      'touchcancel',
-      e => {
-        e.stopPropagation();
-        endHold();
-        setTimeout(() => {
-          touchActive = false;
-        }, 400);
-      },
-      { passive: true },
-    );
-    // mousedown/mouseup: phòng khi test bằng chuột trên desktop; touchActive chặn double-fire trên thiết bị vừa có touch vừa giả lập mouse.
-    btn.addEventListener('mousedown', e => {
-      if (touchActive) return;
-      e.stopPropagation();
-      startHold();
-    });
-    btn.addEventListener('mouseup', e => {
-      if (touchActive) return;
-      e.stopPropagation();
-      endHold();
-    });
-    btn.addEventListener('mouseleave', () => {
-      if (!touchActive) endHold();
-    });
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      if (repeated) {
-        repeated = false;
-        return;
-      } // đã tua rồi thì bỏ qua click cuối, tránh nhảy dư 1 câu
-      slideChange(dir);
-    });
-  }
-
-  function ensureMobileNav() {
-    const zone = $('zone');
-    if (!zone || $('mobileCardNav')) return;
-    const nav = document.createElement('div');
-    nav.id = 'mobileCardNav';
-    nav.className = 'mobileCardNav';
-    nav.innerHTML = `
-      <button id="mobilePrev" type="button" aria-label="Câu trước"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
-      <div class="mobileSwipeHint">Vuốt trái / phải để đổi câu</div>
-      <button id="mobileNext" type="button" aria-label="Câu sau"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>`;
-    zone.appendChild(nav);
-    try {
-      if (localStorage.getItem('learninghub_swipe_hint_seen_v1') === '1') zone.classList.add('swiped');
-    } catch (e) {
-      lhWarn('MOBILE_FLASHCARD_NAVIGATION_20260702', e);
-    }
-    bindHoldRepeat($('mobilePrev'), 'prev');
-    bindHoldRepeat($('mobileNext'), 'next');
-  }
-
-  // Kéo dính ngón realtime + búng/snap (giống Quizlet). Chỉ trên mobile.
-  // Kéo trên wrap (không phải #card) để không đụng transform lật (rotateY) của #card.
-  function bindDrag() {
-    const zone = $('zone');
-    if (!zone || zone.__mobileDragBound) return;
-    zone.__mobileDragBound = true;
-    let sx = 0,
-      sy = 0,
-      st = 0,
-      dragging = false,
-      decided = false,
-      axis = null,
-      moved = false;
-    // true khi touch hiện tại bắt đầu trên nút/khu vực loại trừ (mobileCardNav, edit...).
-    // Phải giữ nguyên trạng thái này xuyên suốt touchmove/touchend của CÙNG 1 lần chạm,
-    // nếu không touchmove/touchend sẽ dùng sx/sy CŨ (của lần kéo trước đó) để tính khoảng
-    // cách kéo, khiến việc giữ nút bị hiểu nhầm thành một cú vuốt và tự nhảy câu.
-    let ignoreTouch = false;
-    const W = () => zone.getBoundingClientRect().width || window.innerWidth || 360;
-    function markSeen() {
-      zone.classList.add('swiped');
-      try {
-        localStorage.setItem('learninghub_swipe_hint_seen_v1', '1');
-      } catch (e) {
-        lhWarn('MOBILE_FLASHCARD_NAVIGATION_20260702', e);
-      }
-    }
-
-    zone.addEventListener(
-      'touchstart',
-      e => {
-        const t = e.changedTouches && e.changedTouches[0];
-        if (!t) return;
-        ignoreTouch = !isMobile() || __sliding || !!e.target.closest('#cardTools, #editCard, .edit, .mobileCardNav');
-        if (ignoreTouch) return;
-        sx = t.clientX;
-        sy = t.clientY;
-        st = Date.now();
-        dragging = false;
-        decided = false;
-        axis = null;
-        moved = false;
-      },
-      { passive: true },
-    );
-
-    zone.addEventListener(
-      'touchmove',
-      e => {
-        if (ignoreTouch || !isMobile() || __sliding) return;
-        const t = e.changedTouches && e.changedTouches[0];
-        if (!t) return;
-        const dx = t.clientX - sx,
-          dy = t.clientY - sy;
-        if (!decided) {
-          if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-          decided = true;
-          axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y'; // dọc -> để trình duyệt cuộn
-          if (axis === 'x') {
-            const w = ensureSlideWrap();
-            if (w) {
-              w.style.transition = 'none';
-              w.classList.add('lhDragging');
-            }
-          }
-        }
-        if (dragging || axis === 'x') {
-          dragging = true;
-          e.preventDefault();
-          if (Math.abs(dx) > 6) moved = true;
-          const w = ensureSlideWrap();
-          if (w) {
-            w.style.transform = 'translateX(' + dx + 'px)';
-            w.style.opacity = String(Math.max(0.4, 1 - Math.abs(dx) / (W() * 1.1)));
-          }
-        }
-      },
-      { passive: false },
-    );
-
-    function endDrag(e) {
-      if (ignoreTouch || !dragging) return;
-      dragging = false;
-      const w = ensureSlideWrap();
-      if (w) w.classList.remove('lhDragging');
-      const t = e.changedTouches && e.changedTouches[0];
-      const dx = t ? t.clientX - sx : 0;
-      const dt = Date.now() - st;
-      const commit = Math.abs(dx) > W() * 0.3 || (dt < 320 && Math.abs(dx) > 56);
-      if (!w) return;
-      if (commit) {
-        markSeen();
-        slideChange(dx < 0 ? 'next' : 'prev'); // ghost(câu cũ) + wrap(câu mới) chạy song song
-      } else {
-        // chưa đủ xa -> búng về chỗ cũ
-        window.__lhSuppressFlip = moved;
-        w.style.transition = 'transform .2s cubic-bezier(.22,.61,.36,1), opacity .2s ease';
-        w.style.transform = 'translateX(0)';
-        w.style.opacity = '1';
-        setTimeout(() => {
-          w.style.transition = '';
-          w.style.transform = '';
-          w.style.opacity = '';
-          window.__lhSuppressFlip = false;
-        }, 220);
-      }
-    }
-    zone.addEventListener('touchend', endDrag, { passive: false });
-    zone.addEventListener('touchcancel', endDrag, { passive: false });
-    // Chặn lật thẻ nếu vừa kéo (tap mới được lật)
-    zone.addEventListener(
-      'click',
-      e => {
-        if (window.__lhSuppressFlip) {
-          e.stopImmediatePropagation();
-          e.preventDefault();
-        }
-      },
-      true,
-    );
-  }
-
-  function boot() {
-    ensureSlideWrap();
-    ensureMobileNav();
-    bindHoldRepeat($('prev'), 'prev');
-    bindHoldRepeat($('next'), 'next');
-    bindHoldRepeat(document.querySelector('.arrow.left'), 'prev');
-    bindHoldRepeat(document.querySelector('.arrow.right'), 'next');
-    bindDrag();
-  }
-  window.slideChange = slideChange;
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
-  setTimeout(boot, 300);
-  setTimeout(boot, 1000);
-})();
+// Thân block đã chuyển sang ./flashcards.js. Gọi đúng chỗ block cũ đứng để thứ tự chạy không đổi.
+installMobileFlashcardNavigation();
+// ===== END MOBILE_FLASHCARD_NAVIGATION_20260702 =====
 
 // ===== FINAL_USER_LAST_ACTIVITY_TRACKING_20260613 =====
 // Cập nhật hoạt động gần nhất của người dùng trên web.
@@ -3561,6 +1919,15 @@ installSmartSearch();
 // ===== COPILOT_MERGED_ADD_QUESTION_DISPLAY_VERSION_20260629 =====
 installAddQuestionDisplay();
 // ===== END COPILOT_MERGED_ADD_QUESTION_DISPLAY_VERSION_20260629 =====
+
+// ===== IMPORT_PREVIEW_INLINE_EDIT_20260625 (và 8 block cùng nhóm) =====
+// Thân block ở ./subjectImport.js. Gọi ĐÚNG chỗ nhóm block cũ đứng: ngay sau
+// COPILOT_MERGED_ADD_QUESTION_DISPLAY_VERSION_20260629, trước IMPORT_PREVIEW_COMPACT_UX_PATCH.
+// Nhóm này gán 14 hàm window.__* mà UI "Thêm môn" của ADD_SUBJECT_FEATURE gọi bằng inline
+// onclick — thiếu lời gọi này thì 3 nút "Xem prompt AI" / "Copy prompt" / "Xóa file đã chọn"
+// ném TypeError khi bấm (đã xảy ra thật từ commit tách file, xem RENDER_CARD_WINDOW_BRIDGE_20260731).
+installImportPreviewInlineEdit();
+// ===== END IMPORT_PREVIEW_INLINE_EDIT_20260625 =====
 
 // ===== FINAL_EXAM_ONLY_QUIZ_UI_20260627 =====
 installExam();
@@ -4219,13 +2586,17 @@ installClearAddSubjectDraft();
     bao giờ chạy. Thay bằng lời gọi window.__LHNormalizeAll() ngay đầu renderUnified của
     LIBRARY_UX_STEP1_STABLE_RENDER — đúng chỗ dữ liệu được đọc để vẽ.
   */
-  const oldRenderCard = typeof renderCard === 'function' ? renderCard : null;
+  // RENDER_CARD_WINDOW_BRIDGE_20260731: bọc window.renderCard, KHÔNG bọc binding `renderCard`
+  // của appCore (nó chỉ là hàm chuyển tiếp — bọc vào đó thì các module khác gọi
+  // window.renderCard sẽ mất lớp normalizeAll này).
+  const oldRenderCard = typeof window.renderCard === 'function' ? window.renderCard : null;
   if (oldRenderCard && !oldRenderCard.__keepAttrs) {
-    renderCard = function () {
+    const keepAttrsRenderCard = function () {
       normalizeAll();
       return oldRenderCard.apply(this, arguments);
     };
-    renderCard.__keepAttrs = true;
+    keepAttrsRenderCard.__keepAttrs = true;
+    window.renderCard = keepAttrsRenderCard;
   }
   normalizeAll();
 })();
@@ -4383,294 +2754,8 @@ installImgsHTML();
 
 // ===== FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701 =====
 // Tăng tốc upload môn lớn: vẫn tránh 504 nhưng gửi nhiều câu song song có giới hạn.
-(function () {
-  if (window.__FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701) return;
-  window.__FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701 = true;
-
-  const $ = id => document.getElementById(id);
-  const LARGE_LIMIT = 80;
-  const CONCURRENCY = 8; // số câu gửi cùng lúc; đủ nhanh nhưng không ép server quá mạnh
-
-  function user() {
-    return window.HODSupabase?.getUser?.() || null;
-  }
-  function profile() {
-    return window.HODSupabase?.getProfile?.() || null;
-  }
-  function canManage() {
-    const role = String(profile()?.role || '').toLowerCase();
-    return !!user() && (window.HODSupabase?.isAdmin?.() || role === 'admin' || role === 'editor');
-  }
-  function toast(msg) {
-    try {
-      if (typeof notify === 'function') notify(msg);
-    } catch (e) {
-      lhWarn('FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701', e);
-    }
-  }
-  function prog(title, current, total, detail) {
-    try {
-      if (typeof showProgress === 'function') showProgress(title, current, total, detail || '');
-    } catch (e) {
-      lhWarn('FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701', e);
-    }
-  }
-  function hideProg() {
-    try {
-      if (typeof hideProgress === 'function') hideProgress();
-    } catch (e) {
-      lhWarn('FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701', e);
-    }
-  }
-
-  function cleanQuestions(arr) {
-    return (Array.isArray(arr) ? arr : [])
-      .map((q, i) => {
-        const opts = q && typeof q.options === 'object' && !Array.isArray(q.options) ? q.options : {};
-        const answer = String(q?.answer || '')
-          .toUpperCase()
-          .replace(/[^A-Z]/g, '');
-        const images = Array.isArray(q?.images) ? q.images : [];
-        return {
-          num: Number(q?.num) || i + 1,
-          question: String(q?.question || '').trim(),
-          options: opts,
-          answer,
-          answer_text:
-            q?.answer_text ||
-            answer
-              .split('')
-              .map(k => k + '. ' + (opts[k] || ''))
-              .join('; '),
-          images,
-          has_image: !!(q?.has_image || images.length),
-          error_risk: q?.error_risk || 'low',
-          error_risk_reason: q?.error_risk_reason || null,
-        };
-      })
-      .filter(q => q.question && q.answer && q.options);
-  }
-
-  function readQuestions() {
-    let arr = window.__previewImportData || window.__LH_LAST_PREVIEW_IMPORT_DATA || [];
-    if (!Array.isArray(arr) || !arr.length) {
-      try {
-        let s = String(
-          $('userImportData')?.value || localStorage.getItem('learninghub_add_subject_file_data_v1') || '',
-        ).trim();
-        const m = s.match(/```json\s*([\s\S]*?)```/i) || s.match(/```\s*([\s\S]*?)```/);
-        if (m) s = m[1].trim();
-        const j = JSON.parse(s);
-        arr = Array.isArray(j) ? j : Array.isArray(j?.questions) ? j.questions : [];
-      } catch (e) {
-        arr = [];
-      }
-    }
-    return cleanQuestions(arr);
-  }
-
-  async function postAction(action, payload) {
-    const res = await fetch('/api/admin-action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      cache: 'no-store',
-      body: JSON.stringify({ user_id: user()?.id, action, payload }),
-    });
-    const out = await res.json().catch(() => ({}));
-    if (!res.ok || out.error) throw new Error(out.error || 'HTTP ' + res.status);
-    return out;
-  }
-
-  function cacheCount(code, count) {
-    try {
-      const key = 'learninghub_subject_counts_cache_v3';
-      const store = JSON.parse(localStorage.getItem(key) || '{}') || {};
-      store.counts = store.counts || {};
-      store.confirmed = store.confirmed || {};
-      store.counts[code] = count;
-      store.confirmed[code] = true;
-      store.updated_at = new Date().toISOString();
-      localStorage.setItem(key, JSON.stringify(store));
-      localStorage.setItem('learninghub_subjects_dirty_v3', String(Date.now()));
-      localStorage.removeItem('learninghub_subjects_cache_v1');
-      sessionStorage.removeItem('learninghub_subject_counts_cache_v1');
-      window.clearLearningHubSupabaseCache?.('subjects');
-      window.clearLearningHubSupabaseCache?.('questions');
-      window.clearLearningHubQuestionCache?.();
-    } catch (e) {
-      lhWarn('FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701', e);
-    }
-  }
-
-  function clearState() {
-    try {
-      window.__previewImportData = [];
-      window.__LH_LAST_PREVIEW_IMPORT_DATA = [];
-      $('importPreviewModal')?.classList.add('hidden');
-      [
-        'learninghub_add_subject_file_name_v1',
-        'learninghub_add_subject_file_size_v1',
-        'learninghub_add_subject_file_data_v1',
-        'learninghub_add_subject_file_previewed_v1',
-      ].forEach(k => localStorage.removeItem(k));
-    } catch (e) {
-      lhWarn('FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701', e);
-    }
-  }
-
-  async function uploadOne(finalCode, q, i) {
-    await postAction('add_question', {
-      question_data: {
-        subject_code: finalCode,
-        num: Number(q.num) || i + 1,
-        question: q.question,
-        options: q.options || {},
-        answer: q.answer,
-        answer_text: q.answer_text || '',
-        images: q.images || [],
-        has_image: !!q.has_image,
-        error_risk: q.error_risk || 'low',
-        error_risk_reason: q.error_risk_reason || null,
-        updated_at: new Date().toISOString(),
-      },
-    });
-  }
-
-  async function uploadParallel(finalCode, questions) {
-    let done = 0;
-    let next = 0;
-    const total = questions.length;
-    const errors = [];
-    prog('Đang upload câu hỏi...', 0, total, 'Upload nhanh: gửi ' + CONCURRENCY + ' câu cùng lúc');
-
-    async function worker() {
-      while (next < total && !errors.length) {
-        const i = next++;
-        try {
-          await uploadOne(finalCode, questions[i], i);
-        } catch (e) {
-          errors.push('Câu ' + (questions[i].num || i + 1) + ': ' + (e?.message || e));
-          break;
-        }
-        done++;
-        prog('Đang upload câu hỏi...', done, total, 'Đã gửi ' + done + '/' + total + ' câu');
-      }
-    }
-
-    const workers = Array.from({ length: Math.min(CONCURRENCY, total) }, () => worker());
-    await Promise.all(workers);
-    if (errors.length) throw new Error(errors[0]);
-    return done;
-  }
-
-  async function createLarge(code, name, desc, questions) {
-    prog('Đang tạo môn học...', 0, questions.length, 'Tạo môn trước, rồi upload nhiều câu song song...');
-    const created = await postAction('add_subject', {
-      code,
-      name: name || code,
-      description: desc || '',
-      questions: [],
-    });
-    const finalCode = created.code || created.subject_code || code;
-    const success = await uploadParallel(finalCode, questions);
-    cacheCount(finalCode, success);
-    return { finalCode, success };
-  }
-
-  async function createSmall(code, name, desc, questions) {
-    prog('Đang lưu môn học...', 0, 100, 'Đang tạo môn và nhập câu hỏi...');
-    const out = await postAction('add_subject', { code, name: name || code, description: desc || '', questions });
-    const finalCode = out.code || out.subject_code || code;
-    cacheCount(finalCode, questions.length);
-    prog('Đang lưu môn học...', 100, 100, 'Hoàn tất');
-    return { finalCode, success: questions.length };
-  }
-
-  window.__submitSubjectRequest = async function () {
-    const code = ($('addSubjectCode')?.value || '').trim().toUpperCase();
-    const name = ($('addSubjectName')?.value || '').trim();
-    const desc = ($('addSubjectDesc')?.value || '').trim();
-    const questions = readQuestions();
-
-    if (!code) {
-      alert('Vui lòng nhập mã môn');
-      $('addSubjectCode')?.focus();
-      return;
-    }
-    if (!/^[A-Z0-9_]{2,20}$/.test(code)) {
-      alert('Mã môn chỉ gồm chữ, số, gạch dưới (2-20 ký tự)');
-      $('addSubjectCode')?.focus();
-      return;
-    }
-    if (!name) {
-      alert('Vui lòng nhập tên môn');
-      $('addSubjectName')?.focus();
-      return;
-    }
-    if (!questions.length) {
-      alert('Bạn cần chọn file và bấm Xem trước trước khi lưu môn học.');
-      return;
-    }
-    if (!user()) {
-      alert('Bạn cần đăng nhập trước khi lưu môn học.');
-      return;
-    }
-
-    const btn = $('userImportBtn');
-    const old = btn ? btn.textContent : '';
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = 'Đang lưu...';
-    }
-
-    try {
-      if (window.LHSubjectImport?.prepareZipQuestionsBeforeSave) {
-        await window.LHSubjectImport.prepareZipQuestionsBeforeSave(questions, (done, total, text) => {
-          prog('Đang upload ảnh Cloudinary...', done, total, text);
-        });
-      }
-
-      if (canManage()) {
-        const rs =
-          questions.length > LARGE_LIMIT
-            ? await createLarge(code, name, desc, questions)
-            : await createSmall(code, name, desc, questions);
-        const ok = 'Đã thêm môn ' + rs.finalCode + ' với ' + rs.success + ' câu hỏi';
-        prog('Hoàn tất upload', rs.success, rs.success, ok);
-        alert(ok);
-        toast(ok);
-        clearState();
-        window.__switchSubjectGateTab?.('list');
-        try {
-          $('subjectRefresh')?.click();
-          setTimeout(() => $('subjectRefresh')?.click(), 5600);
-          setTimeout(() => window.refreshSubjectCountsOnce?.(), 6500);
-        } catch (e) {
-          lhWarn('FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701', e);
-        }
-      } else {
-        prog('Đang gửi yêu cầu tạo môn học...', 0, 100, 'Đang tải dữ liệu câu hỏi...');
-        await postAction('add_subject_request', { code, name, description: desc || '', questions_data: questions });
-        prog('Hoàn tất', 100, 100, 'Đã gửi yêu cầu');
-        const ok = 'Đã gửi yêu cầu thêm môn ' + code + '. Vui lòng chờ admin duyệt.';
-        alert(ok);
-        toast(ok);
-        clearState();
-        window.__switchSubjectGateTab?.('list');
-      }
-    } catch (e) {
-      console.warn('Fast add subject upload error:', e);
-      alert('Lỗi tạo môn: ' + (e?.message || e));
-      toast('Lỗi tạo môn');
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = old || 'Lưu Môn Học';
-      }
-      setTimeout(hideProg, 450);
-    }
-  };
-})();
+// Thân block đã chuyển sang ./subjectImport.js. Gọi đúng chỗ block cũ đứng.
+installFastParallelUpload();
 // ===== END FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701 =====
 
 // ===== LH_UNIFIED_FETCH_AND_ACCESS_20260726 =====
@@ -4678,759 +2763,11 @@ installUnifiedFetchAndAccess();
 // ===== END LH_UNIFIED_FETCH_AND_ACCESS_20260726 =====
 
 // ===== BOOKMARK_QUESTIONS_FEATURE_20260726 =====
-// Tính năng lưu câu hỏi (🔖 Bookmark Ribbon SVG): lưu câu hỏi yêu thích từ flashcard, xem lại ở Thư viện.
-(function () {
-  const BOOKMARK_PREFIX = 'lh_starred_v1_';
-
-  const SVG_UNSAVED = `<svg class="bmIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
-  const SVG_SAVED = `<svg class="bmIcon" width="18" height="18" viewBox="0 0 24 24" fill="#f5c518" stroke="#f5c518" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
-
-  const SVG_LIB_UNSAVED = `<svg class="bmLibIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
-  const SVG_LIB_SAVED = `<svg class="bmLibIcon" width="14" height="14" viewBox="0 0 24 24" fill="#f5c518" stroke="#f5c518" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
-
-  function getSubjectCode() {
-    if (
-      typeof LHState.RAW !== 'undefined' &&
-      Array.isArray(LHState.RAW) &&
-      LHState.RAW[0] &&
-      LHState.RAW[0].subject_code
-    ) {
-      return String(LHState.RAW[0].subject_code).trim();
-    }
-    return localStorage.getItem('learninghub_subject_code_merged_v1') || 'default_subject';
-  }
-
-  function bookmarkKey() {
-    return BOOKMARK_PREFIX + getSubjectCode();
-  }
-
-  // Định danh nhất quán cho từng câu hỏi (ưu tiên num, fallback id)
-  function getQKey(q) {
-    if (!q) return null;
-    if (typeof q === 'string' || typeof q === 'number') return 'num_' + String(q);
-    if (q.num !== undefined && q.num !== null && q.num !== '') return 'num_' + String(q.num);
-    if (q.id !== undefined && q.id !== null && q.id !== '') return 'id_' + String(q.id);
-    if (q.question) return 'q_' + String(q.question).trim().slice(0, 50);
-    return null;
-  }
-
-  function loadBookmarks() {
-    try {
-      const primaryKey = bookmarkKey();
-      const primaryArr = JSON.parse(localStorage.getItem(primaryKey) || '[]');
-      const backupArr = JSON.parse(localStorage.getItem('lh_starred_v1_backup_all') || '[]');
-      const merged = new Set(
-        [...(Array.isArray(primaryArr) ? primaryArr : []), ...(Array.isArray(backupArr) ? backupArr : [])].map(x =>
-          String(x),
-        ),
-      );
-      return merged;
-    } catch (e) {
-      return new Set();
-    }
-  }
-
-  function saveBookmarks(set) {
-    try {
-      const arr = [...set].map(x => String(x));
-      localStorage.setItem(bookmarkKey(), JSON.stringify(arr));
-      localStorage.setItem('lh_starred_v1_backup_all', JSON.stringify(arr));
-    } catch (e) {
-      lhWarn('BOOKMARK_QUESTIONS_FEATURE_20260726', e);
-    }
-  }
-
-  function isBookmarked(qOrKey) {
-    if (!qOrKey) return false;
-    const key = typeof qOrKey === 'object' ? getQKey(qOrKey) : String(qOrKey);
-    if (!key) return false;
-    return loadBookmarks().has(key);
-  }
-
-  function toggleBookmarkFn(qOrKey) {
-    if (!qOrKey) return false;
-    const key = typeof qOrKey === 'object' ? getQKey(qOrKey) : String(qOrKey);
-    if (!key) return false;
-    const s = loadBookmarks();
-    let added;
-    if (s.has(key)) {
-      s.delete(key);
-      added = false;
-    } else {
-      s.add(key);
-      added = true;
-    }
-    saveBookmarks(s);
-    return added;
-  }
-
-  function countBookmarks() {
-    return loadBookmarks().size;
-  }
-
-  // Gắn helpers ra window để Thư viện gọi trực tiếp trong template
-  window.__isBookmarked = isBookmarked;
-  window.__countBookmarks = countBookmarks;
-  window.__getBookmarkBtnHTML = function (q) {
-    const key = getQKey(q);
-    if (!key) return '';
-    const bookmarked = isBookmarked(key);
-    const esc2 = s =>
-      String(s ?? '').replace(
-        /[&<>"']/g,
-        c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-      );
-    return `<button type="button" class="libBookmarkBtn${bookmarked ? ' bookmarked' : ''}" data-lib-bookmark="${esc2(key)}" title="${bookmarked ? 'Bỏ lưu câu này' : 'Lưu câu hỏi này'}">${bookmarked ? SVG_LIB_SAVED : SVG_LIB_UNSAVED}</button>`;
-  };
-
-  // ── CSS inject ────────────────────────────────────────────────────────────
-  (function injectBookmarkCSS() {
-    if (document.getElementById('__bookmarkQCSS')) return;
-    const s = document.createElement('style');
-    s.id = '__bookmarkQCSS';
-    s.textContent = `
-      #bookmarkBtn {
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 4px 6px;
-        border-radius: 8px;
-        color: rgba(232,212,168,.65);
-        transition: color .18s, transform .15s, filter .18s;
-        user-select: none;
-        display: flex; align-items: center; justify-content: center;
-      }
-      #bookmarkBtn .bmIcon { transition: stroke .18s, fill .18s, transform .15s; }
-      #bookmarkBtn.bookmarked {
-        color: #f5c518;
-        filter: drop-shadow(0 0 7px rgba(245,197,24,.65));
-      }
-      #bookmarkBtn:hover { transform: scale(1.18); color: #f5c518; }
-      #bookmarkBtn:active { transform: scale(.9); }
-      @keyframes bookmarkPop {
-        0%   { transform: scale(1); }
-        40%  { transform: scale(1.42); }
-        70%  { transform: scale(.88); }
-        100% { transform: scale(1); }
-      }
-      #bookmarkBtn.pop { animation: bookmarkPop .32s ease; }
-
-      .libBookmarkBtn {
-        background: rgba(255,255,255,.03);
-        border: 1px solid rgba(200,169,110,.25);
-        border-radius: 7px;
-        cursor: pointer;
-        font-size: .82rem;
-        padding: 4px 9px;
-        color: rgba(232,212,168,.75);
-        display: inline-flex; align-items: center; gap: 4px;
-        transition: color .15s, border-color .15s, background .15s, transform .12s;
-        line-height: 1;
-        white-space: nowrap;
-      }
-      .libBookmarkBtn.bookmarked {
-        color: #f5c518;
-        border-color: rgba(245,197,24,.55);
-        background: rgba(245,197,24,.09);
-      }
-      .libBookmarkBtn:hover { transform: scale(1.06); color: #f5c518; border-color: rgba(245,197,24,.5); }
-
-      .v7FilterBtn[data-library-filter="starred"] .bookmarkCount {
-        font-size: .75em;
-        opacity: .88;
-        margin-left: 4px;
-      }
-    `;
-    document.head.appendChild(s);
-  })();
-
-  // ── Flashcard: lấy chính xác câu hiện tại ─────────────────────────────────
-  function getCurrentCard() {
-    try {
-      const arr =
-        typeof LHState.pool !== 'undefined' && Array.isArray(LHState.pool) && LHState.pool.length
-          ? LHState.pool
-          : typeof LHState.RAW !== 'undefined'
-            ? LHState.RAW
-            : [];
-      if (!arr.length) return null;
-      const index = Math.max(0, Math.min(typeof LHState.ci === 'number' ? LHState.ci : 0, arr.length - 1));
-      return arr[index] || null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  function updateBookmarkBtn() {
-    const btn = document.getElementById('bookmarkBtn');
-    if (!btn) return;
-    const card = getCurrentCard();
-    if (!card) return;
-    const key = getQKey(card);
-    if (!key) return;
-    const bookmarked = isBookmarked(key);
-    btn.classList.toggle('bookmarked', bookmarked);
-    btn.innerHTML = bookmarked ? SVG_SAVED : SVG_UNSAVED;
-    btn.title = bookmarked ? 'Bỏ lưu câu này' : 'Lưu câu hỏi này';
-  }
-  window.updateBookmarkBtn = updateBookmarkBtn;
-
-  function addBookmarkButtonToCard() {
-    if (document.getElementById('bookmarkBtn')) {
-      updateBookmarkBtn();
-      return;
-    }
-    const cardTools = document.getElementById('cardTools');
-    if (!cardTools) return;
-    const btn = document.createElement('button');
-    btn.id = 'bookmarkBtn';
-    btn.type = 'button';
-    btn.className = 'cardToolBtn';
-    btn.innerHTML = SVG_UNSAVED;
-    btn.title = 'Lưu câu hỏi này';
-    btn.setAttribute('aria-label', 'Lưu câu hỏi yêu thích');
-    btn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      const card = getCurrentCard();
-      if (!card) return;
-      const key = getQKey(card);
-      if (!key) return;
-      const added = toggleBookmarkFn(key);
-      btn.classList.toggle('bookmarked', added);
-      btn.innerHTML = added ? SVG_SAVED : SVG_UNSAVED;
-      btn.title = added ? 'Bỏ lưu câu này' : 'Lưu câu hỏi này';
-      btn.classList.remove('pop');
-      void btn.offsetWidth;
-      btn.classList.add('pop');
-      btn.addEventListener('animationend', () => btn.classList.remove('pop'), { once: true });
-      const displayNum = card.num || (typeof LHState.ci === 'number' ? LHState.ci : 0) + 1;
-      try {
-        notify(added ? `🔖 Đã lưu câu ${displayNum}` : `Đã bỏ lưu câu ${displayNum}`);
-      } catch (err) {
-        lhWarn('BOOKMARK_QUESTIONS_FEATURE_20260726', err);
-      }
-      // Nếu thư viện đang hiển thị thì render lại thư viện
-      if (typeof window.renderStudy === 'function') window.renderStudy();
-    });
-    cardTools.appendChild(btn);
-    updateBookmarkBtn();
-  }
-
-  const _origUpdateCardTools = typeof updateCardTools === 'function' ? updateCardTools : null;
-  window.updateCardTools = function () {
-    if (_origUpdateCardTools) _origUpdateCardTools.apply(this, arguments);
-    updateBookmarkBtn();
-  };
-
-  // ── Thư viện: Event listener cho nút Bookmark trên Card ───────────────────
-  function bindLibraryClickEvents() {
-    document.addEventListener(
-      'click',
-      function (e) {
-        const btn = e.target.closest('[data-lib-bookmark]');
-        if (!btn) return;
-        e.stopPropagation();
-        const key = btn.dataset.libBookmark;
-        if (!key) return;
-        const added = toggleBookmarkFn(key);
-        btn.classList.toggle('bookmarked', added);
-        btn.innerHTML = added ? SVG_LIB_SAVED : SVG_LIB_UNSAVED;
-        btn.title = added ? 'Bỏ lưu' : 'Lưu câu này';
-        btn.classList.remove('pop');
-        void btn.offsetWidth;
-        btn.classList.add('pop');
-        btn.addEventListener('animationend', () => btn.classList.remove('pop'), { once: true });
-        try {
-          notify(added ? `🔖 Đã lưu câu hỏi` : `Đã bỏ lưu câu hỏi`);
-        } catch (ex) {
-          lhWarn('BOOKMARK_QUESTIONS_FEATURE_20260726', ex);
-        }
-
-        // Re-render thư viện để cập nhật danh sách và số đếm bộ lọc
-        if (typeof window.renderStudy === 'function') window.renderStudy();
-        updateBookmarkBtn();
-      },
-      false,
-    );
-  }
-
-  function init() {
-    addBookmarkButtonToCard();
-    bindLibraryClickEvents();
-    if (typeof renderUnified === 'function') {
-      try {
-        renderUnified();
-      } catch (e) {
-        lhWarn('BOOKMARK_QUESTIONS_FEATURE_20260726', e);
-      }
-    }
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => setTimeout(init, 100));
-  } else {
-    setTimeout(init, 100);
-  }
-
-  window.addEventListener('lh:subject-changed', () => {
-    setTimeout(updateBookmarkBtn, 100);
-    if (typeof renderUnified === 'function') {
-      try {
-        renderUnified();
-      } catch (e) {
-        lhWarn('BOOKMARK_QUESTIONS_FEATURE_20260726', e);
-      }
-    } else if (typeof window.renderStudy === 'function') {
-      try {
-        window.renderStudy();
-      } catch (e) {
-        lhWarn('BOOKMARK_QUESTIONS_FEATURE_20260726', e);
-      }
-    }
-  });
-})();
+// Thân block đã chuyển sang ./bookmarks.js. Gọi đúng chỗ block cũ đứng để thứ tự chạy không đổi.
+installBookmarks();
 // ===== BOOKMARK_QUESTIONS_FEATURE_20260726 END =====
 
 // ===== HEADER_EDIT_REQUEST_BELL_20260726 =====
-// Chuông thông báo yêu cầu sửa câu hỏi.
-//
-// Vị trí: NGOÀI header (.globalTop .actions), nằm bên trái nút "Đổi môn" ->
-// thứ tự trên thanh trên cùng là: [chuông] [Đổi môn] [Cài đặt] [Avatar].
-// Nút và modal đã có sẵn trong index.html (#hodEditRequestBell,
-// #hodEditRequestModal) cùng CSS cho .globalTop, nhưng trước đây không có JS nào
-// gắn vào nên nút nằm im trong menu tài khoản và không bấm được.
-//
-// Điện thoại: KHÔNG xử lý ở JS. app.css đã có
-//   @media (max-width:760px){ .globalTop #hodEditRequestBell{display:none!important} }
-// nên chuông tự ẩn trên mobile (báo cáo vẫn xem được qua menu tài khoản ->
-// "Báo cáo đã gửi"). Đừng thêm inline style.display cho nút này, vì inline
-// (không !important) sẽ thua rule !important trong CSS và ngược lại setProperty
-// important sẽ đè luôn media query mobile.
-//
-// Dữ liệu: GET /api/my-edit-requests (Turso). Supabase chỉ dùng để auth, token
-// do lớp patch fetch tự gắn Authorization - xem LH_FETCH_AUTH ở dưới file.
-(function () {
-  const SEEN_KEY = 'lh_edit_request_seen_v1';
-  const POLL_MS = 60000;
-  const MIN_GAP_MS = 15000;
-
-  const $ = id => document.getElementById(id);
-  const esc = s =>
-    String(s ?? '').replace(
-      /[&<>"']/g,
-      c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-    );
-  const user = () => window.HODSupabase?.getUser?.() || null;
-
-  let bell = null; // giữ tham chiếu vì khi đăng xuất ta tháo nút khỏi DOM
-  let items = [];
-  let staffPendingItems = []; // yêu cầu của học sinh chờ admin duyệt
-  let loading = false;
-  let inflight = null; // promise của lần gọi API đang chạy (chống gọi trùng)
-  let lastFetch = 0; // mốc lần GỌI gần nhất (kể cả lỗi) để không spam API
-  let loadedOk = false; // đã từng lấy được danh sách -> phân biệt rỗng vs lỗi
-  let watchedUser = null; // id user đang theo dõi, đổi user thì nạp lại từ đầu
-
-  function isStaff() {
-    const role = String(window.HODSupabase?.getProfile?.()?.role || '').toLowerCase();
-    return !!user() && (window.HODSupabase?.isAdmin?.() || role === 'admin' || role === 'editor');
-  }
-
-  function actionsBar() {
-    return (
-      document.querySelector('.globalTop .actions') ||
-      document.querySelector('#fc .actions') ||
-      document.querySelector('.actions')
-    );
-  }
-
-  function readSeen() {
-    try {
-      return JSON.parse(localStorage.getItem(SEEN_KEY) || '{}') || {};
-    } catch (e) {
-      return {};
-    }
-  }
-  function writeSeen(map) {
-    try {
-      localStorage.setItem(SEEN_KEY, JSON.stringify(map));
-    } catch (e) {
-      lhWarn('HEADER_EDIT_REQUEST_BELL_20260726', e);
-    }
-  }
-  // Mốc "đã xem" theo trạng thái + thời điểm duyệt: admin duyệt lại lần nữa thì
-  // lại tính là thông báo mới.
-  function stampOf(r) {
-    return String(r.status || '') + '|' + String(r.reviewed_at || r.created_at || '');
-  }
-  function isFresh(r, seen) {
-    if (String(r.status || 'pending') === 'pending') return false;
-    return seen[String(r.id)] !== stampOf(r);
-  }
-
-  function statusText(s) {
-    return { pending: 'Đang chờ', approved: 'Đã duyệt', rejected: 'Từ chối' }[s] || s || 'Không rõ';
-  }
-  function statusClass(s) {
-    return s === 'approved' ? 'approved' : s === 'rejected' ? 'rejected' : 'pending';
-  }
-  function timeText(v) {
-    if (!v) return '';
-    const d = new Date(v);
-    return isNaN(d.getTime()) ? String(v) : d.toLocaleString('vi-VN');
-  }
-
-  // Đưa chuông ra thanh header, ngay trước nút Đổi môn / Cài đặt.
-  function mount() {
-    if (!bell) bell = $('hodEditRequestBell');
-    if (!bell) return;
-    if (!user()) {
-      if (bell.isConnected) bell.remove();
-      return;
-    }
-    const actions = actionsBar();
-    if (!actions) return;
-    const anchor = $('subjectTopChip') || $('openSettings');
-    if (anchor && anchor.parentNode === actions) {
-      if (anchor.previousElementSibling !== bell) actions.insertBefore(bell, anchor);
-    } else if (bell.parentNode !== actions) {
-      actions.prepend(bell);
-    }
-  }
-
-  function paint() {
-    if (!bell || !bell.isConnected) return;
-    const seen = readSeen();
-    const myFreshCount = items.filter(r => isFresh(r, seen)).length;
-    const staffPendingCount = isStaff() ? staffPendingItems.length : 0;
-    const totalNew = myFreshCount + staffPendingCount;
-
-    const badge = $('hodEditRequestBadge');
-    if (badge) {
-      badge.textContent = totalNew > 9 ? '9+' : String(totalNew);
-      badge.classList.toggle('hidden', totalNew === 0);
-    }
-    bell.classList.toggle('hasNewRequest', totalNew > 0);
-
-    let titleText = 'Thông báo yêu cầu sửa câu hỏi';
-    if (staffPendingCount > 0 && myFreshCount > 0) {
-      titleText = `${staffPendingCount} yêu cầu học sinh chờ duyệt & ${myFreshCount} phản hồi mới`;
-    } else if (staffPendingCount > 0) {
-      titleText = `${staffPendingCount} yêu cầu sửa từ học sinh đang chờ duyệt`;
-    } else if (myFreshCount > 0) {
-      titleText = `${myFreshCount} yêu cầu sửa vừa có phản hồi`;
-    }
-    bell.title = titleText;
-  }
-
-  function isModalOpen() {
-    return !!$('hodEditRequestModal') && !$('hodEditRequestModal').classList.contains('hidden');
-  }
-
-  function fetchNow() {
-    loading = true;
-    return (async () => {
-      try {
-        const promises = [
-          fetch('/api/my-edit-requests?ts=' + Date.now(), { cache: 'no-store' })
-            .then(res => (res.ok ? res.json() : {}))
-            .catch(() => ({})),
-        ];
-        if (isStaff()) {
-          promises.push(
-            fetch('/api/staff-edit-requests?ts=' + Date.now(), { cache: 'no-store' })
-              .then(res => (res.ok ? res.json() : {}))
-              .catch(() => ({})),
-          );
-        }
-        const [myOut, staffOut] = await Promise.all(promises);
-        if (Array.isArray(myOut?.data)) {
-          items = myOut.data;
-          loadedOk = true;
-        }
-        if (staffOut && Array.isArray(staffOut?.data)) {
-          staffPendingItems = staffOut.data;
-        } else if (!isStaff()) {
-          staffPendingItems = [];
-        }
-      } catch (e) {
-        console.warn('[bell] không tải được yêu cầu sửa:', e);
-      } finally {
-        loading = false;
-        inflight = null;
-        paint();
-        // Modal đang mở thì vẽ lại: nếu chỉ paint() thì danh sách treo ở "Đang tải...".
-        if (isModalOpen()) renderList();
-      }
-    })();
-  }
-
-  // Trả về promise của lần gọi ĐANG chạy để openModal await đúng lần đó, thay vì
-  // thoát sớm rồi render lúc dữ liệu chưa về.
-  function load(force) {
-    if (!user()) {
-      items = [];
-      staffPendingItems = [];
-      return Promise.resolve();
-    }
-    if (inflight) return inflight;
-    if (!force && Date.now() - lastFetch < MIN_GAP_MS) return Promise.resolve();
-    lastFetch = Date.now();
-    inflight = fetchNow();
-    return inflight;
-  }
-
-  window.jumpToQuestionInLibrary = function (num, subjectCode) {
-    closeModal();
-
-    // 1. Reset bộ lọc thư viện về "Tất cả" (all)
-    try {
-      localStorage.setItem('learninghub_library_filter_v1', 'all');
-    } catch (e) {
-      lhWarn('HEADER_EDIT_REQUEST_BELL_20260726', e);
-    }
-
-    // 2. Tự động chuyển sang môn học tương ứng nếu câu hỏi thuộc môn khác
-    const targetSubject = String(subjectCode || '').trim();
-    const currentSubject = (localStorage.getItem('learninghub_subject_code_merged_v1') || '').trim();
-    let needReloadSubject = false;
-
-    if (targetSubject && targetSubject !== currentSubject) {
-      try {
-        localStorage.setItem('learninghub_subject_code_merged_v1', targetSubject);
-        needReloadSubject = true;
-        if ($('subjectInlineText')) $('subjectInlineText').textContent = targetSubject;
-        if ($('hodAccountSubjectText')) $('hodAccountSubjectText').textContent = targetSubject;
-      } catch (e) {
-        lhWarn('HEADER_EDIT_REQUEST_BELL_20260726', e);
-      }
-    }
-
-    // 3. Chuyển tab sang Thư viện (study)
-    const tabBtn = document.querySelector('.tab[data-tab="study"]');
-    if (typeof switchTab === 'function') {
-      switchTab('study', tabBtn);
-    } else if (tabBtn) {
-      tabBtn.click();
-    }
-
-    // 4. Nếu đổi môn, gọi nạp lại dữ liệu môn mới
-    if (needReloadSubject) {
-      if (typeof window.loadCurrentSubjectOnly === 'function') {
-        window.loadCurrentSubjectOnly(true);
-      } else if (typeof window.loadSubjectLight === 'function') {
-        window.loadSubjectLight(true);
-      }
-    }
-
-    // 5. Điền mã câu vào ô tìm kiếm (#num)
-    const searchInput = document.getElementById('search') || document.getElementById('studySearch');
-    if (searchInput) {
-      searchInput.value = '#' + num;
-      try {
-        localStorage.setItem('learninghub_library_search_v1', '#' + num);
-      } catch (e) {
-        lhWarn('OPEN_QUESTION_LOCALLY_LOCALSTORAGE_SAVE', e);
-      }
-      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-      searchInput.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-
-    // 6. Vẽ lại giao diện Thư viện & cuộn tới câu hỏi
-    if (typeof window.renderStudy === 'function') {
-      try {
-        window.renderStudy();
-      } catch (e) {
-        lhWarn('HEADER_EDIT_REQUEST_BELL_20260726', e);
-      }
-    }
-    setTimeout(() => {
-      const list = document.getElementById('studyList') || document.getElementById('study');
-      if (list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 150);
-  };
-
-  function renderList() {
-    const box = $('hodEditRequestList');
-    if (!box) return;
-    if (!user()) {
-      box.innerHTML = '<div class="hodReportEmpty">Đăng nhập để xem thông báo.</div>';
-      return;
-    }
-
-    let staffHtml = '';
-    if (isStaff()) {
-      if (staffPendingItems.length > 0) {
-        staffHtml = `
-        <div class="hodStaffPendingBlock" style="margin-bottom: 14px; padding: 12px 14px; background: rgba(200, 169, 110, 0.08); border: 1px solid rgba(200, 169, 110, 0.35); border-radius: 14px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <strong style="color:var(--gold2, #e8d4a8); font-size:13px; display:flex; align-items:center; gap:6px; font-weight:700;">
-              <span>📌</span> Có ${staffPendingItems.length} yêu cầu từ học sinh chờ duyệt
-            </strong>
-            <a href="admin.html?tab=requests" target="_blank" style="font-size:12px; font-weight:700; color:#111111; text-decoration:none; background:linear-gradient(135deg, #c8a96e, #e8d4a8); padding:5px 12px; border-radius:8px; border:none; display:inline-flex; align-items:center; gap:3px; box-shadow:0 2px 8px rgba(200, 169, 110, 0.3);">
-              Duyệt ngay ↗
-            </a>
-          </div>
-          ${staffPendingItems
-            .slice(0, 3)
-            .map(r => {
-              const n = r.question_num || r.new_data?.num || '?';
-              const sc = r.subject_code || r.new_data?.subject_code || '';
-              return `
-            <div style="font-size:12px; color:#e2d8c3; margin-top:6px; padding-top:6px; border-top:1px dashed rgba(200, 169, 110, 0.2); line-height:1.45; display:flex; justify-content:space-between; align-items:center; gap:8px;">
-              <div>
-                <b style="color:#ffffff;">Câu ${esc(n)}</b> (${esc(sc)}) - <span style="color:var(--gold2, #e8d4a8); font-weight:500;">${esc(r.user_email || 'Học sinh')}</span>: <span style="color:#c8bba6; font-style:italic;">"${esc(r.reason || 'Đề xuất sửa câu hỏi')}"</span>
-              </div>
-              ${n !== '?' ? `<button type="button" onclick="window.jumpToQuestionInLibrary('${esc(n)}', '${esc(sc)}')" style="font-size:11px; font-weight:600; padding:2px 8px; border-radius:6px; background:rgba(200, 169, 110, 0.15); border:1px solid rgba(200, 169, 110, 0.3); color:var(--gold2, #e8d4a8); cursor:pointer; white-space:nowrap;">Tra câu ↗</button>` : ''}
-            </div>`;
-            })
-            .join('')}
-          ${staffPendingItems.length > 3 ? `<div style="font-size:11px; color:#c8bba6; margin-top:6px; font-style:italic;">...và ${staffPendingItems.length - 3} yêu cầu khác</div>` : ''}
-        </div>`;
-      } else {
-        staffHtml = `
-        <div class="hodStaffPendingBlock" style="margin-bottom: 12px; padding: 10px 14px; background: rgba(114, 197, 140, 0.08); border: 1px solid rgba(114, 197, 140, 0.25); border-radius: 12px; font-size:12px; display:flex; justify-content:space-between; align-items:center;">
-          <span style="color:#9ee5b2; font-weight:600; display:flex; align-items:center; gap:6px;">✓ Không có yêu cầu học sinh nào đang chờ duyệt</span>
-          <a href="admin.html?tab=requests" target="_blank" style="color:var(--gold2, #e8d4a8); font-weight:700; text-decoration:none;">Trang Admin ↗</a>
-        </div>`;
-      }
-    }
-
-    if (!items.length) {
-      // Phân biệt "chưa gửi gì" với "gọi API lỗi" để không báo sai cho người học.
-      const emptyMsg = loading
-        ? '<div class="hodReportEmpty">Đang tải...</div>'
-        : loadedOk
-          ? '<div class="hodReportEmpty">Bạn chưa gửi yêu cầu sửa nào.</div>'
-          : '<div class="hodReportEmpty">Không tải được thông báo. Thử lại sau.</div>';
-      box.innerHTML = staffHtml + emptyMsg;
-      return;
-    }
-    const seen = readSeen();
-    const myItemsHtml = items
-      .map(r => {
-        const fresh = isFresh(r, seen);
-        const num = r.question_num || r.new_data?.num || '?';
-        const code = r.subject_code || r.new_data?.subject_code || '';
-        return `
-      <div class="hodEditRequestItem${fresh ? ' is-new' : ''}">
-        <div class="hodEditRequestHead">
-          <b>Câu ${esc(num)}${code ? ' · ' + esc(code) : ''}</b>
-          <span class="hodEditRequestStatus ${statusClass(r.status)}">${esc(statusText(r.status))}</span>
-        </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; gap:8px;">
-          <p class="hodEditRequestMeta" style="margin:0;">Gửi: ${esc(timeText(r.created_at))}${r.reviewed_at ? ' · Phản hồi: ' + esc(timeText(r.reviewed_at)) : ''}</p>
-          ${num !== '?'
-            ? `
-          <button type="button" class="hodJumpStudyBtn" data-num="${esc(num)}" data-subject="${esc(code)}" style="font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: rgba(200, 169, 110, 0.15); border: 1px solid rgba(200, 169, 110, 0.35); color: var(--gold2, #e8d4a8); cursor: pointer; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; flex-shrink: 0;">
-            🔍 Tra câu ↗
-          </button>`
-            : ''
-          }
-        </div>
-        ${r.admin_note ? `<p class="hodEditRequestNote" style="margin-top:4px;">Ghi chú admin: ${esc(r.admin_note)}</p>` : ''}
-        ${fresh ? '<span class="hodEditRequestNew">Mới</span>' : ''}
-      </div>`;
-      })
-      .join('');
-
-    box.innerHTML = staffHtml + myItemsHtml;
-  }
-
-  // Mở modal = đã đọc: xoá badge nhưng vẫn giữ nhãn "Mới" của lần mở này.
-  function markAllSeen() {
-    const seen = readSeen();
-    items.forEach(r => {
-      if (String(r.status || 'pending') !== 'pending') seen[String(r.id)] = stampOf(r);
-    });
-    writeSeen(seen);
-  }
-
-  function closeModal() {
-    $('hodEditRequestModal')?.classList.add('hidden');
-  }
-
-  async function openModal() {
-    const modal = $('hodEditRequestModal');
-    if (!modal) return;
-    $('hodAccountMenu')?.classList.add('hidden');
-    modal.classList.remove('hidden');
-    renderList();
-    await load(true);
-    renderList();
-    markAllSeen();
-    paint();
-  }
-
-  function bind() {
-    if (!bell) bell = $('hodEditRequestBell');
-    if (bell && !bell.__lhBellBound) {
-      bell.__lhBellBound = true;
-      bell.addEventListener('click', e => {
-        e.preventDefault();
-        e.stopPropagation();
-        openModal();
-      });
-    }
-    const closeBtn = $('hodEditRequestClose');
-    if (closeBtn && !closeBtn.__lhBellBound) {
-      closeBtn.__lhBellBound = true;
-      closeBtn.addEventListener('click', closeModal);
-    }
-    const modal = $('hodEditRequestModal');
-    if (modal && !modal.__lhBellBound) {
-      modal.__lhBellBound = true;
-      modal.addEventListener('mousedown', e => {
-        if (e.target === modal) closeModal();
-      });
-    }
-    const listEl = $('hodEditRequestList');
-    if (listEl && !listEl.__lhJumpBound) {
-      listEl.__lhJumpBound = true;
-      listEl.addEventListener('click', e => {
-        const btn = e.target.closest('.hodJumpStudyBtn');
-        if (btn) {
-          const num = btn.dataset.num;
-          const subject = btn.dataset.subject || '';
-          if (num && num !== '?') window.jumpToQuestionInLibrary(num, subject);
-        }
-      });
-    }
-  }
-
-  function tick() {
-    mount();
-    bind();
-    const uid = user()?.id || null;
-    if (uid !== watchedUser) {
-      watchedUser = uid;
-      items = [];
-      loadedOk = false;
-      lastFetch = 0;
-      if (uid) load(true);
-    }
-    paint();
-  }
-
-  function boot() {
-    tick();
-    // Lúc boot user thường CHƯA đăng nhập xong (auth async) nên tick đầu tháo nút
-    // ra; các mốc dưới đây gắn lại ngay khi có user, không phải chờ interval.
-    [300, 1200, 3000].forEach(ms => setTimeout(tick, ms));
-    setInterval(tick, 700);
-    setInterval(() => load(false), POLL_MS);
-    // PATCH_MOBILE_PERF_PAUSE_INTERVALS chặn setInterval khi tab bị ẩn, nên khi
-    // tab hiện lại phải tick tay một nhịp thay vì chờ interval.
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) tick();
-    });
-    window.addEventListener('focus', () => {
-      tick();
-      load(false);
-    });
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
-})();
+// Thân block đã chuyển sang ./bookmarks.js. Gọi đúng chỗ block cũ đứng để thứ tự chạy không đổi.
+installHeaderBell();
 // ===== HEADER_EDIT_REQUEST_BELL_20260726 END =====

@@ -1,0 +1,8 @@
+{
+  "version": "84634ff",
+  "timestamp": 1785514125414,
+  "recent_commits": [
+    "✨ Tính năng mới: Implement Supabase auth integration with strict role-based access control",
+    "✨ Cập nhật: Approval workflows"
+  ]
+}

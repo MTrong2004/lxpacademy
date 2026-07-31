@@ -370,15 +370,13 @@ export function installLibrary() {
             q.__imagesLoaded = true;
             if (res.data) {
               /*
-                GIỮ NGUYÊN, đừng "sửa gọn": `cleanImages` KHÔNG tồn tại ở tầng module —
-                nó chỉ là hàm local của block FINAL_URL_ONLY_IMAGES trong appCore (kiểm
-                bằng `npm run find cleanImages`: chỗ khai báo duy nhất nằm trong IIFE).
-                Dòng dưới vì vậy ném ReferenceError, bị `.catch` ngay dưới nuốt — đường nạp
-                ảnh chậm này CHƯA BAO GIỜ chạy xong, từ trước khi tách file.
-                Sửa cho nó chạy là ĐỔI HÀNH VI (ảnh sẽ hiện thêm) -> commit riêng,
-                xem docs/SPLIT_PLAN.md mục 4.
+                GLOBALS_BRIDGE_20260731: trước đây gọi trần `cleanImages(...)` — bản duy nhất
+                nằm ở subjects.js và chưa phơi ra window, nên dòng này ném ReferenceError, bị
+                `.catch` ngay dưới nuốt: đường nạp ảnh chậm CHƯA BAO GIỜ chạy xong, từ trước
+                khi tách file. Nay đi qua cầu nối; `??` để nếu subjects.js chưa cài xong thì
+                vẫn lấy ảnh thô thay vì bỏ trắng.
               */
-              q.images = cleanImages(res.data.images);
+              q.images = window.cleanImages?.(res.data.images) ?? res.data.images;
               window.renderStudy?.();
             }
           })

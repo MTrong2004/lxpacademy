@@ -208,6 +208,12 @@ export function installEditor() {
         }
         $('editModal')?.classList.add('hidden');
         window.notify?.('Đã lưu trực tiếp ✓');
+        // EDIT_SAVE_SINGLE_PATH_20260731: vá câu vừa lưu vào LHState + vẽ lại NGAY, rồi mới
+        // tải lại môn. Đây là việc mà COPILOT_FIX_EDIT_IMAGE_VISIBLE_AFTER_SAVE_20260628 sinh
+        // ra để làm (ảnh vừa thêm phải hiện liền); đường lưu riêng của block đó đã xóa, chỉ
+        // còn `updateLocal` phơi qua `window.__LHUpdateQuestionLocal`. Vá trước reload nên
+        // reload lỗi/chậm thì thẻ vẫn đúng.
+        window.__LHUpdateQuestionLocal?.(window.editDraft, id);
         if (typeof window.loadCurrentSubjectOnly === 'function') await window.loadCurrentSubjectOnly(true);
         else if (window.HODSupabase?.loadQuestionsFromSupabase)
           await window.HODSupabase.loadQuestionsFromSupabase(true);
@@ -229,7 +235,16 @@ export function installEditor() {
       answer_text: window.editDraft.answer_text,
       images: window.editDraft.images || [],
     });
-    window.rebuild?.();
+    // REBUILD_DEAD_LOCAL_20260731: KHÔNG gọi `window.rebuild()` ở đây. Bản đang chạy của nó
+    // (block PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY) đặt thẳng RAW = [] và pool = [], nên
+    // nhánh "lưu sửa local" này vừa lưu xong là thư viện trắng "0 / 0 câu". Vá đúng câu đang
+    // sửa vào LHState là đủ — dữ liệu gốc vẫn ở Turso.
+    const patchInto = list => {
+      const i = (list || []).findIndex(c => Number(c.num) === Number(window.editDraft.num));
+      if (i >= 0) list[i] = Object.assign({}, list[i], window.editDraft);
+    };
+    patchInto(LHState.RAW);
+    patchInto(LHState.pool);
     LHState.ci = LHState.pool.findIndex(c => c.num === window.editDraft.num);
     if (LHState.ci < 0) LHState.ci = 0;
     LHState.flipped = false;

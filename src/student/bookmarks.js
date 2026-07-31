@@ -1,19 +1,34 @@
 /**
- * Learning Hub - Bookmark Questions & Header Edit Request Bell Module
- * Tách từ appCore.js (lines 10180 - 10937)
+ * Lưu câu hỏi (🔖) + chuông thông báo yêu cầu sửa — tách khỏi appCore ngày 20260731.
+ *
+ * Hai block nguyên văn từ appCore: BOOKMARK_QUESTIONS_FEATURE_20260726 (cũ 4732–5044) và
+ * HEADER_EDIT_REQUEST_BELL_20260726 (cũ 5046–5489). Đây là bản ĐANG CHẠY — bản cũ trong
+ * appCore đã xóa, chỉ còn lời gọi installBookmarks() / installHeaderBell() đúng chỗ hai
+ * block cũ đứng (thứ tự chạy phải giữ nguyên, xem docs/SPLIT_PLAN.md mục 2).
+ *
+ * Chỉ đổi những chỗ BUỘC phải đổi vì sang file khác — mọi chú thích gốc giữ nguyên:
+ *
+ * - `$` -> khai báo lại tại chỗ (appCore có `const $` riêng ở tầng module).
+ * - `notify` / `renderUnified` -> `window.*` (bản thật ở appCore / library.js).
+ * - `updateCardTools` -> `window.updateCardTools`. appCore phơi bản gốc ra window rồi giữ
+ *   một hàm CHUYỂN TIẾP cùng tên (RENDER_CARD_WINDOW_BRIDGE_20260731). Đọc trần
+ *   `typeof updateCardTools` ở đây trả false -> lớp bọc không được cài -> MẤT nút 🔖.
+ * - `switchTab` -> `window.switchTab` (appCore gán thẳng ra window, không ai bọc).
  */
-
 import { LHState } from './state.js';
 import { lhWarn } from '../core/log.js';
 
+const $ = id => document.getElementById(id);
+
 // ===== BOOKMARK_QUESTIONS_FEATURE_20260726 =====
+// Tính năng lưu câu hỏi (🔖 Bookmark Ribbon SVG): lưu câu hỏi yêu thích từ flashcard, xem lại ở Thư viện.
 export function installBookmarks() {
   const BOOKMARK_PREFIX = 'lh_starred_v1_';
 
   const SVG_UNSAVED = `<svg class="bmIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
   const SVG_SAVED = `<svg class="bmIcon" width="18" height="18" viewBox="0 0 24 24" fill="#f5c518" stroke="#f5c518" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
 
-  const SVG_LIB_UNSAVED = `<svg class="bmLibIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
+  const SVG_LIB_UNSAVED = `<svg class="bmLibIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
   const SVG_LIB_SAVED = `<svg class="bmLibIcon" width="14" height="14" viewBox="0 0 24 24" fill="#f5c518" stroke="#f5c518" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
 
   function getSubjectCode() {
@@ -32,6 +47,7 @@ export function installBookmarks() {
     return BOOKMARK_PREFIX + getSubjectCode();
   }
 
+  // Định danh nhất quán cho từng câu hỏi (ưu tiên num, fallback id)
   function getQKey(q) {
     if (!q) return null;
     if (typeof q === 'string' || typeof q === 'number') return 'num_' + String(q);
@@ -95,6 +111,7 @@ export function installBookmarks() {
     return loadBookmarks().size;
   }
 
+  // Gắn helpers ra window để Thư viện gọi trực tiếp trong template
   window.__isBookmarked = isBookmarked;
   window.__countBookmarks = countBookmarks;
   window.__getBookmarkBtnHTML = function (q) {
@@ -109,6 +126,7 @@ export function installBookmarks() {
     return `<button type="button" class="libBookmarkBtn${bookmarked ? ' bookmarked' : ''}" data-lib-bookmark="${esc2(key)}" title="${bookmarked ? 'Bỏ lưu câu này' : 'Lưu câu hỏi này'}">${bookmarked ? SVG_LIB_SAVED : SVG_LIB_UNSAVED}</button>`;
   };
 
+  // ── CSS inject ────────────────────────────────────────────────────────────
   (function injectBookmarkCSS() {
     if (document.getElementById('__bookmarkQCSS')) return;
     const s = document.createElement('style');
@@ -169,6 +187,7 @@ export function installBookmarks() {
     document.head.appendChild(s);
   })();
 
+  // ── Flashcard: lấy chính xác câu hiện tại ─────────────────────────────────
   function getCurrentCard() {
     try {
       const arr =
@@ -229,12 +248,11 @@ export function installBookmarks() {
       btn.addEventListener('animationend', () => btn.classList.remove('pop'), { once: true });
       const displayNum = card.num || (typeof LHState.ci === 'number' ? LHState.ci : 0) + 1;
       try {
-        if (typeof window.notify === 'function') {
-          window.notify(added ? `🔖 Đã lưu câu ${displayNum}` : `Đã bỏ lưu câu ${displayNum}`);
-        }
+        window.notify(added ? `🔖 Đã lưu câu ${displayNum}` : `Đã bỏ lưu câu ${displayNum}`);
       } catch (err) {
         lhWarn('BOOKMARK_QUESTIONS_FEATURE_20260726', err);
       }
+      // Nếu thư viện đang hiển thị thì render lại thư viện
       if (typeof window.renderStudy === 'function') window.renderStudy();
     });
     cardTools.appendChild(btn);
@@ -247,6 +265,7 @@ export function installBookmarks() {
     updateBookmarkBtn();
   };
 
+  // ── Thư viện: Event listener cho nút Bookmark trên Card ───────────────────
   function bindLibraryClickEvents() {
     document.addEventListener(
       'click',
@@ -265,13 +284,12 @@ export function installBookmarks() {
         btn.classList.add('pop');
         btn.addEventListener('animationend', () => btn.classList.remove('pop'), { once: true });
         try {
-          if (typeof window.notify === 'function') {
-            window.notify(added ? `🔖 Đã lưu câu hỏi` : `Đã bỏ lưu câu hỏi`);
-          }
+          window.notify(added ? `🔖 Đã lưu câu hỏi` : `Đã bỏ lưu câu hỏi`);
         } catch (ex) {
           lhWarn('BOOKMARK_QUESTIONS_FEATURE_20260726', ex);
         }
 
+        // Re-render thư viện để cập nhật danh sách và số đếm bộ lọc
         if (typeof window.renderStudy === 'function') window.renderStudy();
         updateBookmarkBtn();
       },
@@ -314,8 +332,26 @@ export function installBookmarks() {
     }
   });
 }
+// ===== BOOKMARK_QUESTIONS_FEATURE_20260726 END =====
 
 // ===== HEADER_EDIT_REQUEST_BELL_20260726 =====
+// Chuông thông báo yêu cầu sửa câu hỏi.
+//
+// Vị trí: NGOÀI header (.globalTop .actions), nằm bên trái nút "Đổi môn" ->
+// thứ tự trên thanh trên cùng là: [chuông] [Đổi môn] [Cài đặt] [Avatar].
+// Nút và modal đã có sẵn trong index.html (#hodEditRequestBell,
+// #hodEditRequestModal) cùng CSS cho .globalTop, nhưng trước đây không có JS nào
+// gắn vào nên nút nằm im trong menu tài khoản và không bấm được.
+//
+// Điện thoại: KHÔNG xử lý ở JS. app.css đã có
+//   @media (max-width:760px){ .globalTop #hodEditRequestBell{display:none!important} }
+// nên chuông tự ẩn trên mobile (báo cáo vẫn xem được qua menu tài khoản ->
+// "Báo cáo đã gửi"). Đừng thêm inline style.display cho nút này, vì inline
+// (không !important) sẽ thua rule !important trong CSS và ngược lại setProperty
+// important sẽ đè luôn media query mobile.
+//
+// Dữ liệu: GET /api/my-edit-requests (Turso). Supabase chỉ dùng để auth, token
+// do lớp patch fetch tự gắn Authorization - xem LH_FETCH_AUTH ở dưới file.
 export function installHeaderBell() {
   const SEEN_KEY = 'lh_edit_request_seen_v1';
   const POLL_MS = 60000;
@@ -329,14 +365,14 @@ export function installHeaderBell() {
     );
   const user = () => window.HODSupabase?.getUser?.() || null;
 
-  let bell = null;
+  let bell = null; // giữ tham chiếu vì khi đăng xuất ta tháo nút khỏi DOM
   let items = [];
-  let staffPendingItems = [];
+  let staffPendingItems = []; // yêu cầu của học sinh chờ admin duyệt
   let loading = false;
-  let inflight = null;
-  let lastFetch = 0;
-  let loadedOk = false;
-  let watchedUser = null;
+  let inflight = null; // promise của lần gọi API đang chạy (chống gọi trùng)
+  let lastFetch = 0; // mốc lần GỌI gần nhất (kể cả lỗi) để không spam API
+  let loadedOk = false; // đã từng lấy được danh sách -> phân biệt rỗng vs lỗi
+  let watchedUser = null; // id user đang theo dõi, đổi user thì nạp lại từ đầu
 
   function isStaff() {
     const role = String(window.HODSupabase?.getProfile?.()?.role || '').toLowerCase();
@@ -365,7 +401,8 @@ export function installHeaderBell() {
       lhWarn('HEADER_EDIT_REQUEST_BELL_20260726', e);
     }
   }
-
+  // Mốc "đã xem" theo trạng thái + thời điểm duyệt: admin duyệt lại lần nữa thì
+  // lại tính là thông báo mới.
   function stampOf(r) {
     return String(r.status || '') + '|' + String(r.reviewed_at || r.created_at || '');
   }
@@ -386,6 +423,7 @@ export function installHeaderBell() {
     return isNaN(d.getTime()) ? String(v) : d.toLocaleString('vi-VN');
   }
 
+  // Đưa chuông ra thanh header, ngay trước nút Đổi môn / Cài đặt.
   function mount() {
     if (!bell) bell = $('hodEditRequestBell');
     if (!bell) return;
@@ -464,11 +502,14 @@ export function installHeaderBell() {
         loading = false;
         inflight = null;
         paint();
+        // Modal đang mở thì vẽ lại: nếu chỉ paint() thì danh sách treo ở "Đang tải...".
         if (isModalOpen()) renderList();
       }
     })();
   }
 
+  // Trả về promise của lần gọi ĐANG chạy để openModal await đúng lần đó, thay vì
+  // thoát sớm rồi render lúc dữ liệu chưa về.
   function load(force) {
     if (!user()) {
       items = [];
@@ -485,12 +526,14 @@ export function installHeaderBell() {
   window.jumpToQuestionInLibrary = function (num, subjectCode) {
     closeModal();
 
+    // 1. Reset bộ lọc thư viện về "Tất cả" (all)
     try {
       localStorage.setItem('learninghub_library_filter_v1', 'all');
     } catch (e) {
       lhWarn('HEADER_EDIT_REQUEST_BELL_20260726', e);
     }
 
+    // 2. Tự động chuyển sang môn học tương ứng nếu câu hỏi thuộc môn khác
     const targetSubject = String(subjectCode || '').trim();
     const currentSubject = (localStorage.getItem('learninghub_subject_code_merged_v1') || '').trim();
     let needReloadSubject = false;
@@ -506,6 +549,7 @@ export function installHeaderBell() {
       }
     }
 
+    // 3. Chuyển tab sang Thư viện (study)
     const tabBtn = document.querySelector('.tab[data-tab="study"]');
     if (typeof window.switchTab === 'function') {
       window.switchTab('study', tabBtn);
@@ -513,6 +557,7 @@ export function installHeaderBell() {
       tabBtn.click();
     }
 
+    // 4. Nếu đổi môn, gọi nạp lại dữ liệu môn mới
     if (needReloadSubject) {
       if (typeof window.loadCurrentSubjectOnly === 'function') {
         window.loadCurrentSubjectOnly(true);
@@ -521,6 +566,7 @@ export function installHeaderBell() {
       }
     }
 
+    // 5. Điền mã câu vào ô tìm kiếm (#num)
     const searchInput = document.getElementById('search') || document.getElementById('studySearch');
     if (searchInput) {
       searchInput.value = '#' + num;
@@ -533,6 +579,7 @@ export function installHeaderBell() {
       searchInput.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
+    // 6. Vẽ lại giao diện Thư viện & cuộn tới câu hỏi
     if (typeof window.renderStudy === 'function') {
       try {
         window.renderStudy();
@@ -593,6 +640,7 @@ export function installHeaderBell() {
     }
 
     if (!items.length) {
+      // Phân biệt "chưa gửi gì" với "gọi API lỗi" để không báo sai cho người học.
       const emptyMsg = loading
         ? '<div class="hodReportEmpty">Đang tải...</div>'
         : loadedOk
@@ -633,6 +681,7 @@ export function installHeaderBell() {
     box.innerHTML = staffHtml + myItemsHtml;
   }
 
+  // Mở modal = đã đọc: xoá badge nhưng vẫn giữ nhãn "Mới" của lần mở này.
   function markAllSeen() {
     const seen = readSeen();
     items.forEach(r => {
@@ -709,9 +758,13 @@ export function installHeaderBell() {
 
   function boot() {
     tick();
+    // Lúc boot user thường CHƯA đăng nhập xong (auth async) nên tick đầu tháo nút
+    // ra; các mốc dưới đây gắn lại ngay khi có user, không phải chờ interval.
     [300, 1200, 3000].forEach(ms => setTimeout(tick, ms));
     setInterval(tick, 700);
     setInterval(() => load(false), POLL_MS);
+    // PATCH_MOBILE_PERF_PAUSE_INTERVALS chặn setInterval khi tab bị ẩn, nên khi
+    // tab hiện lại phải tick tay một nhịp thay vì chờ interval.
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) tick();
     });
@@ -724,3 +777,4 @@ export function installHeaderBell() {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 }
+// ===== HEADER_EDIT_REQUEST_BELL_20260726 END =====

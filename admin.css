@@ -4672,6 +4672,36 @@ body.role-editor-limited [data-page="deletedQuestions"] {
   letter-spacing: 0.02em !important;
 }
 
+/* DEVICE_ID_AND_SUBJECT_PER_DEVICE_20260731: chip môn bấm được như chip thiết bị. */
+.saasSubjectBtn {
+  cursor: pointer !important;
+  transition: background 0.15s, border-color 0.15s, color 0.15s !important;
+  text-align: left !important;
+  font-family: inherit !important;
+}
+
+.saasSubjectBtn:hover {
+  background: rgba(226, 184, 107, 0.2) !important;
+  border-color: rgba(226, 184, 107, 0.45) !important;
+  color: #f3e3b3 !important;
+}
+
+.saasSubjectBtn:active {
+  transform: scale(0.98) !important;
+}
+
+/* "+N": còn N thiết bị nữa (hoặc N thiết bị đang ở môn khác). */
+.saasChipMore {
+  margin-left: 6px !important;
+  padding: 0 5px !important;
+  border-radius: 6px !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: inherit !important;
+  font-size: 0.7rem !important;
+  font-weight: 800 !important;
+  opacity: 0.85 !important;
+}
+
 .saasDeviceChip {
   display: inline-flex !important;
   align-items: center !important;

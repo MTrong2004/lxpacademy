@@ -2,7 +2,7 @@
  * Learning Hub - Admin Application Main Bundle Entry Point
  */
 
-import { renderUserRowSaaS, getUserTableHeadHTML } from './users.js';
+import { renderUserRowSaaS, getUserTableHeadHTML, parseDeviceHistory } from './users.js';
 import { uploadImageToCloudinary, calculateQuestionErrorRisk } from './questions.js';
 import { initVersionChecker } from '../core/versionChecker.js';
 // Phải đứng TRƯỚC './adminCore.js' — adminCore cũng bọc fetch (interceptor duy nhất
@@ -22,5 +22,7 @@ if (!mocking) initVersionChecker();
 // Global helper attachments
 window.renderUserRowSaaS = renderUserRowSaaS;
 window.getUserTableHeadHTML = getUserTableHeadHTML;
+// DEVICE_ID_AND_SUBJECT_PER_DEVICE_20260731: hai modal trong adminCore đọc device_history qua đây.
+window.parseDeviceHistory = parseDeviceHistory;
 window.uploadImageToCloudinaryHelper = uploadImageToCloudinary;
 window.calculateQuestionErrorRiskHelper = calculateQuestionErrorRisk;

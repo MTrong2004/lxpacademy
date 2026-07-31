@@ -283,13 +283,20 @@ Dưới đây là bảng tổng hợp các hạng mục đã hoàn tất và l�
 
 ### 🔄 Kế hoạch Đang thực hiện & Sắp tới (Current & Upcoming Roadmap)
 
-- [ ] **Kế hoạch Tách Module Giai đoạn 5 (Split Plan Step 5):**
-  - Tách nhóm tính năng "Thêm môn học mới" và "Xem trước / Import đề thi AI" ra khỏi `appCore.js` thành module `src/student/subjectImport.js`.
-  - Mục tiêu: Rút gọn `appCore.js` xuống dưới **7.000 dòng**.
-- [ ] **Chuẩn hóa Module Quản lý & Lọc Ảnh (`cleanImages`):**
-  - Phơi sáng hàm `cleanImages` ra tầng global module `images.js` và đồng bộ 4 vị trí gọi ngầm (`library.js`, `exam.js`, `appCore.js`) để xử lý dứt điểm các lỗi nạp ảnh tiềm ẩn.
-- [ ] **Đồng bộ Header Counter State:**
-  - Khắc phục hiện tượng hiển thị "0 câu" trên header counter khi chuyển giữa các tab thư viện và kiểm tra.
+- [x] **Kế hoạch Tách Module Giai đoạn 5 (Split Plan Step 5):** — xong 20260731.
+  - Đã tách "Thêm môn học mới" + "Xem trước / Import đề thi AI" sang `src/student/subjectImport.js`,
+    cùng `subjects.js`, `search.js`, `auth.js`, `bookmarks.js`, `flashcards.js`.
+  - Vượt mục tiêu: `appCore.js` còn **2.773 dòng** (mục tiêu là dưới 7.000).
+- [x] **Chuẩn hóa Module Quản lý & Lọc Ảnh (`cleanImages`):** — xong 20260731 (`GLOBALS_BRIDGE_20260731`).
+  - `cleanImages` phơi ra `window.cleanImages` (bản thật ở `subjects.js`), 3 chỗ gọi đã đi qua cầu nối.
+    Thêm `npm run check:globals` để chặn cầu nối đứt quay lại.
+- [x] **Đồng bộ Header Counter State:** — đo lại 20260731, không còn tái hiện.
+  - `?mock=1`: tab Flashcard ra "Câu 1 / 4", tab Thư viện ra "4 câu" đúng bằng số mục được vẽ.
+    Nguyên nhân cũ (`rebuild()` xoá trắng `RAW`/`pool`) đã sửa ở `REBUILD_DEAD_LOCAL_20260731`.
+- [x] **Gộp đường lưu của form sửa câu hỏi:** — xong 20260731 (`EDIT_SAVE_SINGLE_PATH_20260731`).
+  - Nút "Lưu trực tiếp" từng có 2 đường lưu; đường capture trong `images.js` cướp cú bấm rồi
+    bail lặng (nó cần Supabase client vốn đã bỏ từ khi chuyển sang Turso). Nay chỉ còn
+    `saveEditPreview` — một nút, một đường lưu.
 - [ ] **Nâng cấp AI Question Import Parser:**
   - Bổ sung bộ Parser hỗ trợ nhận diện các định dạng đề thi mới (Markdown, JSON nâng cao, Quizlet export) thông qua Prompt AI (Gemini/Claude).
 - [ ] **PWA & Hỗ trợ Học Offline (Progressive Web App):**

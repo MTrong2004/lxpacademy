@@ -14,11 +14,11 @@
   "src/student/appCore.js": {
     "next": 3,
     "prev": 3,
-    "renderCard": 2,
+    "renderCard": 3,
     "reset": 2,
     "set": 2,
     "shuffle": 2,
-    "startTimer": 3,
+    "switchTab": 2,
     "triggerReset": 2,
     "updateCardTools": 2
   },

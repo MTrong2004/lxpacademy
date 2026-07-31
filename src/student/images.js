@@ -473,36 +473,26 @@ export function installUploadLock() {
 // ===== COPILOT_FIX_EDIT_IMAGE_VISIBLE_AFTER_SAVE_20260628 =====
 // Fix: thêm ảnh trong form sửa xong không thấy hiện do reload bị cache / cột tải nhẹ thiếu images.
 // Lưu xong cập nhật local ngay, không chờ reload toàn bộ môn.
+//
+// EDIT_SAVE_SINGLE_PATH_20260731 — block này TỪNG có đường lưu thứ hai của riêng nó
+// (`saveDirectNoReload` + một handler `click` ở CAPTURE trên `document` khớp
+// `#saveEdit,[data-edit-preview-save]`). Đã XÓA. Vì sao:
+//   · Handler capture đó gọi `stopImmediatePropagation()` nên cú bấm "Lưu trực tiếp" KHÔNG
+//     BAO GIỜ tới `saveEditPreview` của ./editor.js — đúng cái bản mà `npm run find` và
+//     CLAUDE.md đều ghi là "bản đang chạy". Hai đường lưu song song cho cùng một nút.
+//   · Đường của block này lấy id câu qua Supabase (`window.HODSupabase.__client`), mà từ
+//     TURSO_ONLY_DATA_SOURCE_20260630 client đó chỉ còn dùng cho Auth và ở `?mock=1` là
+//     `null` — nên nó bail LẶNG (không toast, không alert) sau khi đã chặn propagation:
+//     bấm "Lưu trực tiếp" xong KHÔNG có gì xảy ra, không lưu, không báo lỗi.
+//   · Phần payload của nó cũng kém hơn: `error_risk` chỉ chép lại giá trị cũ, còn
+//     `saveEditPreview` tính lại (ảnh placeholder / câu nhiều đáp án đúng).
+// Còn giữ `updateLocal` — ĐÓ là việc thật của block (vá câu vào LHState + vẽ lại ngay để
+// ảnh vừa thêm hiện liền, không chờ reload môn). Nay phơi ra `window.__LHUpdateQuestionLocal`
+// để `saveEditPreview` gọi. Đừng bind lại handler lưu ở đây; sửa lưu thì sửa ./editor.js.
 export function installImageVisibleAfterSave() {
   if (window.__COPILOT_FIX_EDIT_IMAGE_VISIBLE_AFTER_SAVE_20260628) return;
   window.__COPILOT_FIX_EDIT_IMAGE_VISIBLE_AFTER_SAVE_20260628 = true;
 
-  function $(id) {
-    return document.getElementById(id);
-  }
-  function db() {
-    return window.HODSupabase?.__client || null;
-  }
-  function user() {
-    return window.HODSupabase?.getUser?.() || null;
-  }
-  function profile() {
-    return window.HODSupabase?.getProfile?.() || null;
-  }
-  function canDirect() {
-    const r = String(profile()?.role || '').toLowerCase();
-    return !!user() && (r === 'admin' || r === 'editor');
-  }
-  function subjectCode() {
-    return localStorage.getItem('learninghub_subject_code_merged_v1') || '';
-  }
-  function currentDraft() {
-    try {
-      return window.editDraft || LHState.editDraft || null;
-    } catch (e) {
-      return window.editDraft || null;
-    }
-  }
   function imgUrl(im) {
     if (!im) return '';
     if (typeof im === 'string') return im;
@@ -516,40 +506,6 @@ export function installImageVisibleAfterSave() {
         return typeof im === 'string' ? { src, url: src } : Object.assign({}, im, { src, url: src });
       })
       .filter(Boolean);
-  }
-  function collectDraft() {
-    const d = currentDraft();
-    if (!d) return null;
-    const qEl = $('editQuestion') || document.querySelector('[data-edit-question]');
-    const aEl = $('editAnswer') || document.querySelector('[data-edit-answer]');
-    d.question = (qEl?.value || d.question || '').trim();
-    d.answer = (aEl?.value || d.answer || '')
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z]/g, '');
-    const opts = {};
-    document.querySelectorAll('[data-opt],[data-edit-opt]').forEach(inp => {
-      const k = String(inp.dataset.opt || inp.dataset.editOpt || '').toUpperCase();
-      const v = String(inp.value || '').trim();
-      if (k && v) opts[k] = v;
-    });
-    if (Object.keys(opts).length) d.options = opts;
-    d.answer_text = answerText(d) || d.answer_text || '';
-    d.subject_code = d.subject_code || subjectCode();
-    d.images = cleanImgs(d.images);
-    return d;
-  }
-  async function getQuestionId(d) {
-    if (d.id) return d.id;
-    const c = db();
-    if (!c || !d.num) return null;
-    const r = await c
-      .from('questions')
-      .select('id')
-      .eq('subject_code', d.subject_code || subjectCode())
-      .eq('num', d.num)
-      .maybeSingle();
-    return r.error || !r.data ? null : r.data.id;
   }
   function updateLocal(d, id) {
     const patch = Object.assign({}, d, {
@@ -579,87 +535,9 @@ export function installImageVisibleAfterSave() {
       console.warn('[edit image local update]', e);
     }
   }
-  async function saveDirectNoReload() {
-    if (!canDirect()) return false;
-    const c = db();
-    const d = collectDraft();
-    if (!c || !d) return false;
-    const id = await getQuestionId(d);
-    if (!id) {
-      alert('Không tìm thấy ID câu hỏi trên Supabase.');
-      return true;
-    }
-    const payload = {
-      question: d.question,
-      options: d.options || {},
-      answer: d.answer,
-      answer_text: d.answer_text,
-      images: cleanImgs(d.images),
-      has_image: !!(d.images && d.images.length),
-      updated_at: new Date().toISOString(),
-    };
-    const u = window.HODSupabase?.getUser?.();
-    const oldQ =
-      (LHState.RAW || []).find(x => String(x.id) === String(id) || Number(x.num) === Number(d.num)) ||
-      (LHState.pool || []).find(x => String(x.id) === String(id) || Number(x.num) === Number(d.num)) ||
-      d;
-    const old_data = {
-      question: oldQ.question || '',
-      options: oldQ.options || {},
-      answer: oldQ.answer || '',
-      answer_text: oldQ.answer_text || '',
-      images: cleanImgs(oldQ.images || []),
-    };
-    const res = await fetch('/api/admin-action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      cache: 'no-store',
-      body: JSON.stringify({
-        user_id: u?.id,
-        action: 'save_question_direct',
-        payload: {
-          question_id: id,
-          new_data: Object.assign({ id, subject_code: d.subject_code, num: d.num }, payload),
-          old_data,
-        },
-      }),
-    });
-    const out = await res.json().catch(() => ({}));
-    if (!res.ok || out.error) {
-      alert('Lưu trực tiếp thất bại: ' + (out.error || res.status));
-      return true;
-    }
-    if (typeof window.clearLearningHubQuestionCache === 'function') {
-      window.clearLearningHubQuestionCache();
-    }
-    d.images = payload.images;
-    $('editModal')?.classList.add('hidden');
-    updateLocal(Object.assign({}, d, payload), id);
-    window.notify?.('Đã lưu ảnh và cập nhật câu hiện tại');
-    return true;
-  }
-
-  document.addEventListener(
-    'click',
-    async function (e) {
-      const btn = e.target.closest?.('#saveEdit,[data-edit-preview-save]');
-      if (!btn || !btn.closest?.('#editModal')) return;
-      if (!canDirect()) return;
-      e.preventDefault?.();
-      e.stopPropagation?.();
-      e.stopImmediatePropagation?.();
-      const oldText = btn.textContent;
-      btn.disabled = true;
-      btn.textContent = 'Đang lưu...';
-      try {
-        await saveDirectNoReload();
-      } finally {
-        btn.disabled = false;
-        btn.textContent = oldText || 'Lưu trực tiếp';
-      }
-    },
-    true,
-  );
+  // Cầu nối cho ./editor.js: lưu xong thì vá ngay câu vừa sửa vào LHState + vẽ lại, để ảnh
+  // vừa thêm hiện liền chứ không phải chờ `loadCurrentSubjectOnly(true)` xong.
+  window.__LHUpdateQuestionLocal = updateLocal;
 }
 // ===== END COPILOT_FIX_EDIT_IMAGE_VISIBLE_AFTER_SAVE_20260628 =====
 

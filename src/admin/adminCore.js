@@ -3107,8 +3107,9 @@ async function sendLoginToDiscord(email, role) {
           if (rowFn) return rowFn(p, helpers);
           const activeText = actText(p);
           const activeClass = activeText === 'Đang hoạt động' ? 'activityNow' : '';
+          // Giữ khớp với renderUserRowSaaS (src/admin/users.js) — bản đó mới là bản chạy thật.
           const subjectTag = p.current_subject
-            ? `<span class="saasSubjectChip">${esc(p.current_subject)}</span>`
+            ? `<button class="saasSubjectChip saasSubjectBtn" type="button" title="Xem môn đang học theo từng thiết bị" onclick="showUserSubjectByDeviceModal('${esc(p.id)}')">${esc(p.current_subject)}</button>`
             : `<span class="saasMutedChip">Chưa chọn môn</span>`;
           const deviceTag = p.device_info
             ? `<button class="saasDeviceChip saasDeviceBtn" type="button" title="Xem lịch sử thiết bị" onclick="showUserDeviceHistoryModal('${esc(p.id)}')">${esc(p.device_info)}</button>`
@@ -6088,54 +6089,70 @@ ${E(val)}</pre>`;
     document.querySelectorAll('.lhDotsBtn.isOpen').forEach(b => b.classList.remove('isOpen'));
   };
 
+  /*
+    DEVICE_ID_AND_SUBJECT_PER_DEVICE_20260731
+    Hai modal dưới đây dùng chung bộ trợ giúp này; nguồn dữ liệu DUY NHẤT là
+    `parseDeviceHistory` trong src/admin/users.js (bridge ở src/admin/main.js).
+  */
+  function deviceRowsOf(p) {
+    return typeof parseDeviceHistory === 'function' ? parseDeviceHistory(p) : [];
+  }
+  function deviceIconOf(devRaw) {
+    const lw = String(devRaw || '').toLowerCase();
+    if (lw.includes('iphone') || lw.includes('ios') || lw.includes('android') || lw.includes('mobile')) return '📱';
+    if (lw.includes('mac') || lw.includes('apple') || lw.includes('safari')) return '🖥️';
+    return '💻';
+  }
+  function deviceNameOf(devRaw) {
+    const raw = String(devRaw || 'Chưa rõ').trim();
+    return raw.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\s]+/u, '').trim() || raw;
+  }
+  // ID thiết bị dài 35 ký tự, in đủ thì tràn hàng — 8 ký tự đủ để phân biệt hai máy.
+  function shortDeviceIdOf(id) {
+    const s = String(id || '');
+    return s ? s.replace(/^dev/, '').slice(0, 8) : '';
+  }
+  function deviceModalHead(email, subtitle) {
+    return `<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.1)">
+        <div style="width:46px;height:46px;min-width:46px;border-radius:50%;background:rgba(226,184,107,.15);border:1px solid rgba(226,184,107,.3);display:grid;place-items:center;font-weight:900;color:#f3e3b3;font-size:1.15rem">${esc((email[0] || 'U').toUpperCase())}</div>
+        <div style="min-width:0">
+          <b style="font-size:1.05rem;color:#f8fafc;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(email)}</b>
+          <span style="font-size:.78rem;color:#94a3b8">${esc(subtitle)}</span>
+        </div>
+      </div>`;
+  }
+  function deviceRowHTML(item, rightHTML) {
+    const idLabel = item.id ? `ID: ${esc(shortDeviceIdOf(item.id))}` : 'Thiết bị cũ (chưa có ID)';
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;margin:8px 0;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);">
+        <div style="display:flex;align-items:center;gap:12px;min-width:0;">
+          <span style="font-size:1.3rem">${deviceIconOf(item.device)}</span>
+          <div style="min-width:0">
+            <b style="color:#f8fafc;font-size:.92rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(deviceNameOf(item.device))}</b>
+            <span style="color:#64748b;font-size:.75rem;font-family:monospace;display:block;margin-top:2px" title="${esc(item.id || '')}">${idLabel}</span>
+          </div>
+        </div>
+        <div style="text-align:right;flex:0 0 auto;margin-left:12px">${rightHTML}</div>
+      </div>`;
+  }
+
   window.showUserDeviceHistoryModal = function (uid) {
     const p = (cache.profiles || []).find(x => String(x.id) === String(uid));
     if (!p) return alert('Không tìm thấy người dùng.');
     const email = p.email || p.id;
-    let historyList = [];
-    try {
-      if (typeof p.device_history === 'string' && p.device_history) {
-        historyList = JSON.parse(p.device_history);
-      } else if (Array.isArray(p.device_history)) {
-        historyList = p.device_history;
-      }
-    } catch (e) {
-      historyList = [];
-    }
-    if (!Array.isArray(historyList) || !historyList.length) {
-      historyList = p.device_info
-        ? [{ device: p.device_info, time: p.last_activity || p.last_login || p.created_at || '' }]
-        : [];
-    }
+    const historyList = deviceRowsOf(p);
+
     const rowsHTML = historyList.length
       ? historyList
           .map((item, idx) => {
-            let devRaw = String(item.device || 'Chưa rõ').trim();
-            let icon = '💻';
-            const lw = devRaw.toLowerCase();
-            if (lw.includes('iphone') || lw.includes('ios') || lw.includes('android') || lw.includes('mobile'))
-              icon = '📱';
-            else if (lw.includes('mac') || lw.includes('apple') || lw.includes('safari')) icon = '🖥️';
-            const cleanDev =
-              devRaw.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\s]+/u, '').trim() || devRaw;
             const tagHTML =
               idx === 0
                 ? `<span class="badge approved" style="font-size:.7rem;padding:2px 8px;">Đang sử dụng</span>`
                 : `<span class="badge" style="font-size:.7rem;opacity:.75;padding:2px 8px;">Trước đó</span>`;
             const timeStr = item.time ? date(item.time) : 'Không rõ';
-            return `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;margin:8px 0;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);">
-        <div style="display:flex;align-items:center;gap:12px;min-width:0;">
-          <span style="font-size:1.3rem">${icon}</span>
-          <div style="min-width:0">
-            <b style="color:#f8fafc;font-size:.92rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(cleanDev)}</b>
-            <span style="color:#64748b;font-size:.75rem;font-family:monospace;display:block;margin-top:2px">ID: ${esc(p.id)}</span>
-          </div>
-        </div>
-        <div style="text-align:right;flex:0 0 auto;margin-left:12px">
-          ${tagHTML}
-          <div style="color:#94a3b8;font-size:.78rem;margin-top:4px">${esc(timeStr)}</div>
-        </div>
-      </div>`;
+            return deviceRowHTML(
+              item,
+              `${tagHTML}<div style="color:#94a3b8;font-size:.78rem;margin-top:4px">${esc(timeStr)}</div>`,
+            );
           })
           .join('')
       : '<p class="muted" style="padding:24px;text-align:center">Chưa có lịch sử thiết bị cho tài khoản này.</p>';
@@ -6143,13 +6160,52 @@ ${E(val)}</pre>`;
     openModal(
       '📱 Lịch sử thiết bị đăng nhập',
       `<div style="padding:4px 0">
-      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.1)">
-        <div style="width:46px;height:46px;min-width:46px;border-radius:50%;background:rgba(226,184,107,.15);border:1px solid rgba(226,184,107,.3);display:grid;place-items:center;font-weight:900;color:#f3e3b3;font-size:1.15rem">${esc((email[0] || 'U').toUpperCase())}</div>
-        <div style="min-width:0">
-          <b style="font-size:1.05rem;color:#f8fafc;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(email)}</b>
-          <span style="font-size:.78rem;color:#94a3b8">Danh sách thiết bị người dùng đã đăng nhập</span>
-        </div>
-      </div>
+      ${deviceModalHead(email, 'Danh sách thiết bị người dùng đã đăng nhập')}
+      <div style="max-height:380px;overflow-y:auto;padding-right:4px">${rowsHTML}</div>
+    </div>`,
+    );
+  };
+
+  /*
+    Cột "MÔN ĐANG HỌC" ở danh sách chỉ đọc được `profiles.current_subject` — một ô
+    duy nhất, thiết bị nào ghi sau thì thắng (điện thoại F5 là đè môn của máy tính).
+    Modal này trả lại sự thật: mỗi thiết bị đang ở môn nào, cập nhật lúc nào.
+  */
+  window.showUserSubjectByDeviceModal = function (uid) {
+    const p = (cache.profiles || []).find(x => String(x.id) === String(uid));
+    if (!p) return alert('Không tìm thấy người dùng.');
+    const email = p.email || p.id;
+    const historyList = deviceRowsOf(p);
+    const withSubject = historyList.filter(x => x.code);
+
+    const rowsHTML = withSubject.length
+      ? withSubject
+          .map((item, idx) => {
+            const isCurrent = idx === 0;
+            const chip = `<span class="saasSubjectChip" style="font-size:.78rem">${esc(item.code)}</span>`;
+            const tagHTML = isCurrent
+              ? `<span class="badge approved" style="font-size:.7rem;padding:2px 8px;margin-left:6px">Mới nhất</span>`
+              : '';
+            const timeStr = item.time ? date(item.time) : 'Không rõ';
+            return deviceRowHTML(
+              item,
+              `<div>${chip}${tagHTML}</div><div style="color:#94a3b8;font-size:.78rem;margin-top:4px">${esc(timeStr)}</div>`,
+            );
+          })
+          .join('')
+      : `<p class="muted" style="padding:24px;text-align:center">Chưa ghi nhận môn theo từng thiết bị.<br><span style="font-size:.8rem">Dữ liệu này bắt đầu được ghi từ 31/07/2026 — người dùng cần mở lại web một lần.</span></p>`;
+
+    const distinct = new Set(withSubject.map(x => x.code));
+    const note =
+      distinct.size > 1
+        ? `<div style="margin-bottom:12px;padding:10px 12px;border-radius:10px;background:rgba(226,184,107,.10);border:1px solid rgba(226,184,107,.28);color:#f3e3b3;font-size:.82rem">Người dùng đang mở <b>${distinct.size}</b> môn khác nhau trên <b>${withSubject.length}</b> thiết bị. Cột ngoài danh sách chỉ hiện môn của thiết bị ghi gần nhất.</div>`
+        : '';
+
+    openModal(
+      '📚 Môn đang học theo thiết bị',
+      `<div style="padding:4px 0">
+      ${deviceModalHead(email, 'Mỗi thiết bị giữ môn riêng — nhiều tab cùng một máy thì dùng chung một môn')}
+      ${note}
       <div style="max-height:380px;overflow-y:auto;padding-right:4px">${rowsHTML}</div>
     </div>`,
     );

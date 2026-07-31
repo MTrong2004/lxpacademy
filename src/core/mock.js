@@ -188,9 +188,35 @@ function mockAdminDashboard(opts) {
   const subjects = mockSubjects().data;
   const questions = subjects.flatMap(s => mockQuestions(s.code).data);
   return {
+    /*
+      DEVICE_ID_AND_SUBJECT_PER_DEVICE_20260731
+      mock-user-2 cố tình có HAI thiết bị đang ở HAI môn khác nhau (đúng ca cần
+      kiểm: chip hiện "+1" và modal cảnh báo), còn tài khoản admin chỉ một thiết
+      bị và một dòng lịch sử KIỂU CŨ (thiếu id/code) để thấy phần lùi về "Thiết
+      bị cũ (chưa có ID)".
+    */
     profiles: [
-      mockProfile({ ...opts, role: 'admin' }),
-      { ...mockProfile({ ...opts, role: 'user' }), id: 'mock-user-2', email: 'user2@localhost' },
+      {
+        ...mockProfile({ ...opts, role: 'admin' }),
+        device_info: '💻 Windows · Chrome',
+        device_history: JSON.stringify([{ device: '💻 Windows · Chrome', time: '2026-07-31T02:10:00.000Z' }]),
+      },
+      {
+        ...mockProfile({ ...opts, role: 'user' }),
+        id: 'mock-user-2',
+        email: 'user2@localhost',
+        current_subject: 'MOCK2',
+        device_info: '📱 Android · Chrome',
+        device_history: JSON.stringify([
+          { id: 'devmock2phone0000', device: '📱 Android · Chrome', code: 'MOCK2', time: '2026-07-31T03:40:00.000Z' },
+          {
+            id: 'devmock2laptop000',
+            device: '💻 Windows · Chrome',
+            code: 'MOCK1_C1',
+            time: '2026-07-31T03:05:00.000Z',
+          },
+        ]),
+      },
     ],
     questions,
     requests: [],

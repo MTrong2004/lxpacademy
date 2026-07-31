@@ -13,6 +13,8 @@ Frontend thuần JS (không framework), API Vercel Edge, DB Turso, auth Supabase
 | `npm run find <tên>` | Hàm bị gán ở đâu, **bản nào đang chạy** — dùng TRƯỚC khi đọc code |
 | `npm run check:catch` | Chặn `catch` rỗng quay lại trong `src/` |
 | `npm run check:overrides` | Chặn **thêm lớp ghi đè mới** cho hàm đã có lớp cũ (quy tắc 3) |
+| `npm run check:installs` | Chặn `export function install*()` **nằm chết vì quên gọi** trong appCore/adminCore |
+| `npm run check:globals` | Chặn **cầu nối đứt**: file A gọi `foo()` của file B mà không ai gán `window.foo` |
 | `npm run format` | Prettier cho `src/**/*.js` (chạy trước khi commit) |
 | `npm run migrate` | Chạy migration Turso |
 
@@ -64,8 +66,8 @@ Khỏi phải nhắc lại quy tắc ở mỗi phiên.
 
 ## Đọc code kiểu nào cho đỡ tốn công
 
-`src/student/appCore.js` ~10,3k dòng, `src/admin/adminCore.js` ~6,9k dòng (đã format
-Prettier 120 cột — trước đó là 9,6k/5,7k dòng nhưng có 69 dòng dài trên 500 ký tự).
+`src/student/appCore.js` **2,7k dòng** (từng là 14,9k), `src/admin/adminCore.js` ~6,9k dòng
+(đã format Prettier 120 cột).
 
 Đã tách khỏi appCore (xem `docs/SPLIT_PLAN.md`):
 
@@ -78,13 +80,17 @@ Prettier 120 cột — trước đó là 9,6k/5,7k dòng nhưng có 69 dòng dà
 | `src/student/subjectGate.js` | **cổng chọn môn** (`#subjectGate`, `renderSubjects`, `enterSubject`, `setSubject`, `loadBySubject`, chip môn đang học) + **số câu mỗi môn** (`refreshSubjectCountsOnce`) |
 | `src/student/images.js` | **ảnh + upload Cloudinary**: `imgsHTML`, `renderEditImages`, `__LHUploadCloudinary`, `__LHGetPendingImageUpload`, `__LHUploadPendingDataUrls`, `__LHTestCloudinaryConfig` |
 | `src/student/format.js` | `sortAns`, `answerText`, `finalAnswerText`, `fmt`, `clone`, `esc` |
+| `src/student/subjects.js` | **tải câu hỏi + cache**: `loadCurrentSubjectOnly`, `revalidateQuestions`, `fetchImagesForCurrent`, `reloadCurrentQuestion`, đồng bộ số câu thẻ môn |
+| `src/student/search.js` | **tìm kiếm thông minh** (`smartBetter`: bỏ stopword, chấm điểm liên quan) + hiển thị thêm câu |
+| `src/student/auth.js` | `window.HODSupabase` + avatar, lớp fetch gắn token, xác minh quyền / thu hồi quyền |
+| `src/student/bookmarks.js` | **lưu câu 🔖** (nút trên flashcard + trong Thư viện) và **chuông thông báo yêu cầu sửa** |
+| `src/student/flashcards.js` | hạt nền `#landingParticles`, nút "Báo cáo đã gửi", **điều hướng flashcard trên điện thoại** (nút + vuốt) |
+| `src/student/subjectImport.js` | **"Thêm môn" trọn gói**: `ADD_SUBJECT_FEATURE`, prompt AI, xem trước + sửa tại chỗ file import, `QUIZLET_IMPORT_AUTODETECT`, upload song song, **và import file .zip** (giải nén trong browser, chặn zip-slip/zip-bomb, upload Cloudinary) |
 
 `npm run find` và `npm run map` đã bao các file này. Sửa tính năng kiểm tra thì mở
 `exam.js`, sửa form sửa câu hỏi thì mở `editor.js`, sửa ảnh/upload thì `images.js`, sửa thư viện thì `library.js`,
-sửa cổng chọn môn / số câu mỗi môn thì `subjectGate.js` — đừng tìm trong appCore.
-Nhóm **"Thêm môn" + xem trước file import** thì NGƯỢC LẠI: vẫn còn trong appCore (~2.350 dòng,
-`ADD_SUBJECT_FEATURE` + `IMPORT_PREVIEW_*` + `QUIZLET_IMPORT_AUTODETECT`), dù nó dựng UI bên
-trong `#subjectGate`.
+sửa cổng chọn môn / số câu mỗi môn thì `subjectGate.js`, sửa "Thêm môn"/import thì
+`subjectImport.js` — đừng tìm trong appCore.
 
 **Trong appCore, 6 hàm này chỉ còn là hàm CHUYỂN TIẾP sang `window.*`** — bản thật ở các
 file trên, đừng "sửa lỗi" vào chúng: `openEditor`, `saveEditor`, `renderQuiz` (thân cũ đã xóa
@@ -149,6 +155,31 @@ quãng trước khi `install*()` chạy).
   `403 PENDING_APPROVAL | BLOCKED | INSUFFICIENT_ROLE` = quyền thật sự không đủ;
   `500 INTERNAL_ERROR` = **không kết luận được quyền**, client phải hiện "thử lại",
   KHÔNG được coi là bị thu hồi quyền.
+
+- **Thiết bị có ID thật, và MÔN được nhớ theo TỪNG THIẾT BỊ**
+  (`DEVICE_ID_AND_SUBJECT_PER_DEVICE_20260731`). `profiles.current_subject` chỉ có MỘT ô nên
+  nó là "môn của lần ghi cuối", không phải "môn đang học": điện thoại mở môn khác — hoặc chỉ
+  F5, vì `loadProfile` bản đầy đủ gửi kèm môn từ localStorage — là đè môn của máy tính.
+  Cùng lúc, `device_history` khử trùng lặp theo **chuỗi mô tả** (`"💻 Windows · Chrome"`) nên
+  hai máy cùng OS + trình duyệt gộp làm một, còn modal admin in `p.id` (id TÀI KHOẢN) nên mọi
+  dòng hiện cùng một ID.
+  - Mỗi trình duyệt tự cấp `learninghub_device_id_v1` (`getDeviceId()` trong
+    `src/core/device.js`), gửi kèm `device_id` ở **cả 3** chỗ POST `/api/profile`:
+    `auth.js` (loadProfile đầy đủ), `subjectGate.js` (`syncUserSubjectToProfile` — bản sống,
+    chạy mỗi lần đổi môn), `subjects.js`.
+  - Bản ghi lịch sử nay là `{ id, device, code, time }`; logic gộp nằm ở
+    **`api/lib/deviceHistory.js`** (`safeDeviceId` + `touchDeviceHistory`) — để ở `lib/` vì
+    không import `db`, test được bằng node như `folderBadges.js`. Khoá theo `id` khi có, dòng
+    cũ chưa có `id` thì khớp theo `device` như trước; POST không kèm môn (ping hoạt động) thì
+    **giữ môn cũ của chính thiết bị đó**, không lấy môn của thiết bị khác.
+  - Admin: chip "MÔN ĐANG HỌC" thành nút → `showUserSubjectByDeviceModal` (môn theo từng thiết
+    bị, cảnh báo khi đang mở nhiều môn); chip thiết bị vẫn là `showUserDeviceHistoryModal` nhưng
+    in ID thiết bị. Cả hai đọc `device_history` qua **một hàm duy nhất**: `parseDeviceHistory`
+    của `src/admin/users.js` (bridge `window.parseDeviceHistory` ở `src/admin/main.js`).
+  - **Nhiều tab CÙNG một máy thì không tách được** và đó là cố ý: mã môn nằm ở localStorage
+    dùng chung, tab thứ hai đổi môn là ghi đè khoá của tab thứ nhất (tab cũ vẫn vẽ môn cũ vì
+    không ai nghe event `storage`). Muốn tách phải chuyển sang `sessionStorage` mỗi tab một
+    "thiết bị" — danh sách sẽ phình theo số lần mở tab, đừng làm.
 
 ### 3 tầng cache câu hỏi (nhớ khi dữ liệu "không chịu mới")
 
@@ -323,6 +354,43 @@ Năm điều dễ làm sai khi sửa file này:
 
 ## Bẫy đã gặp thật
 
+- **Tách file làm ĐỨT chuỗi lớp của `renderCard`** (`RENDER_CARD_WINDOW_BRIDGE_20260731`, đã sửa).
+  `renderCard` bị xếp 3 lớp ở `subjects.js`; hồi còn một file chúng gán thẳng vào binding nên
+  16 chỗ gọi trong appCore đều nhận đủ chuỗi. Tách ra thì `renderCard` trong subjects.js là
+  **biến toàn cục** (`window.renderCard`) — mà appCore chưa từng phơi tên này ra window, nên
+  `typeof renderCard === 'function'` trả false, **cả ba lớp im lặng không được cài** và
+  `window.renderCard` KHÔNG BAO GIỜ tồn tại → 6 chỗ gọi `window.renderCard?.()`
+  (editor.js, images.js, library.js, subjectGate.js) thành no-op. Triệu chứng thật:
+  thêm/xóa ảnh trong form sửa xong **thẻ Flashcard không vẽ lại**, phải lật thẻ hoặc qua câu
+  khác rồi quay lại mới thấy (`updateLocal` của `COPILOT_FIX_EDIT_IMAGE_VISIBLE_AFTER_SAVE_20260628`
+  chỉ vá LHState rồi gọi `window.renderCard?.()` — nay `saveEditPreview` gọi nó qua
+  `window.__LHUpdateQuestionLocal` TRƯỚC khi tải lại môn, xem `EDIT_SAVE_SINGLE_PATH_20260731`).
+  Nay bản thật tên `renderCardBase`, phơi ra `window.renderCard` ngay sau khi khai báo, còn
+  `renderCard` chỉ là hàm CHUYỂN TIẾP; **mọi lớp bọc phải bọc `window.renderCard`**, kể cả lớp
+  trong chính appCore. Cách kiểm nhanh sau mỗi lần tách: mở Console gõ
+  `typeof window.renderCard` — `undefined` là đứt. **Từ 20260731 khỏi phải nhớ tên nào cần
+  kiểm: chạy `npm run check:globals`** — nó quét cả `src/`, tìm mọi lời gọi `foo()` của file
+  khác mà không nơi nào gán `window.foo`, tách riêng hai mức hậu quả (`ReferenceError` vs
+  `typeof foo === 'function'` luôn false). Lần đầu chạy nó lôi ra **7 chỗ đứt có sẵn**, xem
+  mục *Việc còn nợ*. Báo động giả (tham số trùng tên, hàm sẵn có của trình duyệt) thì thêm
+  vào `IGNORE` trong `scripts/check-globals.js` KÈM LÝ DO, đừng nới lỏng luật quét.
+  **Hai hàm nữa cùng khuôn cầu nối này, đừng bọc vào binding của appCore:**
+  `updateCardTools` (bookmarks.js bọc để vẽ nút 🔖 — mất cầu là mất nút) và `switchTab`
+  (appCore gán thẳng ra window, không ai bọc).
+- **Tách file mà QUÊN gọi `install*()` thì cả 4 lệnh kiểm đều XANH — chỉ vỡ lúc bấm nút.**
+  Lần tách 20260730 để lại 4 file không ai import: `bookmarks.js`, `flashcards.js`,
+  `api.js`, cùng 3 hàm `install*` của `subjectImport.js` — tổng ~4.900 dòng nằm chết trong
+  bundle trong khi bản đang chạy vẫn ở appCore. Hai mức hậu quả:
+  · **Đọc nhầm file**: sửa lỗi bookmark trong `bookmarks.js` xong không có gì đổi.
+  · **Hỏng thật**: nhóm `IMPORT_PREVIEW_INLINE_EDIT_20260625` (9 block) bị XÓA khỏi appCore
+    và chuyển sang `subjectImport.js` nhưng không có lời gọi, nên 3 nút inline `onclick`
+    của UI "Thêm môn" — `__openUserAIPromptModal`, `__copyUserAIPrompt`,
+    `__clearUserImportFile` — ném TypeError khi bấm. Đã nối lại 20260731.
+  Cách kiểm sau mỗi lần tách (một lệnh, không cần mở web):
+  `node -e "…"` so danh sách `export function install*` với các lời gọi trong appCore/main —
+  hoặc nhanh hơn: mở tab "Thêm môn mới" rồi chạy trong Console
+  `[...new Set([...document.getElementById('subjectGate').innerHTML.matchAll(/(__[A-Za-z0-9_]+)\(/g)].map(m=>m[1]))].filter(n=>typeof window[n]!=='function')`
+  — trả về mảng rỗng là đủ hàm.
 - **`#idx` / `#total` không phải lúc nào cũng tồn tại.** Block
   `FINAL_HEADER_SUBJECT_DYNAMIC_FIX` ghi lại `.counter` mỗi 500ms; khi tab đang mở KHÔNG
   phải Flashcard thì hai id đó bị xóa khỏi DOM. Code chạm `$('idx').textContent` sẽ ném lỗi.
@@ -364,29 +432,65 @@ Năm điều dễ làm sai khi sửa file này:
 - [x] **Phép thử đăng nhập thật: ĐÃ CHẠY, ĐẠT (20260727).** Đăng nhập → thêm ảnh trong form
       sửa → ảnh ra URL Cloudinary đúng như mong đợi. Tức là việc xóa 791 dòng mã chết của
       nhóm sửa câu hỏi không làm vỡ luồng upload thật.
-- [ ] Chưa truy nguyên (có từ trước, không phải regression): sau khi "Lưu trực tiếp" thì
-      `#editModal` hiện lại, dù `saveEditPreview` có `classList.add('hidden')` — nghi bị mở lại
-      sau `loadCurrentSubjectOnly(true)`.
-- [ ] **Bấm "Khôi phục" trong form sửa câu làm thư viện thành "0 / 0 câu"** (có từ trước, đã
-      đối chiếu bản trước khi tách editor bằng `git stash` — không phải regression).
-      Nguyên nhân gần như chắc: `restoreEditor` (appCore ~695) gọi `rebuild()` theo TÊN, tức
-      bản gốc dòng ~318 dựng `LHState.RAW` từ `BASE` — mà `BASE` là `[]` từ khi dữ liệu chỉ
-      lấy từ Turso. Bản đang chạy là `window.rebuild` (`PATCH_NO_LOCAL_QUESTIONS`). Sửa thì
-      đổi `rebuild()` trong `restoreEditor` thành `window.rebuild?.()` — nhưng phải kiểm 4 chỗ
-      gọi `rebuild()` khác trong appCore cùng lúc, đừng sửa lẻ.
+- [x] **Nút "Lưu trực tiếp" có HAI đường lưu, đường capture cướp cú bấm: ĐÃ SỬA (20260731)** —
+      `EDIT_SAVE_SINGLE_PATH_20260731`. Mục này trước ghi là "`#editModal` hiện lại sau khi
+      lưu" và **giả thuyết ghi ở đây là SAI**: `apply()` của
+      `LIBRARY_FILTER_AND_EDIT_PREVIEW_LAYOUT_20260627` chạy ba lần nhưng nó CHỈ gán
+      `window.openEditor`/`window.saveEditor`; `document.addEventListener('click', …)` nằm
+      trong `installEditor()` — mà `installEditor()` được gọi ĐÚNG MỘT LẦN (appCore ~1941),
+      nên không có chuyện một cú bấm chạy handler 3 lần.
+      Thủ phạm thật: `COPILOT_FIX_EDIT_IMAGE_VISIBLE_AFTER_SAVE_20260628` (`images.js`) có
+      **đường lưu thứ hai của riêng nó** — một handler `click` ở **CAPTURE** trên `document`
+      khớp `#saveEdit,[data-edit-preview-save]`, gọi `stopImmediatePropagation()` rồi tự
+      `saveDirectNoReload()`. Capture ở `document` chạy TRƯỚC mọi handler bubble, nên
+      **`saveEditPreview` chưa từng nhận được cú bấm nào** — đúng cái bản mà `npm run find` và
+      chính CLAUDE.md ghi là "bản đang chạy". Tệ hơn: `saveDirectNoReload` lấy id câu qua
+      Supabase (`window.HODSupabase.__client`), mà từ `TURSO_ONLY_DATA_SOURCE_20260630` client
+      đó chỉ còn cho Auth và ở `?mock=1` là `null` → nó **bail LẶNG sau khi đã chặn
+      propagation**: bấm "Lưu trực tiếp" xong không lưu gì, không toast, không alert; đo được
+      trạng thái nút kẹt `disabled` + "Đang lưu...".
+      Nay **xóa hẳn đường lưu thứ hai** (handler capture + `saveDirectNoReload` +
+      `collectDraft` + `getQuestionId`, ~110 dòng), chỉ còn `updateLocal` — việc thật của
+      block — phơi ra `window.__LHUpdateQuestionLocal` và `saveEditPreview` gọi nó ngay trước
+      `loadCurrentSubjectOnly(true)` để ảnh vừa thêm hiện liền. **Một nút = một đường lưu.**
+      Đo lại bằng `?mock=1&role=admin`, bấm nút THẬT: đúng **1** POST `save_question_direct`,
+      modal đóng và **ở yên qua 6 giây** (MutationObserver trên `class` của `#editModal` chỉ
+      thấy 1 lần đổi), `lhErrors()` rỗng. Nhánh người học (`?mock=1`, nút "Gửi báo cáo") không
+      đổi — handler cũ vốn đã `return` trước khi chặn propagation với người không phải
+      admin/editor.
+      Hai điều đo được, ghi lại cho lần sau:
+      · **Không cần pane trình duyệt hiển thị** như mục này từng ghi. Pane ẩn thì `screenshot`
+        thất bại (trang không compositing) nhưng `el.click()` / `dispatchEvent` vẫn chạy đủ
+        chuỗi capture → target → bubble; đủ để soi handler nào cướp event.
+      · **Cách bắt nhanh "ai chặn cú bấm"**: đăng ký listener của mình ở capture trên
+        `document` rồi bấm. Log RỖNG HOÀN TOÀN (không cả `click:capture`) nghĩa là có handler
+        capture đăng ký TRƯỚC đã `stopImmediatePropagation` — cứ `grep` selector của nút trong
+        `src/` là ra, nhanh hơn vá `DOMTokenList.prototype.remove` để in stack.
+- [x] **"Khôi phục" làm thư viện thành "0 / 0 câu": ĐÃ SỬA (20260731)** —
+      `REBUILD_DEAD_LOCAL_20260731`. **Cách sửa ghi ở đây trước đây là SAI**: đổi sang
+      `window.rebuild?.()` không chữa được, vì bản `window.rebuild` của
+      `PATCH_NO_LOCAL_QUESTIONS` cũng đặt thẳng `RAW = []; pool = []`. Cả hai bản đều xoá
+      trắng. Nay hàm local đổi tên thành `seedStateFromBase` (chỉ còn gieo state rỗng lúc nạp
+      file, không ai gọi nhầm được nữa) và **cả 4 chỗ** đụng `edits` đều tải lại từ Turso qua
+      `reloadAfterLocalEditChange()`: `restoreEditor`, `importEditsFile` (`#importEdits`),
+      `clearEdits` (`#clearEdits`) trong appCore, và nhánh "lưu sửa local" của `editor.js`
+      (chỗ này vá thẳng câu vào `LHState.RAW`/`pool` thay vì tải lại — nó là nhánh offline).
 - [x] `normalizeAll()` chạy lại khi vẽ thư viện (`RESTORE_LIBRARY_NORMALIZE_20260727`):
       `renderUnified` gọi `window.__LHNormalizeAll()` ở đầu, thay cho lớp bọc renderStudy đã chết.
 - [x] Dọn xong CSS chết của nút xóa: 13 chỗ `.studyDeleteAction` + `body.study-has-delete`
       trong `app.css` (rule riêng thì xóa cả dòng, selector gộp thì chỉ bỏ tên đó;
       `.expandHint`/`.studyReportBtn` giữ nguyên computed style ở cả desktop và mobile).
-- [ ] Tách `appCore.js` theo tính năng — **còn nhóm "Thêm môn"/import và nhóm tải dữ liệu**
-      (bước 5). **Kế hoạch + số đo + các bẫy đã gặp: `docs/SPLIT_PLAN.md` — đọc trước khi
-      làm tiếp.** Đã xong: bước 1 `state.js` (18 biến, 505 chỗ đổi bằng
+- [x] **Tách `appCore.js` theo tính năng: XONG (20260731).** appCore **14.915 → 2.743 dòng
+      (−82%)**, `app.js` 876 KB → 770 KB. Bước 1 `state.js` (18 biến, 505 chỗ đổi bằng
       `node scripts/migrate-state.js`; khi sửa state dùng `LHState.ci = …`, đừng destructure
       rồi gán) · bước 2 `exam.js` + `format.js` · bước 3 `editor.js` + `images.js` kèm dọn 791
-      dòng mã chết · bước 4 `library.js` + `subjectGate.js`.
-      **appCore 14.915 → 10.309 dòng (−31%).** Sáu cái bẫy khi tách, đọc `SPLIT_PLAN.md`
-      mục 2, 3 và 4.1 trước khi làm bước 5: thứ tự chạy vs `import` (dùng `install*()` gọi đúng
+      dòng mã chết · bước 4 `library.js` + `subjectGate.js` · bước 5 `subjects.js` +
+      `search.js` + `auth.js` + `bookmarks.js` + `flashcards.js` + `subjectImport.js`.
+      Bước 5 để lại 4.900 dòng chết vì quên nối `install*()` — đã nối và xóa bản trùng trong
+      appCore ngày 20260731, đồng thời xóa hẳn 3 file không ai import (`src/student/api.js`,
+      `src/student/index.js`, `src/core/auth.js`) và hàm `filterQuestions` của `search.js`.
+      Chi tiết + số đo: `docs/SPLIT_PLAN.md`. Sáu cái bẫy khi tách, đọc `SPLIT_PLAN.md`
+      mục 2, 3 và 4.1 trước khi tách thêm: thứ tự chạy vs `import` (dùng `install*()` gọi đúng
       chỗ block cũ, không dùng IIFE) · **đặt `install*()` mà quên dòng `import` thì cả 4 lệnh
       kiểm đều XANH, chỉ vỡ lúc mở web** · khi nào `window.*` khi nào import · gán trần vào
       binding module thì phải để lại hàm chuyển tiếp · `typeof X === 'function'` với tên
@@ -394,20 +498,32 @@ Năm điều dễ làm sai khi sửa file này:
       `renderQuiz`, `renderStudy` — block cũ là IIFE nên gọi trần được, tách ra là mất) ·
       `check:overrides` không phân biệt scope nên tên local trùng nhau ngoài block bị tính
       thành lớp ghi đè.
-- [ ] **`cleanImages` bị gọi từ 4 chỗ mà nó KHÔNG hề tồn tại ở tầng module** (chỗ khai báo duy
-      nhất là hàm local trong block `FINAL_URL_ONLY_IMAGES` — `npm run find cleanImages`).
-      Hai mức hậu quả, đều CÓ TỪ TRƯỚC, đã chú thích tại chỗ, chưa sửa vì là **đổi hành vi**:
-      · `library.js` (nạp ảnh chậm của thư viện) gọi KHÔNG bọc `typeof` → ném
-      `ReferenceError`, bị `.catch` ngay dưới nuốt → ảnh không bao giờ nạp thêm;
-      · `exam.js` (`loadQuestionsForCodes`) và 2 block trong appCore có bọc `typeof` → im lặng
-      rơi vào nhánh không lọc ảnh.
-      Sửa thì phơi `cleanImages` ra `window` (hoặc đưa vào `images.js`) rồi đổi cả 4 chỗ một
-      lượt — **commit riêng**, và phải test có đăng nhập vì dính luồng ảnh.
+- [x] **Cầu nối đứt giữa các file: ĐÃ QUÉT HẾT + SỬA (20260731)** — `GLOBALS_BRIDGE_20260731`.
+      Viết `scripts/check-globals.js` (`npm run check:globals`) rồi sửa đúng 7 chỗ nó lôi ra:
+      · `cleanImages` — bản duy nhất ở `subjects.js`, chưa phơi ra window. `library.js` gọi
+        không bọc `typeof` nên ném `ReferenceError`, bị `.catch` nuốt → **ảnh chậm của thư
+        viện chưa từng nạp xong**; appCore + `subjectGate.js` có bọc `typeof` nên im lặng bỏ
+        qua lọc ảnh. Nay `window.cleanImages` + cả 3 chỗ gọi qua cầu.
+      · `esc` (2 chỗ trong `subjects.js`) — chỉ có ở `format.js`, không ai gán `window.esc`.
+        Đọc một tên chưa khai báo là **luôn** ném `ReferenceError`, kể cả trong `?.()`. Nay
+        `import { esc } from './format.js'`.
+      · `syncSubjectTexts` (appCore) — bản thật ở `subjectGate.js`. Dòng đó ném, kéo theo
+        `updateCardTools?.()` ngay dưới không chạy → **đổi môn xong mất nút 🔖**. Nay cả hai
+        đi qua `window.*`.
+      · `syncUserSubjectToProfile` — khối `if (typeof … === 'function')` trong appCore chưa
+        từng chạy từ lúc tách file. **Cố ý KHÔNG nối lại**: `setSubject()` của subjectGate đã
+        POST `/api/profile` mỗi lần đổi môn; nối vào chỉ gửi trùng request ghi mỗi lần tải câu.
+        Khối chết đã xoá, có chú thích tại chỗ cách bật lại nếu cần.
+      Kiểm bằng `?mock=1`: `typeof window.cleanImages / syncSubjectTexts / updateCardTools /
+      renderCard` đều `function`, `lhErrors()` rỗng.
 - [x] Chế độ `?mock=1` stub auth + `/api/*` để test UI không cần đăng nhập —
       `src/core/mock.js` (xem mục riêng ở trên). Đã kiểm: 4 câu MOCK1 vẽ ra, Flashcard
       chạy, trang admin mở, hai màn 403 ra đúng chữ khác nhau, `fail=500` ra fallback.
-- [ ] `.counter` trong header hiện "0 câu" trong khi thư viện vẽ 4 câu (thấy bằng
-      `?mock=1`, `lhErrors()` rỗng). `RAW` chỉ khai báo một lần (dòng 305) và
-      `searchList()` (9970) đọc đúng nó nên RAW KHÔNG rỗng — tức là có ai ghi "0 câu"
-      vào `.counter` sau `fixCounter()` (4861), hoặc `_lastCounterHTML` chặn lần ghi lại.
-      Ba chỗ nghi: 2563, 6496, 10103. Chưa truy tới cùng.
+- [x] **`.counter` hiện "0 câu": KHÔNG CÒN TÁI HIỆN (đo lại 20260731).** Với `?mock=1`, tab
+      Flashcard ra "Câu 1 / 4" và tab Thư viện ra "4 câu" đúng bằng 4 mục được vẽ,
+      `lhErrors()` rỗng. `fixCounter` (bản sống, appCore ~1537, chạy mỗi 500ms) đọc
+      `LHState.RAW.length` — cùng nguồn với `renderUnified`, nên hai số không thể lệch trừ khi
+      có ai đặt `RAW = []` sau khi vẽ. Ứng viên duy nhất làm việc đó là `window.rebuild`, và
+      4 chỗ gọi nó đã sửa ở mục "Khôi phục" trên. Gặp lại thì đo hai dòng Console trước khi
+      đọc code: `document.querySelectorAll('.counter').length` (phải là 1) và số mục
+      `#study [data-num]`.

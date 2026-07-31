@@ -1,8 +1,8 @@
 {
-  "version": "6544dd8",
-  "timestamp": 1785492929509,
+  "version": "84634ff",
+  "timestamp": 1785513965234,
   "recent_commits": [
-    "✨ Cập nhật: Update app version to c8f883a",
-    "✨ Cập nhật: Refresh favicon cache with query parameter"
+    "✨ Tính năng mới: Implement Supabase auth integration with strict role-based access control",
+    "✨ Cập nhật: Approval workflows"
   ]
 }

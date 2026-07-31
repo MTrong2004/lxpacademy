@@ -23,6 +23,7 @@
  */
 import { LHState } from './state.js';
 import { lhWarn } from '../core/log.js';
+import { getDeviceId } from '../core/device.js';
 
 /**
  * SUBJECT_FOLDER_NEW_BADGE_20260729 — cờ NEW của THƯ MỤC là cờ RIÊNG của thư mục, không suy ra
@@ -133,6 +134,8 @@ export function installSubjectGate() {
           avatar_url: md.avatar_url || md.picture || '',
           current_subject: sub,
           device_info: typeof getDeviceTypeString === 'function' ? getDeviceTypeString() : undefined,
+          // DEVICE_ID_AND_SUBJECT_PER_DEVICE_20260731: server ghi môn này vào ĐÚNG thiết bị đang gửi.
+          device_id: getDeviceId(),
         }),
       }).catch(e => console.warn('syncUserSubjectToProfile failed:', e));
     } catch (e) {
@@ -185,6 +188,10 @@ export function installSubjectGate() {
     }
     syncGateUserInfo();
   }
+  // GLOBALS_BRIDGE_20260731: appCore gọi `syncSubjectTexts?.()` sau khi tải câu từ Turso.
+  // Không có cầu nối thì dòng đó ném ReferenceError và kéo theo `updateCardTools?.()` ngay
+  // dưới nó cũng không chạy (mất nút 🔖 sau khi đổi môn).
+  window.syncSubjectTexts = syncSubjectTexts;
   function syncGateUserInfo() {
     const u = user();
     const emailEl = $('subjectUserEmail');
@@ -602,7 +609,8 @@ export function installSubjectGate() {
         // Nhánh `typeof` vì vậy LUÔN sai, ở đây và ở bản cũ trong appCore y như nhau: câu tải
         // theo đường này chưa bao giờ được lọc ảnh. GIỮ NGUYÊN — đổi sang `window.cleanImages`
         // là đổi hành vi, phải làm ở commit riêng cùng 3 chỗ còn lại (xem CLAUDE.md "Việc còn nợ").
-        images: typeof cleanImages === 'function' ? cleanImages(r.images || []) : r.images || [],
+        // GLOBALS_BRIDGE_20260731: qua window — bản thật ở subjects.js (xem check:globals).
+        images: window.cleanImages?.(r.images || []) ?? r.images ?? [],
         has_image: !!(r.has_image || (r.images || []).length),
         error_risk: r.error_risk || 'low',
         error_risk_reason: r.error_risk_reason || '',

@@ -1,11 +1,40 @@
 (() => {
   // src/admin/users.js
+  function parseDeviceHistory2(p) {
+    if (!p) return [];
+    let list = [];
+    try {
+      if (typeof p.device_history === "string" && p.device_history) list = JSON.parse(p.device_history);
+      else if (Array.isArray(p.device_history)) list = p.device_history;
+    } catch (e) {
+      list = [];
+    }
+    if (!Array.isArray(list)) list = [];
+    list = list.filter((x) => x && typeof x === "object");
+    if (!list.length && p.device_info) {
+      list = [
+        {
+          device: p.device_info,
+          code: p.current_subject || "",
+          time: p.last_activity || p.last_login || p.created_at || ""
+        }
+      ];
+    }
+    return list.map((x) => ({
+      id: String(x.id || ""),
+      device: String(x.device || "Ch\u01B0a r\xF5"),
+      code: String(x.code || ""),
+      time: String(x.time || "")
+    }));
+  }
   function renderUserRowSaaS2(p, helpers) {
     const { actText, actTime, date: date2, isBlocked: isBlocked2, badge: badge2, roleBadgeFinal, avatarButton, esc: esc2 } = helpers;
     const activeText = actText(p);
     const activeClass = activeText === "\u0110ang ho\u1EA1t \u0111\u1ED9ng" ? "activityNow" : "";
-    const subjectTag = p.current_subject ? `<span class="saasSubjectChip">${esc2(p.current_subject)}</span>` : `<span class="saasMutedChip">Ch\u01B0a ch\u1ECDn m\xF4n</span>`;
-    const deviceTag = p.device_info ? `<button class="saasDeviceChip saasDeviceBtn" type="button" title="Xem l\u1ECBch s\u1EED thi\u1EBFt b\u1ECB" onclick="showUserDeviceHistoryModal('${esc2(p.id)}')">${esc2(p.device_info)}</button>` : `<span class="saasMutedChip">Ch\u01B0a r\xF5</span>`;
+    const devices = parseDeviceHistory2(p);
+    const otherSubjectCount = devices.filter((d) => d.code && d.code !== (p.current_subject || "")).length;
+    const subjectTag = p.current_subject ? `<button class="saasSubjectChip saasSubjectBtn" type="button" title="Xem m\xF4n \u0111ang h\u1ECDc theo t\u1EEBng thi\u1EBFt b\u1ECB" onclick="showUserSubjectByDeviceModal('${esc2(p.id)}')">${esc2(p.current_subject)}${otherSubjectCount ? `<span class="saasChipMore">+${otherSubjectCount}</span>` : ""}</button>` : `<span class="saasMutedChip">Ch\u01B0a ch\u1ECDn m\xF4n</span>`;
+    const deviceTag = p.device_info ? `<button class="saasDeviceChip saasDeviceBtn" type="button" title="Xem l\u1ECBch s\u1EED thi\u1EBFt b\u1ECB" onclick="showUserDeviceHistoryModal('${esc2(p.id)}')">${esc2(p.device_info)}${devices.length > 1 ? `<span class="saasChipMore">+${devices.length - 1}</span>` : ""}</button>` : `<span class="saasMutedChip">Ch\u01B0a r\xF5</span>`;
     const statusBadge = isBlocked2(p) ? badge2("blocked") : `<span class="badge approved userApprovedBadge"><span class="badgeDot"></span>\u0110\xE3 duy\u1EC7t</span>`;
     return `<div class="userRow activitySortedRow lhUserRowSaaS approvedUserRow ${activeClass}">
     <div class="saasUserCol">
@@ -155,7 +184,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "6544dd8" : null;
+  var currentVersion = true ? "84634ff" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -590,9 +619,35 @@
     const subjects = mockSubjects().data;
     const questions = subjects.flatMap((s) => mockQuestions(s.code).data);
     return {
+      /*
+        DEVICE_ID_AND_SUBJECT_PER_DEVICE_20260731
+        mock-user-2 cố tình có HAI thiết bị đang ở HAI môn khác nhau (đúng ca cần
+        kiểm: chip hiện "+1" và modal cảnh báo), còn tài khoản admin chỉ một thiết
+        bị và một dòng lịch sử KIỂU CŨ (thiếu id/code) để thấy phần lùi về "Thiết
+        bị cũ (chưa có ID)".
+      */
       profiles: [
-        mockProfile({ ...opts, role: "admin" }),
-        { ...mockProfile({ ...opts, role: "user" }), id: "mock-user-2", email: "user2@localhost" }
+        {
+          ...mockProfile({ ...opts, role: "admin" }),
+          device_info: "\u{1F4BB} Windows \xB7 Chrome",
+          device_history: JSON.stringify([{ device: "\u{1F4BB} Windows \xB7 Chrome", time: "2026-07-31T02:10:00.000Z" }])
+        },
+        {
+          ...mockProfile({ ...opts, role: "user" }),
+          id: "mock-user-2",
+          email: "user2@localhost",
+          current_subject: "MOCK2",
+          device_info: "\u{1F4F1} Android \xB7 Chrome",
+          device_history: JSON.stringify([
+            { id: "devmock2phone0000", device: "\u{1F4F1} Android \xB7 Chrome", code: "MOCK2", time: "2026-07-31T03:40:00.000Z" },
+            {
+              id: "devmock2laptop000",
+              device: "\u{1F4BB} Windows \xB7 Chrome",
+              code: "MOCK1_C1",
+              time: "2026-07-31T03:05:00.000Z"
+            }
+          ])
+        }
       ],
       questions,
       requests: [],
@@ -3398,7 +3453,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
         if (rowFn) return rowFn(p, helpers);
         const activeText = actText(p);
         const activeClass = activeText === "\u0110ang ho\u1EA1t \u0111\u1ED9ng" ? "activityNow" : "";
-        const subjectTag = p.current_subject ? `<span class="saasSubjectChip">${esc(p.current_subject)}</span>` : `<span class="saasMutedChip">Ch\u01B0a ch\u1ECDn m\xF4n</span>`;
+        const subjectTag = p.current_subject ? `<button class="saasSubjectChip saasSubjectBtn" type="button" title="Xem m\xF4n \u0111ang h\u1ECDc theo t\u1EEBng thi\u1EBFt b\u1ECB" onclick="showUserSubjectByDeviceModal('${esc(p.id)}')">${esc(p.current_subject)}</button>` : `<span class="saasMutedChip">Ch\u01B0a ch\u1ECDn m\xF4n</span>`;
         const deviceTag = p.device_info ? `<button class="saasDeviceChip saasDeviceBtn" type="button" title="Xem l\u1ECBch s\u1EED thi\u1EBFt b\u1ECB" onclick="showUserDeviceHistoryModal('${esc(p.id)}')">${esc(p.device_info)}</button>` : `<span class="saasMutedChip">Ch\u01B0a r\xF5</span>`;
         const statusBadge = isBlocked(p) ? badge("blocked") : `<span class="badge approved userApprovedBadge"><span class="badgeDot"></span>\u0110\xE3 duy\u1EC7t</span>`;
         return `<div class="userRow activitySortedRow lhUserRowSaaS approvedUserRow ${activeClass}">
@@ -5852,57 +5907,89 @@ ${E(val)}</pre>`;
       document.getElementById("lhActionMenuFloat")?.remove();
       document.querySelectorAll(".lhDotsBtn.isOpen").forEach((b) => b.classList.remove("isOpen"));
     };
+    function deviceRowsOf(p) {
+      return typeof parseDeviceHistory === "function" ? parseDeviceHistory(p) : [];
+    }
+    function deviceIconOf(devRaw) {
+      const lw = String(devRaw || "").toLowerCase();
+      if (lw.includes("iphone") || lw.includes("ios") || lw.includes("android") || lw.includes("mobile")) return "\u{1F4F1}";
+      if (lw.includes("mac") || lw.includes("apple") || lw.includes("safari")) return "\u{1F5A5}\uFE0F";
+      return "\u{1F4BB}";
+    }
+    function deviceNameOf(devRaw) {
+      const raw = String(devRaw || "Ch\u01B0a r\xF5").trim();
+      return raw.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\s]+/u, "").trim() || raw;
+    }
+    function shortDeviceIdOf(id) {
+      const s = String(id || "");
+      return s ? s.replace(/^dev/, "").slice(0, 8) : "";
+    }
+    function deviceModalHead(email, subtitle) {
+      return `<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.1)">
+        <div style="width:46px;height:46px;min-width:46px;border-radius:50%;background:rgba(226,184,107,.15);border:1px solid rgba(226,184,107,.3);display:grid;place-items:center;font-weight:900;color:#f3e3b3;font-size:1.15rem">${esc((email[0] || "U").toUpperCase())}</div>
+        <div style="min-width:0">
+          <b style="font-size:1.05rem;color:#f8fafc;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(email)}</b>
+          <span style="font-size:.78rem;color:#94a3b8">${esc(subtitle)}</span>
+        </div>
+      </div>`;
+    }
+    function deviceRowHTML(item, rightHTML) {
+      const idLabel = item.id ? `ID: ${esc(shortDeviceIdOf(item.id))}` : "Thi\u1EBFt b\u1ECB c\u0169 (ch\u01B0a c\xF3 ID)";
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;margin:8px 0;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);">
+        <div style="display:flex;align-items:center;gap:12px;min-width:0;">
+          <span style="font-size:1.3rem">${deviceIconOf(item.device)}</span>
+          <div style="min-width:0">
+            <b style="color:#f8fafc;font-size:.92rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(deviceNameOf(item.device))}</b>
+            <span style="color:#64748b;font-size:.75rem;font-family:monospace;display:block;margin-top:2px" title="${esc(item.id || "")}">${idLabel}</span>
+          </div>
+        </div>
+        <div style="text-align:right;flex:0 0 auto;margin-left:12px">${rightHTML}</div>
+      </div>`;
+    }
     window.showUserDeviceHistoryModal = function(uid) {
       const p = (cache.profiles || []).find((x) => String(x.id) === String(uid));
       if (!p) return alert("Kh\xF4ng t\xECm th\u1EA5y ng\u01B0\u1EDDi d\xF9ng.");
       const email = p.email || p.id;
-      let historyList = [];
-      try {
-        if (typeof p.device_history === "string" && p.device_history) {
-          historyList = JSON.parse(p.device_history);
-        } else if (Array.isArray(p.device_history)) {
-          historyList = p.device_history;
-        }
-      } catch (e) {
-        historyList = [];
-      }
-      if (!Array.isArray(historyList) || !historyList.length) {
-        historyList = p.device_info ? [{ device: p.device_info, time: p.last_activity || p.last_login || p.created_at || "" }] : [];
-      }
+      const historyList = deviceRowsOf(p);
       const rowsHTML = historyList.length ? historyList.map((item, idx) => {
-        let devRaw = String(item.device || "Ch\u01B0a r\xF5").trim();
-        let icon = "\u{1F4BB}";
-        const lw = devRaw.toLowerCase();
-        if (lw.includes("iphone") || lw.includes("ios") || lw.includes("android") || lw.includes("mobile"))
-          icon = "\u{1F4F1}";
-        else if (lw.includes("mac") || lw.includes("apple") || lw.includes("safari")) icon = "\u{1F5A5}\uFE0F";
-        const cleanDev = devRaw.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\s]+/u, "").trim() || devRaw;
         const tagHTML = idx === 0 ? `<span class="badge approved" style="font-size:.7rem;padding:2px 8px;">\u0110ang s\u1EED d\u1EE5ng</span>` : `<span class="badge" style="font-size:.7rem;opacity:.75;padding:2px 8px;">Tr\u01B0\u1EDBc \u0111\xF3</span>`;
         const timeStr = item.time ? date(item.time) : "Kh\xF4ng r\xF5";
-        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;margin:8px 0;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);">
-        <div style="display:flex;align-items:center;gap:12px;min-width:0;">
-          <span style="font-size:1.3rem">${icon}</span>
-          <div style="min-width:0">
-            <b style="color:#f8fafc;font-size:.92rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(cleanDev)}</b>
-            <span style="color:#64748b;font-size:.75rem;font-family:monospace;display:block;margin-top:2px">ID: ${esc(p.id)}</span>
-          </div>
-        </div>
-        <div style="text-align:right;flex:0 0 auto;margin-left:12px">
-          ${tagHTML}
-          <div style="color:#94a3b8;font-size:.78rem;margin-top:4px">${esc(timeStr)}</div>
-        </div>
-      </div>`;
+        return deviceRowHTML(
+          item,
+          `${tagHTML}<div style="color:#94a3b8;font-size:.78rem;margin-top:4px">${esc(timeStr)}</div>`
+        );
       }).join("") : '<p class="muted" style="padding:24px;text-align:center">Ch\u01B0a c\xF3 l\u1ECBch s\u1EED thi\u1EBFt b\u1ECB cho t\xE0i kho\u1EA3n n\xE0y.</p>';
       openModal(
         "\u{1F4F1} L\u1ECBch s\u1EED thi\u1EBFt b\u1ECB \u0111\u0103ng nh\u1EADp",
         `<div style="padding:4px 0">
-      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.1)">
-        <div style="width:46px;height:46px;min-width:46px;border-radius:50%;background:rgba(226,184,107,.15);border:1px solid rgba(226,184,107,.3);display:grid;place-items:center;font-weight:900;color:#f3e3b3;font-size:1.15rem">${esc((email[0] || "U").toUpperCase())}</div>
-        <div style="min-width:0">
-          <b style="font-size:1.05rem;color:#f8fafc;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(email)}</b>
-          <span style="font-size:.78rem;color:#94a3b8">Danh s\xE1ch thi\u1EBFt b\u1ECB ng\u01B0\u1EDDi d\xF9ng \u0111\xE3 \u0111\u0103ng nh\u1EADp</span>
-        </div>
-      </div>
+      ${deviceModalHead(email, "Danh s\xE1ch thi\u1EBFt b\u1ECB ng\u01B0\u1EDDi d\xF9ng \u0111\xE3 \u0111\u0103ng nh\u1EADp")}
+      <div style="max-height:380px;overflow-y:auto;padding-right:4px">${rowsHTML}</div>
+    </div>`
+      );
+    };
+    window.showUserSubjectByDeviceModal = function(uid) {
+      const p = (cache.profiles || []).find((x) => String(x.id) === String(uid));
+      if (!p) return alert("Kh\xF4ng t\xECm th\u1EA5y ng\u01B0\u1EDDi d\xF9ng.");
+      const email = p.email || p.id;
+      const historyList = deviceRowsOf(p);
+      const withSubject = historyList.filter((x) => x.code);
+      const rowsHTML = withSubject.length ? withSubject.map((item, idx) => {
+        const isCurrent = idx === 0;
+        const chip = `<span class="saasSubjectChip" style="font-size:.78rem">${esc(item.code)}</span>`;
+        const tagHTML = isCurrent ? `<span class="badge approved" style="font-size:.7rem;padding:2px 8px;margin-left:6px">M\u1EDBi nh\u1EA5t</span>` : "";
+        const timeStr = item.time ? date(item.time) : "Kh\xF4ng r\xF5";
+        return deviceRowHTML(
+          item,
+          `<div>${chip}${tagHTML}</div><div style="color:#94a3b8;font-size:.78rem;margin-top:4px">${esc(timeStr)}</div>`
+        );
+      }).join("") : `<p class="muted" style="padding:24px;text-align:center">Ch\u01B0a ghi nh\u1EADn m\xF4n theo t\u1EEBng thi\u1EBFt b\u1ECB.<br><span style="font-size:.8rem">D\u1EEF li\u1EC7u n\xE0y b\u1EAFt \u0111\u1EA7u \u0111\u01B0\u1EE3c ghi t\u1EEB 31/07/2026 \u2014 ng\u01B0\u1EDDi d\xF9ng c\u1EA7n m\u1EDF l\u1EA1i web m\u1ED9t l\u1EA7n.</span></p>`;
+      const distinct = new Set(withSubject.map((x) => x.code));
+      const note = distinct.size > 1 ? `<div style="margin-bottom:12px;padding:10px 12px;border-radius:10px;background:rgba(226,184,107,.10);border:1px solid rgba(226,184,107,.28);color:#f3e3b3;font-size:.82rem">Ng\u01B0\u1EDDi d\xF9ng \u0111ang m\u1EDF <b>${distinct.size}</b> m\xF4n kh\xE1c nhau tr\xEAn <b>${withSubject.length}</b> thi\u1EBFt b\u1ECB. C\u1ED9t ngo\xE0i danh s\xE1ch ch\u1EC9 hi\u1EC7n m\xF4n c\u1EE7a thi\u1EBFt b\u1ECB ghi g\u1EA7n nh\u1EA5t.</div>` : "";
+      openModal(
+        "\u{1F4DA} M\xF4n \u0111ang h\u1ECDc theo thi\u1EBFt b\u1ECB",
+        `<div style="padding:4px 0">
+      ${deviceModalHead(email, "M\u1ED7i thi\u1EBFt b\u1ECB gi\u1EEF m\xF4n ri\xEAng \u2014 nhi\u1EC1u tab c\xF9ng m\u1ED9t m\xE1y th\xEC d\xF9ng chung m\u1ED9t m\xF4n")}
+      ${note}
       <div style="max-height:380px;overflow-y:auto;padding-right:4px">${rowsHTML}</div>
     </div>`
       );
@@ -6392,6 +6479,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
   if (!mocking) initVersionChecker();
   window.renderUserRowSaaS = renderUserRowSaaS2;
   window.getUserTableHeadHTML = getUserTableHeadHTML2;
+  window.parseDeviceHistory = parseDeviceHistory2;
   window.uploadImageToCloudinaryHelper = uploadImageToCloudinary;
   window.calculateQuestionErrorRiskHelper = calculateQuestionErrorRisk;
 })();
