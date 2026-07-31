@@ -29,9 +29,17 @@ if (!mocking) initVersionChecker();
 window.lhShowReloadNotice = showAdminReloadNotice;
 
 import * as subjectImport from './subjectImport.js';
+import * as bookmarks from './bookmarks.js';
+import * as flashcards from './flashcards.js';
+import * as auth from './auth.js';
+import * as search from './search.js';
 
 // Global helper attachments
 window.LHSubjectImport = subjectImport;
+window.LHBookmarks = bookmarks;
+window.LHFlashcards = flashcards;
+window.LHAuth = auth;
+window.LHSearch = search;
 window.getDeviceTypeString = getDeviceTypeString;
 window.getSubjectCode = getSubjectCode;
 window.setSubjectHelper = setSubject;

@@ -155,7 +155,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "e27aa81" : null;
+  var currentVersion = true ? "e71a77b" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -903,6 +903,17 @@
       lhWarn("MOCK:supabase", e);
     }
     window.__LH_MOCK = { ...opts, subjects: mockSubjects().data.map((s) => s.code) };
+    if (!opts.pending && !opts.blocked && !opts.fail) {
+      const unlock = () => {
+        document.getElementById("hodPendingApproval")?.classList.add("hidden");
+        document.body?.classList.remove("hod-locked");
+        window.__LH_GATE_LOCKED = false;
+      };
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", unlock);
+      else unlock();
+      setTimeout(unlock, 50);
+      setTimeout(unlock, 300);
+    }
     const applySubject = () => {
       try {
         if (typeof window.setSubject === "function") window.setSubject(opts.subject);

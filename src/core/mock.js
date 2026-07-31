@@ -592,6 +592,18 @@ export function installMock() {
 
   window.__LH_MOCK = { ...opts, subjects: mockSubjects().data.map(s => s.code) };
 
+  if (!opts.pending && !opts.blocked && !opts.fail) {
+    const unlock = () => {
+      document.getElementById('hodPendingApproval')?.classList.add('hidden');
+      document.body?.classList.remove('hod-locked');
+      window.__LH_GATE_LOCKED = false;
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', unlock);
+    else unlock();
+    setTimeout(unlock, 50);
+    setTimeout(unlock, 300);
+  }
+
   // appCore đọc mã môn trong luồng khởi động của nó, có thể trước khi module này
   // chạy. Gọi setSubject() một lần sau khi DOM sẵn sàng để nó bắn lh:subject-changed
   // và vẽ lại — một lần duy nhất, không hẹn lại nhiều lớp.

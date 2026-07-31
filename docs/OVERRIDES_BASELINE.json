@@ -12,28 +12,29 @@
     "setPage": 9
   },
   "src/student/appCore.js": {
+    "next": 3,
+    "prev": 3,
+    "renderCard": 2,
+    "reset": 2,
+    "set": 2,
+    "shuffle": 2,
+    "startTimer": 3,
+    "triggerReset": 2,
+    "updateCardTools": 2
+  },
+  "src/student/auth.js": {
+    "openAdmin": 3,
+    "showAccessCheckError": 2,
+    "showPendingApproval": 2
+  },
+  "src/student/subjectImport.js": {
     "__editImportPreviewQuestion": 6,
     "__openImportPreviewModal": 5,
     "__openUserAIPromptModal": 2,
     "__submitSubjectRequest": 2,
-    "__switchStep": 2,
-    "client": 2,
-    "code": 2,
-    "init": 2,
-    "loadCurrentSubjectOnly": 4,
-    "next": 3,
-    "openAdmin": 3,
-    "prev": 3,
-    "renderCard": 7,
-    "renderEditImages": 2,
-    "reset": 2,
-    "set": 2,
-    "showAccessCheckError": 2,
-    "showPendingApproval": 2,
-    "shuffle": 2,
-    "smart": 2,
-    "startTimer": 3,
-    "triggerReset": 2,
-    "updateCardTools": 2
+    "__switchStep": 2
+  },
+  "src/student/subjects.js": {
+    "loadCurrentSubjectOnly": 3
   }
 }

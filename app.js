@@ -2434,7 +2434,7 @@
     }
     return String(err);
   }
-  function lhWarn(tag, err) {
+  function lhWarn2(tag, err) {
     try {
       const label = String(tag || "unknown");
       const msg = describe(err);
@@ -2478,11 +2478,37 @@
     return true;
   }
   if (typeof window !== "undefined") {
-    window.lhWarn = lhWarn;
+    window.lhWarn = lhWarn2;
     window.lhErrors = lhErrors;
     window.lhClearErrors = lhClearErrors;
-    window.addEventListener("error", (e) => lhWarn("window.onerror", e?.error || e?.message || e));
-    window.addEventListener("unhandledrejection", (e) => lhWarn("unhandledRejection", e?.reason || e));
+    window.addEventListener("error", (e) => lhWarn2("window.onerror", e?.error || e?.message || e));
+    window.addEventListener("unhandledrejection", (e) => lhWarn2("unhandledRejection", e?.reason || e));
+  }
+
+  // src/student/state.js
+  var LHState2 = {
+    RAW: [],
+    pool: [],
+    ci: 0,
+    flipped: false,
+    flipDir: "horizontal",
+    cardFontSize: localStorage.getItem("hod102_card_font_size_v3") || "1",
+    flipMode: localStorage.getItem("hod102_flip_mode") || "single",
+    hideOptions: false,
+    randomActive: localStorage.getItem("hod102_random_active") === "1",
+    qCnt: 20,
+    qSet: [],
+    qDone: {},
+    qSel: {},
+    quizMode: "practice",
+    examSubmitted: false,
+    timerInt: null,
+    examStart: 0,
+    editDraft: null
+  };
+  function initState(BASE2) {
+    const len = Array.isArray(BASE2) ? BASE2.length : 0;
+    LHState2.ci = Math.max(0, Math.min(+localStorage.getItem("hod102_ci") || 0, len - 1));
   }
 
   // src/student/subjects.js
@@ -2508,7 +2534,7 @@
         })
       }).catch((e) => console.warn("syncUserSubjectToProfile failed:", e));
     } catch (e) {
-      lhWarn("syncUserSubjectToProfile", e);
+      lhWarn2("syncUserSubjectToProfile", e);
     }
   }
   function setSubject(code, supabaseUser) {
@@ -2518,6 +2544,729 @@
       localStorage.removeItem(SUBJECT_STORE);
     }
     syncUserSubjectToProfile2(code, supabaseUser);
+  }
+  function installSubjectDataLoader() {
+    (function() {
+      const CLOUDINARY_CLOUD_NAME = window.APP_CONFIG?.CLOUDINARY_CLOUD_NAME || "";
+      const CLOUDINARY_UPLOAD_PRESET = window.APP_CONFIG?.CLOUDINARY_UPLOAD_PRESET || "";
+      const CLOUDINARY_UPLOAD_FOLDER = window.APP_CONFIG?.CLOUDINARY_UPLOAD_FOLDER || "learninghub/questions";
+      const CLOUDINARY_UPLOAD_URL = window.APP_CONFIG?.CLOUDINARY_UPLOAD_URL || (CLOUDINARY_CLOUD_NAME ? `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload` : "");
+      const SUBJECT_STORE2 = "learninghub_subject_code_merged_v1";
+      const QUESTION_LIGHT_COLUMNS = "id,subject_code,num,question,options,answer,answer_text,images,is_active,updated_at,has_image,error_risk,error_risk_reason,has_image,error_risk,error_risk_reason";
+      function $3(id) {
+        return document.getElementById(id);
+      }
+      function supa() {
+        return window.HODSupabase?.__client || null;
+      }
+      function user() {
+        return window.HODSupabase?.getUser?.() || null;
+      }
+      function subject() {
+        return localStorage.getItem(SUBJECT_STORE2) || "";
+      }
+      function notifyX(t) {
+        if (typeof notify === "function") notify(t);
+        else console.log(t);
+      }
+      async function uploadCloudinary(file) {
+        if (!CLOUDINARY_UPLOAD_URL || !CLOUDINARY_UPLOAD_PRESET) throw new Error("Thi\u1EBFu Cloudinary trong config.js.");
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+        fd.append("folder", CLOUDINARY_UPLOAD_FOLDER);
+        const res = await fetch(CLOUDINARY_UPLOAD_URL, { method: "POST", body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error?.message || "Upload Cloudinary th\u1EA5t b\u1EA1i");
+        return {
+          id: data.public_id,
+          public_id: data.public_id,
+          src: data.secure_url,
+          url: data.secure_url,
+          width: data.width,
+          height: data.height,
+          source: "cloudinary"
+        };
+      }
+      async function loadSubjectLight(force = false) {
+        const code = subject();
+        if (!code) return false;
+        try {
+          if (typeof window.__examResetForSubjectChange === "function") window.__examResetForSubjectChange();
+        } catch (e) {
+          lhWarn2("COPILOT_CLOUDINARY_IMAGE_FIX_20260627", e);
+        }
+        try {
+          const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(code) + "&ts=" + Date.now(), {
+            cache: "no-store"
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c c\xE2u h\u1ECFi t\u1EEB Turso");
+          const data = Array.isArray(json.data) ? json.data : [];
+          LHState2.RAW = data.map((r) => {
+            const images = typeof cleanImages === "function" ? cleanImages(r.images || []) : r.images || [];
+            return {
+              id: r.id,
+              subject_code: r.subject_code || code,
+              num: r.num,
+              question: r.question,
+              options: r.options || {},
+              answer: r.answer || "",
+              answer_text: r.answer_text || "",
+              images,
+              has_image: !!(r.has_image || images.length),
+              error_risk: r.error_risk,
+              error_risk_reason: r.error_risk_reason,
+              __imagesChecked: true,
+              __imagesLoaded: true
+            };
+          });
+          LHState2.pool = [...LHState2.RAW];
+          const saved = +localStorage.getItem("learninghub_progress_" + code) || 0;
+          LHState2.ci = Math.max(0, Math.min(saved, Math.max(0, LHState2.pool.length - 1)));
+          LHState2.flipped = false;
+          renderAllSafe();
+          return true;
+        } catch (e) {
+          console.warn("[light load]", e);
+          return false;
+        }
+      }
+      window.loadCurrentSubjectOnly = loadSubjectLight;
+      function patchApi() {
+        if (window.HODSupabase) window.HODSupabase.loadQuestionsFromSupabase = loadSubjectLight;
+      }
+      patchApi();
+      setTimeout(patchApi, 500);
+      setTimeout(patchApi, 1500);
+      async function fetchImagesForCurrent() {
+        const c = supa();
+        const q = LHState2.pool && LHState2.pool[LHState2.ci] || null;
+        if (!c || !q || !q.id || q.__imagesChecked) return;
+        q.__imagesChecked = true;
+        const { data, error } = await c.from("questions").select("id,images").eq("id", q.id).maybeSingle();
+        if (!error && data) {
+          q.images = data.images || [];
+          q.__imagesLoaded = true;
+          try {
+            (typeof renderCard === "function" ? renderCard : window.renderCard)?.();
+          } catch (e) {
+            lhWarn2("COPILOT_CLOUDINARY_IMAGE_FIX_20260627", e);
+          }
+        }
+      }
+      const oldRenderCard = typeof renderCard === "function" ? renderCard : null;
+      if (oldRenderCard && !oldRenderCard.__cloudinaryLazy) {
+        renderCard = function() {
+          oldRenderCard.apply(this, arguments);
+        };
+        renderCard.__cloudinaryLazy = true;
+        window.renderCard = renderCard;
+      }
+      function bindEditorUpload() {
+        const inp = $3("imgUpload");
+        if (!inp || inp.__cloudinaryBound) return;
+        inp.__cloudinaryBound = true;
+        inp.onchange = async function(e) {
+          const files = Array.from(e.target.files || []);
+          if (!files.length) return;
+          inp.disabled = true;
+          notifyX("\u0110ang upload \u1EA3nh l\xEAn Cloudinary...");
+          try {
+            LHState2.editDraft.images = LHState2.editDraft.images || [];
+            for (const file of files) {
+              LHState2.editDraft.images.push(await uploadCloudinary(file));
+            }
+            if (typeof renderEditImages === "function") renderEditImages();
+            notifyX("\u0110\xE3 upload \u1EA3nh l\xEAn Cloudinary");
+          } catch (err) {
+            alert(err.message || err);
+          } finally {
+            inp.disabled = false;
+            e.target.value = "";
+          }
+        };
+      }
+      document.addEventListener("DOMContentLoaded", () => {
+        patchApi();
+        setTimeout(bindEditorUpload, 300);
+      });
+    })();
+    (function() {
+      const CLOUD_NAME = window.APP_CONFIG?.CLOUDINARY_CLOUD_NAME || "";
+      const UPLOAD_PRESET = window.APP_CONFIG?.CLOUDINARY_UPLOAD_PRESET || "";
+      const UPLOAD_FOLDER = window.APP_CONFIG?.CLOUDINARY_UPLOAD_FOLDER || "learninghub/questions";
+      const UPLOAD_URL = window.APP_CONFIG?.CLOUDINARY_UPLOAD_URL || (CLOUD_NAME ? `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload` : "");
+      const SUBJECT_STORE2 = "learninghub_subject_code_merged_v1";
+      const LIGHT_COLUMNS = "id,subject_code,num,question,options,answer,answer_text,is_active,updated_at,has_image,error_risk,error_risk_reason";
+      const FULL_COLUMNS = "id,subject_code,num,question,options,answer,answer_text,images,is_active,updated_at,has_image,error_risk,error_risk_reason,has_image,error_risk,error_risk_reason";
+      let lastAutoReload = 0;
+      function $3(id) {
+        return document.getElementById(id);
+      }
+      function supa() {
+        return window.HODSupabase?.__client || null;
+      }
+      function user() {
+        return window.HODSupabase?.getUser?.() || null;
+      }
+      function subject() {
+        return localStorage.getItem(SUBJECT_STORE2) || "";
+      }
+      function notifyX(msg) {
+        if (typeof notify === "function") notify(msg);
+        else console.log(msg);
+      }
+      function isDataImage(s) {
+        return /^data:image\//i.test(String(s || ""));
+      }
+      function isLikelyBase64(s) {
+        s = String(s || "").trim();
+        return s.length > 500 && /^(iVBORw0KGgo|\/9j\/|R0lGOD|UklGR)/.test(s);
+      }
+      function cleanImageOne(im) {
+        if (!im) return null;
+        if (typeof im === "string") {
+          const s = im.trim();
+          if (!s || isDataImage(s) || isLikelyBase64(s)) return null;
+          if (/^https?:\/\//i.test(s)) return { src: s, url: s, source: "url" };
+          return null;
+        }
+        if (typeof im === "object") {
+          const raw = im.secure_url || im.src || im.url || im.publicUrl || im.public_url || im.image_url || im.imageUrl || im.file_url || im.fileUrl || im.href || im.path || "";
+          if (!raw || isDataImage(raw) || isLikelyBase64(raw)) return null;
+          if (!/^https?:\/\//i.test(String(raw))) return null;
+          return {
+            id: im.public_id || im.id || void 0,
+            public_id: im.public_id || im.id || void 0,
+            src: String(raw),
+            url: String(raw),
+            width: im.width || void 0,
+            height: im.height || void 0,
+            source: im.source || "url"
+          };
+        }
+        return null;
+      }
+      function cleanImages2(arr) {
+        let raw = arr || [];
+        if (typeof raw === "string") {
+          const s = raw.trim();
+          if (s.startsWith("[") && s.endsWith("]") || s.startsWith("{") && s.endsWith("}")) {
+            try {
+              raw = JSON.parse(s);
+            } catch (e) {
+              raw = [raw];
+            }
+          } else raw = [raw];
+        }
+        if (!Array.isArray(raw)) raw = [raw];
+        return raw.map(cleanImageOne).filter(Boolean);
+      }
+      function imageUrl(im) {
+        const c = cleanImageOne(im);
+        return c?.src || "";
+      }
+      async function uploadCloudinary(file) {
+        if (!UPLOAD_URL || !UPLOAD_PRESET) throw new Error("Thi\u1EBFu Cloudinary trong config.js.");
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("upload_preset", UPLOAD_PRESET);
+        fd.append("folder", UPLOAD_FOLDER);
+        const res = await fetch(UPLOAD_URL, { method: "POST", body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error?.message || "Upload \u1EA3nh l\xEAn Cloudinary th\u1EA5t b\u1EA1i");
+        return cleanImageOne({
+          public_id: data.public_id,
+          secure_url: data.secure_url,
+          width: data.width,
+          height: data.height,
+          source: "cloudinary"
+        });
+      }
+      window.__LHCleanImages = cleanImages2;
+      window.__LHUploadCloudinary = uploadCloudinary;
+      function optimizeImageUrl(src) {
+        if (!src) return "";
+        if (src.includes("res.cloudinary.com/") && src.includes("/image/upload/")) {
+          if (!src.includes("q_auto") && !src.includes("f_auto")) {
+            return src.replace("/image/upload/", "/image/upload/c_limit,w_600,q_auto,f_auto/");
+          }
+        }
+        return src;
+      }
+      window.imgsHTML = imgsHTML = function(c) {
+        return cleanImages2(c?.images || []).map((im) => `<img src="${esc(optimizeImageUrl(im.src))}" alt="" loading="lazy" decoding="async">`).join("");
+      };
+      function bindEditorUpload() {
+        const inp = $3("imgUpload");
+        if (!inp || inp.__urlOnlyBound) return;
+        inp.__urlOnlyBound = true;
+        inp.onchange = async function(e) {
+          const files = Array.from(e.target.files || []);
+          if (!files.length) return;
+          inp.disabled = true;
+          notifyX("\u0110ang upload \u1EA3nh...");
+          try {
+            LHState2.editDraft.images = cleanImages2(LHState2.editDraft.images);
+            for (const file of files) {
+              const uploaded = await uploadCloudinary(file);
+              if (uploaded) LHState2.editDraft.images.push(uploaded);
+            }
+            if (typeof renderEditImages === "function") renderEditImages();
+            notifyX("\u0110\xE3 upload \u1EA3nh b\u1EB1ng URL");
+          } catch (err) {
+            alert(err.message || err);
+          } finally {
+            inp.disabled = false;
+            inp.value = "";
+          }
+        };
+      }
+      const oldRenderEditImages = typeof renderEditImages === "function" ? renderEditImages : null;
+      renderEditImages = window.renderEditImages = function() {
+        const box = $3("editImgs");
+        if (!box) return oldRenderEditImages ? oldRenderEditImages() : void 0;
+        LHState2.editDraft.images = cleanImages2(LHState2.editDraft.images);
+        box.innerHTML = LHState2.editDraft.images.length ? LHState2.editDraft.images.map(
+          (im, i) => `<div class="editImg"><button class="rm" data-rm="${i}">\xD7</button><img src="${esc(im.src)}" loading="lazy" decoding="async"></div>`
+        ).join("") : '<p style="color:var(--mist)">Ch\u01B0a c\xF3 h\xECnh.</p>';
+      };
+      if (window.HODSupabase?.submitEditRequest && !window.HODSupabase.submitEditRequest.__urlOnlyPatch) {
+        const oldSubmit = window.HODSupabase.submitEditRequest.bind(window.HODSupabase);
+        window.HODSupabase.submitEditRequest = async function(newDraft, oldQ) {
+          if (newDraft) newDraft.images = cleanImages2(newDraft.images);
+          if (oldQ) oldQ.images = cleanImages2(oldQ.images);
+          return oldSubmit(newDraft, oldQ);
+        };
+        window.HODSupabase.submitEditRequest.__urlOnlyPatch = true;
+      }
+      const CACHE_TTL = 12 * 60 * 60 * 1e3;
+      function cacheKey(code) {
+        return "learninghub_questions_cache_v2_" + code;
+      }
+      function readQuestionCache(code) {
+        try {
+          const raw = localStorage.getItem(cacheKey(code));
+          if (!raw) return null;
+          const obj = JSON.parse(raw);
+          if (!obj || !obj.savedAt || !Array.isArray(obj.rows)) return null;
+          if (Date.now() - obj.savedAt > CACHE_TTL) return null;
+          return obj.rows;
+        } catch (e) {
+          return null;
+        }
+      }
+      function writeQuestionCache(code, rows) {
+        try {
+          localStorage.setItem(cacheKey(code), JSON.stringify({ savedAt: Date.now(), rows: rows || [] }));
+        } catch (e) {
+          lhWarn2("FINAL_URL_ONLY_IMAGES_AND_CURRENT_RELOAD_20260628", e);
+        }
+      }
+      async function fetchTursoQuestions(code, fresh = false) {
+        const res = await fetch(
+          "/api/questions?subject_code=" + encodeURIComponent(code) + (fresh ? "&fresh=1" : "") + "&ts=" + Date.now(),
+          { cache: "no-store" }
+        );
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c c\xE2u h\u1ECFi t\u1EEB Turso");
+        return Array.isArray(json.data) ? json.data : [];
+      }
+      function mapTursoRow(r, code) {
+        const images = cleanImages2(r.images || []);
+        return {
+          id: r.id,
+          subject_code: r.subject_code || code,
+          num: r.num,
+          question: r.question,
+          options: r.options || {},
+          answer: r.answer || "",
+          answer_text: r.answer_text || "",
+          images,
+          is_active: r.is_active !== false && r.is_active !== 0 && r.is_active !== "0",
+          updated_at: r.updated_at,
+          has_image: !!(r.has_image || images.length),
+          error_risk: r.error_risk || "low",
+          error_risk_reason: r.error_risk_reason || "",
+          __imagesChecked: true,
+          __imagesLoaded: true
+        };
+      }
+      function applyQuestionRows(rows, code) {
+        LHState2.RAW = (rows || []).map((r) => mapTursoRow(r, code));
+        LHState2.pool = [...LHState2.RAW];
+        const saved = +localStorage.getItem("learninghub_progress_" + code) || 0;
+        LHState2.ci = Math.max(0, Math.min(saved, Math.max(0, LHState2.pool.length - 1)));
+        LHState2.flipped = false;
+        renderAllSafe();
+      }
+      let revalidating = {};
+      async function revalidateQuestions(code) {
+        if (revalidating[code]) return;
+        revalidating[code] = true;
+        try {
+          const rows = await fetchTursoQuestions(code);
+          if (!rows.length || subject() !== code) return;
+          writeQuestionCache(code, rows);
+          const byId = new Map(rows.map((r) => [String(r.id), mapTursoRow(r, code)]));
+          let changed = 0;
+          const patch = (row) => {
+            const next3 = byId.get(String(row?.id));
+            if (!next3) return row;
+            if (row.question !== next3.question || row.answer !== next3.answer || JSON.stringify(row.images || []) !== JSON.stringify(next3.images || []))
+              changed++;
+            return Object.assign(row, next3);
+          };
+          LHState2.RAW = (LHState2.RAW || []).map(patch);
+          LHState2.pool = (LHState2.pool || []).map(patch);
+          if (changed) {
+            console.info("[revalidateQuestions] " + code + ": c\u1EADp nh\u1EADt " + changed + " c\xE2u t\u1EEB server");
+            renderAllSafe();
+          }
+        } catch (e) {
+          console.warn("[revalidateQuestions]", e);
+        } finally {
+          delete revalidating[code];
+        }
+      }
+      let activeLoadPromises = {};
+      async function loadSubjectLight(force = false) {
+        const code = subject();
+        if (!user() || !code) return false;
+        if (!force) {
+          const cached = readQuestionCache(code);
+          if (cached && cached.length && cached.every((r) => Object.prototype.hasOwnProperty.call(r, "images"))) {
+            applyQuestionRows(cached, code);
+            revalidateQuestions(code);
+            return true;
+          }
+        }
+        if (activeLoadPromises[code]) return activeLoadPromises[code];
+        if (typeof window.showLibrarySkeleton === "function") window.showLibrarySkeleton();
+        activeLoadPromises[code] = (async () => {
+          try {
+            const data = await fetchTursoQuestions(code, force);
+            writeQuestionCache(code, data);
+            applyQuestionRows(data, code);
+            return true;
+          } catch (e) {
+            console.warn("[loadSubjectLight]", e);
+            return false;
+          } finally {
+            delete activeLoadPromises[code];
+          }
+        })();
+        return activeLoadPromises[code];
+      }
+      async function fetchImagesForCurrent(force = false) {
+        const q = LHState2.pool && LHState2.pool[LHState2.ci] || null;
+        const code = subject();
+        if (!q?.id || !code) return false;
+        if (!force && q.__imagesLoaded) return true;
+        if (q.__imagesLoading) return true;
+        if (!force && q.images && q.images.length) {
+          q.__imagesLoaded = true;
+          return true;
+        }
+        if (!force && !q.has_image) {
+          q.images = [];
+          q.__imagesLoaded = true;
+          return true;
+        }
+        q.__imagesLoading = true;
+        try {
+          const rows = await fetchTursoQuestions(code);
+          const data = rows.find((r) => String(r.id) === String(q.id));
+          if (data) {
+            const mapped = mapTursoRow(data, code);
+            Object.assign(q, mapped);
+            try {
+              writeQuestionCache(
+                code,
+                LHState2.pool.map((x) => ({
+                  id: x.id,
+                  subject_code: x.subject_code,
+                  num: x.num,
+                  question: x.question,
+                  options: x.options,
+                  answer: x.answer,
+                  answer_text: x.answer_text,
+                  images: x.images,
+                  is_active: x.is_active,
+                  updated_at: x.updated_at,
+                  has_image: x.has_image,
+                  error_risk: x.error_risk,
+                  error_risk_reason: x.error_risk_reason
+                }))
+              );
+            } catch (e) {
+              lhWarn2("FINAL_URL_ONLY_IMAGES_AND_CURRENT_RELOAD_20260628", e);
+            }
+            renderAllSafe();
+          }
+          q.__imagesLoaded = true;
+          return !!data;
+        } catch (e) {
+          q.__imagesLoaded = true;
+          return false;
+        } finally {
+          q.__imagesLoading = false;
+        }
+      }
+      async function reloadCurrentQuestion(silent = false) {
+        const q = LHState2.pool && LHState2.pool[LHState2.ci] || null;
+        const code = subject();
+        if (!q?.id || !code) return false;
+        try {
+          const rows = await fetchTursoQuestions(code, true);
+          const data = rows.find((r) => String(r.id) === String(q.id));
+          if (!data) {
+            if (!silent) alert("Kh\xF4ng reload \u0111\u01B0\u1EE3c c\xE2u hi\u1EC7n t\u1EA1i.");
+            return false;
+          }
+          const clean = mapTursoRow(data, code);
+          const upd = (row) => String(row.id) === String(clean.id) ? Object.assign(row, clean) : row;
+          LHState2.RAW = (LHState2.RAW || []).map(upd);
+          LHState2.pool = (LHState2.pool || []).map(upd);
+          renderAllSafe();
+          if (!silent) notifyX("\u0110\xE3 reload c\xE2u hi\u1EC7n t\u1EA1i");
+          return true;
+        } catch (e) {
+          if (!silent) alert("Kh\xF4ng reload \u0111\u01B0\u1EE3c c\xE2u hi\u1EC7n t\u1EA1i.");
+          return false;
+        }
+      }
+      window.loadCurrentSubjectOnly = loadSubjectLight;
+      window.reloadCurrentQuestion = reloadCurrentQuestion;
+      if (window.HODSupabase) window.HODSupabase.loadQuestionsFromSupabase = loadSubjectLight;
+      let lazyLoadTimeout = null;
+      const oldRenderCard = typeof renderCard === "function" ? renderCard : null;
+      if (oldRenderCard && !oldRenderCard.__urlOnlyLazy) {
+        renderCard = window.renderCard = function() {
+          oldRenderCard.apply(this, arguments);
+          if (lazyLoadTimeout) clearTimeout(lazyLoadTimeout);
+          lazyLoadTimeout = setTimeout(() => {
+            fetchImagesForCurrent(false);
+          }, 300);
+        };
+        renderCard.__urlOnlyLazy = true;
+      }
+      function ensureReloadButton() {
+        return;
+      }
+      function autoReloadCurrent() {
+        const now = Date.now();
+        if (now - lastAutoReload < 45e3) return;
+        lastAutoReload = now;
+        reloadCurrentQuestion(true);
+      }
+    })();
+  }
+  function installActiveSubjectCountSync() {
+    (function() {
+      if (window.__ACTIVE_SUBJECT_COUNT_SYNC_20260629) return;
+      window.__ACTIVE_SUBJECT_COUNT_SYNC_20260629 = true;
+      const STORE2 = "learninghub_subject_counts_cache_v3";
+      const SUBJECT_STORE2 = "learninghub_subject_code_merged_v1";
+      function code() {
+        return localStorage.getItem(SUBJECT_STORE2) || "";
+      }
+      function read() {
+        try {
+          return JSON.parse(localStorage.getItem(STORE2) || "{}") || {};
+        } catch (e) {
+          return {};
+        }
+      }
+      function write(x) {
+        try {
+          localStorage.setItem(STORE2, JSON.stringify(x || {}));
+        } catch (e) {
+          lhWarn2("ACTIVE_SUBJECT_COUNT_SYNC_20260629", e);
+        }
+      }
+      function cssEscape(s) {
+        try {
+          return CSS.escape(String(s));
+        } catch (e) {
+          return String(s).replace(/"/g, '\\"');
+        }
+      }
+      function loadedCount() {
+        try {
+          if (Array.isArray(LHState2.RAW) && LHState2.RAW.length) return LHState2.RAW.length;
+          if (Array.isArray(LHState2.pool) && LHState2.pool.length) return LHState2.pool.length;
+        } catch (e) {
+          lhWarn2("ACTIVE_SUBJECT_COUNT_SYNC_20260629", e);
+        }
+        return 0;
+      }
+      function setCardCount(subject, n) {
+        if (!subject || !Number.isFinite(Number(n)) || Number(n) <= 0) return;
+        const count = Number(n);
+        document.querySelectorAll('.subjectCard[data-code="' + cssEscape(subject) + '"]').forEach((card) => {
+          const meta = card.querySelector(".subjectMeta span:first-child");
+          if (meta) meta.textContent = count + " c\xE2u";
+          card.title = (card.title || subject).replace(/(?:\d+|—|0) câu/g, count + " c\xE2u");
+        });
+        const store = read();
+        store.counts = store.counts || {};
+        store.confirmed = store.confirmed || {};
+        store.counts[subject] = count;
+        store.confirmed[subject] = true;
+        store.updated_at = (/* @__PURE__ */ new Date()).toISOString();
+        write(store);
+      }
+      function syncActiveSubjectCount() {
+        const subject = code();
+        const n = loadedCount();
+        if (subject && n > 0) setCardCount(subject, n);
+      }
+      window.syncActiveSubjectCount = syncActiveSubjectCount;
+      const oldLoadCurrent = window.loadCurrentSubjectOnly;
+      if (typeof oldLoadCurrent === "function" && !oldLoadCurrent.__activeCountPatched) {
+        window.loadCurrentSubjectOnly = async function() {
+          const out = await oldLoadCurrent.apply(this, arguments);
+          setTimeout(syncActiveSubjectCount, 50);
+          setTimeout(syncActiveSubjectCount, 300);
+          return out;
+        };
+        window.loadCurrentSubjectOnly.__activeCountPatched = true;
+      }
+      const oldLoadBySubject = window.loadBySubject;
+      if (typeof oldLoadBySubject === "function" && !oldLoadBySubject.__activeCountPatched) {
+        window.loadBySubject = async function() {
+          const out = await oldLoadBySubject.apply(this, arguments);
+          setTimeout(syncActiveSubjectCount, 50);
+          setTimeout(syncActiveSubjectCount, 300);
+          return out;
+        };
+        window.loadBySubject.__activeCountPatched = true;
+      }
+      const oldRenderCard = typeof renderCard === "function" ? renderCard : null;
+      if (oldRenderCard && !window.__renderCardActiveCountPatched) {
+        window.__renderCardActiveCountPatched = true;
+        renderCard = function() {
+          const out = oldRenderCard.apply(this, arguments);
+          setTimeout(syncActiveSubjectCount, 0);
+          return out;
+        };
+        window.renderCard = renderCard;
+      }
+      document.addEventListener("DOMContentLoaded", () => {
+        setTimeout(syncActiveSubjectCount, 500);
+        setTimeout(syncActiveSubjectCount, 1500);
+      });
+      setInterval(() => {
+        const gate = document.getElementById("subjectGate");
+        if (gate && !gate.classList.contains("hidden")) syncActiveSubjectCount();
+      }, 800);
+    })();
+    (function() {
+      function apply() {
+        try {
+          localStorage.removeItem("hod102_hide_options");
+        } catch (e) {
+          lhWarn2("REMOVE_EYE_HIDE_OPTIONS_20260629", e);
+        }
+        var opt = document.getElementById("options");
+        if (opt) opt.classList.remove("hide");
+        var eye = document.getElementById("toggleOpts");
+        if (eye) eye.remove();
+        var st = document.getElementById("stToggleOpts");
+        if (st) st.style.display = "none";
+        var stText = document.getElementById("stOptState");
+        if (stText) stText.textContent = "\u0110ang hi\u1EC7n l\u1EF1a ch\u1ECDn";
+      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", apply);
+      else apply();
+      setTimeout(apply, 300);
+    })();
+  }
+  function installAppStartupAutoLoad() {
+    (function() {
+      if (window.__APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630) return;
+      window.__APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630 = true;
+      const SUBJECT_STORE2 = "learninghub_subject_code_merged_v1";
+      let running = false;
+      let doneFor = "";
+      function subject() {
+        return localStorage.getItem(SUBJECT_STORE2) || "";
+      }
+      function user() {
+        return window.HODSupabase?.getUser?.() || null;
+      }
+      function profile() {
+        return window.HODSupabase?.getProfile?.() || null;
+      }
+      function approved() {
+        return !!window.lhHasFullAccess?.(profile());
+      }
+      function dataOk(code) {
+        try {
+          return !!code && Array.isArray(LHState2.RAW) && LHState2.RAW.length > 0 && LHState2.RAW.some((q) => String(q.subject_code || code).toUpperCase() === String(code).toUpperCase());
+        } catch (e) {
+          return false;
+        }
+      }
+      function renderAll() {
+        try {
+          (typeof renderCard === "function" ? renderCard : window.renderCard)?.();
+        } catch (e) {
+          lhWarn2("APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630", e);
+        }
+        try {
+          (typeof renderQuiz === "function" ? renderQuiz : window.renderQuiz)?.();
+        } catch (e) {
+          lhWarn2("APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630", e);
+        }
+        try {
+          (typeof renderStudy === "function" ? renderStudy : window.renderStudy)?.();
+        } catch (e) {
+          lhWarn2("APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630", e);
+        }
+      }
+      async function loadOnce(reason) {
+        const code = subject();
+        if (!code || !user() || !approved() || running) return false;
+        if (dataOk(code)) {
+          doneFor = code;
+          renderAll();
+          return true;
+        }
+        if (doneFor === code) return true;
+        running = true;
+        try {
+          let ok = false;
+          if (typeof window.loadCurrentSubjectOnly === "function") ok = await window.loadCurrentSubjectOnly(false);
+          else if (window.HODSupabase?.loadQuestionsFromSupabase) ok = await window.HODSupabase.loadQuestionsFromSupabase();
+          if (ok || dataOk(code)) {
+            doneFor = code;
+            renderAll();
+            return true;
+          }
+        } catch (e) {
+          console.warn("[startup auto load]", reason, e);
+        } finally {
+          running = false;
+        }
+        return false;
+      }
+      function schedule(reason) {
+        [300, 1300, 3500].forEach((ms) => setTimeout(() => loadOnce(reason + ":" + ms), ms));
+      }
+      function boot() {
+        schedule("boot");
+        document.querySelectorAll(".tab").forEach((btn) => {
+          if (btn.__startupAutoLoadBound) return;
+          btn.__startupAutoLoadBound = true;
+          btn.addEventListener("click", () => setTimeout(() => loadOnce("tab"), 120));
+        });
+      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+      else boot();
+    })();
   }
 
   // src/student/api.js
@@ -2532,7 +3281,7 @@
         defaultHeaders["Authorization"] = `Bearer ${session.access_token}`;
       }
     } catch (e) {
-      lhWarn("fetchApi:token", e);
+      lhWarn2("fetchApi:token", e);
     }
     const mergedOptions = {
       ...options,
@@ -2556,25 +3305,855 @@
   }
 
   // src/student/search.js
-  function filterQuestions(questions, query = "", riskFilter = "all") {
-    if (!Array.isArray(questions)) return [];
-    const q = String(query || "").trim().toLowerCase();
-    return questions.filter((item) => {
-      if (riskFilter !== "all") {
-        const risk = String(item.error_risk || "low").toLowerCase();
-        if (risk !== riskFilter) return false;
-      }
-      if (!q) return true;
-      if (q.startsWith("#")) {
-        const numStr = q.slice(1);
-        if (String(item.num) === numStr) return true;
-      }
-      const text = `${item.num || ""} ${item.question || ""} ${item.answer || ""} ${item.answer_text || ""} ${Object.values(item.options || {}).join(" ")}`.toLowerCase();
-      return text.includes(q);
+  var search_exports = {};
+  __export(search_exports, {
+    filterQuestions: () => filterQuestions,
+    installAddQuestionDisplay: () => installAddQuestionDisplay,
+    installSmartSearch: () => installSmartSearch
+  });
+
+  // src/student/format.js
+  function sortAns(s) {
+    return (s || "").split("").sort().join("");
+  }
+  function answerText2(c) {
+    return (c.answer || "").split("").map((ch) => ch + ". " + (c.options?.[ch] || "")).join("; ");
+  }
+  function finalAnswerText2(c) {
+    const raw = String(c?.answer_text ?? "").trim();
+    const ans = String(c?.answer ?? "").trim().toUpperCase();
+    if (!raw || raw.toUpperCase() === ans || /^[A-E]+$/i.test(raw)) return answerText2(c);
+    return raw;
+  }
+  function esc2(s) {
+    return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  }
+  function clone(x) {
+    return JSON.parse(JSON.stringify(x));
+  }
+  function fmt(ms) {
+    let s = Math.floor(ms / 1e3), m = Math.floor(s / 60);
+    s %= 60;
+    return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  }
+
+  // src/student/search.js
+  function filterQuestions(questions, keyword) {
+    if (!keyword || !keyword.trim()) return questions || [];
+    const kw = keyword.toLowerCase().trim();
+    return (questions || []).filter((q) => {
+      if (!q) return false;
+      const text = (q.question || "") + " " + Object.values(q.options || {}).join(" ") + " " + (q.answer_text || "");
+      return text.toLowerCase().includes(kw);
     });
+  }
+  function installSmartSearch() {
+    (function() {
+      const $3 = (id) => document.getElementById(id);
+      const STOPWORDS = /* @__PURE__ */ new Set([
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "if",
+        "then",
+        "else",
+        "when",
+        "where",
+        "why",
+        "how",
+        "what",
+        "which",
+        "who",
+        "whom",
+        "whose",
+        "is",
+        "am",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "do",
+        "does",
+        "did",
+        "done",
+        "have",
+        "has",
+        "had",
+        "having",
+        "can",
+        "could",
+        "should",
+        "would",
+        "will",
+        "shall",
+        "may",
+        "might",
+        "must",
+        "in",
+        "on",
+        "at",
+        "by",
+        "for",
+        "from",
+        "to",
+        "of",
+        "with",
+        "without",
+        "into",
+        "onto",
+        "over",
+        "under",
+        "between",
+        "among",
+        "about",
+        "as",
+        "than",
+        "that",
+        "this",
+        "these",
+        "those",
+        "it",
+        "its",
+        "their",
+        "there",
+        "here",
+        "two",
+        "three",
+        "four",
+        "five",
+        "one",
+        "option",
+        "options",
+        "choose",
+        "check",
+        "select",
+        "following",
+        "main",
+        "la",
+        "l\xE0",
+        "cua",
+        "c\u1EE7a",
+        "va",
+        "v\xE0",
+        "cac",
+        "c\xE1c",
+        "nhung",
+        "nh\u1EEFng",
+        "mot",
+        "m\u1ED9t",
+        "cho",
+        "voi",
+        "v\u1EDBi",
+        "trong",
+        "ngoai",
+        "ngo\xE0i",
+        "duoc",
+        "\u0111\u01B0\u1EE3c",
+        "khong",
+        "kh\xF4ng",
+        "nao",
+        "n\xE0o",
+        "gi",
+        "g\xEC",
+        "hay",
+        "hoac",
+        "ho\u1EB7c",
+        "dap",
+        "an",
+        "dapan",
+        "dap\xE1n",
+        "cau",
+        "c\xE2u"
+      ]);
+      function normText(s) {
+        return String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/[^a-z0-9#:\s]/g, " ").replace(/\s+/g, " ").trim();
+      }
+      function splitTokens(s) {
+        return normText(s).split(/\s+/).filter(Boolean);
+      }
+      function meaningfulTokens(q) {
+        const raw = splitTokens(q);
+        return raw.filter((t) => {
+          if (!t) return false;
+          if (STOPWORDS.has(t)) return false;
+          if (t.length < 3 && !/^\d+$/.test(t)) return false;
+          if (/^(answer|ans|multi|multiple|chon|nhieu|lua|dap|an|dapan)$/.test(t)) return false;
+          if (t.includes(":")) return false;
+          return true;
+        });
+      }
+      function parseQuery(q) {
+        const raw = String(q ?? "").trim();
+        const n = normText(raw);
+        const p = { raw, norm: n, num: null, answer: null, multi: false, tokens: [], numericOnly: false, phrase: "" };
+        p.numericOnly = /^\d+$/.test(n);
+        let m = n.match(/(?:^|\s)#\s*(\d+)(?:\s|$)/) || n.match(/(?:^|\s)cau\s*(\d+)(?:\s|$)/);
+        if (m) p.num = Number(m[1]);
+        if (p.numericOnly) p.num = Number(n);
+        m = n.match(/(?:answer|ans|dap\s*an|dapan)\s*:\s*([a-e]+)/i);
+        if (m) p.answer = m[1].toUpperCase().split("").sort().join("");
+        p.multi = /(^|\s)(multi|multiple|chon nhieu|nhieu dap an|nhieu lua chon)(\s|$)/.test(n);
+        p.tokens = meaningfulTokens(raw).filter((t) => {
+          if (/^#?\d+$/.test(t) && p.num !== null) return false;
+          if (/^[a-e]+$/.test(t) && p.answer) return false;
+          return true;
+        });
+        p.phrase = p.tokens.join(" ");
+        return p;
+      }
+      function optionText(c) {
+        return Object.values(c?.options || {}).join(" ");
+      }
+      function correctAnswerText(c) {
+        const ans = String(c?.answer || "").toUpperCase();
+        const opts = c?.options || {};
+        return ans.split("").map((k) => opts[k] || "").join(" ");
+      }
+      function hasWholeNumber(text, num) {
+        return new RegExp("(^|\\D)" + String(num).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?=\\D|$)").test(
+          String(text ?? "")
+        );
+      }
+      function editDistanceOne(a, b) {
+        if (a === b) return true;
+        if (Math.abs(a.length - b.length) > 1) return false;
+        let i = 0, j = 0, ed = 0;
+        while (i < a.length && j < b.length) {
+          if (a[i] === b[j]) {
+            i++;
+            j++;
+            continue;
+          }
+          ed++;
+          if (ed > 1) return false;
+          if (a.length > b.length) i++;
+          else if (a.length < b.length) j++;
+          else {
+            i++;
+            j++;
+          }
+        }
+        return ed + (i < a.length ? 1 : 0) + (j < b.length ? 1 : 0) <= 1;
+      }
+      function tokenInText(token, textNorm) {
+        if (!token) return true;
+        if (textNorm.includes(token)) return true;
+        if (token.length < 5) return false;
+        const words = textNorm.split(/\s+/).filter((w) => Math.abs(w.length - token.length) <= 1);
+        return words.some((w) => editDistanceOne(token, w));
+      }
+      function countMatches(tokens, textNorm) {
+        let n = 0;
+        for (const t of tokens) if (tokenInText(t, textNorm)) n++;
+        return n;
+      }
+      function scoreQuestion(c, p) {
+        if (!p.raw) return { ok: true, score: 0, auto: false };
+        const ansSorted = sortAns(String(c.answer || "").toUpperCase());
+        if (p.answer && ansSorted !== p.answer) return { ok: false, score: -1, auto: false };
+        if (p.multi && String(c.answer || "").length <= 1) return { ok: false, score: -1, auto: false };
+        const qNorm = normText(c.question || "");
+        const optNorm = normText(optionText(c));
+        const corNorm = normText(correctAnswerText(c));
+        const ansLineNorm = normText([c.answer, c.answer_text, correctAnswerText(c)].join(" "));
+        const allNorm = normText([c.num, c.question, c.answer, c.answer_text, optionText(c)].join(" "));
+        let score = 0, auto = false;
+        if (p.num !== null) {
+          const exact = Number(c.num) === p.num;
+          const answerHasNum = hasWholeNumber([c.answer_text, correctAnswerText(c)].join(" "), p.num);
+          if (p.numericOnly) {
+            if (!exact && !answerHasNum) return { ok: false, score: -1, auto: false };
+            score += exact ? 2e3 : 850;
+            auto = answerHasNum;
+          } else {
+            if (!exact) return { ok: false, score: -1, auto: false };
+            score += 2e3;
+          }
+        }
+        if (p.answer) {
+          score += 900;
+          auto = true;
+        }
+        if (p.multi) {
+          score += 350;
+        }
+        const tokens = p.tokens;
+        if (tokens.length) {
+          const qHit = countMatches(tokens, qNorm);
+          const optHit = countMatches(tokens, optNorm);
+          const corHit = countMatches(tokens, corNorm);
+          const allHit = countMatches(tokens, allNorm);
+          const required = tokens.length <= 2 ? tokens.length : Math.ceil(tokens.length * 0.72);
+          if (allHit < required) return { ok: false, score: -1, auto: false };
+          if (p.phrase && qNorm.includes(p.phrase)) score += 1200;
+          if (p.phrase && optNorm.includes(p.phrase)) score += 850;
+          if (p.phrase && corNorm.includes(p.phrase)) {
+            score += 1e3;
+            auto = true;
+          }
+          score += qHit * 180 + optHit * 95 + corHit * 160;
+          if (corHit > 0 || p.phrase && ansLineNorm.includes(p.phrase)) auto = true;
+          if (tokens.length >= 3 && qHit === 0 && optHit < required) return { ok: false, score: -1, auto: false };
+          if (tokens.length >= 4 && allHit < tokens.length) score -= (tokens.length - allHit) * 220;
+        } else if (!p.num && !p.answer && !p.multi) {
+          return { ok: false, score: -1, auto: false };
+        }
+        return { ok: true, score, auto };
+      }
+      function smartBetter(q) {
+        const p = parseQuery(q);
+        if (!p.raw) return LHState2.RAW;
+        return LHState2.RAW.map((c) => ({ c, m: scoreQuestion(c, p) })).filter((x) => x.m.ok).sort((a, b) => b.m.score - a.m.score || Number(a.c.num) - Number(b.c.num)).map((x) => Object.assign({}, x.c, { __autoOpenAnswer: x.m.auto }));
+      }
+      function markText(text, query, cls = "tokenMark") {
+        const parser = typeof parseQuery === "function" ? parseQuery : parseQ;
+        const p = parser(query);
+        const source = String(text ?? "");
+        function escLocal(s) {
+          return esc2(s);
+        }
+        function normWithMap(s) {
+          let norm = "", map = [], lastSpace = true;
+          for (let i = 0; i < s.length; i++) {
+            const ch = s[i];
+            const n = normText(ch);
+            if (n) {
+              for (const c of n) {
+                norm += c;
+                map.push(i);
+              }
+              lastSpace = false;
+            } else if (!lastSpace) {
+              norm += " ";
+              map.push(i);
+              lastSpace = true;
+            }
+          }
+          norm = norm.trimEnd();
+          while (norm.startsWith(" ")) {
+            norm = norm.slice(1);
+            map.shift();
+          }
+          return { norm, map };
+        }
+        if (cls === "phraseMark" && p.norm && p.norm.length >= 6 && !p.numericOnly && !p.answer && !p.multi) {
+          const nm = normWithMap(source);
+          const hit = nm.norm.indexOf(p.norm);
+          if (hit >= 0) {
+            const start = nm.map[hit] ?? 0;
+            const end = (nm.map[hit + p.norm.length - 1] ?? source.length - 1) + 1;
+            return escLocal(source.slice(0, start)) + `<mark class="searchMark phraseMark">${escLocal(source.slice(start, end))}</mark>` + escLocal(source.slice(end));
+          }
+        }
+        const tokens = p.numericOnly ? [String(p.num)] : (p.tokens || []).slice(0, 10);
+        if (!tokens.length) return escLocal(source);
+        const parts = source.match(/[\p{L}\p{N}]+|[^\p{L}\p{N}]+/gu) || [source];
+        return parts.map((part) => {
+          const np = normText(part);
+          if (np && tokens.some((t) => np === t || np.includes(t) || t.includes(np))) {
+            return `<mark class="searchMark ${cls}">${escLocal(part)}</mark>`;
+          }
+          return escLocal(part);
+        }).join("");
+      }
+      function optionStudy(c, q) {
+        return Object.entries(c.options || {}).map(([k, v]) => {
+          const right = String(c.answer || "").includes(k);
+          return `<div class="sopt ${right ? "ans correct" : ""}"><div class="skey">${right ? "\u2713" : esc2(k)}</div><div>${esc2(k + ". ")}${markText(v, q)}</div></div>`;
+        }).join("");
+      }
+      function renderStudyBetter() {
+        const input = $3("search");
+        const q = input ? input.value || "" : "";
+        if (input) input.placeholder = "T\xECm c\xE2u / \u0111\xE1p \xE1n: adopted laws, #26, answer:BC, multi...";
+        const arr = smartBetter(q);
+        const max = arr.length;
+        const html = arr.slice(0, max).map((c) => {
+          const auto = !!c.__autoOpenAnswer;
+          return `<div class="sitem compactStudyCard ${auto ? "autoOpenAnswer open" : ""}" data-num="${esc2(c.num)}" tabindex="0">
+        <div class="compactCardLine">
+          <div class="compactCardMeta"><span class="snum compactSubject">C\xC2U ${esc2(c.num)}</span></div>
+          <div class="sq compactQuestionText">${markText(c.question, q, "phraseMark")}</div>
+          <div class="compactCardRight">${auto ? '<span class="answerMatchChip">Kh\u1EDBp \u0111\xE1p \xE1n</span>' : ""}<button type="button" class="studyReportBtn" data-report-num="${esc2(c.num)}" title="B\xE1o c\xE1o c\xE2u ${esc2(c.num)}">!</button><span class="expandHint"></span></div>
+        </div>
+        <div class="compactCardDetails"><div class="qimgs">${imgsHTML(c)}</div><div class="sopts">${optionStudy(c, q)}</div></div>
+      </div>`;
+        }).join("");
+        $3("studyList").innerHTML = html + (arr.length > max ? `<div class="more">\u0110ang hi\u1EC3n th\u1ECB ${max} / ${arr.length} k\u1EBFt qu\u1EA3.</div>` : arr.length ? "" : '<div class="more">Kh\xF4ng t\xECm th\u1EA5y k\u1EBFt qu\u1EA3.</div>');
+      }
+      function bindBetterSearch() {
+        const s = $3("search");
+        if (s) {
+          s.oninput = renderStudyBetter;
+          s.placeholder = "T\xECm c\xE2u / \u0111\xE1p \xE1n: adopted laws, #26, answer:BC, multi...";
+        }
+        const list = $3("studyList");
+        if (list && !list.__betterSearchBound) {
+          list.__betterSearchBound = true;
+          list.addEventListener(
+            "click",
+            function(e) {
+              const rb = e.target.closest("[data-report-num]");
+              if (rb) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                window.openStudyReport?.(rb.dataset.reportNum, e);
+                return;
+              }
+              const it = e.target.closest(".sitem");
+              if (!it) return;
+              e.preventDefault();
+              e.stopImmediatePropagation();
+              it.classList.toggle("open");
+              it.classList.remove("autoOpenAnswer");
+            },
+            true
+          );
+        }
+      }
+      smart = smartBetter;
+      document.addEventListener("DOMContentLoaded", function() {
+        bindBetterSearch();
+        setTimeout(bindBetterSearch, 100);
+        setTimeout(bindBetterSearch, 600);
+        try {
+          renderStudyBetter();
+        } catch (e) {
+          lhWarn2("FINAL_SMART_SEARCH_STOPWORDS_RELEVANCE_20260614", e);
+        }
+      });
+    })();
+  }
+  function installAddQuestionDisplay() {
+    (function() {
+      const SUBJECT_STORE2 = "learninghub_subject_code_merged_v1";
+      const $3 = (id) => document.getElementById(id);
+      const subjectCode = () => localStorage.getItem(SUBJECT_STORE2) || "";
+      const client = () => window.HODSupabase?.__client || null;
+      const user = () => window.HODSupabase?.getUser?.() || null;
+      const profile = () => window.HODSupabase?.getProfile?.() || null;
+      const esc3 = (s) => String(s ?? "").replace(
+        /[&<>"']/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+      );
+      const ADD_IMG_DRAFT_KEY = "learninghub_add_question_images_draft_v1";
+      function saveAddImagesDraft() {
+        try {
+          localStorage.setItem(ADD_IMG_DRAFT_KEY, JSON.stringify(addImages));
+        } catch (e) {
+          lhWarn2("COPILOT_MERGED_ADD_QUESTION_DISPLAY_VERSION_20260629", e);
+        }
+      }
+      function loadAddImagesDraft() {
+        try {
+          return JSON.parse(localStorage.getItem(ADD_IMG_DRAFT_KEY) || "[]") || [];
+        } catch (e) {
+          return [];
+        }
+      }
+      function clearAddImagesDraft() {
+        try {
+          localStorage.removeItem(ADD_IMG_DRAFT_KEY);
+        } catch (e) {
+          lhWarn2("COPILOT_MERGED_ADD_QUESTION_DISPLAY_VERSION_20260629", e);
+        }
+      }
+      let addImages = loadAddImagesDraft();
+      let addUploading = 0;
+      function canManage() {
+        const p = profile();
+        const role = String(p?.role || "").toLowerCase();
+        return !!user() && (role === "admin" || role === "editor") && !(p?.blocked || p?.is_blocked || p?.status === "blocked");
+      }
+      function isAllTab() {
+        return $3("study")?.classList.contains("active") || document.querySelector(".tab.active")?.dataset?.tab === "study";
+      }
+      function nextNum() {
+        const nums = (LHState2.RAW || []).map((q) => Number(q.num)).filter(Number.isFinite);
+        return nums.length ? Math.max(...nums) + 1 : 1;
+      }
+      function notifyOk(msg) {
+        if (typeof notify === "function") notify(msg);
+        else alert(msg);
+      }
+      function ensurePlus() {
+        let btn = $3("addQuestionFab");
+        if (!btn) {
+          btn = document.createElement("button");
+          btn.id = "addQuestionFab";
+          btn.type = "button";
+          btn.title = "Th\xEAm c\xE2u h\u1ECFi";
+          btn.textContent = "+";
+          document.body.appendChild(btn);
+        }
+        btn.classList.add("prettyAddFab");
+        btn.innerHTML = "<span>+</span>";
+        btn.onclick = function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          openPrettyAddModal();
+        };
+        return btn;
+      }
+      function modalOpen() {
+        const m = $3("addQuestionModal");
+        return !!m && !m.classList.contains("hidden") && getComputedStyle(m).display !== "none";
+      }
+      function updatePlus() {
+        const btn = ensurePlus();
+        const open = modalOpen();
+        const show = canManage() && isAllTab() && !open;
+        document.body.classList.toggle("add-question-visible", show);
+        document.body.classList.toggle("add-question-modal-open", open);
+        btn.classList.toggle("hidden", !show);
+        btn.setAttribute("aria-hidden", show ? "false" : "true");
+        btn.style.setProperty("display", show ? "flex" : "none", "important");
+        btn.style.setProperty("visibility", show ? "visible" : "hidden", "important");
+        btn.style.setProperty("opacity", show ? "1" : "0", "important");
+        btn.style.setProperty("pointer-events", show ? "auto" : "none", "important");
+        if (!canManage() || !isAllTab()) $3("addQuestionModal")?.classList.add("hidden");
+      }
+      function cleanupLimitText() {
+        const list = $3("studyList");
+        if (!list) return;
+        list.querySelectorAll(".more").forEach((x) => {
+          if (/Đang hiển thị\s+\d+\s*\//i.test(x.textContent || "")) x.remove();
+        });
+      }
+      function getImageFilesFromPaste(e) {
+        const items = [...e.clipboardData?.items || []];
+        return items.filter((item) => item.kind === "file" && String(item.type || "").startsWith("image/")).map((item) => item.getAsFile()).filter(Boolean);
+      }
+      async function uploadPrettyImageFiles(files, sourceLabel) {
+        files = [...files || []].filter((file) => file && String(file.type || "").startsWith("image/"));
+        const st = $3("addUploadStatus");
+        const input = $3("addImgUpload");
+        const saveBtn = $3("saveAddQuestion");
+        if (!files.length) return;
+        if (!window.__LHUploadCloudinary) {
+          alert("Ch\u01B0a s\u1EB5n s\xE0ng upload Cloudinary. T\u1EA3i l\u1EA1i trang r\u1ED3i th\u1EED l\u1EA1i.");
+          return;
+        }
+        addUploading++;
+        if (input) input.disabled = true;
+        if (saveBtn) saveBtn.disabled = true;
+        if (st) {
+          st.style.display = "block";
+          st.textContent = "\u0110ang upload " + files.length + " \u1EA3nh l\xEAn Cloudinary...";
+        }
+        notifyOk(sourceLabel === "paste" ? "\u0110ang upload \u1EA3nh v\u1EEBa d\xE1n..." : "\u0110ang upload \u1EA3nh l\xEAn Cloudinary...");
+        try {
+          let done = 0;
+          for (const file of files) {
+            const uploaded = await window.__LHUploadCloudinary(file);
+            if (uploaded) addImages.push(uploaded);
+            done++;
+            if (st) st.textContent = "\u0110ang upload \u1EA3nh " + done + "/" + files.length + "...";
+          }
+          if (window.__LHCleanImages) addImages = window.__LHCleanImages(addImages);
+          saveAddImagesDraft();
+          renderPrettyImages();
+          if (st) {
+            st.textContent = "\u0110\xE3 upload xong. URL n\u1EB1m d\u01B0\u1EDBi \u1EA3nh.";
+            setTimeout(() => {
+              if (addUploading === 0) st.style.display = "none";
+            }, 2200);
+          }
+          notifyOk("\u0110\xE3 upload \u1EA3nh th\xE0nh URL");
+        } catch (err) {
+          if (st) st.textContent = "Upload l\u1ED7i: " + (err.message || err);
+          alert(err.message || err);
+        } finally {
+          addUploading = Math.max(0, addUploading - 1);
+          if (addUploading === 0) {
+            if (input) {
+              input.disabled = false;
+              input.value = "";
+            }
+            if (saveBtn) saveBtn.disabled = false;
+          }
+        }
+      }
+      function ensurePrettyModal() {
+        let modal = $3("addQuestionModal");
+        if (!modal) {
+          modal = document.createElement("div");
+          modal.id = "addQuestionModal";
+          modal.className = "modal hidden addQuestionModal";
+          document.body.appendChild(modal);
+        }
+        if (modal.dataset.prettyVersion === "20260614") return modal;
+        modal.dataset.prettyVersion = "20260614";
+        modal.className = "modal hidden addQuestionModal";
+        modal.innerHTML = `
+      <div class="box editPreviewBox quizEditLayoutV2">
+        <button type="button" class="modalX" id="addQuestionClose">\xD7</button>
+        <div class="v7Head editPreviewHead">
+          <div>
+            <span class="v7Label">TH\xCAM M\u1EDAI</span>
+            <h2>Th\xEAm c\xE2u h\u1ECFi m\u1EDBi</h2>
+            <p class="v7Hint">Nh\u1EADp n\u1ED9i dung c\xE2u h\u1ECFi, c\xE1c \u0111\xE1p \xE1n v\xE0 upload \u1EA3nh n\u1EBFu c\xF3.</p>
+          </div>
+        </div>
+        <article class="v7Card editPreviewCard" style="margin:0!important; border:0!important; background:transparent!important; padding:0!important;">
+          <div class="editPreviewTwoColumns">
+            <div class="editPreviewLeftCol">
+              <div class="v7Field">
+                <label>C\xE2u h\u1ECFi</label>
+                <textarea id="addQuestionText" placeholder="Nh\u1EADp n\u1ED9i dung c\xE2u h\u1ECFi..." style="min-height: 120px;"></textarea>
+              </div>
+              <div class="v7Field" style="margin-top: 10px;">
+                <label>\u0110\xE1p \xE1n \u0111\xFAng</label>
+                <input id="addQuestionAnswer" placeholder="V\xED d\u1EE5: A ho\u1EB7c BC">
+              </div>
+              <div class="v7Field" style="margin-top: 10px;">
+                <label>S\u1ED1 c\xE2u</label>
+                <input id="addQuestionNum" type="number" min="1" placeholder="T\u1EF1 l\u1EA5y s\u1ED1 ti\u1EBFp theo n\u1EBFu \u0111\u1EC3 tr\u1ED1ng">
+              </div>
+              <div class="v7Field" style="margin-top: 10px;">
+                <label>H\xECnh \u1EA3nh</label>
+                <input id="addImgUpload" type="file" accept="image/*" multiple>
+                <div class="pasteImageHint addPasteImageHint">C\xF3 th\u1EC3 ch\u1EE5p/copy \u1EA3nh r\u1ED3i b\u1EA5m Ctrl + V trong khung n\xE0y \u0111\u1EC3 t\u1EF1 upload URL.</div>
+                <div id="addUploadStatus" style="display:none;margin-top:7px;color:var(--gold2);font-weight:900;font-size:.86rem;">\u0110ang upload \u1EA3nh...</div>
+                <div id="addImgs" class="editImgs addImgs" style="margin-top: 8px;">Ch\u01B0a c\xF3 h\xECnh.</div>
+              </div>
+            </div>
+            <div class="editPreviewRightCol">
+              <div class="v7Field" style="margin: 0!important;">
+                <label>C\xE1c \u0111\xE1p \xE1n</label>
+                <div id="editPreviewOptions" class="v7Options">
+                  <div class="v7OptRow">
+                    <div class="v7Key">A</div>
+                    <input id="addOptA" placeholder="Nh\u1EADp \u0111\xE1p \xE1n A">
+                    <button class="v7DelOpt" type="button" onclick="document.getElementById('addOptA').value=''">\xD7</button>
+                  </div>
+                  <div class="v7OptRow" style="margin-top: 8px;">
+                    <div class="v7Key">B</div>
+                    <input id="addOptB" placeholder="Nh\u1EADp \u0111\xE1p \xE1n B">
+                    <button class="v7DelOpt" type="button" onclick="document.getElementById('addOptB').value=''">\xD7</button>
+                  </div>
+                  <div class="v7OptRow" style="margin-top: 8px;">
+                    <div class="v7Key">C</div>
+                    <input id="addOptC" placeholder="Nh\u1EADp \u0111\xE1p \xE1n C">
+                    <button class="v7DelOpt" type="button" onclick="document.getElementById('addOptC').value=''">\xD7</button>
+                  </div>
+                  <div class="v7OptRow" style="margin-top: 8px;">
+                    <div class="v7Key">D</div>
+                    <input id="addOptD" placeholder="Nh\u1EADp \u0111\xE1p \xE1n D">
+                    <button class="v7DelOpt" type="button" onclick="document.getElementById('addOptD').value=''">\xD7</button>
+                  </div>
+                  <div class="v7OptRow" style="margin-top: 8px;">
+                    <div class="v7Key">E</div>
+                    <input id="addOptE" placeholder="C\xF3 th\u1EC3 b\u1ECF tr\u1ED1ng (E)">
+                    <button class="v7DelOpt" type="button" onclick="document.getElementById('addOptE').value=''">\xD7</button>
+                  </div>
+                </div>
+              </div>
+              <div class="v7Bottom" style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 8px; width: 100%;">
+                <button type="button" class="btn" id="cancelAddQuestion">\u0110\xF3ng</button>
+                <button type="button" class="primary" id="saveAddQuestion">L\u01B0u c\xE2u h\u1ECFi</button>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>`;
+        $3("addQuestionClose").onclick = closePrettyAddModal;
+        $3("cancelAddQuestion").onclick = closePrettyAddModal;
+        $3("saveAddQuestion").onclick = savePrettyQuestion;
+        $3("addImgUpload").onchange = (e) => uploadPrettyImageFiles(e.target.files, "file");
+        modal.addEventListener("paste", (e) => {
+          const files = getImageFilesFromPaste(e);
+          if (!files.length) return;
+          e.preventDefault();
+          uploadPrettyImageFiles(files, "paste");
+        });
+        modal.addEventListener("dragover", (e) => {
+          const hasFile = [...e.dataTransfer?.items || []].some((item) => item.kind === "file");
+          if (!hasFile) return;
+          e.preventDefault();
+          modal.classList.add("dragImageOver");
+        });
+        modal.addEventListener("dragleave", () => modal.classList.remove("dragImageOver"));
+        modal.addEventListener("drop", (e) => {
+          const files = [...e.dataTransfer?.files || []].filter((file) => String(file.type || "").startsWith("image/"));
+          if (!files.length) return;
+          e.preventDefault();
+          modal.classList.remove("dragImageOver");
+          uploadPrettyImageFiles(files, "drop");
+        });
+        $3("addImgs").onclick = (e) => {
+          const b = e.target.closest("[data-add-rm]");
+          if (!b) return;
+          addImages.splice(Number(b.dataset.addRm), 1);
+          saveAddImagesDraft();
+          renderPrettyImages();
+        };
+        modal.addEventListener("mousedown", (e) => {
+          if (e.target === modal) closePrettyAddModal();
+        });
+        return modal;
+      }
+      function renderPrettyImages() {
+        const box = $3("addImgs");
+        if (!box) return;
+        box.innerHTML = addImages.length ? addImages.map(
+          (im, i) => `
+      <div class="editImg addPreviewImg">
+        <button type="button" class="rm" data-add-rm="${i}">\xD7</button>
+        <img src="${esc3(im.src)}" alt="" loading="lazy" decoding="async">
+        <input class="imgUrlBox" value="${esc3(im.src)}" readonly onclick="this.select()" title="B\u1EA5m \u0111\u1EC3 ch\u1ECDn URL \u1EA3nh" style="margin-top:6px;width:100%;max-width:260px;border:1px solid rgba(200,169,110,.24);border-radius:10px;background:rgba(0,0,0,.22);color:var(--gold2);padding:7px;font-size:.72rem;">
+      </div>`
+        ).join("") : "Ch\u01B0a c\xF3 h\xECnh.";
+      }
+      function openPrettyAddModal() {
+        if (!canManage()) return;
+        if (!isAllTab()) return;
+        const modal = ensurePrettyModal();
+        addImages = loadAddImagesDraft();
+        $3("addQuestionNum").value = nextNum();
+        $3("addQuestionText").value = "";
+        ["A", "B", "C", "D", "E"].forEach((k) => {
+          const el = $3("addOpt" + k);
+          if (el) el.value = "";
+        });
+        $3("addQuestionAnswer").value = "";
+        renderPrettyImages();
+        modal.classList.remove("hidden");
+        updatePlus();
+        setTimeout(() => $3("addQuestionText")?.focus(), 80);
+      }
+      function closePrettyAddModal() {
+        $3("addQuestionModal")?.classList.add("hidden");
+        setTimeout(updatePlus, 30);
+      }
+      function answerTextLine(answer, options) {
+        return String(answer || "").toUpperCase().split("").filter(Boolean).map((k) => k + ". " + (options[k] || "")).join("; ");
+      }
+      async function savePrettyQuestion() {
+        if (!canManage()) return alert("T\xE0i kho\u1EA3n n\xE0y kh\xF4ng c\xF3 quy\u1EC1n th\xEAm c\xE2u h\u1ECFi.");
+        if (addUploading > 0) return alert("\u1EA2nh \u0111ang upload, ch\u1EDD xong r\u1ED3i l\u01B0u nha.");
+        const c = client();
+        if (!c) return alert("Ch\u01B0a k\u1EBFt n\u1ED1i Supabase.");
+        const subject = subjectCode();
+        if (!subject) return alert("B\u1EA1n c\u1EA7n ch\u1ECDn m\xF4n tr\u01B0\u1EDBc.");
+        const num = Number(($3("addQuestionNum")?.value || "").trim()) || nextNum();
+        const question = ($3("addQuestionText")?.value || "").trim();
+        const answer = ($3("addQuestionAnswer")?.value || "").trim().toUpperCase().replace(/[^A-E]/g, "");
+        const options = {};
+        ["A", "B", "C", "D", "E"].forEach((k) => {
+          const v = ($3("addOpt" + k)?.value || "").trim();
+          if (v) options[k] = v;
+        });
+        if (!question) return alert("Nh\u1EADp c\xE2u h\u1ECFi tr\u01B0\u1EDBc.");
+        if (Object.keys(options).length < 2) return alert("Nh\u1EADp \xEDt nh\u1EA5t 2 \u0111\xE1p \xE1n.");
+        if (!answer) return alert("Nh\u1EADp \u0111\xE1p \xE1n \u0111\xFAng, v\xED d\u1EE5 A ho\u1EB7c BC.");
+        for (const k of answer) {
+          if (!options[k]) return alert("\u0110\xE1p \xE1n \u0111\xFAng " + k + " ch\u01B0a c\xF3 n\u1ED9i dung.");
+        }
+        const imgs = typeof window.__LHCleanImages === "function" ? window.__LHCleanImages(addImages || []) : addImages || [];
+        const payload = {
+          subject_code: subject,
+          num,
+          question,
+          options,
+          answer,
+          answer_text: answerTextLine(answer, options),
+          images: imgs,
+          has_image: imgs.length > 0,
+          updated_at: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        const btn = $3("saveAddQuestion");
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "\u0110ang l\u01B0u...";
+        }
+        try {
+          const u = user();
+          const res = await fetch("/api/admin-action", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({ user_id: u?.id, action: "add_question", payload: { question_data: payload } })
+          });
+          const out = await res.json().catch(() => ({}));
+          if (!res.ok || out.error) throw new Error(out.error || "Kh\xF4ng l\u01B0u \u0111\u01B0\u1EE3c v\xE0o Turso (HTTP " + res.status + ")");
+          clearAddImagesDraft();
+          addImages = [];
+          closePrettyAddModal();
+          notifyOk("\u0110\xE3 th\xEAm c\xE2u h\u1ECFi");
+          if (typeof window.clearLearningHubQuestionCache === "function") window.clearLearningHubQuestionCache();
+          if (typeof window.loadCurrentSubjectOnly === "function") await window.loadCurrentSubjectOnly(true);
+          else if (window.HODSupabase?.loadQuestionsFromSupabase) await window.HODSupabase.loadQuestionsFromSupabase();
+          try {
+            const idx = (LHState2.RAW || []).findIndex((q) => Number(q.num) === num);
+            if (idx >= 0) {
+              LHState2.pool = [...LHState2.RAW];
+              LHState2.ci = idx;
+              LHState2.flipped = false;
+              (typeof renderCard === "function" ? renderCard : window.renderCard)?.();
+              (typeof renderStudy === "function" ? renderStudy : window.renderStudy)?.();
+            }
+          } catch (e) {
+            lhWarn2("COPILOT_MERGED_ADD_QUESTION_DISPLAY_VERSION_20260629", e);
+          }
+        } catch (err) {
+          alert("Th\xEAm c\xE2u h\u1ECFi th\u1EA5t b\u1EA1i: " + (err?.message || err));
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "L\u01B0u c\xE2u h\u1ECFi";
+          }
+        }
+      }
+      function boot() {
+        ensurePlus();
+        const modal = ensurePrettyModal();
+        cleanupLimitText();
+        updatePlus();
+        if (modal && !modal.__mergedAddObserver) {
+          modal.__mergedAddObserver = true;
+          const obs = new MutationObserver(() => setTimeout(updatePlus, 30));
+          obs.observe(modal, { attributes: true, attributeFilter: ["class", "style"] });
+          modal.addEventListener("click", () => setTimeout(updatePlus, 30), true);
+          modal.addEventListener("mousedown", () => setTimeout(updatePlus, 30), true);
+        }
+        document.querySelectorAll(".tab").forEach((t) => {
+          if (t.__prettyAddTabBound) return;
+          t.__prettyAddTabBound = true;
+          t.addEventListener(
+            "click",
+            () => setTimeout(() => {
+              cleanupLimitText();
+              updatePlus();
+            }, 80)
+          );
+        });
+      }
+      window.openAddQuestionModal = openPrettyAddModal;
+      window.openPrettyAddModal = openPrettyAddModal;
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+      else boot();
+      setTimeout(boot, 300);
+      setTimeout(boot, 1e3);
+      setInterval(updatePlus, 250);
+    })();
   }
 
   // src/student/flashcards.js
+  var flashcards_exports = {};
+  __export(flashcards_exports, {
+    formatFlashcardBack: () => formatFlashcardBack,
+    formatFlashcardFront: () => formatFlashcardFront,
+    installFloatingParticles: () => installFloatingParticles,
+    installMobileFlashcardNavigation: () => installMobileFlashcardNavigation,
+    installReportButtonOpenTab: () => installReportButtonOpenTab,
+    shuffleQuestions: () => shuffleQuestions
+  });
   function shuffleQuestions(array) {
     const list = [...array || []];
     for (let i = list.length - 1; i > 0; i--) {
@@ -2603,9 +4182,594 @@
       fullAnswerText
     };
   }
+  function installFloatingParticles() {
+    if (typeof finalAnswerText !== "function") {
+      let finalAnswerText3 = function(c) {
+        const raw = String(c?.answer_text ?? "").trim();
+        const ans = String(c?.answer ?? "").trim().toUpperCase();
+        if (!raw || raw.toUpperCase() === ans || /^[A-E]+$/i.test(raw)) return answerText(c);
+        return raw;
+      };
+    }
+    (function() {
+      let canvas, ctx, w = 0, h = 0, dpr = 1, parts = [], raf = 0, uxInterval = 0, resizeT = 0, running = false;
+      const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      function gateActive() {
+        const gate = document.getElementById("hodLoginGate");
+        return !!gate && !gate.classList.contains("hidden") && getComputedStyle(gate).display !== "none";
+      }
+      function ensureCanvas() {
+        const gate = document.getElementById("hodLoginGate");
+        if (!gate || reduce) return null;
+        canvas = document.getElementById("landingParticles");
+        if (!canvas) {
+          canvas = document.createElement("canvas");
+          canvas.id = "landingParticles";
+          gate.prepend(canvas);
+        }
+        ctx = canvas.getContext("2d");
+        return gate;
+      }
+      function resize() {
+        if (!canvas || !ctx) return;
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        w = window.innerWidth;
+        h = window.innerHeight;
+        canvas.width = Math.floor(w * dpr);
+        canvas.height = Math.floor(h * dpr);
+        canvas.style.width = w + "px";
+        canvas.style.height = h + "px";
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        init2();
+      }
+      function resizeDebounced() {
+        clearTimeout(resizeT);
+        resizeT = setTimeout(resize, 150);
+      }
+      function init2() {
+        const floorCount = w <= 480 ? 26 : w <= 860 ? 40 : 55;
+        const count = Math.min(140, Math.max(floorCount, Math.floor(w * h / 14e3)));
+        parts = Array.from({ length: count }, () => ({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          r: 0.7 + Math.random() * 2.4,
+          vx: (Math.random() - 0.5) * 0.22,
+          vy: -0.1 - Math.random() * 0.42,
+          a: 0.18 + Math.random() * 0.55,
+          p: Math.random() * Math.PI * 2,
+          hue: Math.random() < 0.55 ? "255,255,255" : Math.random() < 0.5 ? "255,226,170" : "135,225,255"
+        }));
+      }
+      function stop() {
+        running = false;
+        cancelAnimationFrame(raf);
+        raf = 0;
+        if (uxInterval) {
+          clearInterval(uxInterval);
+          uxInterval = 0;
+        }
+      }
+      function draw() {
+        if (!running) return;
+        if (!gateActive()) {
+          stop();
+          return;
+        }
+        if (!ctx || document.hidden) {
+          raf = requestAnimationFrame(draw);
+          return;
+        }
+        ctx.clearRect(0, 0, w, h);
+        ctx.globalCompositeOperation = "lighter";
+        for (const p of parts) {
+          p.p += 0.012;
+          p.x += p.vx + Math.sin(p.p) * 0.1;
+          p.y += p.vy;
+          if (p.y < -20) {
+            p.y = h + 20;
+            p.x = Math.random() * w;
+          }
+          if (p.x < -30) p.x = w + 30;
+          if (p.x > w + 30) p.x = -30;
+          const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 7);
+          glow.addColorStop(0, `rgba(${p.hue},${p.a})`);
+          glow.addColorStop(0.45, `rgba(${p.hue},${p.a * 0.22})`);
+          glow.addColorStop(1, `rgba(${p.hue},0)`);
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r * 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = `rgba(${p.hue},${Math.min(1, p.a + 0.15)})`;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        raf = requestAnimationFrame(draw);
+      }
+      function ux() {
+        if (!gateActive()) {
+          stop();
+          return;
+        }
+        const b = document.getElementById("subjectEnter");
+        if (b) b.textContent = "B\u1EAFt \u0111\u1EA7u";
+        const i = document.getElementById("subjectSearch");
+        if (i) i.placeholder = "T\xECm m\xF4n h\u1ECDc...";
+        const l = document.getElementById("subjectLoading"), r = document.getElementById("subjectRefresh");
+        if (l && r) {
+          const on = !l.classList.contains("hidden");
+          r.classList.toggle("is-loading", on);
+          r.setAttribute("aria-busy", on ? "true" : "false");
+        }
+      }
+      function parallax() {
+        const g = document.getElementById("hodLoginGate");
+        if (!g || g.__particles3d) return;
+        g.__particles3d = true;
+        g.addEventListener(
+          "pointermove",
+          (e) => {
+            const r = g.getBoundingClientRect();
+            const x = Math.max(0, Math.min(100, (e.clientX - r.left) / r.width * 100));
+            const y = Math.max(0, Math.min(100, (e.clientY - r.top) / r.height * 100));
+            g.style.setProperty("--mx", x.toFixed(1) + "%");
+            g.style.setProperty("--my", y.toFixed(1) + "%");
+          },
+          { passive: true }
+        );
+      }
+      function boot() {
+        ux();
+        parallax();
+        if (ensureCanvas()) {
+          resize();
+          cancelAnimationFrame(raf);
+          running = true;
+          draw();
+          if (!uxInterval) uxInterval = setInterval(ux, 150);
+        }
+      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+      else boot();
+      window.addEventListener("resize", resizeDebounced, { passive: true });
+    })();
+  }
+  function installReportButtonOpenTab() {
+    (function() {
+      const $3 = (id) => document.getElementById(id);
+      const esc3 = (s) => String(s ?? "").replace(
+        /[&<>"']/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+      );
+      const user = () => window.HODSupabase?.getUser?.() || null;
+      function ensureReportModal() {
+        if ($3("hodReportModal")) return;
+        const modal = document.createElement("div");
+        modal.id = "hodReportModal";
+        modal.className = "modal hidden hodReportModal";
+        modal.innerHTML = `
+      <div class="box hodReportModalBox">
+        <button class="modalX" id="hodReportModalClose" type="button" title="\u0110\xF3ng">\xD7</button>
+        <div class="hodReportModalHead">
+          <div>
+            <div class="hodReportModalLabel">B\xC1O C\xC1O \u0110\xC3 G\u1EECI</div>
+            <h2>Danh s\xE1ch b\xE1o c\xE1o</h2>
+            <p>Xem tr\u1EA1ng th\xE1i c\xE1c b\xE1o c\xE1o/ch\u1EC9nh s\u1EEDa b\u1EA1n \u0111\xE3 g\u1EEDi cho admin.</p>
+          </div>
+          <button id="hodReportModalReload" class="btn" type="button">T\u1EA3i l\u1EA1i</button>
+        </div>
+        <div id="hodReportModalList" class="hodReportModalList">Ch\u01B0a t\u1EA3i.</div>
+      </div>`;
+        document.body.appendChild(modal);
+        $3("hodReportModalClose")?.addEventListener("click", () => modal.classList.add("hidden"));
+        $3("hodReportModalReload")?.addEventListener("click", loadReportModalList);
+        modal.addEventListener("mousedown", (e) => {
+          if (e.target === modal) modal.classList.add("hidden");
+        });
+      }
+      function ensureReportButton() {
+        const menu = $3("hodAccountMenu");
+        if (!menu) return;
+        let box = $3("hodReportBox");
+        if (!box) {
+          box = document.createElement("div");
+          box.id = "hodReportBox";
+          box.className = "hodReportBox";
+          const logout = $3("hodLogoutBtn");
+          logout ? menu.insertBefore(box, logout) : menu.appendChild(box);
+        }
+        box.innerHTML = `
+      <button id="hodOpenReportsBtn" class="hodOpenReportsBtn" type="button">
+        <span>B\xE1o c\xE1o \u0111\xE3 g\u1EEDi</span>
+        <b>Xem</b>
+      </button>`;
+        $3("hodOpenReportsBtn")?.addEventListener("click", openReportsTab);
+      }
+      function statusText(s) {
+        return { pending: "\u0110ang ch\u1EDD", approved: "\u0110\xE3 duy\u1EC7t", rejected: "T\u1EEB ch\u1ED1i" }[s] || s || "Kh\xF4ng r\xF5";
+      }
+      function statusClass(s) {
+        return s === "approved" ? "approved" : s === "rejected" ? "rejected" : "pending";
+      }
+      async function loadReportModalList() {
+        ensureReportModal();
+        const list = $3("hodReportModalList");
+        const u = user();
+        if (!list) return;
+        if (!u) {
+          list.innerHTML = '<div class="hodReportEmpty">\u0110\u0103ng nh\u1EADp \u0111\u1EC3 xem b\xE1o c\xE1o.</div>';
+          return;
+        }
+        list.innerHTML = '<div class="hodReportEmpty">\u0110ang t\u1EA3i...</div>';
+        let data = null;
+        try {
+          const res = await fetch("/api/my-edit-requests?ts=" + Date.now(), { cache: "no-store" });
+          const out = await res.json().catch(() => ({}));
+          if (!res.ok || !Array.isArray(out?.data)) throw new Error(out?.error || res.status);
+          data = out.data;
+        } catch (e) {
+          console.warn("[reports] kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c b\xE1o c\xE1o:", e);
+          list.innerHTML = '<div class="hodReportEmpty">Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c b\xE1o c\xE1o.</div>';
+          return;
+        }
+        if (!data || !data.length) {
+          list.innerHTML = '<div class="hodReportEmpty">B\u1EA1n ch\u01B0a g\u1EEDi b\xE1o c\xE1o n\xE0o.</div>';
+          return;
+        }
+        list.innerHTML = data.map(
+          (r) => `
+      <div class="hodReportRow">
+        <div class="hodReportRowTop">
+          <b>C\xE2u ${esc3(r.question_num || "?")}</b>
+          <span class="hodReportStatus ${statusClass(r.status)}">${esc3(statusText(r.status))}</span>
+        </div>
+        <div class="hodReportTime">G\u1EEDi: ${esc3(new Date(r.created_at).toLocaleString("vi-VN"))}</div>
+        ${r.admin_note ? `<div class="hodReportNote">Ghi ch\xFA admin: ${esc3(r.admin_note)}</div>` : ""}
+      </div>`
+        ).join("");
+      }
+      async function openReportsTab() {
+        ensureReportModal();
+        $3("hodAccountMenu")?.classList.add("hidden");
+        $3("hodReportModal")?.classList.remove("hidden");
+        await loadReportModalList();
+      }
+      function boot() {
+        ensureReportModal();
+        ensureReportButton();
+      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+      else boot();
+      setInterval(ensureReportButton, 700);
+    })();
+  }
+  function installMobileFlashcardNavigation() {
+    (function() {
+      function $3(id) {
+        return document.getElementById(id);
+      }
+      function goPrev() {
+        if (typeof prev === "function") prev();
+      }
+      function goNext() {
+        if (typeof next === "function") next();
+      }
+      const isMobile = () => window.matchMedia("(max-width:760px)").matches;
+      function ensureSlideWrap() {
+        let wrap = $3("cardSlideWrap");
+        if (wrap) return wrap;
+        const card = $3("card");
+        if (!card || !card.parentNode) return null;
+        wrap = document.createElement("div");
+        wrap.id = "cardSlideWrap";
+        wrap.style.cssText = "position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;min-height:0;flex:1;max-width:100%;margin:0 auto;";
+        card.parentNode.insertBefore(wrap, card);
+        wrap.appendChild(card);
+        return wrap;
+      }
+      let __sliding = false;
+      let __activeFinishSlide = null;
+      function slideChange2(dir, isRepeat = false) {
+        const zone = $3("zone");
+        if (!zone) {
+          dir === "next" ? goNext() : goPrev();
+          return;
+        }
+        const wrap = ensureSlideWrap();
+        if (!wrap) {
+          dir === "next" ? goNext() : goPrev();
+          return;
+        }
+        if (__sliding && typeof __activeFinishSlide === "function") {
+          __activeFinishSlide();
+        }
+        if (isRepeat) {
+          dir === "next" ? goNext() : goPrev();
+          return;
+        }
+        __sliding = true;
+        window.__lhSuppressFlip = true;
+        try {
+          zone.querySelectorAll(".lhGhost").forEach((g) => g.remove());
+        } catch (e) {
+          lhWarn("MOBILE_FLASHCARD_NAVIGATION_20260702", e);
+        }
+        const zr = zone.getBoundingClientRect();
+        const r = wrap.getBoundingClientRect();
+        const ghost = wrap.cloneNode(true);
+        ghost.removeAttribute("id");
+        ghost.classList.add("lhGhost");
+        ghost.style.cssText += ";position:absolute;margin:0;pointer-events:none;z-index:6;left:" + (r.left - zr.left) + "px;top:" + (r.top - zr.top) + "px;width:" + r.width + "px;height:" + r.height + "px;transform:none;opacity:1;transition:none;";
+        zone.appendChild(ghost);
+        wrap.classList.remove("lhDragging");
+        wrap.classList.add("lhSliding");
+        wrap.style.transition = "none";
+        wrap.style.opacity = "1";
+        dir === "next" ? goNext() : goPrev();
+        const fromX = dir === "next" ? "100%" : "-100%";
+        const toX = dir === "next" ? "-100%" : "100%";
+        wrap.style.transform = "translateX(" + fromX + ")";
+        let animFrame1 = null;
+        let animFrame2 = null;
+        let slideTimeout = null;
+        let __slideDone = false;
+        function finishSlide() {
+          if (__slideDone) return;
+          __slideDone = true;
+          if (animFrame1) cancelAnimationFrame(animFrame1);
+          if (animFrame2) cancelAnimationFrame(animFrame2);
+          if (slideTimeout) clearTimeout(slideTimeout);
+          wrap.removeEventListener("transitionend", finishSlide);
+          ghost.remove();
+          wrap.style.transition = "";
+          wrap.style.transform = "";
+          wrap.style.opacity = "";
+          wrap.classList.remove("lhSliding");
+          __sliding = false;
+          window.__lhSuppressFlip = false;
+          if (__activeFinishSlide === finishSlide) {
+            __activeFinishSlide = null;
+          }
+        }
+        __activeFinishSlide = finishSlide;
+        animFrame1 = requestAnimationFrame(() => {
+          animFrame2 = requestAnimationFrame(() => {
+            if (!__sliding || __slideDone) return;
+            const ease = "transform .22s cubic-bezier(.22,.61,.36,1)";
+            wrap.style.transition = ease;
+            ghost.style.transition = ease + ", opacity .22s ease";
+            wrap.style.transform = "translateX(0)";
+            ghost.style.transform = "translateX(" + toX + ")";
+            ghost.style.opacity = ".35";
+          });
+        });
+        wrap.addEventListener("transitionend", finishSlide);
+        slideTimeout = setTimeout(finishSlide, 350);
+      }
+      function bindHoldRepeat(btn, dir) {
+        if (!btn) return;
+        const REPEAT_DELAY = 420;
+        const REPEAT_INTERVAL = 130;
+        let startTimer = null, repeatTimer = null, repeated = false, touchActive = false;
+        function stepOnce() {
+          dir === "next" ? goNext() : goPrev();
+        }
+        function clearTimers() {
+          if (startTimer) {
+            clearTimeout(startTimer);
+            startTimer = null;
+          }
+          if (repeatTimer) {
+            clearInterval(repeatTimer);
+            repeatTimer = null;
+          }
+        }
+        function startHold() {
+          repeated = false;
+          clearTimers();
+          startTimer = setTimeout(() => {
+            repeated = true;
+            stepOnce();
+            repeatTimer = setInterval(stepOnce, REPEAT_INTERVAL);
+          }, REPEAT_DELAY);
+        }
+        function endHold() {
+          clearTimers();
+        }
+        btn.addEventListener(
+          "touchstart",
+          (e) => {
+            touchActive = true;
+            e.stopPropagation();
+            startHold();
+          },
+          { passive: true }
+        );
+        btn.addEventListener(
+          "touchend",
+          (e) => {
+            e.stopPropagation();
+            endHold();
+            setTimeout(() => {
+              touchActive = false;
+            }, 400);
+          },
+          { passive: true }
+        );
+        btn.addEventListener(
+          "touchcancel",
+          (e) => {
+            e.stopPropagation();
+            endHold();
+            setTimeout(() => {
+              touchActive = false;
+            }, 400);
+          },
+          { passive: true }
+        );
+        btn.addEventListener("mousedown", (e) => {
+          if (touchActive) return;
+          e.stopPropagation();
+          startHold();
+        });
+        btn.addEventListener("mouseup", (e) => {
+          if (touchActive) return;
+          e.stopPropagation();
+          endHold();
+        });
+        btn.addEventListener("mouseleave", () => {
+          if (!touchActive) endHold();
+        });
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (repeated) {
+            repeated = false;
+            return;
+          }
+          slideChange2(dir);
+        });
+      }
+      function ensureMobileNav() {
+        const zone = $3("zone");
+        if (!zone || $3("mobileCardNav")) return;
+        const nav = document.createElement("div");
+        nav.id = "mobileCardNav";
+        nav.className = "mobileCardNav";
+        nav.innerHTML = `
+      <button id="mobilePrev" type="button" aria-label="C\xE2u tr\u01B0\u1EDBc"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <div class="mobileSwipeHint">Vu\u1ED1t tr\xE1i / ph\u1EA3i \u0111\u1EC3 \u0111\u1ED5i c\xE2u</div>
+      <button id="mobileNext" type="button" aria-label="C\xE2u sau"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>`;
+        zone.appendChild(nav);
+        try {
+          if (localStorage.getItem("learninghub_swipe_hint_seen_v1") === "1") zone.classList.add("swiped");
+        } catch (e) {
+          lhWarn("MOBILE_FLASHCARD_NAVIGATION_20260702", e);
+        }
+        bindHoldRepeat($3("mobilePrev"), "prev");
+        bindHoldRepeat($3("mobileNext"), "next");
+      }
+      function bindDrag() {
+        const zone = $3("zone");
+        if (!zone || zone.__mobileDragBound) return;
+        zone.__mobileDragBound = true;
+        let sx = 0, sy = 0, st = 0, dragging = false, decided = false, axis = null, moved = false;
+        let ignoreTouch = false;
+        const W = () => zone.getBoundingClientRect().width || window.innerWidth || 360;
+        function markSeen() {
+          zone.classList.add("swiped");
+          try {
+            localStorage.setItem("learninghub_swipe_hint_seen_v1", "1");
+          } catch (e) {
+            lhWarn("MOBILE_FLASHCARD_NAVIGATION_20260702", e);
+          }
+        }
+        zone.addEventListener(
+          "touchstart",
+          (e) => {
+            const t = e.changedTouches && e.changedTouches[0];
+            if (!t) return;
+            ignoreTouch = !isMobile() || __sliding || !!e.target.closest("#cardTools, #editCard, .edit, .mobileCardNav");
+            if (ignoreTouch) return;
+            sx = t.clientX;
+            sy = t.clientY;
+            st = Date.now();
+            dragging = false;
+            decided = false;
+            axis = null;
+            moved = false;
+          },
+          { passive: true }
+        );
+        zone.addEventListener(
+          "touchmove",
+          (e) => {
+            if (ignoreTouch || !isMobile() || __sliding) return;
+            const t = e.changedTouches && e.changedTouches[0];
+            if (!t) return;
+            const dx = t.clientX - sx, dy = t.clientY - sy;
+            if (!decided) {
+              if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+              decided = true;
+              axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? "x" : "y";
+              if (axis === "x") {
+                const w = ensureSlideWrap();
+                if (w) {
+                  w.style.transition = "none";
+                  w.classList.add("lhDragging");
+                }
+              }
+            }
+            if (dragging || axis === "x") {
+              dragging = true;
+              e.preventDefault();
+              if (Math.abs(dx) > 6) moved = true;
+              const w = ensureSlideWrap();
+              if (w) {
+                w.style.transform = "translateX(" + dx + "px)";
+                w.style.opacity = String(Math.max(0.4, 1 - Math.abs(dx) / (W() * 1.1)));
+              }
+            }
+          },
+          { passive: false }
+        );
+        function endDrag(e) {
+          if (ignoreTouch || !dragging) return;
+          dragging = false;
+          const w = ensureSlideWrap();
+          if (w) w.classList.remove("lhDragging");
+          const t = e.changedTouches && e.changedTouches[0];
+          const dx = t ? t.clientX - sx : 0;
+          const dt = Date.now() - st;
+          const commit = Math.abs(dx) > W() * 0.3 || dt < 320 && Math.abs(dx) > 56;
+          if (!w) return;
+          if (commit) {
+            markSeen();
+            slideChange2(dx < 0 ? "next" : "prev");
+          } else {
+            window.__lhSuppressFlip = moved;
+            w.style.transition = "transform .2s cubic-bezier(.22,.61,.36,1), opacity .2s ease";
+            w.style.transform = "translateX(0)";
+            w.style.opacity = "1";
+            setTimeout(() => {
+              w.style.transition = "";
+              w.style.transform = "";
+              w.style.opacity = "";
+              window.__lhSuppressFlip = false;
+            }, 220);
+          }
+        }
+        zone.addEventListener("touchend", endDrag, { passive: false });
+        zone.addEventListener("touchcancel", endDrag, { passive: false });
+        zone.addEventListener(
+          "click",
+          (e) => {
+            if (window.__lhSuppressFlip) {
+              e.stopImmediatePropagation();
+              e.preventDefault();
+            }
+          },
+          true
+        );
+      }
+      function boot() {
+        ensureSlideWrap();
+        ensureMobileNav();
+        bindHoldRepeat($3("prev"), "prev");
+        bindHoldRepeat($3("next"), "next");
+        bindHoldRepeat(document.querySelector(".arrow.left"), "prev");
+        bindHoldRepeat(document.querySelector(".arrow.right"), "next");
+        bindDrag();
+      }
+      window.slideChange = slideChange2;
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+      else boot();
+      setTimeout(boot, 300);
+      setTimeout(boot, 1e3);
+    })();
+  }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "e27aa81" : null;
+  var currentVersion = true ? "e71a77b" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -2675,7 +4839,7 @@
           }
         }
       } catch (e) {
-        lhWarn("VERSION_CHECKER_NOTES_FETCH", e);
+        lhWarn2("VERSION_CHECKER_NOTES_FETCH", e);
       }
     }
     const styleId = "lhUpdateBannerStyles";
@@ -3143,7 +5307,7 @@
         }
       }
     } catch (e) {
-      lhWarn("MOCK:seedSubject", e);
+      lhWarn2("MOCK:seedSubject", e);
     }
   }
   function clearMockLeftovers() {
@@ -3159,7 +5323,7 @@
         }
       }
     } catch (e) {
-      lhWarn("MOCK:cleanup", e);
+      lhWarn2("MOCK:cleanup", e);
     }
   }
   function forceAdminAppVisible() {
@@ -3204,7 +5368,7 @@
         c.auth.onAuthStateChange = () => ({ data: { subscription: { unsubscribe() {
         } } } });
       } catch (e) {
-        lhWarn("MOCK:adminAuth", e);
+        lhWarn2("MOCK:adminAuth", e);
       }
       return c;
     };
@@ -3258,9 +5422,9 @@
               403
             );
           }
-          const next2 = body?.payload?.notifications || {};
+          const next3 = body?.payload?.notifications || {};
           for (const k of MOCK_DISCORD_KINDS) {
-            if (Object.prototype.hasOwnProperty.call(next2, k.key)) mockDiscordSettings[k.key] = !!next2[k.key];
+            if (Object.prototype.hasOwnProperty.call(next3, k.key)) mockDiscordSettings[k.key] = !!next3[k.key];
           }
           return jsonResponse({ ok: true, notifications: { ...mockDiscordSettings }, mock: true });
         }
@@ -3319,7 +5483,7 @@
         pathname = u.pathname;
         query = u.searchParams;
       } catch (e) {
-        lhWarn("MOCK:url", e);
+        lhWarn2("MOCK:url", e);
       }
       if (!pathname.startsWith("/api")) return realFetch(input, init2);
       const method = (init2?.method || "GET").toUpperCase();
@@ -3330,7 +5494,7 @@
         try {
           body = JSON.parse(init2.body);
         } catch (e) {
-          lhWarn("MOCK:body", e);
+          lhWarn2("MOCK:body", e);
         }
       }
       return mockApiResponse(pathname, query, opts, body);
@@ -3351,21 +5515,32 @@
         configurable: true
       });
     } catch (e) {
-      lhWarn("MOCK:gate", e);
+      lhWarn2("MOCK:gate", e);
       window.__LH_ACCESS_OK = true;
     }
     try {
       window.HODSupabase = fakeSupabase(opts);
     } catch (e) {
-      lhWarn("MOCK:supabase", e);
+      lhWarn2("MOCK:supabase", e);
     }
     window.__LH_MOCK = { ...opts, subjects: mockSubjects().data.map((s) => s.code) };
+    if (!opts.pending && !opts.blocked && !opts.fail) {
+      const unlock = () => {
+        document.getElementById("hodPendingApproval")?.classList.add("hidden");
+        document.body?.classList.remove("hod-locked");
+        window.__LH_GATE_LOCKED = false;
+      };
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", unlock);
+      else unlock();
+      setTimeout(unlock, 50);
+      setTimeout(unlock, 300);
+    }
     const applySubject = () => {
       try {
         if (typeof window.setSubject === "function") window.setSubject(opts.subject);
         else if (typeof window.setSubjectHelper === "function") window.setSubjectHelper(opts.subject);
       } catch (e) {
-        lhWarn("MOCK:setSubject", e);
+        lhWarn2("MOCK:setSubject", e);
       }
     };
     if (document.readyState === "loading") {
@@ -3382,55 +5557,1388 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
     return true;
   }
 
-  // src/student/state.js
-  var LHState = {
-    RAW: [],
-    pool: [],
-    ci: 0,
-    flipped: false,
-    flipDir: "horizontal",
-    cardFontSize: localStorage.getItem("hod102_card_font_size_v3") || "1",
-    flipMode: localStorage.getItem("hod102_flip_mode") || "single",
-    hideOptions: false,
-    randomActive: localStorage.getItem("hod102_random_active") === "1",
-    qCnt: 20,
-    qSet: [],
-    qDone: {},
-    qSel: {},
-    quizMode: "practice",
-    examSubmitted: false,
-    timerInt: null,
-    examStart: 0,
-    editDraft: null
-  };
-  function initState(BASE2) {
-    const len = Array.isArray(BASE2) ? BASE2.length : 0;
-    LHState.ci = Math.max(0, Math.min(+localStorage.getItem("hod102_ci") || 0, len - 1));
+  // src/student/auth.js
+  var auth_exports = {};
+  __export(auth_exports, {
+    installHODSupabaseAndAvatar: () => installHODSupabaseAndAvatar,
+    installUnifiedFetchAndAccess: () => installUnifiedFetchAndAccess
+  });
+  function installHODSupabaseAndAvatar() {
+    window.HODSupabase = (() => {
+      const CONFIG = window.APP_CONFIG || {
+        SUPABASE_URL: "",
+        SUPABASE_ANON_KEY: ""
+      };
+      let client = null;
+      let currentUser = null;
+      let currentProfile = null;
+      const configured = () => CONFIG.SUPABASE_URL.startsWith("https://") && !CONFIG.SUPABASE_ANON_KEY.startsWith("PASTE_");
+      const isReady = () => !!client && !!currentUser;
+      const isAdmin = () => currentProfile?.role === "admin";
+      const canOpenDashboard = () => ["admin", "editor"].includes(currentProfile?.role);
+      const $id = (id) => document.getElementById(id);
+      function safeJson(obj) {
+        try {
+          return JSON.stringify(obj, null, 2);
+        } catch (e) {
+          return String(obj);
+        }
+      }
+      function questionToRow(q) {
+        const imgs = q.images || [];
+        return {
+          question: q.question,
+          options: q.options || {},
+          answer: q.answer,
+          answer_text: finalAnswerText(q),
+          images: imgs,
+          has_image: !!(q.has_image || imgs.length),
+          error_risk: q.error_risk || "low",
+          error_risk_reason: q.error_risk_reason || null
+        };
+      }
+      function rowToQuestion(row) {
+        return {
+          id: row.id,
+          subject_code: row.subject_code,
+          num: row.num,
+          question: row.question,
+          options: row.options || {},
+          answer: row.answer,
+          answer_text: row.answer_text,
+          images: row.images || [],
+          has_image: !!(row.has_image || (row.images || []).length),
+          error_risk: row.error_risk || "low",
+          error_risk_reason: row.error_risk_reason || "",
+          // Đánh dấu đã có đủ dữ liệu từ Turso, để các đoạn code cũ (fallback gọi
+          // sang Supabase để "lazy load" ảnh/dữ liệu) không kích hoạt nữa - Supabase
+          // giờ chỉ dùng cho Auth, mọi dữ liệu câu hỏi đều lấy từ Turso.
+          __imagesChecked: true,
+          __imagesLoaded: true
+        };
+      }
+      function notify22(msg) {
+        if (typeof notify === "function") notify(msg);
+        else console.log("[HOD102]", msg);
+      }
+      function openAuth() {
+        $id("authModal")?.classList.remove("hidden");
+      }
+      function closeAuth() {
+        $id("authModal")?.classList.add("hidden");
+      }
+      function openAdmin() {
+        if (!canOpenDashboard()) {
+          alert("T\xE0i kho\u1EA3n Google n\xE0y ch\u01B0a c\xF3 quy\u1EC1n admin.");
+          return;
+        }
+        window.open("admin.html", "_blank");
+      }
+      function closeAdmin() {
+        $id("adminModal")?.classList.add("hidden");
+      }
+      function setupHeaderAuthUI() {
+        const actions = document.querySelector(".globalTop .actions") || document.querySelector("#fc .actions") || document.querySelector(".actions");
+        if (!actions || $id("authStatusBtn")) return;
+        const adminBtn = document.createElement("button");
+        adminBtn.id = "adminOpenBtn";
+        adminBtn.className = "btn adminBtn hidden";
+        adminBtn.title = "Dashboard qu\u1EA3n tr\u1ECB";
+        adminBtn.textContent = "";
+        adminBtn.style.display = "none";
+        adminBtn.onclick = () => window.open("admin.html", "_blank");
+        const authBtn = document.createElement("button");
+        authBtn.id = "authStatusBtn";
+        authBtn.className = "btn authBtn";
+        authBtn.title = "\u0110\u0103ng nh\u1EADp / \u0110\u0103ng xu\u1EA5t";
+        authBtn.textContent = configured() ? "\u0110\u0103ng nh\u1EADp" : "Local";
+        authBtn.onclick = async () => {
+          if (!configured()) return alert("B\u1EA1n c\u1EA7n \u0111i\u1EC1n SUPABASE_URL v\xE0 SUPABASE_ANON_KEY trong file HTML tr\u01B0\u1EDBc.");
+          if (currentUser) await signOut();
+          else openAuth();
+        };
+        actions.prepend(authBtn);
+        actions.prepend(adminBtn);
+      }
+      function updateAuthUI() {
+        const authBtn = $id("authStatusBtn");
+        const adminBtn = $id("adminOpenBtn");
+        if (!authBtn) return;
+        if (!configured()) {
+          authBtn.textContent = "Local";
+          authBtn.classList.remove("userChip");
+          adminBtn?.classList.add("hidden");
+          return;
+        }
+        if (currentUser) {
+          authBtn.textContent = currentProfile?.email || currentUser.email || "User";
+          authBtn.classList.add("userChip");
+          const admin = canOpenDashboard();
+          adminBtn?.classList.toggle("hidden", !admin);
+          if (adminBtn) adminBtn.style.display = admin ? "" : "none";
+          const floatAdmin = $id("hodFloatAdmin");
+          floatAdmin?.classList.toggle("hidden", !admin);
+          if (floatAdmin) floatAdmin.style.display = admin ? "" : "none";
+          if (!admin) $id("adminModal")?.classList.add("hidden");
+        } else {
+          authBtn.textContent = "\u0110\u0103ng nh\u1EADp";
+          authBtn.classList.remove("userChip");
+          adminBtn?.classList.add("hidden");
+          if (adminBtn) adminBtn.style.display = "none";
+          const floatAdmin = $id("hodFloatAdmin");
+          floatAdmin?.classList.add("hidden");
+          if (floatAdmin) floatAdmin.style.display = "none";
+          $id("adminModal")?.classList.add("hidden");
+        }
+      }
+      const PENDING_DEFAULT_TITLE = "Ch\u1EDD ph\xEA duy\u1EC7t";
+      const PENDING_DEFAULT_MESSAGE = "T\xE0i kho\u1EA3n c\u1EE7a b\u1EA1n \u0111ang ch\u1EDD admin ph\xEA duy\u1EC7t.<br>B\u1EA1n s\u1EBD c\xF3 th\u1EC3 s\u1EED d\u1EE5ng Learning Hub sau khi \u0111\u01B0\u1EE3c duy\u1EC7t.";
+      const BLOCKED_TITLE = "T\xE0i kho\u1EA3n b\u1ECB kh\xF3a";
+      const BLOCKED_MESSAGE = "T\xE0i kho\u1EA3n c\u1EE7a b\u1EA1n \u0111\xE3 b\u1ECB qu\u1EA3n tr\u1ECB vi\xEAn kh\xF3a.<br>B\u1EA1n \u0111\xE3 \u0111\u01B0\u1EE3c \u0111\u0103ng xu\u1EA5t kh\u1ECFi h\u1EC7 th\u1ED1ng.";
+      function truthyFlag(v) {
+        return v === 1 || v === true || v === "1";
+      }
+      function hasFullAccess(profile) {
+        if (!profile || typeof profile !== "object") return false;
+        if (truthyFlag(profile.blocked) || truthyFlag(profile.is_blocked) || profile.status === "blocked") return false;
+        return truthyFlag(profile.approved);
+      }
+      window.lhHasFullAccess = hasFullAccess;
+      function showPendingApproval(opts) {
+        const el = $id("hodPendingApproval");
+        if (el) el.classList.remove("hidden");
+        const titleEl = $id("hodPendingTitle");
+        if (titleEl) titleEl.textContent = opts?.title || PENDING_DEFAULT_TITLE;
+        const msgEl = $id("hodPendingMessage");
+        if (msgEl) msgEl.innerHTML = opts?.message || PENDING_DEFAULT_MESSAGE;
+        const emailEl = $id("hodPendingEmail");
+        if (emailEl) emailEl.textContent = currentUser?.email || "";
+        $id("hodLoginGate")?.classList.add("hidden");
+        document.body?.classList.add("hod-locked");
+        window.__LH_ACCESS_OK = false;
+        window.__LH_GATE_LOCKED = true;
+      }
+      window.showPendingApproval = showPendingApproval;
+      function showAccessCheckError() {
+        showPendingApproval({
+          title: "Kh\xF4ng th\u1EC3 ki\u1EC3m tra quy\u1EC1n",
+          message: "Kh\xF4ng th\u1EC3 ki\u1EC3m tra quy\u1EC1n, vui l\xF2ng th\u1EED l\u1EA1i."
+        });
+      }
+      window.showAccessCheckError = showAccessCheckError;
+      function hidePendingApproval() {
+        const el = $id("hodPendingApproval");
+        if (el) el.classList.add("hidden");
+        document.body?.classList.remove("hod-locked");
+        window.__LH_GATE_LOCKED = false;
+      }
+      async function sendLoginToDiscord(email, role) {
+        try {
+          const res = await fetch("/api/notify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ kind: "login", user_id: currentUser?.id, email, role, source: "web" })
+          });
+          if (!res.ok) console.warn("Discord login notify failed:", res.status, await res.text().catch(() => ""));
+        } catch (error) {
+          console.warn("L\u1ED7i g\u1EEDi th\xF4ng b\xE1o login web:", error);
+        }
+      }
+      async function notifyLoginToDiscordOnce() {
+        if (!currentUser) return;
+        const key = "hod_web_login_discord_notified_" + currentUser.id;
+        if (sessionStorage.getItem(key)) return;
+        await sendLoginToDiscord(currentProfile?.email || currentUser.email, currentProfile?.role || "user");
+        sessionStorage.setItem(key, "true");
+      }
+      let lhApiAbortController = typeof AbortController !== "undefined" ? new AbortController() : null;
+      function getLhApiSignal() {
+        return lhApiAbortController ? lhApiAbortController.signal : void 0;
+      }
+      window.getLhApiSignal = getLhApiSignal;
+      function purgeOfflineQuestionCache() {
+        try {
+          LHState.RAW = [];
+          LHState.pool = [];
+          LHState.ci = 0;
+          LHState.flipped = false;
+          const q = $("question");
+          if (q) q.textContent = "T\xE0i kho\u1EA3n ch\u01B0a \u0111\u01B0\u1EE3c duy\u1EC7t ho\u1EB7c \u0111\xE3 b\u1ECB kh\xF3a.";
+          const opts = $("options");
+          if (opts) opts.innerHTML = "";
+          const imgs = $("images");
+          if (imgs) imgs.innerHTML = "";
+          const total = $("total");
+          if (total) total.textContent = "0";
+          const idx = $("idx");
+          if (idx) idx.textContent = "0";
+          if (typeof renderQuiz === "function") (typeof renderQuiz === "function" ? renderQuiz : window.renderQuiz)?.();
+          if (typeof renderStudy === "function") (typeof renderStudy === "function" ? renderStudy : window.renderStudy)?.();
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const k = localStorage.key(i);
+            if (k && (k.startsWith("lh_question_") || k.startsWith("lh_raw_") || k.startsWith("lh_starred_") || k.startsWith("learninghub_questions_"))) {
+              localStorage.removeItem(k);
+            }
+          }
+          for (let i = sessionStorage.length - 1; i >= 0; i--) {
+            const k = sessionStorage.key(i);
+            if (k && (k.startsWith("lh_") || k.startsWith("learninghub_"))) {
+              sessionStorage.removeItem(k);
+            }
+          }
+          if (typeof caches !== "undefined" && caches.keys) {
+            caches.keys().then((names) => {
+              names.forEach((name) => {
+                if (name.includes("questions") || name.includes("learninghub")) caches.delete(name);
+              });
+            }).catch(() => {
+            });
+          }
+          if (typeof indexedDB !== "undefined" && indexedDB.databases) {
+            indexedDB.databases().then((dbs) => {
+              dbs.forEach((dbInfo) => {
+                if (dbInfo.name && dbInfo.name.includes("learninghub")) indexedDB.deleteDatabase(dbInfo.name);
+              });
+            }).catch(() => {
+            });
+          }
+        } catch (e) {
+          console.warn("purgeOfflineQuestionCache error:", e);
+        }
+      }
+      function handleAccessRevoked(reason, code = null) {
+        if (window.__LH_REVOKING_ACCESS) return;
+        window.__LH_REVOKING_ACCESS = true;
+        console.warn("[LH Auth] Thu h\u1ED3i quy\u1EC1n:", reason, "| code:", code);
+        try {
+          if (lhApiAbortController) {
+            lhApiAbortController.abort("Access revoked");
+            lhApiAbortController = typeof AbortController !== "undefined" ? new AbortController() : null;
+          }
+        } catch (e) {
+          lhWarn2("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
+        }
+        window.__LH_ACCESS_OK = false;
+        currentProfile = null;
+        purgeOfflineQuestionCache();
+        try {
+          if (typeof window.lhTeardownAccessWatch === "function") window.lhTeardownAccessWatch();
+        } catch (e) {
+          lhWarn2("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
+        }
+        const mustSignOut = code === "BLOCKED" || code === "UNAUTHORIZED";
+        if (code === "BLOCKED") {
+          showPendingApproval({ title: BLOCKED_TITLE, message: BLOCKED_MESSAGE });
+        } else if (code === "UNAUTHORIZED") {
+          showPendingApproval({
+            title: "Phi\xEAn \u0111\u0103ng nh\u1EADp \u0111\xE3 h\u1EBFt h\u1EA1n",
+            message: "Vui l\xF2ng \u0111\u0103ng nh\u1EADp l\u1EA1i \u0111\u1EC3 ti\u1EBFp t\u1EE5c."
+          });
+        } else {
+          showPendingApproval({ title: PENDING_DEFAULT_TITLE, message: PENDING_DEFAULT_MESSAGE });
+        }
+        if (mustSignOut) {
+          try {
+            unsubscribeUserStatusRealtime();
+          } catch (e) {
+            lhWarn2("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
+          }
+          if (typeof signOut === "function") signOut().catch(() => {
+          });
+        }
+        updateAuthUI();
+        setTimeout(() => {
+          window.__LH_REVOKING_ACCESS = false;
+        }, 3e3);
+      }
+      window.handleAccessRevoked = handleAccessRevoked;
+      let statusRealtimeChannel = null;
+      let lastRealtimeSignalAt = 0;
+      function unsubscribeUserStatusRealtime() {
+        if (!statusRealtimeChannel) return;
+        try {
+          statusRealtimeChannel.unsubscribe();
+        } catch (e) {
+          lhWarn2("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
+        }
+        statusRealtimeChannel = null;
+        window.__lhRealtimeConnected = false;
+      }
+      window.lhUnsubscribeUserStatus = unsubscribeUserStatusRealtime;
+      function onRealtimeSignal(reason) {
+        const now = Date.now();
+        if (now - lastRealtimeSignalAt < 2e3) return;
+        lastRealtimeSignalAt = now;
+        if (typeof window.lhRevalidateAccess === "function") {
+          window.lhRevalidateAccess("realtime:" + (reason || "status_changed"));
+        }
+      }
+      let globalRealtimeChannel = null;
+      function subscribeGlobalRealtime() {
+        if (globalRealtimeChannel) return;
+        try {
+          const supa = window.HODSupabase?.__client;
+          if (!supa || typeof supa.channel !== "function") return;
+          globalRealtimeChannel = supa.channel("lh-global");
+          globalRealtimeChannel.on("broadcast", { event: "reload_notice" }, () => {
+            window.lhHandleReloadNotice?.();
+          });
+          globalRealtimeChannel.subscribe((status) => {
+            if (status === "SUBSCRIBED") console.log("[Realtime] \u0111\xE3 theo d\xF5i k\xEAnh chung lh-global");
+          });
+        } catch (e) {
+          lhWarn2("RELOAD_NOTICE_REALTIME_20260729", e);
+          globalRealtimeChannel = null;
+        }
+      }
+      function unsubscribeGlobalRealtime() {
+        if (!globalRealtimeChannel) return;
+        try {
+          globalRealtimeChannel.unsubscribe();
+        } catch (e) {
+          lhWarn2("RELOAD_NOTICE_REALTIME_20260729", e);
+        }
+        globalRealtimeChannel = null;
+      }
+      function subscribeUserStatusRealtime(userId) {
+        if (!userId || statusRealtimeChannel) return;
+        try {
+          const supa = window.HODSupabase?.__client;
+          if (!supa || typeof supa.channel !== "function") return;
+          statusRealtimeChannel = supa.channel("user-status-" + userId);
+          statusRealtimeChannel.on("broadcast", { event: "status_changed" }, (msg) => {
+            const data = msg?.payload || {};
+            if (data.reason === "reload_notice") window.lhHandleReloadNotice?.();
+            onRealtimeSignal(data.reason);
+          });
+          statusRealtimeChannel.subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+              console.log("[Realtime] \u0111\xE3 theo d\xF5i tr\u1EA1ng th\xE1i t\xE0i kho\u1EA3n:", userId);
+              window.__lhRealtimeConnected = true;
+              if (typeof window.stopFallbackPolling === "function") window.stopFallbackPolling();
+              if (typeof window.lhRevalidateAccess === "function") window.lhRevalidateAccess("realtime:subscribed");
+            } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+              console.warn("[Realtime] m\u1EA5t k\u1EBFt n\u1ED1i:", status);
+              window.__lhRealtimeConnected = false;
+              if (document.visibilityState === "visible" && typeof window.startFallbackPolling === "function") {
+                window.startFallbackPolling();
+              }
+            }
+          });
+        } catch (e) {
+          console.warn("[Realtime] kh\xF4ng \u0111\u0103ng k\xFD \u0111\u01B0\u1EE3c k\xEAnh:", e);
+          statusRealtimeChannel = null;
+          window.__lhRealtimeConnected = false;
+          if (document.visibilityState === "visible" && typeof window.startFallbackPolling === "function") {
+            window.startFallbackPolling();
+          }
+        }
+      }
+      window.addEventListener("lh:profile-ready", () => {
+        const u = window.HODSupabase?.getUser?.();
+        if (u?.id) subscribeUserStatusRealtime(u.id);
+        subscribeGlobalRealtime();
+      });
+      let activeProfilePromise = null;
+      async function loadProfile(force = false, checkOnly = false) {
+        window.loadProfile = loadProfile;
+        if (!currentUser) {
+          currentProfile = null;
+          updateAuthUI();
+          return null;
+        }
+        if (activeProfilePromise) return activeProfilePromise;
+        activeProfilePromise = (async () => {
+          try {
+            const activeSubjectCode = (localStorage.getItem("learninghub_subject_code_merged_v1") || "").trim();
+            const body = checkOnly ? { check_only: true } : {
+              id: currentUser.id,
+              email: currentUser.email || "",
+              full_name: currentUser.user_metadata?.full_name || "",
+              avatar_url: currentUser.user_metadata?.avatar_url || currentUser.user_metadata?.picture || "",
+              current_subject: activeSubjectCode,
+              device_info: typeof getDeviceTypeString === "function" ? getDeviceTypeString() : void 0,
+              last_login: (/* @__PURE__ */ new Date()).toISOString(),
+              last_activity: (/* @__PURE__ */ new Date()).toISOString()
+            };
+            const res = await fetch("/api/profile?turso=1&ts=" + Date.now(), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              cache: "no-store",
+              body: JSON.stringify(body)
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok || json.error) {
+              currentProfile = null;
+              window.__LH_ACCESS_OK = false;
+              if (res.status === 401 || res.status === 403) {
+                handleAccessRevoked(
+                  json.error || "T\xE0i kho\u1EA3n ch\u01B0a \u0111\u01B0\u1EE3c duy\u1EC7t ho\u1EB7c \u0111\xE3 b\u1ECB kh\xF3a.",
+                  json.code || (res.status === 401 ? "UNAUTHORIZED" : "PENDING_APPROVAL")
+                );
+              } else {
+                showAccessCheckError();
+                updateAuthUI();
+              }
+              throw new Error(json.error || `Kh\xF4ng ki\u1EC3m tra \u0111\u01B0\u1EE3c quy\u1EC1n (HTTP ${res.status})`);
+            }
+            currentProfile = json.data || json.profile || json;
+            if (checkOnly && json.reload_notice) showReloadNoticeNow();
+            if (truthyFlag(currentProfile?.blocked)) {
+              handleAccessRevoked("T\xE0i kho\u1EA3n \u0111\xE3 b\u1ECB kh\xF3a", "BLOCKED");
+              return null;
+            }
+            if (!hasFullAccess(currentProfile)) {
+              handleAccessRevoked("T\xE0i kho\u1EA3n ch\u01B0a \u0111\u01B0\u1EE3c ph\xEA duy\u1EC7t", "PENDING_APPROVAL");
+              return null;
+            }
+            if (!checkOnly) await notifyLoginToDiscordOnce();
+            window.__LH_ACCESS_OK = true;
+            hidePendingApproval();
+            updateAuthUI();
+            window.dispatchEvent(new CustomEvent("lh:profile-ready"));
+            return currentProfile;
+          } catch (e) {
+            console.error("[Turso profile]", e);
+            currentProfile = null;
+            window.__LH_ACCESS_OK = false;
+            if (!document.getElementById("hodPendingApproval")?.classList.contains("hidden")) {
+            } else {
+              showAccessCheckError();
+            }
+            updateAuthUI();
+            return null;
+          } finally {
+            activeProfilePromise = null;
+          }
+        })();
+        return activeProfilePromise;
+      }
+      window.lhCheckProfileOnce = function(reason) {
+        console.debug("[LH access] x\xE1c minh l\u1EA1i quy\u1EC1n t\u1EEB Turso, ngu\u1ED3n:", reason || "unknown");
+        return loadProfile(true, true);
+      };
+      async function loadQuestionsFromSupabase() {
+        if (!currentUser) return false;
+        if (!hasFullAccess(currentProfile)) {
+          showPendingApproval();
+          return false;
+        }
+        const activeSubject = localStorage.getItem("learninghub_subject_code_merged_v1") || "";
+        if (!activeSubject) return false;
+        try {
+          const res = await fetch(
+            "/api/questions?subject_code=" + encodeURIComponent(activeSubject) + "&ts=" + Date.now(),
+            { cache: "no-store" }
+          );
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c questions t\u1EEB Turso");
+          const rows = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
+          LHState.RAW = rows.map(rowToQuestion);
+          LHState.pool = [...LHState.RAW];
+          var _sci = +localStorage.getItem("learninghub_progress_" + activeSubject) || 0;
+          LHState.ci = Math.max(0, Math.min(_sci, Math.max(0, LHState.pool.length - 1)));
+          LHState.flipped = false;
+          if ($id("total")) $id("total").textContent = LHState.pool.length;
+          try {
+            (typeof renderCard === "function" ? renderCard : window.renderCard)?.();
+          } catch (e) {
+            lhWarn2("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
+          }
+          try {
+            (typeof renderQuiz === "function" ? renderQuiz : window.renderQuiz)?.();
+          } catch (e) {
+            lhWarn2("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
+          }
+          try {
+            (typeof renderStudy === "function" ? renderStudy : window.renderStudy)?.();
+          } catch (e) {
+            lhWarn2("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
+          }
+          notify22("\u0110\xE3 t\u1EA3i c\xE2u h\u1ECFi t\u1EEB Turso");
+          return true;
+        } catch (e) {
+          console.warn("[Turso questions]", e);
+          notify22("Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c c\xE2u h\u1ECFi t\u1EEB Turso.");
+          return false;
+        }
+      }
+      async function signInGoogle() {
+        if (!window.supabase) return alert("Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c Supabase. Ki\u1EC3m tra m\u1EA1ng ho\u1EB7c CDN.");
+        if (!client) return alert("Supabase ch\u01B0a s\u1EB5n s\xE0ng.");
+        const { error } = await client.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo: window.location.href.split("#")[0] }
+        });
+        if (error) alert(error.message);
+      }
+      async function signIn() {
+        if (!client) return;
+        const email = $id("authEmail")?.value.trim();
+        const password = $id("authPassword")?.value;
+        if (!email || !password) return alert("Nh\u1EADp email v\xE0 m\u1EADt kh\u1EA9u nha.");
+        const { data, error } = await client.auth.signInWithPassword({ email, password });
+        if (error) return alert(error.message);
+        currentUser = data.user;
+        await loadProfile();
+        await loadQuestionsFromSupabase();
+        closeAuth();
+        notify22("\u0110\xE3 \u0111\u0103ng nh\u1EADp");
+      }
+      async function signUp() {
+        if (!client) return;
+        const email = $id("authEmail")?.value.trim();
+        const password = $id("authPassword")?.value;
+        if (!email || !password) return alert("Nh\u1EADp email v\xE0 m\u1EADt kh\u1EA9u nha.");
+        const { data, error } = await client.auth.signUp({ email, password });
+        if (error) return alert(error.message);
+        alert("\u0110\xE3 t\u1EA1o t\xE0i kho\u1EA3n. N\u1EBFu Supabase y\xEAu c\u1EA7u x\xE1c nh\u1EADn email, h\xE3y x\xE1c nh\u1EADn r\u1ED3i \u0111\u0103ng nh\u1EADp.");
+      }
+      function showReloadNoticeNow() {
+        if (window.__LH_RELOAD_NOTICE_SHOWN) return;
+        window.__LH_RELOAD_NOTICE_SHOWN = true;
+        try {
+          if (typeof window.lhShowReloadNotice === "function") window.lhShowReloadNotice();
+        } catch (e) {
+          lhWarn2("RELOAD_NOTICE_CLIENT_20260729", e);
+        }
+      }
+      window.lhHandleReloadNotice = showReloadNoticeNow;
+      async function signOut() {
+        if (!client) return;
+        try {
+          unsubscribeUserStatusRealtime();
+          unsubscribeGlobalRealtime();
+        } catch (e) {
+          lhWarn2("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
+        }
+        try {
+          if (typeof window.lhTeardownAccessWatch === "function") window.lhTeardownAccessWatch();
+        } catch (e) {
+          lhWarn2("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
+        }
+        Object.keys(sessionStorage).filter((k) => k.startsWith("hod_web_login_discord_notified_")).forEach((k) => sessionStorage.removeItem(k));
+        await client.auth.signOut();
+        currentUser = null;
+        currentProfile = null;
+        window.__LH_ACCESS_OK = false;
+        updateAuthUI();
+        notify22("\u0110\xE3 \u0111\u0103ng xu\u1EA5t");
+      }
+      async function submitEditRequest(newDraft, oldQ) {
+        if (!client) return alert("Ch\u01B0a c\u1EA5u h\xECnh Supabase.");
+        if (!currentUser) {
+          openAuth();
+          return;
+        }
+        if (!oldQ?.id) {
+          alert(
+            "C\xE2u h\u1ECFi hi\u1EC7n \u0111ang l\u1EA5y t\u1EEB data local. H\xE3y \u0111\u0103ng nh\u1EADp v\xE0 t\u1EA3i questions t\u1EEB Supabase tr\u01B0\u1EDBc khi g\u1EEDi y\xEAu c\u1EA7u s\u1EEDa."
+          );
+          return;
+        }
+        try {
+          if (typeof window.__LHGetPendingImageUpload === "function") {
+            const p = window.__LHGetPendingImageUpload();
+            if (p) await p;
+          }
+          if (typeof window.__LHUploadPendingDataUrls === "function") await window.__LHUploadPendingDataUrls();
+        } catch (e) {
+          console.warn("Ch\u1EDD upload \u1EA3nh tr\u01B0\u1EDBc khi g\u1EEDi y\xEAu c\u1EA7u s\u1EEDa th\u1EA5t b\u1EA1i:", e);
+        }
+        const payload = {
+          question_id: oldQ.id,
+          question_num: oldQ.num,
+          subject_code: oldQ.subject_code || newDraft.subject_code || "",
+          user_id: currentUser.id,
+          user_email: currentUser.email || currentProfile?.email || "",
+          old_data: questionToRow(oldQ),
+          new_data: questionToRow(newDraft),
+          reason: ""
+        };
+        const res = await fetch("/api/edit-requests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify(payload)
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok || out.error) return alert("G\u1EEDi y\xEAu c\u1EA7u s\u1EEDa th\u1EA5t b\u1EA1i: " + (out.error || res.status));
+        $id("editModal")?.classList.add("hidden");
+        notify22("\u0110\xE3 g\u1EEDi y\xEAu c\u1EA7u s\u1EEDa, \u0111ang ch\u1EDD admin duy\u1EC7t");
+      }
+      async function loadPendingRequests() {
+        if (!client || !isAdmin()) return;
+        const list = $id("adminRequests");
+        const count = $id("adminCount");
+        if (list) list.innerHTML = '<div class="more">\u0110ang t\u1EA3i...</div>';
+        let data = [];
+        try {
+          const res = await fetch("/api/admin-dashboard", { cache: "no-store" });
+          const dash = await res.json().catch(() => ({}));
+          if (!res.ok || dash.error) throw new Error(dash.error || res.status);
+          data = (dash.requests || []).filter((r) => r.status === "pending").map((r) => ({
+            ...r,
+            old_data: typeof r.old_data === "string" ? JSON.parse(r.old_data || "{}") : r.old_data,
+            new_data: typeof r.new_data === "string" ? JSON.parse(r.new_data || "{}") : r.new_data
+          }));
+        } catch (e) {
+          if (list) list.innerHTML = '<div class="more">' + esc2(e.message || "L\u1ED7i t\u1EA3i") + "</div>";
+          return;
+        }
+        if (count) count.textContent = `${data.length} y\xEAu c\u1EA7u`;
+        if (!list) return;
+        list.innerHTML = data.length ? data.map(
+          (r) => `
+      <div class="adminReq" data-request-id="${r.id}">
+        <div class="adminReqHead"><span>Request #${r.id} \xB7 C\xE2u ${r.question_num || r.question_id}</span><span>${new Date(r.created_at).toLocaleString()}</span></div>
+        <div class="compareGrid">
+          <div class="compareBox"><h4>N\u1ED9i dung c\u0169</h4><pre>${esc2(safeJson(r.old_data))}</pre></div>
+          <div class="compareBox"><h4>N\u1ED9i dung \u0111\u1EC1 xu\u1EA5t</h4><pre>${esc2(safeJson(r.new_data))}</pre></div>
+        </div>
+        <div class="adminActions">
+          <button class="btn approveBtn" data-approve="${r.id}">Duy\u1EC7t</button>
+          <button class="btn rejectBtn" data-reject="${r.id}">T\u1EEB ch\u1ED1i</button>
+        </div>
+      </div>`
+        ).join("") : '<div class="more">Kh\xF4ng c\xF3 y\xEAu c\u1EA7u ch\u1EDD duy\u1EC7t.</div>';
+        list.querySelectorAll("[data-approve]").forEach(
+          (btn) => btn.onclick = () => approveRequest(
+            Number(btn.dataset.approve),
+            data.find((x) => x.id === Number(btn.dataset.approve))
+          )
+        );
+        list.querySelectorAll("[data-reject]").forEach((btn) => btn.onclick = () => rejectRequest(Number(btn.dataset.reject)));
+      }
+      async function approveRequest(id, req) {
+        if (!isAdmin()) return alert("Ch\u1EC9 admin m\u1EDBi duy\u1EC7t \u0111\u01B0\u1EE3c.");
+        const res = await fetch("/api/admin-action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({ user_id: currentUser.id, action: "approve_request", payload: { request_id: id } })
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok || out.error) return alert("Kh\xF4ng duy\u1EC7t \u0111\u01B0\u1EE3c: " + (out.error || res.status));
+        if (typeof window.clearLearningHubQuestionCache === "function") window.clearLearningHubQuestionCache();
+        notify22("\u0110\xE3 duy\u1EC7t y\xEAu c\u1EA7u");
+        try {
+          await loadPendingRequests();
+        } catch (e) {
+          console.warn("loadPendingRequests failed:", e);
+        }
+        try {
+          await loadQuestionsFromSupabase();
+        } catch (e) {
+          console.warn("loadQuestions failed:", e);
+        }
+      }
+      async function rejectRequest(id) {
+        if (!isAdmin()) return alert("Ch\u1EC9 admin m\u1EDBi t\u1EEB ch\u1ED1i \u0111\u01B0\u1EE3c.");
+        const note = prompt("L\xFD do t\u1EEB ch\u1ED1i (tu\u1EF3 ch\u1ECDn):") || "";
+        const res = await fetch("/api/admin-action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({
+            user_id: currentUser.id,
+            action: "reject_request",
+            payload: { request_id: id, admin_note: note }
+          })
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok || out.error) return alert("Kh\xF4ng t\u1EEB ch\u1ED1i \u0111\u01B0\u1EE3c: " + (out.error || res.status));
+        notify22("\u0110\xE3 t\u1EEB ch\u1ED1i y\xEAu c\u1EA7u");
+        try {
+          await loadPendingRequests();
+        } catch (e) {
+          console.warn("loadPendingRequests failed:", e);
+        }
+      }
+      async function applyOAuthHashSession(supaClient) {
+        try {
+          let h = window.location.hash || "";
+          if (!h) return false;
+          h = h.replace(/^#/, "").replace(/&amp;/g, "&");
+          const p = new URLSearchParams(h);
+          const access_token = p.get("access_token");
+          const refresh_token = p.get("refresh_token");
+          if (!access_token || !refresh_token) return false;
+          const { error } = await supaClient.auth.setSession({ access_token, refresh_token });
+          if (error) {
+            console.warn("setSession from hash failed:", error);
+            return false;
+          }
+          history.replaceState(null, "", window.location.pathname + window.location.search);
+          return true;
+        } catch (e) {
+          console.warn("applyOAuthHashSession error:", e);
+          return false;
+        }
+      }
+      async function init2() {
+        setupHeaderAuthUI();
+        $id("authGoogle")?.addEventListener("click", signInGoogle);
+        $id("authLogin")?.addEventListener("click", signIn);
+        $id("authSignup")?.addEventListener("click", signUp);
+        $id("authClose")?.addEventListener("click", closeAuth);
+        $id("adminClose")?.addEventListener("click", closeAdmin);
+        $id("adminReload")?.addEventListener("click", loadPendingRequests);
+        $id("hodPendingRefresh")?.addEventListener("click", async () => {
+          const btn = $id("hodPendingRefresh");
+          if (btn) {
+            btn.disabled = true;
+            btn.textContent = "\u0110ang ki\u1EC3m tra...";
+          }
+          await loadProfile();
+          if (hasFullAccess(currentProfile)) await loadQuestionsFromSupabase();
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Ki\u1EC3m tra l\u1EA1i";
+          }
+        });
+        $id("hodPendingLogout")?.addEventListener("click", async () => {
+          await signOut();
+          hidePendingApproval();
+        });
+        if (!configured()) {
+          updateAuthUI();
+          return;
+        }
+        client = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+        await applyOAuthHashSession(client);
+        const { data } = await client.auth.getSession();
+        currentUser = data.session?.user || null;
+        if (currentUser) {
+          const prof = await loadProfile();
+          if (prof) {
+            await loadQuestionsFromTurso();
+            if (typeof window.__LHTriggerSubjectCheck === "function") window.__LHTriggerSubjectCheck();
+          }
+        } else updateAuthUI();
+        client.auth.onAuthStateChange(async (_event, session) => {
+          currentUser = session?.user || null;
+          if (currentUser) {
+            const prof = await loadProfile();
+            if (prof) {
+              await loadQuestionsFromTurso();
+              if (typeof window.__LHTriggerSubjectCheck === "function") window.__LHTriggerSubjectCheck();
+            }
+          } else {
+            currentProfile = null;
+            updateAuthUI();
+          }
+        });
+      }
+      async function loadQuestionsFromTurso() {
+        if (typeof window.loadCurrentSubjectOnly === "function") return window.loadCurrentSubjectOnly();
+        return loadQuestionsFromSupabase();
+      }
+      document.addEventListener("DOMContentLoaded", init2);
+      return {
+        init: init2,
+        isReady,
+        isAdmin,
+        canOpenDashboard,
+        submitEditRequest,
+        loadQuestionsFromSupabase,
+        openAuth,
+        openAdmin,
+        signOut,
+        signInGoogle,
+        getUser: () => currentUser,
+        getProfile: () => currentProfile,
+        get __client() {
+          return client;
+        }
+      };
+    })();
+    (function() {
+      function $3(id) {
+        return document.getElementById(id);
+      }
+      function hideLanding() {
+        $3("hodLoginScreen")?.classList.add("hidden");
+      }
+      function openLogin() {
+        hideLanding();
+        if (window.HODSupabase?.openAuth) window.HODSupabase.openAuth();
+        else alert("Supabase UI ch\u01B0a s\u1EB5n s\xE0ng, h\xE3y t\u1EA3i l\u1EA1i trang.");
+      }
+      function openAdmin() {
+        hideLanding();
+        if (window.HODSupabase?.canOpenDashboard?.()) window.HODSupabase.openAdmin();
+        else {
+          if (window.HODSupabase?.openAuth) window.HODSupabase.openAuth();
+          setTimeout(() => alert("\u0110\u0103ng nh\u1EADp t\xE0i kho\u1EA3n admin tr\u01B0\u1EDBc. Sau \u0111\xF3 b\u1EA5m n\xFAt Admin l\u1EA1i."), 80);
+        }
+      }
+      function bind() {
+        $3("hodGuestEnter")?.addEventListener("click", hideLanding);
+        $3("hodOpenLogin")?.addEventListener("click", openLogin);
+        $3("hodOpenAdmin")?.addEventListener("click", openAdmin);
+        $3("hodFloatLogin")?.addEventListener("click", openLogin);
+        $3("hodFloatAdmin")?.addEventListener("click", openAdmin);
+        const box = document.querySelector("#authModal .box.authBox");
+        if (box && !document.getElementById("hodAuthExtraHint")) {
+          const hint = document.createElement("div");
+          hint.id = "hodAuthExtraHint";
+          hint.className = "hodAuthHint";
+          hint.textContent = "Ng\u01B0\u1EDDi h\u1ECDc d\xF9ng \u0110\u0103ng nh\u1EADp/\u0110\u0103ng k\xFD. Admin \u0111\u0103ng nh\u1EADp b\u1EB1ng t\xE0i kho\u1EA3n \u0111\xE3 \u0111\u01B0\u1EE3c set role = admin trong Supabase.";
+          box.appendChild(hint);
+        }
+      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
+      else bind();
+    })();
+    (function() {
+      function applyAdminGuard() {
+        const isAdmin = !!window.HODSupabase?.canOpenDashboard?.();
+        document.body?.classList.toggle("hod-is-admin", isAdmin);
+        ["adminOpenBtn", "hodFloatAdmin"].forEach((id) => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          el.classList.toggle("hidden", !isAdmin);
+          el.style.display = isAdmin ? "" : "none";
+        });
+        const modal = document.getElementById("adminModal");
+        if (modal && !isAdmin) modal.classList.add("hidden");
+      }
+      function patchOpenAdmin() {
+        if (!window.HODSupabase || window.HODSupabase.__adminGuardPatched) return;
+        const oldOpen = window.HODSupabase.openAdmin;
+        window.HODSupabase.openAdmin = function() {
+          if (!window.HODSupabase.canOpenDashboard?.()) {
+            document.getElementById("adminModal")?.classList.add("hidden");
+            alert("T\xE0i kho\u1EA3n Google n\xE0y ch\u01B0a c\xF3 quy\u1EC1n admin.");
+            applyAdminGuard();
+            return;
+          }
+          return oldOpen?.apply(this, arguments);
+        };
+        window.HODSupabase.__adminGuardPatched = true;
+      }
+      function tick() {
+        patchOpenAdmin();
+        applyAdminGuard();
+      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", tick);
+      else tick();
+      setInterval(tick, 500);
+    })();
+    (function() {
+      function $3(id) {
+        return document.getElementById(id);
+      }
+      function user() {
+        return window.HODSupabase?.getUser?.() || null;
+      }
+      function profile() {
+        return window.HODSupabase?.getProfile?.() || null;
+      }
+      function isAdmin() {
+        return !!window.HODSupabase?.canOpenDashboard?.();
+      }
+      function email() {
+        return profile()?.email || user()?.email || "";
+      }
+      function meta() {
+        return user()?.user_metadata || {};
+      }
+      function avatarHTML() {
+        const u = meta().avatar_url || meta().picture || "";
+        const e = email();
+        const l = (e || "U").trim().charAt(0).toUpperCase();
+        return u ? '<img src="' + esc2(u) + '" alt="avatar" loading="lazy" decoding="async">' : l;
+      }
+      function ensureAvatar() {
+        const actions = document.querySelector(".globalTop .actions") || document.querySelector("#fc .actions") || document.querySelector(".actions");
+        if (!actions || $3("hodTopAvatar")) return;
+        const btn = document.createElement("button");
+        btn.id = "hodTopAvatar";
+        btn.className = "hodTopAvatar";
+        btn.type = "button";
+        btn.onclick = toggleMenu;
+        actions.appendChild(btn);
+      }
+      function toggleMenu() {
+        if (!user()) return showLogin();
+        updateMenu();
+        $3("hodAccountMenu")?.classList.toggle("hidden");
+      }
+      function showLogin() {
+        if (window.__LOCAL_DEV_MODE) return;
+        document.body?.classList.add("hod-locked");
+        $3("hodLoginGate")?.classList.remove("hidden");
+        $3("hodAccountMenu")?.classList.add("hidden");
+        $3("hodPendingApproval")?.classList.add("hidden");
+      }
+      function hideLogin() {
+        document.body?.classList.remove("hod-locked");
+        $3("hodLoginGate")?.classList.add("hidden");
+      }
+      function login() {
+        const api = window.HODSupabase;
+        if (!api) {
+          alert("Supabase ch\u01B0a s\u1EB5n s\xE0ng, h\xE3y t\u1EA3i l\u1EA1i trang.");
+          return;
+        }
+        if (api.signInGoogle) {
+          api.signInGoogle();
+          return;
+        }
+        api.openAuth?.();
+      }
+      async function logout() {
+        await window.HODSupabase?.signOut?.();
+        showLogin();
+        updateAll();
+      }
+      function openDash() {
+        if (isAdmin()) window.open("admin.html", "_blank");
+        else alert("T\xE0i kho\u1EA3n n\xE0y kh\xF4ng c\xF3 quy\u1EC1n admin.");
+      }
+      function updateMenu() {
+        const admin = isAdmin();
+        const pRole = profile()?.role || (email() === "trongbm2004@gmail.com" ? "admin" : "user");
+        const rawRole = String(pRole).toLowerCase();
+        const mail = $3("hodAccountEmail");
+        if (mail) mail.textContent = email() || "Ch\u01B0a \u0111\u0103ng nh\u1EADp";
+        const role = $3("hodAccountRole");
+        if (role)
+          role.textContent = rawRole === "admin" || email() === "trongbm2004@gmail.com" ? "Admin" : rawRole === "editor" ? "Editor" : "Ng\u01B0\u1EDDi h\u1ECDc";
+        const av = $3("hodAccountAvatarBig");
+        if (av) {
+          const __avb = avatarHTML();
+          if (av.dataset.av !== __avb) {
+            av.innerHTML = __avb;
+            av.dataset.av = __avb;
+          }
+        }
+        $3("hodAccountDashboard")?.classList.toggle("hidden", !admin);
+      }
+      function denied() {
+        const u = user();
+        if (!u) return false;
+        if (window.__LH_GATE_LOCKED === true) return true;
+        const p = profile();
+        return !!p && !(window.lhHasFullAccess?.(p) ?? true);
+      }
+      function updateAll() {
+        ensureAvatar();
+        const u = user();
+        const p = profile();
+        const admin = isAdmin();
+        const pending = denied();
+        document.body?.classList.toggle("hod-is-admin-final", admin);
+        if (pending) {
+          $3("hodLoginGate")?.classList.add("hidden");
+          $3("hodPendingApproval")?.classList.remove("hidden");
+          document.body?.classList.add("hod-locked");
+          const emailEl = $3("hodPendingEmail");
+          if (emailEl && !emailEl.textContent) emailEl.textContent = p?.email || u.email || "";
+        } else if (u) {
+          hideLogin();
+          $3("hodPendingApproval")?.classList.add("hidden");
+        } else if (window.__LH_GATE_LOCKED === true) {
+        } else {
+          showLogin();
+        }
+        const top = $3("hodTopAvatar");
+        if (top) {
+          const __ah = avatarHTML();
+          if (top.dataset.av !== __ah) {
+            top.innerHTML = __ah;
+            top.dataset.av = __ah;
+          }
+          top.style.display = u && !pending ? "grid" : "none";
+        }
+        const headerAdmin = $3("adminOpenBtn");
+        if (headerAdmin) {
+          headerAdmin.remove();
+        }
+        if (!admin) $3("adminModal")?.classList.add("hidden");
+        updateMenu();
+      }
+      function patchAdmin() {
+        if (!window.HODSupabase || window.HODSupabase.__avatarCleanPatch) return;
+        const old = window.HODSupabase.openAdmin;
+        window.HODSupabase.openAdmin = function() {
+          if (!window.HODSupabase.canOpenDashboard?.()) {
+            $3("adminModal")?.classList.add("hidden");
+            alert("T\xE0i kho\u1EA3n n\xE0y kh\xF4ng c\xF3 quy\u1EC1n admin.");
+            return;
+          }
+          return old?.apply(this, arguments);
+        };
+        window.HODSupabase.__avatarCleanPatch = true;
+      }
+      function bind() {
+        $3("hodGateLoginBtn")?.addEventListener("click", login);
+        $3("hodLogoutBtn")?.addEventListener("click", logout);
+        $3("hodAccountDashboard")?.addEventListener("click", openDash);
+        document.addEventListener("click", (e) => {
+          const m = $3("hodAccountMenu"), a = $3("hodTopAvatar");
+          if (m && !m.contains(e.target) && a && !a.contains(e.target)) m.classList.add("hidden");
+        });
+        setInterval(() => {
+          patchAdmin();
+          updateAll();
+        }, 500);
+        setTimeout(() => {
+          patchAdmin();
+          updateAll();
+        }, 250);
+      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
+      else bind();
+    })();
   }
-
-  // src/student/format.js
-  function sortAns(s) {
-    return (s || "").split("").sort().join("");
-  }
-  function answerText(c) {
-    return (c.answer || "").split("").map((ch) => ch + ". " + (c.options?.[ch] || "")).join("; ");
-  }
-  function finalAnswerText(c) {
-    const raw = String(c?.answer_text ?? "").trim();
-    const ans = String(c?.answer ?? "").trim().toUpperCase();
-    if (!raw || raw.toUpperCase() === ans || /^[A-E]+$/i.test(raw)) return answerText(c);
-    return raw;
-  }
-  function esc(s) {
-    return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-  }
-  function clone(x) {
-    return JSON.parse(JSON.stringify(x));
-  }
-  function fmt(ms) {
-    let s = Math.floor(ms / 1e3), m = Math.floor(s / 60);
-    s %= 60;
-    return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  function installUnifiedFetchAndAccess() {
+    (function() {
+      if (window.__LH_UNIFIED_FETCH_INSTALLED) return;
+      window.__LH_UNIFIED_FETCH_INSTALLED = true;
+      var originalFetch = typeof window.fetch === "function" ? window.fetch.bind(window) : null;
+      if (!originalFetch) return;
+      window.__lhOriginalFetch = originalFetch;
+      function validToken(t) {
+        return typeof t === "string" && t.trim().length > 0 && !/[\r\n]/.test(t);
+      }
+      function readTokenFromStorage(raw) {
+        if (!raw) return "";
+        var v;
+        try {
+          v = JSON.parse(raw);
+        } catch (e) {
+          return "";
+        }
+        var tok = v && (v.access_token || v.currentSession && v.currentSession.access_token || Array.isArray(v) && v[0]);
+        var exp = v && (v.expires_at || v.currentSession && v.currentSession.expires_at);
+        if (!validToken(tok)) return "";
+        if (exp && Date.now() / 1e3 > exp - 10) return "";
+        return tok.trim();
+      }
+      function storedSession() {
+        try {
+          var url = window.APP_CONFIG && window.APP_CONFIG.SUPABASE_URL || "";
+          var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
+          var keys = [];
+          if (m) keys.push("sb-" + m[1] + "-auth-token");
+          for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            if (k && k.slice(0, 3) === "sb-" && k.slice(-11) === "-auth-token" && keys.indexOf(k) === -1) keys.push(k);
+          }
+          for (var j = 0; j < keys.length; j++) {
+            var raw = localStorage.getItem(keys[j]);
+            if (!raw) continue;
+            var v = JSON.parse(raw);
+            var s = v && v.currentSession ? v.currentSession : v;
+            if (s && (s.access_token || s.refresh_token)) return s;
+          }
+        } catch (e) {
+          lhWarn2("LH_SESSION_REFRESH_20260729", e);
+        }
+        return null;
+      }
+      function hasRefreshToken() {
+        var s = storedSession();
+        return !!(s && typeof s.refresh_token === "string" && s.refresh_token.length > 0);
+      }
+      function authClient() {
+        try {
+          var c = window.HODSupabase && window.HODSupabase.__client;
+          return c && c.auth ? c : null;
+        } catch (e) {
+          return null;
+        }
+      }
+      function freshTokenOf(session) {
+        if (!session) return "";
+        var tok = session.access_token;
+        if (!validToken(tok)) return "";
+        if (session.expires_at && Date.now() / 1e3 > session.expires_at - 10) return "";
+        return tok.trim();
+      }
+      var refreshInFlight = null;
+      function lhRefreshToken() {
+        if (refreshInFlight) return refreshInFlight;
+        var c = authClient();
+        if (!c || !hasRefreshToken()) return Promise.resolve("");
+        refreshInFlight = Promise.resolve().then(function() {
+          return c.auth.getSession();
+        }).then(function(r) {
+          var tok = freshTokenOf(r && r.data && r.data.session);
+          if (tok) return tok;
+          return c.auth.refreshSession().then(function(r2) {
+            return freshTokenOf(r2 && r2.data && r2.data.session);
+          });
+        }).catch(function(e) {
+          lhWarn2("LH_SESSION_REFRESH_20260729", e);
+          return "";
+        }).then(function(tok) {
+          refreshInFlight = null;
+          return tok;
+        });
+        return refreshInFlight;
+      }
+      window.__lhRefreshAccessToken = lhRefreshToken;
+      function lhToken() {
+        try {
+          var url = window.APP_CONFIG && window.APP_CONFIG.SUPABASE_URL || "";
+          var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
+          var ref = m ? m[1] : "";
+          if (ref) {
+            var t = readTokenFromStorage(localStorage.getItem("sb-" + ref + "-auth-token"));
+            if (t) return t;
+          }
+          for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            if (k && k.slice(0, 3) === "sb-" && k.slice(-11) === "-auth-token") {
+              var t2 = readTokenFromStorage(localStorage.getItem(k));
+              if (t2) return t2;
+            }
+          }
+        } catch (e) {
+          lhWarn2("LH_UNIFIED_FETCH_AND_ACCESS_20260726", e);
+        }
+        return "";
+      }
+      window.__lhAccessToken = lhToken;
+      function toUrl(input) {
+        try {
+          var raw = typeof input === "string" ? input : input && input.url || "";
+          if (!raw) return null;
+          return new URL(raw, location.href);
+        } catch (e) {
+          return null;
+        }
+      }
+      function isOwnApi(url) {
+        return !!url && url.origin === location.origin && url.pathname.indexOf("/api/") === 0;
+      }
+      function methodOf(input, init2) {
+        if (init2 && init2.method) return String(init2.method).toUpperCase();
+        if (input && typeof input === "object" && input.method) return String(input.method).toUpperCase();
+        return "GET";
+      }
+      var restCache = /* @__PURE__ */ new Map();
+      var restPending = /* @__PURE__ */ new Map();
+      function supabaseOrigin() {
+        try {
+          return new URL(window.APP_CONFIG && window.APP_CONFIG.SUPABASE_URL || "").origin;
+        } catch (e) {
+          return "";
+        }
+      }
+      function restTtl(url, method) {
+        if (method !== "GET") return 0;
+        var origin = supabaseOrigin();
+        if (!origin || url.origin !== origin) return 0;
+        var p = url.pathname;
+        if (p.indexOf("/rest/v1/") !== 0 && p.indexOf("/rest/v1/") === -1) return 0;
+        if (p.indexOf("/rest/v1/profiles") !== -1) return 0;
+        if (p.indexOf("/rest/v1/questions") !== -1) return 2 * 60 * 1e3;
+        if (p.indexOf("/rest/v1/subjects") !== -1) return 2 * 60 * 1e3;
+        if (p.indexOf("/rest/v1/site_settings") !== -1) return 60 * 1e3;
+        return 0;
+      }
+      function restKey(url) {
+        var params = Array.from(url.searchParams.entries()).sort(function(a, b) {
+          return (a[0] + "=" + a[1]).localeCompare(b[0] + "=" + b[1]);
+        });
+        return url.origin + url.pathname + "?" + params.map(function(x) {
+          return x[0] + "=" + x[1];
+        }).join("&");
+      }
+      function matchKind(text, kind) {
+        if (!kind || kind === "all") return true;
+        return text.indexOf("/" + kind) !== -1;
+      }
+      function clearRestCache(kind) {
+        Array.from(restCache.keys()).forEach(function(k) {
+          if (matchKind(k, kind)) restCache.delete(k);
+        });
+        Array.from(restPending.keys()).forEach(function(k) {
+          if (matchKind(k, kind)) restPending.delete(k);
+        });
+        try {
+          Object.keys(sessionStorage).forEach(function(k) {
+            if (k.indexOf("lh_f5_cache:") === 0) sessionStorage.removeItem(k);
+          });
+        } catch (e) {
+          lhWarn2("LH_UNIFIED_FETCH_AND_ACCESS_20260726", e);
+        }
+      }
+      window.clearLearningHubSupabaseCache = clearRestCache;
+      var REVOKE_CODES = { UNAUTHORIZED: 1, BLOCKED: 1, PENDING_APPROVAL: 1, INSUFFICIENT_ROLE: 1 };
+      function dispatchDenial(code, message) {
+        if (code === "INSUFFICIENT_ROLE") {
+          if (typeof notify === "function") notify(message || "B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n th\u1EF1c hi\u1EC7n thao t\xE1c n\xE0y");
+          return;
+        }
+        if (typeof window.handleAccessRevoked === "function") {
+          window.handleAccessRevoked(message || "T\xE0i kho\u1EA3n b\u1ECB t\u1EEB ch\u1ED1i truy c\u1EADp.", code);
+        }
+      }
+      function inspectDenial(res) {
+        res.clone().json().then(function(data) {
+          var code = data && data.code;
+          if (code && REVOKE_CODES[code]) dispatchDenial(code, data.error);
+          else if (!code) {
+            dispatchDenial(res.status === 401 ? "UNAUTHORIZED" : "PENDING_APPROVAL", null);
+          }
+        }).catch(function() {
+          dispatchDenial(res.status === 401 ? "UNAUTHORIZED" : "PENDING_APPROVAL", null);
+        });
+      }
+      function withAuth(input, init2, tok, force) {
+        try {
+          if (input instanceof Request) {
+            if (tok && (force || !input.headers.has("Authorization"))) {
+              var h = new Headers(input.headers);
+              h.set("Authorization", "Bearer " + tok);
+              input = new Request(input, { headers: h });
+            }
+            return [input, init2];
+          }
+          init2 = init2 ? Object.assign({}, init2) : {};
+          var hh = new Headers(init2.headers || {});
+          if (tok && (force || !hh.has("Authorization"))) hh.set("Authorization", "Bearer " + tok);
+          init2.headers = hh;
+          if (!init2.signal && typeof window.getLhApiSignal === "function") {
+            var sig = window.getLhApiSignal();
+            if (sig) init2.signal = sig;
+          }
+          return [input, init2];
+        } catch (e) {
+          console.warn("[LH fetch] kh\xF4ng g\u1EAFn \u0111\u01B0\u1EE3c Authorization:", e);
+          return [input, init2];
+        }
+      }
+      window.fetch = function(input, init2) {
+        var url = toUrl(input);
+        var method = methodOf(input, init2);
+        var ownApi = isOwnApi(url);
+        if (ownApi) {
+          if (window.__LH_ACCESS_OK === false && /\/api\/(subjects|questions)\b/.test(url.pathname)) {
+            return Promise.resolve(
+              new Response(JSON.stringify({ error: "T\xE0i kho\u1EA3n ch\u01B0a \u0111\u01B0\u1EE3c ph\xEA duy\u1EC7t", code: "PENDING_APPROVAL" }), {
+                status: 403,
+                headers: { "content-type": "application/json" }
+              })
+            );
+          }
+          var retrySrc = input instanceof Request ? input.clone() : input;
+          var retryInit = init2;
+          var tok = lhToken();
+          var pre = tok || !hasRefreshToken() ? Promise.resolve(tok) : lhRefreshToken();
+          return pre.then(function(token) {
+            return originalFetch.apply(null, withAuth(input, init2, token)).then(function(res) {
+              if (url.pathname.indexOf("/api/version.json") !== -1) return res;
+              if (res.status === 401) {
+                return lhRefreshToken().then(function(fresh) {
+                  if (!fresh || fresh === token) {
+                    inspectDenial(res);
+                    return res;
+                  }
+                  var args = withAuth(retrySrc, retryInit, fresh, true);
+                  return originalFetch.apply(null, args).then(function(res2) {
+                    if (res2.status === 401 || res2.status === 403) inspectDenial(res2);
+                    return res2;
+                  });
+                });
+              }
+              if (res.status === 403) inspectDenial(res);
+              return res;
+            });
+          });
+        }
+        var ttl = url ? restTtl(url, method) : 0;
+        if (!ttl) return originalFetch(input, init2);
+        var key = restKey(url);
+        var hit = restCache.get(key);
+        if (hit && Date.now() - hit.at < ttl) return Promise.resolve(hit.res.clone());
+        if (restPending.has(key)) {
+          return restPending.get(key).then(function(r) {
+            return r.clone();
+          });
+        }
+        var job = originalFetch(input, init2).then(function(res) {
+          if (res.ok) restCache.set(key, { at: Date.now(), res: res.clone() });
+          restPending.delete(key);
+          return res;
+        }).catch(function(err) {
+          restPending.delete(key);
+          throw err;
+        });
+        restPending.set(
+          key,
+          job.then(function(r) {
+            return r.clone();
+          })
+        );
+        return job;
+      };
+      var inflight = null;
+      var lastCheckAt = 0;
+      var MIN_INTERVAL = 3e3;
+      function lhRevalidateAccess(reason, force) {
+        if (inflight) return inflight;
+        if (!force && Date.now() - lastCheckAt < MIN_INTERVAL) return Promise.resolve(null);
+        var api = window.HODSupabase;
+        if (!api || typeof api.getUser !== "function" || !api.getUser()) return Promise.resolve(null);
+        if (typeof window.lhCheckProfileOnce !== "function") return Promise.resolve(null);
+        lastCheckAt = Date.now();
+        inflight = Promise.resolve(window.lhCheckProfileOnce(reason)).catch(function(e) {
+          console.warn("[LH access] ki\u1EC3m tra th\u1EA5t b\u1EA1i:", e);
+          return null;
+        }).then(function(r) {
+          inflight = null;
+          lastCheckAt = Date.now();
+          return r;
+        });
+        return inflight;
+      }
+      window.lhRevalidateAccess = lhRevalidateAccess;
+      var pollTimer = null;
+      var POLL_MS = 90 * 1e3;
+      function startFallbackPolling() {
+        if (pollTimer) return;
+        if (window.__lhRealtimeConnected) return;
+        console.log("[LH access] Realtime m\u1EA5t k\u1EBFt n\u1ED1i -> b\u1EADt polling d\u1EF1 ph\xF2ng", POLL_MS / 1e3 + "s");
+        pollTimer = setInterval(function() {
+          if (window.__lhRealtimeConnected) {
+            stopFallbackPolling();
+            return;
+          }
+          if (document.visibilityState !== "visible") return;
+          var api = window.HODSupabase;
+          if (!api || typeof api.getUser !== "function" || !api.getUser()) return;
+          lhRevalidateAccess("polling");
+        }, POLL_MS);
+      }
+      function stopFallbackPolling() {
+        if (!pollTimer) return;
+        console.log("[LH access] Realtime \u0111\xE3 k\u1EBFt n\u1ED1i l\u1EA1i -> t\u1EAFt polling d\u1EF1 ph\xF2ng");
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+      window.startFallbackPolling = startFallbackPolling;
+      window.stopFallbackPolling = stopFallbackPolling;
+      window.lhTeardownAccessWatch = function() {
+        stopFallbackPolling();
+        inflight = null;
+        lastCheckAt = 0;
+      };
+      document.addEventListener("visibilitychange", function() {
+        if (document.visibilityState === "visible") {
+          lhRevalidateAccess("visibilitychange");
+          if (!window.__lhRealtimeConnected) startFallbackPolling();
+        } else {
+          stopFallbackPolling();
+        }
+      });
+    })();
   }
 
   // src/student/exam.js
@@ -3456,7 +6964,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
     let examRangeFrom = "";
     let examRangeTo = "";
     const EXAM_STORE = "learninghub_exam_state_v1";
-    const $2 = (id) => document.getElementById(id);
+    const $3 = (id) => document.getElementById(id);
     const E = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
     const S = (s) => sortAns(s || "");
     const FMT = (ms) => fmt(ms);
@@ -3469,12 +6977,12 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
     };
     const EXPLAIN = (c) => {
       try {
-        return finalAnswerText(c);
+        return finalAnswerText2(c);
       } catch (e) {
         return String(c?.answer || "").split("").map((k) => k + ". " + ((c?.options || {})[k] || "")).join("; ");
       }
     };
-    const done = () => Object.keys(LHState.qSel || {}).filter((k) => LHState.qSel[k]).length;
+    const done = () => Object.keys(LHState2.qSel || {}).filter((k) => LHState2.qSel[k]).length;
     const examSubject = () => {
       try {
         return localStorage.getItem("learninghub_subject_code_merged_v1") || "";
@@ -3517,48 +7025,48 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       return m ? (+m[1] * 60 + +m[2]) * 1e3 : 0;
     }
     function setTimerText() {
-      const el = $2("examTimer");
+      const el = $3("examTimer");
       if (el) el.textContent = examElapsed;
     }
     function startTimer(resumeMs = 0) {
-      clearInterval(LHState.timerInt);
+      clearInterval(LHState2.timerInt);
       examBaseMs = Math.max(0, resumeMs || 0);
-      LHState.examStart = Date.now();
+      LHState2.examStart = Date.now();
       examElapsed = FMT(examBaseMs);
       setTimerText();
-      LHState.timerInt = setInterval(() => {
-        examElapsed = FMT(examBaseMs + Date.now() - LHState.examStart);
+      LHState2.timerInt = setInterval(() => {
+        examElapsed = FMT(examBaseMs + Date.now() - LHState2.examStart);
         setTimerText();
       }, 1e3);
     }
     function stopTimer() {
-      clearInterval(LHState.timerInt);
-      LHState.timerInt = null;
+      clearInterval(LHState2.timerInt);
+      LHState2.timerInt = null;
     }
     function resetTimer() {
       stopTimer();
       examBaseMs = 0;
-      LHState.examStart = 0;
+      LHState2.examStart = 0;
       examElapsed = "00:00";
       setTimerText();
     }
     function nowTimerMs() {
-      return LHState.examSubmitted || !LHState.timerInt ? timeMsFromText(examElapsed) : examBaseMs + Date.now() - LHState.examStart;
+      return LHState2.examSubmitted || !LHState2.timerInt ? timeMsFromText(examElapsed) : examBaseMs + Date.now() - LHState2.examStart;
     }
     function saveExam() {
       try {
-        if (!LHState.qSet || !LHState.qSet.length) return;
+        if (!LHState2.qSet || !LHState2.qSet.length) return;
         localStorage.setItem(
           EXAM_STORE,
           JSON.stringify({
             subject: examSubject(),
-            nums: (LHState.qSet || []).map((c) => c.num),
-            ids: (LHState.qSet || []).map((c) => c.id || ""),
-            qSel: LHState.qSel || {},
-            submitted: !!LHState.examSubmitted,
+            nums: (LHState2.qSet || []).map((c) => c.num),
+            ids: (LHState2.qSet || []).map((c) => c.id || ""),
+            qSel: LHState2.qSel || {},
+            submitted: !!LHState2.examSubmitted,
             index: examOnlyIndex || 0,
             review: !!examOnlyReview,
-            qCnt: LHState.qCnt || 0,
+            qCnt: LHState2.qCnt || 0,
             timerMs: nowTimerMs(),
             timer: examElapsed,
             layoutMode: examLayoutMode,
@@ -3569,39 +7077,39 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
           })
         );
       } catch (e) {
-        lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", e);
+        lhWarn2("FINAL_EXAM_ONLY_QUIZ_UI_20260627", e);
       }
     }
     function clearExam() {
       try {
         localStorage.removeItem(EXAM_STORE);
       } catch (e) {
-        lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", e);
+        lhWarn2("FINAL_EXAM_ONLY_QUIZ_UI_20260627", e);
       }
     }
     function restoreExam() {
       try {
         const st = JSON.parse(localStorage.getItem(EXAM_STORE) || "null");
-        if (!st || !Array.isArray(st.nums) || !st.nums.length || !Array.isArray(LHState.RAW) || !LHState.RAW.length)
+        if (!st || !Array.isArray(st.nums) || !st.nums.length || !Array.isArray(LHState2.RAW) || !LHState2.RAW.length)
           return false;
         const curSub = examSubject() || "";
         const stSub = st.subject || "";
         if (!stSub || !curSub || stSub !== curSub) return false;
         const restored = st.nums.map(
-          (n, i) => LHState.RAW.find((c) => String(c.id || "") === String(st.ids?.[i] || "") || Number(c.num) === Number(n))
+          (n, i) => LHState2.RAW.find((c) => String(c.id || "") === String(st.ids?.[i] || "") || Number(c.num) === Number(n))
         ).filter(Boolean);
         if (!restored.length) return false;
-        LHState.qSet = restored;
-        LHState.qSel = st.qSel || {};
-        LHState.examSubmitted = !!st.submitted;
-        examOnlyIndex = Math.max(0, Math.min(+st.index || 0, LHState.qSet.length - 1));
+        LHState2.qSet = restored;
+        LHState2.qSel = st.qSel || {};
+        LHState2.examSubmitted = !!st.submitted;
+        examOnlyIndex = Math.max(0, Math.min(+st.index || 0, LHState2.qSet.length - 1));
         examOnlyReview = !!st.review;
-        LHState.qCnt = st.qCnt || 0;
+        LHState2.qCnt = st.qCnt || 0;
         kizspyCheckedMap = st.checked && typeof st.checked === "object" ? st.checked : {};
         if (st.layoutMode) examLayoutMode = st.layoutMode;
-        LHState.quizMode = "exam";
+        LHState2.quizMode = "exam";
         examElapsed = st.timer || FMT(+st.timerMs || 0);
-        if (!LHState.examSubmitted && !LHState.timerInt) startTimer(+st.timerMs || timeMsFromText(examElapsed));
+        if (!LHState2.examSubmitted && !LHState2.timerInt) startTimer(+st.timerMs || timeMsFromText(examElapsed));
         return true;
       } catch (e) {
         return false;
@@ -3650,7 +7158,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       if (!box) return;
       const activeSubject = examSubject();
       const subjects = cachedSubjects();
-      const totalCount = (LHState.RAW || []).length;
+      const totalCount = (LHState2.RAW || []).length;
       if (activeSubject && (!examSelectedCodes.length || !examSelectedCodes.includes(activeSubject)))
         examSelectedCodes = [activeSubject];
       const activeBase = baseCode(activeSubject);
@@ -3672,7 +7180,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
         <span class="examSubjectChipBottom"><span class="examSubjectChipCount">${E(s.question_count || 0)} c\xE2u</span><span class="examSubjectChipChoose">${checked ? "\u0110\xE3 ch\u1ECDn" : "Ch\u1ECDn"}</span></span>
       </label>`;
       }).join("");
-      const bounds = numBounds(LHState.RAW || []);
+      const bounds = numBounds(LHState2.RAW || []);
       const extraOn = hasExtraSelected();
       const rangeRow = bounds.max ? `
         <div class="examRangeRow${extraOn ? " examRangeDisabled" : ""}" id="examRangeRow">
@@ -3704,29 +7212,29 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
         <button id="start" class="start" type="button">B\u1EAFt \u0111\u1EA7u ki\u1EC3m tra</button>
       </div>`;
       const updateMergedCount = () => {
-        const el = $2("examTotalCountVal");
+        const el = $3("examTotalCountVal");
         if (!el) return;
         if (hasExtraSelected()) {
           el.textContent = subjects.filter((s) => examSelectedCodes.includes(s.code)).reduce((acc, s) => acc + (+s.question_count || 0), 0) || totalCount;
         } else {
-          el.textContent = examRangeOn ? applyRange(LHState.RAW || []).length : totalCount;
+          el.textContent = examRangeOn ? applyRange(LHState2.RAW || []).length : totalCount;
         }
       };
       const syncRangeRow = () => {
-        const row = $2("examRangeRow");
+        const row = $3("examRangeRow");
         if (!row) return;
         const extra = hasExtraSelected();
         row.classList.toggle("examRangeDisabled", extra);
         row.querySelectorAll("input").forEach((i) => {
           i.disabled = extra;
         });
-        const cb = $2("examRangeOn");
+        const cb = $3("examRangeOn");
         if (extra) examRangeOn = false;
         if (cb) cb.checked = examRangeOn;
-        const note = $2("examRangeNote");
+        const note = $3("examRangeNote");
         if (note) {
           if (extra) note.textContent = "B\u1ECF ch\u1ECDn m\xF4n g\u1ED9p m\u1EDBi d\xF9ng \u0111\u01B0\u1EE3c kho\u1EA3ng c\xE2u";
-          else if (examRangeOn) note.textContent = `C\xF2n ${applyRange(LHState.RAW || []).length} c\xE2u trong kho\u1EA3ng`;
+          else if (examRangeOn) note.textContent = `C\xF2n ${applyRange(LHState2.RAW || []).length} c\xE2u trong kho\u1EA3ng`;
           else note.textContent = `M\xF4n n\xE0y c\xF3 c\xE2u ${bounds.min}\u2013${bounds.max}`;
         }
         updateMergedCount();
@@ -3747,9 +7255,9 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
           syncRangeRow();
         };
       });
-      const rangeCb = $2("examRangeOn");
-      const rangeFromEl = $2("examRangeFrom");
-      const rangeToEl = $2("examRangeTo");
+      const rangeCb = $3("examRangeOn");
+      const rangeFromEl = $3("examRangeFrom");
+      const rangeToEl = $3("examRangeTo");
       if (rangeCb) {
         rangeCb.onchange = () => {
           examRangeOn = rangeCb.checked;
@@ -3772,22 +7280,22 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       updateMergedCount();
       box.querySelectorAll("[data-exam-cnt]").forEach((b) => {
         const cnt = +b.dataset.examCnt;
-        b.classList.toggle("sel", cnt === LHState.qCnt);
+        b.classList.toggle("sel", cnt === LHState2.qCnt);
         b.onclick = () => {
-          LHState.qCnt = cnt;
+          LHState2.qCnt = cnt;
           box.querySelectorAll("[data-exam-cnt]").forEach((x) => x.classList.remove("sel"));
           b.classList.add("sel");
-          const input = $2("examCustomCnt");
+          const input = $3("examCustomCnt");
           if (input) input.value = "";
         };
       });
-      const applyBtn = $2("examCustomCntApply");
-      const customInput = $2("examCustomCnt");
+      const applyBtn = $3("examCustomCntApply");
+      const customInput = $3("examCustomCnt");
       if (applyBtn && customInput) {
         const applyCustom = () => {
           const v = parseInt(customInput.value, 10);
           if (v > 0) {
-            LHState.qCnt = v;
+            LHState2.qCnt = v;
             box.querySelectorAll("[data-exam-cnt]").forEach((x) => x.classList.remove("sel"));
           }
         };
@@ -3796,7 +7304,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
           if (e.key === "Enter") applyCustom();
         };
       }
-      const startBtn = $2("start");
+      const startBtn = $3("start");
       if (startBtn) {
         startBtn.onclick = () => {
           showLayoutPickerModal(() => {
@@ -3844,7 +7352,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
           try {
             localStorage.setItem("hod102_exam_layout_mode", examLayoutMode);
           } catch (e) {
-            lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", e);
+            lhWarn2("FINAL_EXAM_ONLY_QUIZ_UI_20260627", e);
           }
           modal.querySelectorAll("[data-pick-layout]").forEach((x) => x.classList.remove("active"));
           card.classList.add("active");
@@ -3971,14 +7479,14 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       }));
     }
     async function start() {
-      LHState.quizMode = "exam";
-      LHState.examSubmitted = false;
+      LHState2.quizMode = "exam";
+      LHState2.examSubmitted = false;
       examOnlyReview = false;
       examOnlyIndex = 0;
       kizspyCheckedMap = {};
       const activeSubject = examSubject();
       const extraCodes = examSelectedCodes.filter((c) => c && c !== activeSubject);
-      let mergedPool = [...LHState.RAW || []];
+      let mergedPool = [...LHState2.RAW || []];
       if (extraCodes.length) {
         if (typeof window.showProgress === "function")
           window.showProgress("\u0110ang t\u1EA3i c\xE2u h\u1ECFi t\u1EEB c\xE1c m\xF4n \u0111\xE3 ch\u1ECDn...", 0, 100);
@@ -4007,9 +7515,9 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         alert("Ch\u01B0a c\xF3 c\xE2u h\u1ECFi \u0111\u1EC3 ki\u1EC3m tra.");
         return;
       }
-      LHState.qSet = sample(mergedPool, LHState.qCnt || 0);
-      LHState.qDone = {};
-      LHState.qSel = {};
+      LHState2.qSet = sample(mergedPool, LHState2.qCnt || 0);
+      LHState2.qDone = {};
+      LHState2.qSel = {};
       clearExam();
       startTimer(0);
       saveExam();
@@ -4017,32 +7525,32 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     }
     function scoreExam() {
       let ok = 0;
-      (LHState.qSet || []).forEach((c, i) => {
-        if (S(LHState.qSel[i]) === S(c.answer)) ok++;
+      (LHState2.qSet || []).forEach((c, i) => {
+        if (S(LHState2.qSel[i]) === S(c.answer)) ok++;
       });
-      const total = (LHState.qSet || []).length;
+      const total = (LHState2.qSet || []).length;
       const pct = total ? Math.round(ok / total * 100) : 0;
       return { ok, bad: total - ok, total, pct };
     }
     function draw() {
       window.__examOnlyRender = draw;
-      const body = $2("quizBody");
+      const body = $3("quizBody");
       if (!body) return;
-      const isQuizActive = $2("quiz")?.classList.contains("active") || document.querySelector(".tab.active")?.dataset?.tab === "quiz";
+      const isQuizActive = $3("quiz")?.classList.contains("active") || document.querySelector(".tab.active")?.dataset?.tab === "quiz";
       if (!isQuizActive) {
         document.body.classList.remove("kizspy-active");
         const p2 = document.getElementById("kizspyExamPortal");
         if (p2) p2.remove();
         return;
       }
-      if (!LHState.qSet || !LHState.qSet.length) restoreExam();
+      if (!LHState2.qSet || !LHState2.qSet.length) restoreExam();
       const box = document.querySelector("#quiz .setup");
       const idxEl = document.getElementById("idx");
       const totalEl = document.getElementById("total");
-      const totalCountVal = LHState.qSet && LHState.qSet.length ? LHState.qSet.length : typeof LHState.RAW !== "undefined" && LHState.RAW.length ? LHState.RAW.length : 0;
+      const totalCountVal = LHState2.qSet && LHState2.qSet.length ? LHState2.qSet.length : typeof LHState2.RAW !== "undefined" && LHState2.RAW.length ? LHState2.RAW.length : 0;
       if (idxEl) idxEl.textContent = String((examOnlyIndex || 0) + 1);
       if (totalEl) totalEl.textContent = String(totalCountVal);
-      if (!LHState.qSet || !LHState.qSet.length) {
+      if (!LHState2.qSet || !LHState2.qSet.length) {
         document.body.classList.remove("kizspy-active");
         const p2 = document.getElementById("kizspyExamPortal");
         if (p2) p2.remove();
@@ -4052,17 +7560,17 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         return;
       }
       if (box) box.classList.add("hidden");
-      if (LHState.examSubmitted && !examOnlyReview) {
+      if (LHState2.examSubmitted && !examOnlyReview) {
         document.body.classList.remove("kizspy-active");
         const portal = document.getElementById("kizspyExamPortal");
         if (portal) portal.remove();
         result();
         return;
       }
-      const c = LHState.qSet[examOnlyIndex];
-      const total = LHState.qSet.length;
+      const c = LHState2.qSet[examOnlyIndex];
+      const total = LHState2.qSet.length;
       const p = Math.round((examOnlyIndex + 1) / total * 100);
-      const ch = LHState.qSel[examOnlyIndex] || "";
+      const ch = LHState2.qSel[examOnlyIndex] || "";
       const correctAns = c.answer || "";
       if (examLayoutMode === "kizspy") {
         document.body.classList.add("kizspy-active");
@@ -4080,7 +7588,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         const isCheckedThisQ = examOnlyReview || !!kizspyCheckedMap[examOnlyIndex];
         const isUserChoseAny = !!ch;
         const isUserCorrect = isUserChoseAny && S(ch) === S(correctAns);
-        const isAllChecked = (LHState.qSet || []).length > 0 && (LHState.qSet || []).every((_, idx) => kizspyCheckedMap[idx]);
+        const isAllChecked = (LHState2.qSet || []).length > 0 && (LHState2.qSet || []).every((_, idx) => kizspyCheckedMap[idx]);
         const selectBoxesHTML = Object.keys(c.options || {}).map((k) => {
           const isChecked = String(ch).includes(k);
           const inputType = isMulti ? "checkbox" : "radio";
@@ -4188,8 +7696,8 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
             </div>
             
             <div class="kizspyMapGrid">
-              ${(LHState.qSet || []).map((qItem, idx) => {
-          const userSel = LHState.qSel[idx] || "";
+              ${(LHState2.qSet || []).map((qItem, idx) => {
+          const userSel = LHState2.qSel[idx] || "";
           const isUserDone = !!userSel;
           const isChecked = examOnlyReview || !!kizspyCheckedMap[idx];
           const isCurrent = idx === examOnlyIndex;
@@ -4264,7 +7772,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
               try {
                 localStorage.setItem("hod102_kizspy_split_pct", String(kizspySplitPct));
               } catch (ex) {
-                lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
+                lhWarn2("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
               }
               leftPane.style.setProperty("flex", `0 0 ${kizspySplitPct}%`, "important");
               leftPane.style.setProperty("width", `${kizspySplitPct}%`, "important");
@@ -4291,7 +7799,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
                 try {
                   localStorage.setItem("hod102_kizspy_font_size", String(kizspyFontSize));
                 } catch (ex) {
-                  lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
+                  lhWarn2("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
                 }
                 saveExam();
                 draw();
@@ -4305,7 +7813,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
               try {
                 localStorage.setItem("hod102_kizspy_font_size", "10");
               } catch (ex) {
-                lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
+                lhWarn2("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
               }
               saveExam();
               draw();
@@ -4319,7 +7827,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
                 try {
                   localStorage.setItem("hod102_kizspy_font_size", String(kizspyFontSize));
                 } catch (ex) {
-                  lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
+                  lhWarn2("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
                 }
                 saveExam();
                 draw();
@@ -4343,13 +7851,13 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
               if (!k) return;
               const isMulti2 = (c.answer || "").length > 1;
               if (isMulti2) {
-                let cur = (LHState.qSel[examOnlyIndex] || "").split("").filter(Boolean);
+                let cur = (LHState2.qSel[examOnlyIndex] || "").split("").filter(Boolean);
                 if (cur.includes(k)) cur = cur.filter((x) => x !== k);
                 else cur.push(k);
                 cur.sort();
-                LHState.qSel[examOnlyIndex] = cur.join("");
+                LHState2.qSel[examOnlyIndex] = cur.join("");
               } else {
-                LHState.qSel[examOnlyIndex] = k;
+                LHState2.qSel[examOnlyIndex] = k;
               }
               saveExam();
               draw();
@@ -4380,7 +7888,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
               try {
                 localStorage.setItem("hod102_exam_layout_mode", "standard");
               } catch (ex) {
-                lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
+                lhWarn2("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
               }
               document.body.classList.remove("kizspy-active");
               if (portal) portal.remove();
@@ -4399,11 +7907,11 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
                 document.body.classList.remove("kizspy-active");
                 if (portal) portal.remove();
                 clearExam();
-                LHState.qSet = [];
-                LHState.qSel = {};
-                LHState.qDone = {};
+                LHState2.qSet = [];
+                LHState2.qSel = {};
+                LHState2.qDone = {};
                 kizspyCheckedMap = {};
-                LHState.examSubmitted = false;
+                LHState2.examSubmitted = false;
                 examOnlyReview = false;
                 examOnlyIndex = 0;
                 resetTimer();
@@ -4445,12 +7953,12 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
           </button>
         `;
         }).join("");
-        const gridItems = (LHState.qSet || []).map((q, idx) => {
+        const gridItems = (LHState2.qSet || []).map((q, idx) => {
           const isCur = idx === examOnlyIndex;
-          const isDone = !!LHState.qSel[idx];
+          const isDone = !!LHState2.qSel[idx];
           let stateClass = "";
           if (examOnlyReview) {
-            const isCorrect = S(LHState.qSel[idx]) === S(q.answer);
+            const isCorrect = S(LHState2.qSel[idx]) === S(q.answer);
             stateClass = isCorrect ? "review-grid-correct review-ok" : "review-grid-incorrect review-bad";
           } else {
             stateClass = isDone ? "answered" : "";
@@ -4501,7 +8009,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     function result() {
       const box = document.querySelector("#quiz .setup");
       if (box) box.classList.add("hidden");
-      const body = $2("quizBody");
+      const body = $3("quizBody");
       if (!body) return;
       const s = scoreExam();
       const label = s.pct >= 90 ? "Xu\u1EA5t s\u1EAFc" : s.pct >= 70 ? "Kh\xE1 \u1ED5n r\u1ED3i" : s.pct >= 50 ? "C\u1EA7n \xF4n th\xEAm" : "N\xEAn l\xE0m l\u1EA1i v\xE0i v\xF2ng";
@@ -4509,11 +8017,11 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       if (examOnlyReview) review();
     }
     function review() {
-      const list = $2("examReviewList");
+      const list = $3("examReviewList");
       if (!list) return;
       list.classList.remove("hidden");
-      list.innerHTML = (LHState.qSet || []).map((c, i) => {
-        const ch = LHState.qSel[i] || "";
+      list.innerHTML = (LHState2.qSet || []).map((c, i) => {
+        const ch = LHState2.qSel[i] || "";
         const correctAns = c.answer || "";
         const ok = S(ch) === S(correctAns);
         const reviewOpts = Object.entries(c.options || {}).map(([k, v]) => {
@@ -4546,10 +8054,10 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       }).join("");
     }
     function submit() {
-      if (!confirm("B\u1EA1n ch\u1EAFc ch\u1EAFn mu\u1ED1n n\u1ED9p b\xE0i?\n\n\u0110\xE3 l\xE0m: " + done() + " / " + (LHState.qSet || []).length + " c\xE2u"))
+      if (!confirm("B\u1EA1n ch\u1EAFc ch\u1EAFn mu\u1ED1n n\u1ED9p b\xE0i?\n\n\u0110\xE3 l\xE0m: " + done() + " / " + (LHState2.qSet || []).length + " c\xE2u"))
         return;
       examElapsed = FMT(nowTimerMs());
-      LHState.examSubmitted = true;
+      LHState2.examSubmitted = true;
       examOnlyReview = false;
       document.body.classList.remove("kizspy-active");
       const portal = document.getElementById("kizspyExamPortal");
@@ -4562,9 +8070,9 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       markTab();
       removeOldQuizUI();
       setup();
-      const label = $2("quizModeLabel");
+      const label = $3("quizModeLabel");
       if (label) label.textContent = "Ki\u1EC3m tra: n\u1ED9p b\xE0i m\u1EDBi hi\u1EC7n \u0111\xE1p \xE1n";
-      const body = $2("quizBody");
+      const body = $3("quizBody");
       if (body && body.dataset.examOnlyBound !== "1") {
         body.dataset.examOnlyBound = "1";
         document.addEventListener(
@@ -4572,17 +8080,17 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
           (e) => {
             if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
             if (e.ctrlKey || e.metaKey || e.altKey) return;
-            if ($2("quiz") && $2("quiz").classList.contains("active")) {
+            if ($3("quiz") && $3("quiz").classList.contains("active")) {
               if (e.key === "ArrowRight") {
-                if (LHState.qSet && LHState.qSet.length) {
-                  examOnlyIndex = Math.min(LHState.qSet.length - 1, examOnlyIndex + 1);
+                if (LHState2.qSet && LHState2.qSet.length) {
+                  examOnlyIndex = Math.min(LHState2.qSet.length - 1, examOnlyIndex + 1);
                   saveExam();
                   draw();
                 }
                 return;
               }
               if (e.key === "ArrowLeft" || e.key === "Backspace") {
-                if (LHState.qSet && LHState.qSet.length) {
+                if (LHState2.qSet && LHState2.qSet.length) {
                   examOnlyIndex = Math.max(0, examOnlyIndex - 1);
                   saveExam();
                   draw();
@@ -4598,17 +8106,17 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
                 const mapKey = { 1: "A", 2: "B", 3: "C", 4: "D", 5: "E" };
                 keyOpt = mapKey[e.key];
               }
-              if (keyOpt && !LHState.examSubmitted && LHState.qSet && LHState.qSet.length) {
-                const c = LHState.qSet[examOnlyIndex];
+              if (keyOpt && !LHState2.examSubmitted && LHState2.qSet && LHState2.qSet.length) {
+                const c = LHState2.qSet[examOnlyIndex];
                 if (c && c.options && c.options[keyOpt]) {
                   if (String(c.answer || "").length > 1) {
                     const set = new Set(
-                      String(LHState.qSel[examOnlyIndex] || "").split("").filter(Boolean)
+                      String(LHState2.qSel[examOnlyIndex] || "").split("").filter(Boolean)
                     );
                     set.has(keyOpt) ? set.delete(keyOpt) : set.add(keyOpt);
-                    LHState.qSel[examOnlyIndex] = Array.from(set).sort().join("");
+                    LHState2.qSel[examOnlyIndex] = Array.from(set).sort().join("");
                   } else {
-                    LHState.qSel[examOnlyIndex] = keyOpt;
+                    LHState2.qSel[examOnlyIndex] = keyOpt;
                   }
                   saveExam();
                   draw();
@@ -4621,7 +8129,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
                   saveExam();
                   draw();
                 } else {
-                  const exitBtn = $2("examOnlyExit") || $2("examOnlyExitToResult");
+                  const exitBtn = $3("examOnlyExit") || $3("examOnlyExitToResult");
                   if (exitBtn) exitBtn.click();
                 }
                 return;
@@ -4635,22 +8143,22 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         );
         body.addEventListener("click", (e) => {
           const opt = e.target.closest("[data-exam-opt]");
-          if (opt && !LHState.examSubmitted && LHState.qSet && LHState.qSet.length) {
-            const c = LHState.qSet[examOnlyIndex];
+          if (opt && !LHState2.examSubmitted && LHState2.qSet && LHState2.qSet.length) {
+            const c = LHState2.qSet[examOnlyIndex];
             const k = opt.dataset.examOpt;
             if (c && String(c.answer || "").length > 1) {
               const set = new Set(
-                String(LHState.qSel[examOnlyIndex] || "").split("").filter(Boolean)
+                String(LHState2.qSel[examOnlyIndex] || "").split("").filter(Boolean)
               );
               set.has(k) ? set.delete(k) : set.add(k);
-              LHState.qSel[examOnlyIndex] = Array.from(set).sort().join("");
-            } else LHState.qSel[examOnlyIndex] = k;
+              LHState2.qSel[examOnlyIndex] = Array.from(set).sort().join("");
+            } else LHState2.qSel[examOnlyIndex] = k;
             saveExam();
             draw();
             return;
           }
           if (e.target.id === "examEditCard" || e.target.closest("#examEditCard")) {
-            const c = LHState.qSet && LHState.qSet[examOnlyIndex];
+            const c = LHState2.qSet && LHState2.qSet[examOnlyIndex];
             if (c && typeof window.openStudyReport === "function") window.openStudyReport(c.num);
             else if (typeof window.openEditor === "function") window.openEditor();
             return;
@@ -4660,7 +8168,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
             try {
               localStorage.setItem("hod102_exam_layout_mode", examLayoutMode);
             } catch (ex) {
-              lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
+              lhWarn2("FINAL_EXAM_ONLY_QUIZ_UI_20260627", ex);
             }
             saveExam();
             draw();
@@ -4673,7 +8181,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
             return;
           }
           if (e.target.id === "examNext") {
-            examOnlyIndex = Math.min((LHState.qSet || []).length - 1, examOnlyIndex + 1);
+            examOnlyIndex = Math.min((LHState2.qSet || []).length - 1, examOnlyIndex + 1);
             saveExam();
             draw();
             return;
@@ -4695,10 +8203,10 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
             return;
           }
           if (e.target.id === "examRetryBtn") {
-            LHState.qSel = {};
-            LHState.qDone = {};
+            LHState2.qSel = {};
+            LHState2.qDone = {};
             kizspyCheckedMap = {};
-            LHState.examSubmitted = false;
+            LHState2.examSubmitted = false;
             examOnlyReview = false;
             examOnlyIndex = 0;
             startTimer(0);
@@ -4709,11 +8217,11 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
           if (e.target.id === "examNewBtn" || e.target.id === "examOnlyExit") {
             if (e.target.id === "examOnlyExit" && !confirm("Tho\xE1t b\xE0i ki\u1EC3m tra hi\u1EC7n t\u1EA1i?")) return;
             clearExam();
-            LHState.qSet = [];
-            LHState.qSel = {};
-            LHState.qDone = {};
+            LHState2.qSet = [];
+            LHState2.qSel = {};
+            LHState2.qDone = {};
             kizspyCheckedMap = {};
-            LHState.examSubmitted = false;
+            LHState2.examSubmitted = false;
             examOnlyReview = false;
             examOnlyIndex = 0;
             resetTimer();
@@ -4739,17 +8247,17 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       try {
         stopTimer();
       } catch (e) {
-        lhWarn("FINAL_EXAM_ONLY_QUIZ_UI_20260627", e);
+        lhWarn2("FINAL_EXAM_ONLY_QUIZ_UI_20260627", e);
       }
-      LHState.qSet = [];
-      LHState.qSel = {};
-      LHState.qDone = {};
-      LHState.examSubmitted = false;
+      LHState2.qSet = [];
+      LHState2.qSel = {};
+      LHState2.qDone = {};
+      LHState2.examSubmitted = false;
       examOnlyReview = false;
       examOnlyIndex = 0;
       examElapsed = "00:00";
       examSelectedCodes = [];
-      LHState.quizMode = "exam";
+      LHState2.quizMode = "exam";
       kizspyCheckedMap = {};
       examRangeOn = false;
       examRangeFrom = "";
@@ -4766,10 +8274,10 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
   // src/student/editor.js
   function installEditor() {
     const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
-    function $2(id) {
+    function $3(id) {
       return document.getElementById(id);
     }
-    function esc2(s) {
+    function esc3(s) {
       return String(s ?? "").replace(
         /[&<>"']/g,
         (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
@@ -4790,41 +8298,41 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     }
     function editImgs(q) {
       const imgs = q.images || [];
-      return `<div class="v7Images"><div class="v7ImagesHead"><span>\u1EA2nh c\u1EE7a c\xE2u h\u1ECFi</span><button class="v7UploadBtn" type="button" data-edit-pick-img>+ Th\xEAm \u1EA3nh</button><input id="editPreviewImgInput" class="v7HiddenInput" type="file" accept="image/*" multiple></div><div class="v7Thumbs">${imgs.length ? imgs.map((im, i) => `<div class="v7Thumb"><button class="v7RemoveImg" type="button" data-edit-rm-img="${i}">\xD7</button><img src="${esc2(src(im))}" alt="\u1EA2nh ${i + 1}" loading="lazy" decoding="async"></div>`).join("") : '<div class="v7NoImage">Ch\u01B0a c\xF3 \u1EA3nh.</div>'}</div></div>`;
+      return `<div class="v7Images"><div class="v7ImagesHead"><span>\u1EA2nh c\u1EE7a c\xE2u h\u1ECFi</span><button class="v7UploadBtn" type="button" data-edit-pick-img>+ Th\xEAm \u1EA3nh</button><input id="editPreviewImgInput" class="v7HiddenInput" type="file" accept="image/*" multiple></div><div class="v7Thumbs">${imgs.length ? imgs.map((im, i) => `<div class="v7Thumb"><button class="v7RemoveImg" type="button" data-edit-rm-img="${i}">\xD7</button><img src="${esc3(src(im))}" alt="\u1EA2nh ${i + 1}" loading="lazy" decoding="async"></div>`).join("") : '<div class="v7NoImage">Ch\u01B0a c\xF3 \u1EA3nh.</div>'}</div></div>`;
     }
     function optRows(opts) {
       return Object.keys(opts || {}).sort().map(
-        (k) => `<div class="v7OptRow"><div class="v7Key">${esc2(k)}</div><input value="${esc2(opts[k] || "")}" data-edit-opt="${esc2(k)}"><button class="v7DelOpt" type="button" data-edit-del-opt="${esc2(k)}">\xD7</button></div>`
+        (k) => `<div class="v7OptRow"><div class="v7Key">${esc3(k)}</div><input value="${esc3(opts[k] || "")}" data-edit-opt="${esc3(k)}"><button class="v7DelOpt" type="button" data-edit-del-opt="${esc3(k)}">\xD7</button></div>`
       ).join("");
     }
     function redrawImg() {
-      const h = $2("editPreviewImageHost");
+      const h = $3("editPreviewImageHost");
       if (h && window.editDraft) h.innerHTML = editImgs(window.editDraft);
     }
     function redrawOpt() {
-      const h = $2("editPreviewOptions");
+      const h = $3("editPreviewOptions");
       if (h && window.editDraft) h.innerHTML = optRows(window.editDraft.options || {});
     }
     function openEditPreview() {
-      const c = typeof LHState.pool !== "undefined" && LHState.pool[LHState.ci] || typeof LHState.RAW !== "undefined" && LHState.RAW[0];
+      const c = typeof LHState2.pool !== "undefined" && LHState2.pool[LHState2.ci] || typeof LHState2.RAW !== "undefined" && LHState2.RAW[0];
       if (!c) return;
       window.editDraft = clone(c);
-      if (typeof LHState.editDraft !== "undefined") LHState.editDraft = window.editDraft;
+      if (typeof LHState2.editDraft !== "undefined") LHState2.editDraft = window.editDraft;
       const role = String(window.HODSupabase?.getProfile?.()?.role || "").trim().toLowerCase();
       const canDirect = ["admin", "editor"].includes(role);
       const reporting = !!window.HODSupabase?.getUser?.() && !canDirect;
-      const modal = $2("editModal"), box = modal?.querySelector(".box");
+      const modal = $3("editModal"), box = modal?.querySelector(".box");
       if (!modal || !box) return;
       box.classList.add("editPreviewBox", "quizEditLayoutV2");
-      box.innerHTML = `<button class="modalX" type="button" data-edit-preview-close>\xD7</button><div class="v7Head editPreviewHead"><div><span class="v7Label">S\u1EECA C\xC2U H\u1ECEI</span><h2>${esc2((reporting ? "B\xE1o c\xE1o / \u0111\u1EC1 xu\u1EA5t s\u1EEDa c\xE2u " : "S\u1EEDa c\xE2u ") + (c.num || ""))}</h2><p class="v7Hint">S\u1EEDa nhanh n\u1ED9i dung quiz, \u0111\xE1p \xE1n v\xE0 \u1EA3nh.</p></div><div class="v7TopActions"><button class="btn ${reporting ? "hidden" : ""}" type="button" data-edit-preview-restore>Kh\xF4i ph\u1EE5c</button><button class="primary v7SaveTop" type="button" data-edit-preview-save>${canDirect ? "L\u01B0u tr\u1EF1c ti\u1EBFp" : reporting ? "G\u1EEDi b\xE1o c\xE1o" : "L\u01B0u s\u1EEDa"}</button></div></div><article class="v7Card editPreviewCard"><div class="editPreviewTwoColumns"><div class="editPreviewLeftCol"><div class="v7Field"><label>C\xE2u h\u1ECFi</label><textarea data-edit-question>${esc2(c.question || "")}</textarea></div><div class="v7Field"><label>\u0110\xE1p \xE1n \u0111\xFAng</label><input data-edit-answer value="${esc2(ans(c))}" placeholder="VD: A ho\u1EB7c AC"></div><div id="editPreviewImageHost">${editImgs(c)}</div></div><div class="editPreviewRightCol"><div class="v7Field"><label>C\xE1c \u0111\xE1p \xE1n</label><div id="editPreviewOptions" class="v7Options">${optRows(c.options || {})}</div></div><div class="v7Bottom"><button class="btn" type="button" data-edit-add-opt>+ Th\xEAm \u0111\xE1p \xE1n</button></div></div></div></article>`;
+      box.innerHTML = `<button class="modalX" type="button" data-edit-preview-close>\xD7</button><div class="v7Head editPreviewHead"><div><span class="v7Label">S\u1EECA C\xC2U H\u1ECEI</span><h2>${esc3((reporting ? "B\xE1o c\xE1o / \u0111\u1EC1 xu\u1EA5t s\u1EEDa c\xE2u " : "S\u1EEDa c\xE2u ") + (c.num || ""))}</h2><p class="v7Hint">S\u1EEDa nhanh n\u1ED9i dung quiz, \u0111\xE1p \xE1n v\xE0 \u1EA3nh.</p></div><div class="v7TopActions"><button class="btn ${reporting ? "hidden" : ""}" type="button" data-edit-preview-restore>Kh\xF4i ph\u1EE5c</button><button class="primary v7SaveTop" type="button" data-edit-preview-save>${canDirect ? "L\u01B0u tr\u1EF1c ti\u1EBFp" : reporting ? "G\u1EEDi b\xE1o c\xE1o" : "L\u01B0u s\u1EEDa"}</button></div></div><article class="v7Card editPreviewCard"><div class="editPreviewTwoColumns"><div class="editPreviewLeftCol"><div class="v7Field"><label>C\xE2u h\u1ECFi</label><textarea data-edit-question>${esc3(c.question || "")}</textarea></div><div class="v7Field"><label>\u0110\xE1p \xE1n \u0111\xFAng</label><input data-edit-answer value="${esc3(ans(c))}" placeholder="VD: A ho\u1EB7c AC"></div><div id="editPreviewImageHost">${editImgs(c)}</div></div><div class="editPreviewRightCol"><div class="v7Field"><label>C\xE1c \u0111\xE1p \xE1n</label><div id="editPreviewOptions" class="v7Options">${optRows(c.options || {})}</div></div><div class="v7Bottom"><button class="btn" type="button" data-edit-add-opt>+ Th\xEAm \u0111\xE1p \xE1n</button></div></div></div></article>`;
       modal.classList.remove("hidden");
     }
     async function saveEditPreview() {
       if (!window.editDraft) return;
       const oldQ = clone(
-        typeof LHState.RAW !== "undefined" && LHState.RAW.find((c) => c.num === window.editDraft.num) || window.editDraft
+        typeof LHState2.RAW !== "undefined" && LHState2.RAW.find((c) => c.num === window.editDraft.num) || window.editDraft
       );
-      const modal = $2("editModal");
+      const modal = $3("editModal");
       const q = (modal?.querySelector("[data-edit-question]")?.value || "").trim();
       const a = (modal?.querySelector("[data-edit-answer]")?.value || "").trim().toUpperCase().replace(/[^A-Z]/g, "");
       if (!q) return alert("C\xE2u h\u1ECFi kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
@@ -4916,7 +8424,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
           if (typeof window.clearLearningHubQuestionCache === "function") {
             window.clearLearningHubQuestionCache();
           }
-          $2("editModal")?.classList.add("hidden");
+          $3("editModal")?.classList.add("hidden");
           window.notify?.("\u0110\xE3 l\u01B0u tr\u1EF1c ti\u1EBFp \u2713");
           if (typeof window.loadCurrentSubjectOnly === "function") await window.loadCurrentSubjectOnly(true);
           else if (window.HODSupabase?.loadQuestionsFromSupabase)
@@ -4938,13 +8446,13 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         images: window.editDraft.images || []
       });
       window.rebuild?.();
-      LHState.ci = LHState.pool.findIndex((c) => c.num === window.editDraft.num);
-      if (LHState.ci < 0) LHState.ci = 0;
-      LHState.flipped = false;
+      LHState2.ci = LHState2.pool.findIndex((c) => c.num === window.editDraft.num);
+      if (LHState2.ci < 0) LHState2.ci = 0;
+      LHState2.flipped = false;
       window.renderCard?.();
       window.renderQuiz?.();
       window.renderStudy?.();
-      $2("editModal")?.classList.add("hidden");
+      $3("editModal")?.classList.add("hidden");
       window.notify?.("\u0110\xE3 l\u01B0u s\u1EEDa local");
     }
     function apply() {
@@ -4956,17 +8464,17 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     else setTimeout(apply, 0);
     setTimeout(apply, 900);
     window.goStudyFromLib = function(idx) {
-      if (typeof LHState.pool !== "undefined" && Array.isArray(LHState.pool) && LHState.pool.length > 0) {
-        if (typeof idx === "number" && idx >= 0 && idx < LHState.pool.length) LHState.ci = idx;
+      if (typeof LHState2.pool !== "undefined" && Array.isArray(LHState2.pool) && LHState2.pool.length > 0) {
+        if (typeof idx === "number" && idx >= 0 && idx < LHState2.pool.length) LHState2.ci = idx;
       }
       window.renderCard?.();
       document.querySelector('[data-tab="fc"]')?.click();
     };
     document.addEventListener("click", (e) => {
-      if (e.target.closest("[data-edit-preview-close]")) return $2("editModal")?.classList.add("hidden");
+      if (e.target.closest("[data-edit-preview-close]")) return $3("editModal")?.classList.add("hidden");
       if (e.target.closest("[data-edit-preview-save]")) return saveEditPreview();
       if (e.target.closest("[data-edit-preview-restore]")) return window.__LHRestoreEditor?.();
-      if (e.target.closest("[data-edit-pick-img]")) return $2("editPreviewImgInput")?.click();
+      if (e.target.closest("[data-edit-pick-img]")) return $3("editPreviewImgInput")?.click();
       const rm = e.target.closest("[data-edit-rm-img]");
       if (rm && window.editDraft) {
         window.editDraft.images = window.editDraft.images || [];
@@ -5032,14 +8540,14 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     });
     setTimeout(() => {
       try {
-        if ($2("studyList")) window.renderStudy?.();
+        if ($3("studyList")) window.renderStudy?.();
       } catch (e) {
-        lhWarn("LIBRARY_FILTER_AND_EDIT_PREVIEW_LAYOUT_20260627", e);
+        lhWarn2("LIBRARY_FILTER_AND_EDIT_PREVIEW_LAYOUT_20260627", e);
       }
     }, 350);
   }
   function installEditorPasteUpload() {
-    function $2(id) {
+    function $3(id) {
       return document.getElementById(id);
     }
     function msg(t) {
@@ -5055,7 +8563,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     function setInputFilesAndUpload(files, source) {
       files = [...files || []].filter((file) => file && String(file.type || "").startsWith("image/"));
       if (!files.length) return false;
-      const input = $2("editPreviewImgInput") || $2("imgUpload");
+      const input = $3("editPreviewImgInput") || $3("imgUpload");
       if (!input) {
         alert("Ch\u01B0a th\u1EA5y \xF4 th\xEAm \u1EA3nh. \u0110\xF3ng/m\u1EDF l\u1EA1i form s\u1EEDa r\u1ED3i th\u1EED l\u1EA1i.");
         return true;
@@ -5072,7 +8580,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       return true;
     }
     function ensureEditPasteHint() {
-      const modal = $2("editModal");
+      const modal = $3("editModal");
       if (!modal || modal.classList.contains("hidden")) return;
       const imagesBox = modal.querySelector(".v7Images");
       if (!imagesBox || imagesBox.querySelector(".editPasteImageHint")) return;
@@ -5084,7 +8592,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       else imagesBox.prepend(hint);
     }
     function bindEditPreviewPasteUpload() {
-      const modal = $2("editModal");
+      const modal = $3("editModal");
       if (!modal) return;
       ensureEditPasteHint();
       if (modal.__editPreviewPasteUploadBound) return;
@@ -5144,7 +8652,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       },
       window.APP_CONFIG || {}
     );
-    function $2(id) {
+    function $3(id) {
       return document.getElementById(id);
     }
     function msg(t) {
@@ -5152,9 +8660,9 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       else console.log(t);
     }
     function ensureStatus(inputId, statusId) {
-      const inp = $2(inputId);
+      const inp = $3(inputId);
       if (!inp) return null;
-      let st = $2(statusId);
+      let st = $3(statusId);
       if (!st) {
         st = document.createElement("div");
         st.id = statusId;
@@ -5197,7 +8705,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       return CFG;
     };
     function bindEditUploadFinal() {
-      const inp = $2("imgUpload");
+      const inp = $3("imgUpload");
       if (!inp || inp.__copilotFinalUpload) return;
       inp.__copilotFinalUpload = true;
       inp.onchange = async function(e) {
@@ -5211,10 +8719,10 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         }
         msg("\u0110ang upload \u1EA3nh l\xEAn Cloudinary...");
         try {
-          LHState.editDraft.images = window.__LHCleanImages ? window.__LHCleanImages(LHState.editDraft.images || []) : LHState.editDraft.images || [];
+          LHState2.editDraft.images = window.__LHCleanImages ? window.__LHCleanImages(LHState2.editDraft.images || []) : LHState2.editDraft.images || [];
           for (const file of files) {
             const uploaded = await (window.__LHUploadCloudinary || directUpload)(file);
-            LHState.editDraft.images.push(uploaded);
+            LHState2.editDraft.images.push(uploaded);
           }
           window.renderEditImages?.();
           if (st) {
@@ -5247,7 +8755,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     const STORE2 = "learninghub_subject_code_merged_v1";
     let pending = null;
     window.__LHGetPendingImageUpload = () => pending;
-    function $2(id) {
+    function $3(id) {
       return document.getElementById(id);
     }
     function msg(t) {
@@ -5272,7 +8780,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     }
     function draft() {
       try {
-        return LHState.editDraft || null;
+        return LHState2.editDraft || null;
       } catch (e) {
         return null;
       }
@@ -5320,7 +8828,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       }).filter(Boolean);
     }
     function status(t) {
-      let inp = $2("imgUpload"), s = $2("editUploadStatus");
+      let inp = $3("imgUpload"), s = $3("editUploadStatus");
       if (!inp) return null;
       if (!s) {
         s = document.createElement("div");
@@ -5333,7 +8841,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       return s;
     }
     function renderUrls() {
-      const d = draft(), box = $2("editImgs");
+      const d = draft(), box = $3("editImgs");
       if (!d || !box) return;
       d.images = imgs(d.images).filter((x) => !dataUrl(x.src || x.url));
       box.innerHTML = d.images.length ? d.images.map(
@@ -5345,7 +8853,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       if (!d) return;
       files = [...files || []];
       if (!files.length) return;
-      const btn = $2("saveEdit");
+      const btn = $3("saveEdit");
       if (btn) {
         btn.disabled = true;
         btn.textContent = "\u0110ang upload \u1EA3nh...";
@@ -5367,7 +8875,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       }
     }
     function bindInput() {
-      const inp = $2("imgUpload");
+      const inp = $3("imgUpload");
       if (!inp || inp.__ultraUpload) return;
       inp.__ultraUpload = true;
       inp.onchange = null;
@@ -5392,14 +8900,14 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     function build() {
       const d = draft();
       if (!d) return null;
-      d.question = ($2("editQuestion")?.value || "").trim();
-      d.answer = ($2("editAnswer")?.value || "").trim().toUpperCase();
+      d.question = ($3("editQuestion")?.value || "").trim();
+      d.answer = ($3("editAnswer")?.value || "").trim().toUpperCase();
       const o = {};
       document.querySelectorAll("[data-opt]").forEach((t) => {
         if ((t.value || "").trim()) o[t.dataset.opt] = t.value.trim();
       });
       d.options = o;
-      d.answer_text = answerText(d);
+      d.answer_text = answerText2(d);
       d.subject_code = sc() || d.subject_code || "";
       d.images = window.__LHCleanImages ? window.__LHCleanImages(imgs(d.images)) : imgs(d.images).filter((x) => /^https?:\/\//i.test(x.src || x.url));
       return d;
@@ -5436,7 +8944,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         alert("Ch\u01B0a s\u1EB5n s\xE0ng d\u1EEF li\u1EC7u");
         return true;
       }
-      const btn = $2("saveEdit");
+      const btn = $3("saveEdit");
       try {
         if (btn) {
           btn.disabled = true;
@@ -5449,7 +8957,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
           alert("Kh\xF4ng t\xECm th\u1EA5y ID c\xE2u h\u1ECFi. H\xE3y t\u1EA3i l\u1EA1i trang r\u1ED3i th\u1EED l\u1EA1i.");
           return true;
         }
-        const oldQ = (LHState.RAW || []).find((x) => String(x.id) === String(id)) || (LHState.pool || [])[LHState.ci] || d;
+        const oldQ = (LHState2.RAW || []).find((x) => String(x.id) === String(id)) || (LHState2.pool || [])[LHState2.ci] || d;
         const imgs2 = d.images || [];
         const payload = {
           id,
@@ -5481,7 +8989,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
           return true;
         }
         if (typeof window.clearLearningHubQuestionCache === "function") window.clearLearningHubQuestionCache();
-        $2("editModal")?.classList.add("hidden");
+        $3("editModal")?.classList.add("hidden");
         msg("\u0110\xE3 l\u01B0u tr\u1EF1c ti\u1EBFp");
         if (typeof window.loadCurrentSubjectOnly === "function") await window.loadCurrentSubjectOnly(true);
         return true;
@@ -5494,7 +9002,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       }
     }
     function bindSave() {
-      const b = $2("saveEdit");
+      const b = $3("saveEdit");
       if (!b || b.__ultraSave) return;
       b.__ultraSave = true;
       b.onclick = null;
@@ -5522,7 +9030,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
   function installImageVisibleAfterSave() {
     if (window.__COPILOT_FIX_EDIT_IMAGE_VISIBLE_AFTER_SAVE_20260628) return;
     window.__COPILOT_FIX_EDIT_IMAGE_VISIBLE_AFTER_SAVE_20260628 = true;
-    function $2(id) {
+    function $3(id) {
       return document.getElementById(id);
     }
     function db() {
@@ -5543,7 +9051,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     }
     function currentDraft() {
       try {
-        return window.editDraft || LHState.editDraft || null;
+        return window.editDraft || LHState2.editDraft || null;
       } catch (e) {
         return window.editDraft || null;
       }
@@ -5563,8 +9071,8 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     function collectDraft() {
       const d = currentDraft();
       if (!d) return null;
-      const qEl = $2("editQuestion") || document.querySelector("[data-edit-question]");
-      const aEl = $2("editAnswer") || document.querySelector("[data-edit-answer]");
+      const qEl = $3("editQuestion") || document.querySelector("[data-edit-question]");
+      const aEl = $3("editAnswer") || document.querySelector("[data-edit-answer]");
       d.question = (qEl?.value || d.question || "").trim();
       d.answer = (aEl?.value || d.answer || "").trim().toUpperCase().replace(/[^A-Z]/g, "");
       const opts = {};
@@ -5574,7 +9082,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         if (k && v) opts[k] = v;
       });
       if (Object.keys(opts).length) d.options = opts;
-      d.answer_text = answerText(d) || d.answer_text || "";
+      d.answer_text = answerText2(d) || d.answer_text || "";
       d.subject_code = d.subject_code || subjectCode();
       d.images = cleanImgs(d.images);
       return d;
@@ -5595,15 +9103,15 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         __imagesLoaded: true
       });
       try {
-        if (Array.isArray(LHState.RAW)) {
-          const i = LHState.RAW.findIndex((q) => String(q.id) === String(id) || Number(q.num) === Number(patch.num));
-          if (i >= 0) LHState.RAW[i] = Object.assign({}, LHState.RAW[i], patch);
+        if (Array.isArray(LHState2.RAW)) {
+          const i = LHState2.RAW.findIndex((q) => String(q.id) === String(id) || Number(q.num) === Number(patch.num));
+          if (i >= 0) LHState2.RAW[i] = Object.assign({}, LHState2.RAW[i], patch);
         }
-        if (Array.isArray(LHState.pool)) {
-          const j = LHState.pool.findIndex((q) => String(q.id) === String(id) || Number(q.num) === Number(patch.num));
-          if (j >= 0) LHState.pool[j] = Object.assign({}, LHState.pool[j], patch);
+        if (Array.isArray(LHState2.pool)) {
+          const j = LHState2.pool.findIndex((q) => String(q.id) === String(id) || Number(q.num) === Number(patch.num));
+          if (j >= 0) LHState2.pool[j] = Object.assign({}, LHState2.pool[j], patch);
         }
-        const active = LHState.pool && LHState.pool[LHState.ci] || null;
+        const active = LHState2.pool && LHState2.pool[LHState2.ci] || null;
         if (active && (String(active.id) === String(id) || Number(active.num) === Number(patch.num))) {
           Object.assign(active, patch);
         }
@@ -5634,7 +9142,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         updated_at: (/* @__PURE__ */ new Date()).toISOString()
       };
       const u = window.HODSupabase?.getUser?.();
-      const oldQ = (LHState.RAW || []).find((x) => String(x.id) === String(id) || Number(x.num) === Number(d.num)) || (LHState.pool || []).find((x) => String(x.id) === String(id) || Number(x.num) === Number(d.num)) || d;
+      const oldQ = (LHState2.RAW || []).find((x) => String(x.id) === String(id) || Number(x.num) === Number(d.num)) || (LHState2.pool || []).find((x) => String(x.id) === String(id) || Number(x.num) === Number(d.num)) || d;
       const old_data = {
         question: oldQ.question || "",
         options: oldQ.options || {},
@@ -5665,7 +9173,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         window.clearLearningHubQuestionCache();
       }
       d.images = payload.images;
-      $2("editModal")?.classList.add("hidden");
+      $3("editModal")?.classList.add("hidden");
       updateLocal(Object.assign({}, d, payload), id);
       window.notify?.("\u0110\xE3 l\u01B0u \u1EA3nh v\xE0 c\u1EADp nh\u1EADt c\xE2u hi\u1EC7n t\u1EA1i");
       return true;
@@ -5693,7 +9201,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     );
   }
   function installEditImagesRender() {
-    function $2(id) {
+    function $3(id) {
       return document.getElementById(id);
     }
     function safeSrc(im) {
@@ -5706,9 +9214,9 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       );
     }
     function ensureEditImgsBox() {
-      let box = $2("editImgs");
+      let box = $3("editImgs");
       if (box) return box;
-      const input = $2("imgUpload");
+      const input = $3("imgUpload");
       if (!input) return null;
       box = document.createElement("div");
       box.id = "editImgs";
@@ -5719,7 +9227,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     window.renderEditImages = function() {
       const box = ensureEditImgsBox();
       if (!box) return;
-      const imgs = typeof LHState.editDraft !== "undefined" && LHState.editDraft && Array.isArray(LHState.editDraft.images) ? LHState.editDraft.images : [];
+      const imgs = typeof LHState2.editDraft !== "undefined" && LHState2.editDraft && Array.isArray(LHState2.editDraft.images) ? LHState2.editDraft.images : [];
       box.innerHTML = imgs.length ? imgs.map((im, i) => {
         const src = safeSrc(im);
         return `<div class="editImg"><button class="rm" data-rm="${i}">\xD7</button><img src="${safeEsc(src)}" loading="lazy" decoding="async"><input class="imgUrlBox" value="${safeEsc(src)}" readonly onclick="this.select()" title="B\u1EA5m \u0111\u1EC3 ch\u1ECDn URL \u1EA3nh" style="margin-top:6px;width:100%;max-width:260px;border:1px solid rgba(200,169,110,.24);border-radius:10px;background:rgba(0,0,0,.22);color:var(--gold2);padding:7px;font-size:.72rem;"></div>`;
@@ -5734,11 +9242,11 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         return (c?.images || []).map((im) => {
           const src = typeof im === "string" ? im : im.src || im.url || im.secure_url || im.publicUrl || im.public_url || "";
           if (!src || String(src).startsWith("data:image/")) return "";
-          return '<img src="' + esc(src) + '" alt="" loading="lazy" decoding="async">';
+          return '<img src="' + esc2(src) + '" alt="" loading="lazy" decoding="async">';
         }).join("");
       };
     } catch (e) {
-      lhWarn("COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630", e);
+      lhWarn2("COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630", e);
     }
   }
 
@@ -5769,8 +9277,8 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     const VIEW_STORE = "learninghub_library_view_v1";
     const OPEN_STORE = "learninghub_library_open_nums_v1";
     const SEARCH_STORE = "learninghub_library_search_v1";
-    const $2 = (id) => document.getElementById(id);
-    const esc2 = (s) => String(s ?? "").replace(
+    const $3 = (id) => document.getElementById(id);
+    const esc3 = (s) => String(s ?? "").replace(
       /[&<>"']/g,
       (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
     );
@@ -5817,16 +9325,16 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     try {
       JSON.parse(localStorage.getItem(OPEN_STORE) || "[]").forEach((n) => libraryOpenNums.add(String(n)));
     } catch (e) {
-      lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
+      lhWarn2("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
     }
     function saveOpenState() {
       try {
         localStorage.setItem(OPEN_STORE, JSON.stringify([...libraryOpenNums]));
       } catch (e) {
-        lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
+        lhWarn2("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
       }
     }
-    function answerText2(q) {
+    function answerText3(q) {
       const a = ans(q);
       return a ? a.split("").map((k) => k + ". " + (q.options?.[k] || "")).join(" | ") : "Ch\u01B0a c\xF3 \u0111\xE1p \xE1n";
     }
@@ -5853,11 +9361,11 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       return p;
     }
     function hlt(text) {
-      const raw = $2("search")?.value || $2("studySearch")?.value || "";
+      const raw = $3("search")?.value || $3("studySearch")?.value || "";
       const p = parseQuery(raw);
       const tokens = [...new Set((p.tokens || []).filter((t) => t.length >= 2))].sort((a, b) => b.length - a.length);
       const src = String(text ?? "");
-      if (!tokens.length) return esc2(src);
+      if (!tokens.length) return esc3(src);
       let ns = "", map = [];
       for (let i = 0; i < src.length; i++) {
         let c = norm(src[i]);
@@ -5876,20 +9384,20 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
           pos += t.length;
         }
       }
-      if (!ranges.length) return esc2(src);
+      if (!ranges.length) return esc3(src);
       ranges.sort((a, b) => a[0] - b[0]);
       let out = "", last = 0;
       for (const [a, b] of ranges) {
-        out += esc2(src.slice(last, a));
-        out += `<mark class="searchMark tokenMark">${esc2(src.slice(a, b))}</mark>`;
+        out += esc3(src.slice(last, a));
+        out += `<mark class="searchMark tokenMark">${esc3(src.slice(a, b))}</mark>`;
         last = b;
       }
-      return out + esc2(src.slice(last));
+      return out + esc3(src.slice(last));
     }
     function searchList() {
-      const raw = $2("search")?.value || $2("studySearch")?.value || "";
+      const raw = $3("search")?.value || $3("studySearch")?.value || "";
       const p = parseQuery(raw);
-      let data = Array.isArray(LHState.RAW) ? LHState.RAW : [];
+      let data = Array.isArray(LHState2.RAW) ? LHState2.RAW : [];
       if (!p.raw) return data;
       return data.map((q) => {
         let score = 0;
@@ -5931,31 +9439,31 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       };
     }
     function ensureToolbar() {
-      const list = $2("studyList");
+      const list = $3("studyList");
       if (!list) return;
-      let tool = $2("libraryStableToolbar");
+      let tool = $3("libraryStableToolbar");
       if (!tool) {
         tool = document.createElement("section");
         tool.id = "libraryStableToolbar";
         tool.className = "libraryStableToolbar";
         tool.innerHTML = '<div class="libStableHead libStableHeadCompact"><div class="libStableInfo"><b id="libStableFilterText">T\u1EA5t c\u1EA3</b><em id="libStableCount">0 c\xE2u</em></div></div><div id="libStableSearchSlot"></div><div id="libStableFilters"></div>';
-        const searchBox2 = ($2("search") || $2("studySearch"))?.closest(".search");
+        const searchBox2 = ($3("search") || $3("studySearch"))?.closest(".search");
         (searchBox2?.parentNode || list.parentNode).insertBefore(tool, searchBox2 || list);
       }
-      const searchBox = ($2("search") || $2("studySearch"))?.closest(".search");
-      if (searchBox && $2("libStableSearchSlot") && searchBox.parentNode !== $2("libStableSearchSlot"))
-        $2("libStableSearchSlot").appendChild(searchBox);
-      const input = $2("search") || $2("studySearch");
+      const searchBox = ($3("search") || $3("studySearch"))?.closest(".search");
+      if (searchBox && $3("libStableSearchSlot") && searchBox.parentNode !== $3("libStableSearchSlot"))
+        $3("libStableSearchSlot").appendChild(searchBox);
+      const input = $3("search") || $3("studySearch");
       if (input) {
         input.placeholder = "T\xECm c\xE2u ho\u1EB7c #12...";
         if (!input.value) {
           try {
             input.value = localStorage.getItem(SEARCH_STORE) || "";
           } catch (e) {
-            lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
+            lhWarn2("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
           }
         }
-        if (!$2("libStableClear")) {
+        if (!$3("libStableClear")) {
           const b = document.createElement("button");
           b.id = "libStableClear";
           b.type = "button";
@@ -5966,7 +9474,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
             try {
               localStorage.removeItem(SEARCH_STORE);
             } catch (e) {
-              lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
+              lhWarn2("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
             }
             renderUnified2();
             input.focus();
@@ -5977,16 +9485,16 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
           try {
             localStorage.setItem(SEARCH_STORE, input.value || "");
           } catch (e) {
-            lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
+            lhWarn2("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
           }
           renderUnified2();
         };
-        $2("libStableClear")?.classList.toggle("show", !!input.value.trim());
+        $3("libStableClear")?.classList.toggle("show", !!input.value.trim());
       }
     }
     function renderFilters(base, shown) {
       ensureToolbar();
-      const box = $2("libStableFilters");
+      const box = $3("libStableFilters");
       if (!box) return;
       const s = stats(base), f = filterVal(), v = viewVal();
       const starCnt = typeof window.__countBookmarks === "function" ? window.__countBookmarks() : 0;
@@ -6011,21 +9519,21 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         </div>
       </div>
     `;
-      const ft = $2("libStableFilterText"), ct = $2("libStableCount");
+      const ft = $3("libStableFilterText"), ct = $3("libStableCount");
       if (ft) ft.textContent = "\u0110ang l\u1ECDc: " + (filters.find((x) => x[0] === f)?.[1] || "T\u1EA5t c\u1EA3");
       if (ct) ct.textContent = shown.length + " / " + base.length + " c\xE2u";
     }
     function miniImg(q) {
       const imgs = (q.images || []).map(imgSrc).filter(Boolean);
       if (imgs.length) {
-        return `<div class="libraryV2Img noAutoImg" title="C\xF3 ${imgs.length} \u1EA3nh"><img src="${esc2(optimizeImageUrl(imgs[0]))}" alt="thumb" loading="lazy" decoding="async"></div>`;
+        return `<div class="libraryV2Img noAutoImg" title="C\xF3 ${imgs.length} \u1EA3nh"><img src="${esc3(optimizeImageUrl(imgs[0]))}" alt="thumb" loading="lazy" decoding="async"></div>`;
       }
       return q.has_image ? `<div class="libraryV2Img noAutoImg" title="C\xF3 \u1EA3nh"><span>\u{1F5BC}</span></div>` : '<div class="libraryV2Img empty"></div>';
     }
     function options(q) {
       const a = ans(q);
       return Object.entries(q.options || {}).map(
-        ([k, v]) => `<div class="libraryOption ${a.includes(String(k).toUpperCase()) ? "correct" : ""}"><b>${esc2(k)}</b><span>${hlt(v)}</span></div>`
+        ([k, v]) => `<div class="libraryOption ${a.includes(String(k).toUpperCase()) ? "correct" : ""}"><b>${esc3(k)}</b><span>${hlt(v)}</span></div>`
       ).join("");
     }
     function images(q, open) {
@@ -6051,11 +9559,11 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       if (!imgs.length) {
         return q.has_image ? `<div class="libraryV2Images"><div class="imgLoading" style="color:var(--mist);font-size:.8rem;padding:10px 0;">\u0110ang t\u1EA3i \u1EA3nh t\u1EEB database...</div></div>` : "";
       }
-      return `<div class="libraryV2Images">${imgs.map((s, i) => `<img loading="lazy" decoding="async" src="${esc2(optimizeImageUrl(s))}" alt="\u1EA2nh ${i + 1}" class="zoomableImg">`).join("")}</div>`;
+      return `<div class="libraryV2Images">${imgs.map((s, i) => `<img loading="lazy" decoding="async" src="${esc3(optimizeImageUrl(s))}" alt="\u1EA2nh ${i + 1}" class="zoomableImg">`).join("")}</div>`;
     }
     function card(q, i) {
       const a = ans(q) || "?", r = risk(q);
-      const rawSearch = ($2("search")?.value || $2("studySearch")?.value || "").trim();
+      const rawSearch = ($3("search")?.value || $3("studySearch")?.value || "").trim();
       const queryObj = parseQuery(rawSearch);
       let isMatchInDetails = false;
       if (queryObj.tokens && queryObj.tokens.length) {
@@ -6064,10 +9572,10 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       }
       const open = viewVal() === "full" || libraryOpenNums.has(String(q.num)) || isMatchInDetails || !!rawSearch;
       const bmBtnHTML = typeof window.__getBookmarkBtnHTML === "function" ? window.__getBookmarkBtnHTML(q) : "";
-      return `<article class="libraryV2Card libraryQuestionCard ${open ? "open" : ""}" data-num="${esc2(q.num || "")}" data-stable-index="${i}" style="--card-index:${Math.min(i, 15)}; border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">C\xE2u ${esc2(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${hlt(q.question || "")}</div><div class="libraryV2Answer"><b>\u0110\xE1p \xE1n: ${esc2(a)}</b><span>${hlt(answerText2(q))}</span></div></div>${miniImg(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-stable-study="${i}" title="H\u1ECDc c\xE2u n\xE0y">H\u1ECDc</button>${bmBtnHTML}<button type="button" class="libraryV2Report" data-stable-report="${i}" title="B\xE1o c\xE1o / s\u1EEDa c\xE2u">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${options(q)}</div>${images(q, open)}</div></article>`;
+      return `<article class="libraryV2Card libraryQuestionCard ${open ? "open" : ""}" data-num="${esc3(q.num || "")}" data-stable-index="${i}" style="--card-index:${Math.min(i, 15)}; border-left-color:${riskColor(r)}!important"><div class="libraryV2Row"><div class="libraryV2Num">C\xE2u ${esc3(q.num || i + 1)}</div><div class="libraryV2Main"><div class="libraryV2Question">${hlt(q.question || "")}</div><div class="libraryV2Answer"><b>\u0110\xE1p \xE1n: ${esc3(a)}</b><span>${hlt(answerText3(q))}</span></div></div>${miniImg(q)}<div class="libraryV2Actions"><button type="button" class="libraryV2Study" data-stable-study="${i}" title="H\u1ECDc c\xE2u n\xE0y">H\u1ECDc</button>${bmBtnHTML}<button type="button" class="libraryV2Report" data-stable-report="${i}" title="B\xE1o c\xE1o / s\u1EEDa c\xE2u">!</button></div></div><div class="libraryV2Details"><div class="libraryOptions">${options(q)}</div>${images(q, open)}</div></article>`;
     }
     function showLibrarySkeleton() {
-      const list = $2("studyList");
+      const list = $3("studyList");
       if (!list) return;
       delete list.dataset.renderedHash;
       list.innerHTML = `
@@ -6101,35 +9609,35 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       const base = searchList();
       lastList = base.filter(passFilter);
       renderFilters(base, lastList);
-      const list = $2("studyList");
+      const list = $3("studyList");
       if (!list) return;
       const newHtml = lastList.length ? lastList.map(card).join("") : '<div class="libraryStableEmpty"><b>Kh\xF4ng c\xF3 c\xE2u ph\xF9 h\u1EE3p.</b><button type="button" data-stable-clear-all>X\xF3a t\xECm ki\u1EBFm & b\u1ED9 l\u1ECDc</button></div>';
       if (list.dataset.renderedHash === newHtml) {
-        if ($2("libStableClear"))
-          $2("libStableClear").classList.toggle("show", !!(($2("search") || $2("studySearch"))?.value || "").trim());
+        if ($3("libStableClear"))
+          $3("libStableClear").classList.toggle("show", !!(($3("search") || $3("studySearch"))?.value || "").trim());
         return;
       }
       list.dataset.renderedHash = newHtml;
       list.innerHTML = newHtml;
-      if ($2("libStableClear"))
-        $2("libStableClear").classList.toggle("show", !!(($2("search") || $2("studySearch"))?.value || "").trim());
+      if ($3("libStableClear"))
+        $3("libStableClear").classList.toggle("show", !!(($3("search") || $3("studySearch"))?.value || "").trim());
     }
     window.renderUnified = renderUnified2;
     window.renderStudy = renderUnified2;
     function setCurrent(q) {
-      let idx = (LHState.pool || []).findIndex((x) => Number(x.num) === Number(q.num));
+      let idx = (LHState2.pool || []).findIndex((x) => Number(x.num) === Number(q.num));
       if (idx < 0) {
-        LHState.pool = [...LHState.RAW];
-        idx = LHState.pool.findIndex((x) => Number(x.num) === Number(q.num));
+        LHState2.pool = [...LHState2.RAW];
+        idx = LHState2.pool.findIndex((x) => Number(x.num) === Number(q.num));
       }
       if (idx >= 0) {
-        LHState.ci = idx;
-        LHState.flipped = false;
-        LHState.flipDir = "horizontal";
+        LHState2.ci = idx;
+        LHState2.flipped = false;
+        LHState2.flipDir = "horizontal";
         try {
           window.renderCard?.();
         } catch (e) {
-          lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
+          lhWarn2("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
         }
         return true;
       }
@@ -6200,12 +9708,12 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         }
         if (e.target.closest("[data-stable-clear-all]")) {
           e.preventDefault();
-          const input = $2("search") || $2("studySearch");
+          const input = $3("search") || $3("studySearch");
           if (input) input.value = "";
           try {
             localStorage.removeItem(SEARCH_STORE);
           } catch (_e) {
-            lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", _e);
+            lhWarn2("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", _e);
           }
           localStorage.setItem(FILTER_STORE, "all");
           renderUnified2();
@@ -6252,18 +9760,18 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     );
     function apply() {
       window.renderStudy = renderUnified2;
-      const s = $2("search") || $2("studySearch");
+      const s = $3("search") || $3("studySearch");
       if (s) {
         try {
           if (!s.value) s.value = localStorage.getItem(SEARCH_STORE) || "";
         } catch (e) {
-          lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
+          lhWarn2("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
         }
         s.oninput = function() {
           try {
             localStorage.setItem(SEARCH_STORE, s.value || "");
           } catch (e) {
-            lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
+            lhWarn2("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
           }
           renderUnified2();
         };
@@ -6272,19 +9780,19 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     }
     window.__renderStudyUnified = renderUnified2;
     window.addEventListener("lh:subject-changed", () => {
-      const s = $2("search") || $2("studySearch");
+      const s = $3("search") || $3("studySearch");
       if (s) s.value = "";
       try {
         localStorage.removeItem(SEARCH_STORE);
       } catch (e) {
-        lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
+        lhWarn2("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
       }
       libraryOpenNums.clear();
       saveOpenState();
       try {
         renderUnified2();
       } catch (e) {
-        lhWarn("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
+        lhWarn2("LIBRARY_UX_STEP1_STABLE_RENDER_20260627", e);
       }
     });
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => setTimeout(apply, 0));
@@ -6312,10 +9820,10 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       if (!subjectClient) subjectClient = window.supabase.createClient(HUB_URL, HUB_KEY);
       return subjectClient;
     }
-    function $2(id) {
+    function $3(id) {
       return document.getElementById(id);
     }
-    function esc2(s) {
+    function esc22(s) {
       return String(s ?? "").replace(
         /[&<>"']/g,
         (c2) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c2]
@@ -6380,7 +9888,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
           })
         }).catch((e) => console.warn("syncUserSubjectToProfile failed:", e));
       } catch (e) {
-        lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
+        lhWarn2("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
       }
     }
     function setSubject2(code) {
@@ -6392,12 +9900,12 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       try {
         if (typeof window.__examResetForSubjectChange === "function") window.__examResetForSubjectChange();
       } catch (e) {
-        lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
+        lhWarn2("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
       }
       try {
         window.dispatchEvent(new CustomEvent("lh:subject-changed", { detail: { code: code || "" } }));
       } catch (e) {
-        lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
+        lhWarn2("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
       }
     }
     function meta(code) {
@@ -6413,10 +9921,10 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     }
     function syncSubjectTexts2() {
       const code = subjectCode();
-      if ($2("subjectInlineText")) $2("subjectInlineText").textContent = code ? label(code) : "Ch\u01B0a ch\u1ECDn m\xF4n";
-      if ($2("hodAccountSubjectText")) $2("hodAccountSubjectText").textContent = code ? label(code) : "Ch\u01B0a ch\u1ECDn m\xF4n";
+      if ($3("subjectInlineText")) $3("subjectInlineText").textContent = code ? label(code) : "Ch\u01B0a ch\u1ECDn m\xF4n";
+      if ($3("hodAccountSubjectText")) $3("hodAccountSubjectText").textContent = code ? label(code) : "Ch\u01B0a ch\u1ECDn m\xF4n";
       ensureChip();
-      const chip = $2("subjectTopChip");
+      const chip = $3("subjectTopChip");
       if (chip) {
         chip.textContent = code ? label(code) : "Ch\u1ECDn m\xF4n";
         chip.classList.toggle("hidden", !logged());
@@ -6425,24 +9933,24 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     }
     function syncGateUserInfo() {
       const u = user();
-      const emailEl = $2("subjectUserEmail");
+      const emailEl = $3("subjectUserEmail");
       if (emailEl) emailEl.textContent = u?.email || "Ch\u01B0a \u0111\u0103ng nh\u1EADp";
-      const avatarEl = $2("subjectUserAvatar");
+      const avatarEl = $3("subjectUserAvatar");
       if (avatarEl) {
         const md = u?.user_metadata || {};
         const avatarUrl = md.avatar_url || md.picture || "";
         const nameStr = md.full_name || md.name || u?.email || "U";
         const initial = nameStr.charAt(0).toUpperCase();
         if (avatarUrl) {
-          avatarEl.innerHTML = `<img src="${esc2(avatarUrl)}" alt="Avatar" class="subjectAvatarImg">`;
+          avatarEl.innerHTML = `<img src="${esc22(avatarUrl)}" alt="Avatar" class="subjectAvatarImg">`;
         } else {
-          avatarEl.innerHTML = `<div class="subjectAvatarInitial">${esc2(initial)}</div>`;
+          avatarEl.innerHTML = `<div class="subjectAvatarInitial">${esc22(initial)}</div>`;
         }
       }
     }
     function ensureChip() {
       const actions = document.querySelector("#fc .actions") || document.querySelector(".actions");
-      if (!actions || $2("subjectTopChip")) return;
+      if (!actions || $3("subjectTopChip")) return;
       const b = document.createElement("button");
       b.id = "subjectTopChip";
       b.type = "button";
@@ -6454,25 +9962,25 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       if (typeof window.fixBrand === "function") window.fixBrand();
     }
     function closeAccountMenu() {
-      $2("hodAccountMenu")?.classList.add("hidden");
+      $3("hodAccountMenu")?.classList.add("hidden");
     }
     function gateOn(on) {
       document.body.classList.toggle("has-subject-gate", !!on);
-      $2("subjectGate")?.classList.toggle("hidden", !on);
-      $2("subjectGate")?.setAttribute("aria-hidden", on ? "false" : "true");
+      $3("subjectGate")?.classList.toggle("hidden", !on);
+      $3("subjectGate")?.setAttribute("aria-hidden", on ? "false" : "true");
     }
     function showErr(msg) {
-      const e = $2("subjectError");
+      const e = $3("subjectError");
       if (e) {
         e.textContent = msg;
         e.classList.remove("hidden");
       }
     }
     function clearErr() {
-      $2("subjectError")?.classList.add("hidden");
+      $3("subjectError")?.classList.add("hidden");
     }
     function showLoading(on, msg = "\u0110ang t\u1EA3i danh s\xE1ch m\xF4n h\u1ECDc...") {
-      const e = $2("subjectLoading");
+      const e = $3("subjectLoading");
       if (e) {
         e.textContent = msg;
         e.classList.toggle("hidden", !on);
@@ -6504,19 +10012,19 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       try {
         store = JSON.parse(localStorage.getItem("learninghub_subject_counts_cache_v3") || "{}") || store;
       } catch (e) {
-        lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
+        lhWarn2("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
       }
       store.counts = store.counts || {};
       store.confirmed = store.confirmed || {};
       const active = localStorage.getItem("learninghub_subject_code_merged_v1") || "";
       const current = {};
       try {
-        (LHState.RAW || []).forEach((q) => {
+        (LHState2.RAW || []).forEach((q) => {
           const code = q.subject_code || active || "";
           if (code) current[code] = (current[code] || 0) + 1;
         });
       } catch (e) {
-        lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
+        lhWarn2("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
       }
       return list.map((s) => {
         const code = s.code || "";
@@ -6557,16 +10065,16 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     }
     function card(s) {
       const rawCode = String(s.code || "");
-      const code = esc2(displayCode(rawCode));
-      const name = esc2(s.name || displayCode(rawCode) || "Ch\u01B0a c\xF3 t\xEAn m\xF4n");
-      const desc = esc2(s.description || "M\xF4n h\u1ECDc ch\u01B0a c\xF3 m\xF4 t\u1EA3.");
+      const code = esc22(displayCode(rawCode));
+      const name = esc22(s.name || displayCode(rawCode) || "Ch\u01B0a c\xF3 t\xEAn m\xF4n");
+      const desc = esc22(s.description || "M\xF4n h\u1ECDc ch\u01B0a c\xF3 m\xF4 t\u1EA3.");
       const rawCount = Number(s.question_count ?? s.questions_count ?? s.count);
       const countText = Number.isFinite(rawCount) ? `${rawCount} c\xE2u` : "\u2014 c\xE2u";
       const status = s.is_active === false ? "T\u1EA1m \u1EA9n" : countText;
       const chosen = pickedCode === s.code;
       const isNew = isNewSubject(s);
       const newBadge = isNew ? '<span class="subjectNewBadge">NEW</span>' : "";
-      return `<button class="subjectCard ${chosen ? "active" : ""} ${isNew ? "hasNewBadge" : ""}" data-code="${esc2(rawCode)}" type="button" title="${code} - ${name} - ${countText}&#10;${desc}">
+      return `<button class="subjectCard ${chosen ? "active" : ""} ${isNew ? "hasNewBadge" : ""}" data-code="${esc22(rawCode)}" type="button" title="${code} - ${name} - ${countText}&#10;${desc}">
       ${newBadge}
       <span class="subjectCardCode"><span>${code}</span></span>
       <span class="subjectCardTitle">${name}</span>
@@ -6578,8 +10086,8 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     </button>`;
     }
     function applyPicked() {
-      if ($2("subjectPickedText")) $2("subjectPickedText").textContent = pickedCode ? label(pickedCode) : "Ch\u01B0a ch\u1ECDn m\xF4n";
-      if ($2("subjectEnter")) $2("subjectEnter").disabled = !pickedCode;
+      if ($3("subjectPickedText")) $3("subjectPickedText").textContent = pickedCode ? label(pickedCode) : "Ch\u01B0a ch\u1ECDn m\xF4n";
+      if ($3("subjectEnter")) $3("subjectEnter").disabled = !pickedCode;
       document.querySelectorAll(".subjectCard").forEach((x) => {
         const active = x.dataset.code === pickedCode;
         x.classList.toggle("active", active);
@@ -6608,11 +10116,11 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       const total = groupTotal(g);
       const isNew = isNewFolder(g.base);
       const holdsPicked = g.items.some((s) => s.code === pickedCode);
-      const names = esc2(g.items.map((s) => displayCode(s.code)).join(" \xB7 "));
-      const title = `${esc2(g.base)} \u2014 ${g.items.length} m\xF4n \xB7 ${total} c\xE2u&#10;${names}`;
-      return `<button class="subjectFolderCard${isNew ? " hasNewBadge" : ""}${holdsPicked ? " holdsPicked" : ""}" type="button" data-folder="${esc2(g.base)}" title="${title}">
+      const names = esc22(g.items.map((s) => displayCode(s.code)).join(" \xB7 "));
+      const title = `${esc22(g.base)} \u2014 ${g.items.length} m\xF4n \xB7 ${total} c\xE2u&#10;${names}`;
+      return `<button class="subjectFolderCard${isNew ? " hasNewBadge" : ""}${holdsPicked ? " holdsPicked" : ""}" type="button" data-folder="${esc22(g.base)}" title="${title}">
       ${isNew ? '<span class="subjectNewBadge">NEW</span>' : ""}
-      <span class="subjectCardCode"><span class="subjectFolderIcon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></span><span>${esc2(g.base)}</span></span>
+      <span class="subjectCardCode"><span class="subjectFolderIcon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></span><span>${esc22(g.base)}</span></span>
       <span class="subjectFolderTag"><span class="subjectFolderBadgeText">TH\u01AF M\u1EE4C</span> \xB7 ${g.items.length} m\xF4n</span>
       <span class="subjectFolderNames">${names}</span>
       <span class="subjectMeta">
@@ -6624,7 +10132,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     function folderBarHTML(g) {
       return `<div class="subjectFolderBar">
       <button class="subjectFolderBack" type="button" data-folder-back="1">\u2190 T\u1EA5t c\u1EA3 m\xF4n</button>
-      <span class="subjectFolderBarCode">${esc2(g.base)}</span>
+      <span class="subjectFolderBarCode">${esc22(g.base)}</span>
       <span class="subjectFolderBarMeta">${g.items.length} m\xF4n \xB7 ${groupTotal(g).toLocaleString("vi-VN")} c\xE2u</span>
     </div>`;
     }
@@ -6634,7 +10142,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     function folderCrumbHost() {
       const bar = tabsBar();
       if (!bar) return null;
-      let host = $2("subjectFolderCrumb");
+      let host = $3("subjectFolderCrumb");
       if (!host) {
         host = document.createElement("div");
         host.id = "subjectFolderCrumb";
@@ -6646,7 +10154,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     function folderMetaHost() {
       const bar = tabsBar();
       if (!bar) return null;
-      let host = $2("subjectFolderCrumbMeta");
+      let host = $3("subjectFolderCrumbMeta");
       if (!host) {
         host = document.createElement("span");
         host.id = "subjectFolderCrumbMeta";
@@ -6667,14 +10175,14 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         return true;
       }
       crumb.innerHTML = `<button class="subjectFolderBack" type="button" data-folder-back="1">\u2190 T\u1EA5t c\u1EA3 m\xF4n</button>
-      <span class="subjectFolderBarCode">${esc2(g.base)}</span>`;
+      <span class="subjectFolderBarCode">${esc22(g.base)}</span>`;
       meta2.textContent = `${g.items.length} m\xF4n \xB7 ${groupTotal(g).toLocaleString("vi-VN")} c\xE2u`;
       return true;
     }
     function renderSubjects2() {
-      const list = $2("subjectList");
+      const list = $3("subjectList");
       if (!list) return;
-      const q = ($2("subjectSearch")?.value || "").trim().toLowerCase();
+      const q = ($3("subjectSearch")?.value || "").trim().toLowerCase();
       const arr = subjectsCache.filter(
         (s) => !q || `${s.code || ""} ${s.name || ""} ${s.description || ""}`.toLowerCase().includes(q)
       );
@@ -6688,7 +10196,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       else if (openGroup)
         list.innerHTML = (crumbDone ? "" : folderBarHTML(openGroup)) + openGroup.items.map(card).join("");
       else list.innerHTML = groups.map((g) => g.items.length < 2 ? g.items.map(card).join("") : folderHTML(g)).join("");
-      $2("subjectEmpty")?.classList.toggle("hidden", !!arr.length);
+      $3("subjectEmpty")?.classList.toggle("hidden", !!arr.length);
       list.querySelectorAll(".subjectCard").forEach(
         (x) => x.onclick = () => {
           pickedCode = x.dataset.code;
@@ -6710,8 +10218,8 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         }
       );
       applyPicked();
-      const searchVal = $2("subjectSearch")?.value || "";
-      if ($2("subjectSearchClear")) $2("subjectSearchClear").classList.toggle("hidden", !searchVal);
+      const searchVal = $3("subjectSearch")?.value || "";
+      if ($3("subjectSearchClear")) $3("subjectSearchClear").classList.toggle("hidden", !searchVal);
     }
     let lastRefreshTime = 0;
     async function refreshSubjects(force = false, autoOpenPickedFolder = false) {
@@ -6768,7 +10276,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         const json = await res.json().catch(() => ({}));
         if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c questions t\u1EEB Turso");
         const data = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
-        LHState.RAW = data.map((r) => ({
+        LHState2.RAW = data.map((r) => ({
           id: r.id,
           subject_code: r.subject_code || code,
           num: r.num,
@@ -6788,33 +10296,33 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
           __imagesChecked: true,
           __imagesLoaded: true
         }));
-        LHState.pool = [...LHState.RAW];
+        LHState2.pool = [...LHState2.RAW];
         var _saved = +localStorage.getItem("learninghub_progress_" + code) || 0;
-        LHState.ci = Math.max(0, Math.min(_saved, Math.max(0, LHState.pool.length - 1)));
-        LHState.flipped = false;
-        if ($2("idx")) $2("idx").textContent = LHState.pool.length ? String(LHState.ci + 1) : "0";
-        if ($2("total")) $2("total").textContent = String(LHState.pool.length);
+        LHState2.ci = Math.max(0, Math.min(_saved, Math.max(0, LHState2.pool.length - 1)));
+        LHState2.flipped = false;
+        if ($3("idx")) $3("idx").textContent = LHState2.pool.length ? String(LHState2.ci + 1) : "0";
+        if ($3("total")) $3("total").textContent = String(LHState2.pool.length);
         updateBrand(code);
         syncSubjectTexts2();
         try {
           if (typeof window.__examResetForSubjectChange === "function") window.__examResetForSubjectChange();
         } catch (e) {
-          lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
+          lhWarn2("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
         }
         try {
           window.renderCard?.();
         } catch (e) {
-          lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
+          lhWarn2("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
         }
         try {
           window.renderQuiz?.();
         } catch (e) {
-          lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
+          lhWarn2("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
         }
         try {
           window.renderStudy?.();
         } catch (e) {
-          lhWarn("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
+          lhWarn2("LEARNING_HUB_MERGED_SUBJECT_PATCH", e);
         }
         notifyUX("\u0110\xE3 t\u1EA3i " + label(code));
         return true;
@@ -6826,7 +10334,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     }
     async function enterSubject() {
       if (!pickedCode) return;
-      const btn = $2("subjectEnter");
+      const btn = $3("subjectEnter");
       if (btn) {
         btn.disabled = true;
         btn.textContent = "\u0110ang t\u1EA3i...";
@@ -6882,8 +10390,8 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       };
     }
     function ensureChangeBtn() {
-      if (!$2("hodChangeSubjectBtn")) return;
-      $2("hodChangeSubjectBtn").onclick = (e) => {
+      if (!$3("hodChangeSubjectBtn")) return;
+      $3("hodChangeSubjectBtn").onclick = (e) => {
         e?.preventDefault?.();
         openGate(true);
       };
@@ -6897,22 +10405,22 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       patchSubmit();
       patchSignOut();
       syncSubjectTexts2();
-      $2("subjectRefresh")?.addEventListener("click", () => refreshSubjects(true));
-      $2("subjectSearch")?.addEventListener("input", () => {
-        if ($2("subjectSearchClear")) $2("subjectSearchClear").classList.toggle("hidden", !$2("subjectSearch").value);
+      $3("subjectRefresh")?.addEventListener("click", () => refreshSubjects(true));
+      $3("subjectSearch")?.addEventListener("input", () => {
+        if ($3("subjectSearchClear")) $3("subjectSearchClear").classList.toggle("hidden", !$3("subjectSearch").value);
         renderSubjects2();
       });
-      $2("subjectSearchClear")?.addEventListener("click", () => {
-        const inp = $2("subjectSearch");
+      $3("subjectSearchClear")?.addEventListener("click", () => {
+        const inp = $3("subjectSearch");
         if (inp) {
           inp.value = "";
           inp.focus();
         }
-        if ($2("subjectSearchClear")) $2("subjectSearchClear").classList.add("hidden");
+        if ($3("subjectSearchClear")) $3("subjectSearchClear").classList.add("hidden");
         renderSubjects2();
       });
-      $2("subjectEnter")?.addEventListener("click", enterSubject);
-      $2("subjectLogout")?.addEventListener("click", logoutGate);
+      $3("subjectEnter")?.addEventListener("click", enterSubject);
+      $3("subjectLogout")?.addEventListener("click", logoutGate);
       const runSubjectCheckOnce = () => {
         if (window.__LHCheckedOnce) return;
         if (!logged() || !isApproved()) return;
@@ -6958,7 +10466,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         try {
           active.blur();
         } catch (e) {
-          lhWarn("FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629", e);
+          lhWarn2("FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629", e);
         }
       }
     }
@@ -7019,7 +10527,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       try {
         localStorage.setItem(STORE2, JSON.stringify(data || {}));
       } catch (e) {
-        lhWarn("SUBJECT_COUNTS_ONCE_CACHE_20260629", e);
+        lhWarn2("SUBJECT_COUNTS_ONCE_CACHE_20260629", e);
       }
     }
     function dirty() {
@@ -7029,7 +10537,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       try {
         on ? localStorage.setItem(DIRTY, "1") : localStorage.removeItem(DIRTY);
       } catch (e) {
-        lhWarn("SUBJECT_COUNTS_ONCE_CACHE_20260629", e);
+        lhWarn2("SUBJECT_COUNTS_ONCE_CACHE_20260629", e);
       }
     }
     function ensureStore() {
@@ -7042,13 +10550,13 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     function localCount(code) {
       try {
         const active = activeSubject();
-        if (active === code && Array.isArray(LHState.RAW) && LHState.RAW.length) return LHState.RAW.length;
-        if (Array.isArray(LHState.RAW)) {
-          const n = LHState.RAW.filter((q) => (q.subject_code || active) === code).length;
+        if (active === code && Array.isArray(LHState2.RAW) && LHState2.RAW.length) return LHState2.RAW.length;
+        if (Array.isArray(LHState2.RAW)) {
+          const n = LHState2.RAW.filter((q) => (q.subject_code || active) === code).length;
           return n > 0 ? n : null;
         }
       } catch (e) {
-        lhWarn("SUBJECT_COUNTS_ONCE_CACHE_20260629", e);
+        lhWarn2("SUBJECT_COUNTS_ONCE_CACHE_20260629", e);
       }
       return null;
     }
@@ -7171,12 +10679,12 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       try {
         KEYS.forEach((k) => localStorage.removeItem(k));
       } catch (e) {
-        lhWarn("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
+        lhWarn2("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
       }
       try {
         localStorage.setItem("learninghub_subject_gate_tab_v1", "list");
       } catch (e) {
-        lhWarn("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
+        lhWarn2("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
       }
       const ids = ["addSubjectCode", "addSubjectName", "addSubjectDesc", "userImportData", "userImportFile"];
       ids.forEach((id) => {
@@ -7209,14 +10717,14 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       try {
         cleared = sessionStorage.getItem(SESSION_KEY) || "";
       } catch (e) {
-        lhWarn("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
+        lhWarn2("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
       }
       if (cleared === uid) return;
       clearAddSubjectDraft();
       try {
         sessionStorage.setItem(SESSION_KEY, uid);
       } catch (e) {
-        lhWarn("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
+        lhWarn2("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
       }
     }
     function patchAuthMethods() {
@@ -7229,7 +10737,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
           try {
             sessionStorage.removeItem(SESSION_KEY);
           } catch (e) {
-            lhWarn("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
+            lhWarn2("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
           }
           return oldGoogle.apply(this, arguments);
         };
@@ -7241,7 +10749,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
           try {
             sessionStorage.removeItem(SESSION_KEY);
           } catch (e) {
-            lhWarn("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
+            lhWarn2("CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629", e);
           }
           return oldSignOut.apply(this, arguments);
         };
@@ -7275,7 +10783,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       try {
         localStorage.setItem(STORE2, JSON.stringify({ counts: counts || {}, confirmed: counts || {}, at: Date.now() }));
       } catch (e) {
-        lhWarn("TURSO_SUBJECT_COUNTS_FALLBACK_20260630", e);
+        lhWarn2("TURSO_SUBJECT_COUNTS_FALLBACK_20260630", e);
       }
     }
     function norm(code) {
@@ -7420,9 +10928,9 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
   try {
     edits = JSON.parse(localStorage.getItem(STORE) || "{}");
   } catch (e) {
-    lhWarn("merged", e);
+    lhWarn2("merged", e);
   }
-  function notify(msg) {
+  function notify2(msg) {
     const t = document.getElementById("toast");
     if (!t) return;
     t.textContent = msg;
@@ -7434,7 +10942,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       t.classList.remove("show");
     }, 2200);
   }
-  function showProgress(title, current, total, detail = "") {
+  function showProgress2(title, current, total, detail = "") {
     let el = document.getElementById("adminProgressOverlay");
     if (!el) {
       el = document.createElement("div");
@@ -7461,26 +10969,26 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     document.getElementById("adminProgressDetail").textContent = detail;
     el.classList.remove("hidden");
   }
-  function hideProgress() {
+  function hideProgress2() {
     const el = document.getElementById("adminProgressOverlay");
     if (el) el.classList.add("hidden");
   }
-  window.showProgress = showProgress;
-  window.hideProgress = hideProgress;
+  window.showProgress = showProgress2;
+  window.hideProgress = hideProgress2;
   initState(BASE);
   function rebuild() {
-    LHState.RAW = BASE.map((c) => Object.assign(clone(c), edits[c.num] || {}));
-    LHState.pool = LHState.pool.length ? LHState.pool.map((o) => LHState.RAW.find((c) => c.num === o.num) || o) : [...LHState.RAW];
+    LHState2.RAW = BASE.map((c) => Object.assign(clone(c), edits[c.num] || {}));
+    LHState2.pool = LHState2.pool.length ? LHState2.pool.map((o) => LHState2.RAW.find((c) => c.num === o.num) || o) : [...LHState2.RAW];
   }
   rebuild();
-  var $ = (id) => document.getElementById(id);
+  var $2 = (id) => document.getElementById(id);
   function optionsHTML(c) {
-    return Object.entries(c.options || {}).map(([k, v]) => `<div class="opt"><div class="letter">${k}</div><div class="ot">${esc(v)}</div></div>`).join("");
+    return Object.entries(c.options || {}).map(([k, v]) => `<div class="opt"><div class="letter">${k}</div><div class="ot">${esc2(v)}</div></div>`).join("");
   }
-  function imgsHTML(c) {
+  function imgsHTML2(c) {
     const liveImgsHTML = window.imgsHTML;
-    if (typeof liveImgsHTML === "function" && liveImgsHTML !== imgsHTML) return liveImgsHTML(c);
-    return (c.images || []).map((im) => `<img src="${esc(im.src)}" alt="" loading="lazy" decoding="async">`).join("");
+    if (typeof liveImgsHTML === "function" && liveImgsHTML !== imgsHTML2) return liveImgsHTML(c);
+    return (c.images || []).map((im) => `<img src="${esc2(im.src)}" alt="" loading="lazy" decoding="async">`).join("");
   }
   function setv(k, v) {
     document.documentElement.style.setProperty(k, v);
@@ -7505,40 +11013,40 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     setv("--tagpad", "3px 10px");
     setv("--ogap", "8px");
   }
-  function renderAllSafe() {
+  function renderAllSafe2() {
     try {
-      renderCard?.();
+      renderCard2?.();
     } catch (e) {
       console.warn("[renderCard]", e);
     }
     try {
-      renderQuiz?.();
+      renderQuiz2?.();
     } catch (e) {
       console.warn("[renderQuiz]", e);
     }
     try {
-      renderStudy?.();
+      renderStudy2?.();
     } catch (e) {
       console.warn("[renderStudy]", e);
     }
   }
-  window.renderAllSafe = renderAllSafe;
-  function renderCard() {
-    let c = LHState.pool[LHState.ci] || LHState.RAW[0];
+  window.renderAllSafe = renderAllSafe2;
+  function renderCard2() {
+    let c = LHState2.pool[LHState2.ci] || LHState2.RAW[0];
     if (!c) return;
     fit(c);
     applyCardFontSize();
-    const __idxEl = $("idx");
-    if (__idxEl) __idxEl.textContent = LHState.ci + 1;
-    const __totalEl = $("total");
-    if (__totalEl) __totalEl.textContent = LHState.pool.length;
-    const __barEl = $("bar");
-    if (__barEl) __barEl.style.width = (LHState.pool.length ? (LHState.ci + 1) / LHState.pool.length * 100 : 0) + "%";
-    const __tagEl = $("tag");
+    const __idxEl = $2("idx");
+    if (__idxEl) __idxEl.textContent = LHState2.ci + 1;
+    const __totalEl = $2("total");
+    if (__totalEl) __totalEl.textContent = LHState2.pool.length;
+    const __barEl = $2("bar");
+    if (__barEl) __barEl.style.width = (LHState2.pool.length ? (LHState2.ci + 1) / LHState2.pool.length * 100 : 0) + "%";
+    const __tagEl = $2("tag");
     if (__tagEl) __tagEl.textContent = "C\xC2U " + c.num;
-    const __qEl = $("question");
+    const __qEl = $2("question");
     if (__qEl) __qEl.textContent = c.question;
-    const __imgEl = $("images");
+    const __imgEl = $2("images");
     const __imgKey = JSON.stringify(
       (c.images || []).map(
         (im) => String(
@@ -7547,57 +11055,57 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       )
     );
     if (__imgEl.dataset.imgKey !== __imgKey) {
-      __imgEl.innerHTML = imgsHTML(c);
+      __imgEl.innerHTML = imgsHTML2(c);
       __imgEl.dataset.imgKey = __imgKey;
     }
     __imgEl.style.display = c.images && c.images.length ? "flex" : "none";
     document.querySelector("#fc .front")?.classList.toggle("hasImg", !!(c.images && c.images.length));
-    $("options").innerHTML = optionsHTML(c);
-    $("options").classList.remove("hide");
-    LHState.hideOptions = false;
+    $2("options").innerHTML = optionsHTML(c);
+    $2("options").classList.remove("hide");
+    LHState2.hideOptions = false;
     applyCardFontSize();
     updateCardTools();
     if (typeof window.updateBookmarkBtn === "function") window.updateBookmarkBtn();
-    $("ansLetter").textContent = (c.answer || "").split("").join(", ");
-    $("ansText").innerHTML = esc(c.answer_text || answerText(c)).replace(/; /g, "<br>");
-    $("card").classList.remove("dir-horizontal", "dir-up", "dir-down");
-    $("card").classList.add("dir-" + LHState.flipDir);
-    $("card").classList.toggle("flip", LHState.flipped);
-    $("mode").textContent = LHState.flipMode === "single" ? "1x" : "2x";
+    $2("ansLetter").textContent = (c.answer || "").split("").join(", ");
+    $2("ansText").innerHTML = esc2(c.answer_text || answerText2(c)).replace(/; /g, "<br>");
+    $2("card").classList.remove("dir-horizontal", "dir-up", "dir-down");
+    $2("card").classList.add("dir-" + LHState2.flipDir);
+    $2("card").classList.toggle("flip", LHState2.flipped);
+    $2("mode").textContent = LHState2.flipMode === "single" ? "1x" : "2x";
     var _sc = localStorage.getItem("learninghub_subject_code_merged_v1") || "";
-    localStorage.setItem("hod102_ci", LHState.ci);
-    if (_sc) localStorage.setItem("learninghub_progress_" + _sc, LHState.ci);
-    localStorage.setItem("hod102_flip_mode", LHState.flipMode);
+    localStorage.setItem("hod102_ci", LHState2.ci);
+    if (_sc) localStorage.setItem("learninghub_progress_" + _sc, LHState2.ci);
+    localStorage.setItem("hod102_flip_mode", LHState2.flipMode);
   }
   function flip(dir = "horizontal") {
-    LHState.flipDir = dir;
-    LHState.flipped = !LHState.flipped;
-    renderCard();
+    LHState2.flipDir = dir;
+    LHState2.flipped = !LHState2.flipped;
+    renderCard2();
   }
-  function next() {
-    LHState.ci = (LHState.ci + 1) % LHState.pool.length;
-    LHState.flipped = false;
-    LHState.flipDir = "horizontal";
-    renderCard();
+  function next2() {
+    LHState2.ci = (LHState2.ci + 1) % LHState2.pool.length;
+    LHState2.flipped = false;
+    LHState2.flipDir = "horizontal";
+    renderCard2();
   }
-  function prev() {
-    LHState.ci = (LHState.ci - 1 + LHState.pool.length) % LHState.pool.length;
-    LHState.flipped = false;
-    LHState.flipDir = "horizontal";
-    renderCard();
+  function prev2() {
+    LHState2.ci = (LHState2.ci - 1 + LHState2.pool.length) % LHState2.pool.length;
+    LHState2.flipped = false;
+    LHState2.flipDir = "horizontal";
+    renderCard2();
   }
   function shuffle() {
-    for (let i = LHState.pool.length - 1; i > 0; i--) {
+    for (let i = LHState2.pool.length - 1; i > 0; i--) {
       let j = Math.floor(Math.random() * (i + 1));
-      [LHState.pool[i], LHState.pool[j]] = [LHState.pool[j], LHState.pool[i]];
+      [LHState2.pool[i], LHState2.pool[j]] = [LHState2.pool[j], LHState2.pool[i]];
     }
-    LHState.ci = 0;
-    LHState.flipped = false;
-    LHState.flipDir = "horizontal";
-    LHState.randomActive = false;
+    LHState2.ci = 0;
+    LHState2.flipped = false;
+    LHState2.flipDir = "horizontal";
+    LHState2.randomActive = false;
     localStorage.setItem("hod102_random_active", "0");
-    renderCard();
-    let sh = $("shuffle");
+    renderCard2();
+    let sh = $2("shuffle");
     if (sh) {
       sh.classList.add("flash");
       setTimeout(() => sh.classList.remove("flash"), 650);
@@ -7607,20 +11115,20 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
   function reset(force) {
     if (force !== true && __allowUserReset !== true) {
       try {
-        renderCard();
+        renderCard2();
       } catch (e) {
-        lhWarn("appCore", e);
+        lhWarn2("appCore", e);
       }
       return;
     }
     __allowUserReset = false;
-    LHState.pool = [...LHState.RAW];
-    LHState.ci = 0;
-    LHState.flipped = false;
-    LHState.flipDir = "horizontal";
-    LHState.randomActive = false;
+    LHState2.pool = [...LHState2.RAW];
+    LHState2.ci = 0;
+    LHState2.flipped = false;
+    LHState2.flipDir = "horizontal";
+    LHState2.randomActive = false;
     localStorage.setItem("hod102_random_active", "0");
-    renderCard();
+    renderCard2();
   }
   function triggerReset() {
     __allowUserReset = true;
@@ -7630,60 +11138,60 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     try {
       localStorage.setItem("learninghub_last_tab_v1", n);
     } catch (e) {
-      lhWarn("appCore", e);
+      lhWarn2("appCore", e);
     }
     document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
     if (b) b.classList.add("active");
     document.querySelectorAll(".pane").forEach((x) => x.classList.remove("active"));
-    const targetPane = $(n);
+    const targetPane = $2(n);
     if (targetPane) targetPane.classList.add("active");
     const portal = document.getElementById("kizspyExamPortal");
     if (n !== "quiz") {
       document.body.classList.remove("kizspy-active");
       if (portal) portal.remove();
     }
-    if (n === "study") renderStudy();
+    if (n === "study") renderStudy2();
     if (n === "quiz")
       try {
-        renderQuiz();
+        renderQuiz2();
       } catch (e) {
-        lhWarn("appCore", e);
+        lhWarn2("appCore", e);
       }
     if (typeof window.fixCounter === "function") window.fixCounter();
   }
   function syncQuizSet() {
-    if (LHState.qSet && LHState.qSet.length) {
-      LHState.qSet = LHState.qSet.map((c) => LHState.RAW.find((x) => x.num === c.num) || c);
+    if (LHState2.qSet && LHState2.qSet.length) {
+      LHState2.qSet = LHState2.qSet.map((c) => LHState2.RAW.find((x) => x.num === c.num) || c);
     }
   }
-  function renderQuiz() {
+  function renderQuiz2() {
     const liveRenderQuiz = window.renderQuiz;
-    if (typeof liveRenderQuiz === "function" && liveRenderQuiz !== renderQuiz) return liveRenderQuiz();
+    if (typeof liveRenderQuiz === "function" && liveRenderQuiz !== renderQuiz2) return liveRenderQuiz();
     if (typeof window.__examOnlyRender === "function") return window.__examOnlyRender();
-    const body = $("quizBody");
+    const body = $2("quizBody");
     if (body) body.innerHTML = "";
   }
-  function smart(q) {
+  function smart2(q) {
     q = q.trim().toLowerCase();
-    if (!q) return LHState.RAW;
+    if (!q) return LHState2.RAW;
     let m = q.match(/^#(\d+)$/);
-    if (m) return LHState.RAW.filter((c) => c.num === +m[1]);
+    if (m) return LHState2.RAW.filter((c) => c.num === +m[1]);
     m = q.match(/^answer\s*:\s*([a-e]+)$/i);
-    if (m) return LHState.RAW.filter((c) => sortAns(c.answer) === sortAns(m[1].toUpperCase()));
-    if (["multi", "multiple", "ch\u1ECDn nhi\u1EC1u"].includes(q)) return LHState.RAW.filter((c) => c.answer.length > 1);
-    return LHState.RAW.filter(
+    if (m) return LHState2.RAW.filter((c) => sortAns(c.answer) === sortAns(m[1].toUpperCase()));
+    if (["multi", "multiple", "ch\u1ECDn nhi\u1EC1u"].includes(q)) return LHState2.RAW.filter((c) => c.answer.length > 1);
+    return LHState2.RAW.filter(
       (c) => (String(c.num) + " " + c.question + " " + c.answer + " " + (c.answer_text || "") + " " + Object.values(c.options).join(" ")).toLowerCase().includes(q)
     );
   }
-  function renderStudy() {
+  function renderStudy2() {
     const liveRenderStudy = window.renderStudy;
-    if (typeof liveRenderStudy === "function" && liveRenderStudy !== renderStudy) return liveRenderStudy();
-    let arr = smart($("search").value || ""), max = arr.length;
-    $("studyList").innerHTML = arr.slice(0, max).map(
-      (c) => `<div class="sitem"><div class="snum">C\xC2U ${c.num}</div><div class="sq">${esc(c.question)}</div><div class="qimgs">${imgsHTML(c)}</div><div class="sopts">${Object.entries(
+    if (typeof liveRenderStudy === "function" && liveRenderStudy !== renderStudy2) return liveRenderStudy();
+    let arr = smart2($2("search").value || ""), max = arr.length;
+    $2("studyList").innerHTML = arr.slice(0, max).map(
+      (c) => `<div class="sitem"><div class="snum">C\xC2U ${c.num}</div><div class="sq">${esc2(c.question)}</div><div class="qimgs">${imgsHTML2(c)}</div><div class="sopts">${Object.entries(
         c.options
       ).map(
-        ([k, v]) => `<div class="sopt ${c.answer.includes(k) ? "ans" : ""}"><div class="skey">${c.answer.includes(k) ? "\u2713" : k}</div><div>${esc(k + ". " + v)}</div></div>`
+        ([k, v]) => `<div class="sopt ${c.answer.includes(k) ? "ans" : ""}"><div class="skey">${c.answer.includes(k) ? "\u2713" : k}</div><div>${esc2(k + ". " + v)}</div></div>`
       ).join("")}</div></div>`
     ).join("") + (arr.length > max ? `<div class="more">\u0110ang hi\u1EC3n th\u1ECB ${max} / ${arr.length} k\u1EBFt qu\u1EA3.</div>` : arr.length ? "" : '<div class="more">Kh\xF4ng t\xECm th\u1EA5y k\u1EBFt qu\u1EA3.</div>');
   }
@@ -7692,22 +11200,22 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     if (typeof liveOpenEditor === "function" && liveOpenEditor !== openEditor2) return liveOpenEditor();
     console.warn("[openEditor] ch\u01B0a c\xF3 b\u1EA3n th\u1EADt t\u1EEB ./editor.js");
   }
-  function renderEditImages() {
+  function renderEditImages2() {
     const liveRenderEditImages = window.renderEditImages;
-    if (typeof liveRenderEditImages === "function" && liveRenderEditImages !== renderEditImages)
+    if (typeof liveRenderEditImages === "function" && liveRenderEditImages !== renderEditImages2)
       return liveRenderEditImages();
-    let box = $("editImgs");
+    let box = $2("editImgs");
     if (!box) {
-      const input = $("imgUpload");
+      const input = $2("imgUpload");
       if (!input) return;
       box = document.createElement("div");
       box.id = "editImgs";
       box.className = "editImgs";
       input.insertAdjacentElement("afterend", box);
     }
-    box.innerHTML = (LHState.editDraft.images || []).map((im, i) => {
+    box.innerHTML = (LHState2.editDraft.images || []).map((im, i) => {
       const src = im && typeof im === "object" ? im.src || im.url || im.secure_url || im.publicUrl || im.public_url || "" : im;
-      return `<div class="editImg"><button class="rm" data-rm="${i}">\xD7</button><img src="${esc(src)}" loading="lazy" decoding="async"><input class="imgUrlBox" value="${esc(src)}" readonly onclick="this.select()" title="B\u1EA5m \u0111\u1EC3 ch\u1ECDn URL \u1EA3nh" style="margin-top:6px;width:100%;max-width:260px;border:1px solid rgba(200,169,110,.24);border-radius:10px;background:rgba(0,0,0,.22);color:var(--gold2);padding:7px;font-size:.72rem;"></div>`;
+      return `<div class="editImg"><button class="rm" data-rm="${i}">\xD7</button><img src="${esc2(src)}" loading="lazy" decoding="async"><input class="imgUrlBox" value="${esc2(src)}" readonly onclick="this.select()" title="B\u1EA5m \u0111\u1EC3 ch\u1ECDn URL \u1EA3nh" style="margin-top:6px;width:100%;max-width:260px;border:1px solid rgba(200,169,110,.24);border-radius:10px;background:rgba(0,0,0,.22);color:var(--gold2);padding:7px;font-size:.72rem;"></div>`;
     }).join("") || '<p style="color:var(--mist)">Ch\u01B0a c\xF3 h\xECnh.</p>';
   }
   function saveEditor() {
@@ -7721,18 +11229,18 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
   }
   window.__LHSaveLocalEdit = saveLocalEdit;
   function restoreEditor() {
-    delete edits[LHState.editDraft.num];
+    delete edits[LHState2.editDraft.num];
     localStorage.setItem(STORE, JSON.stringify(edits));
     rebuild();
     syncQuizSet();
-    renderCard();
-    renderQuiz();
-    renderStudy();
-    $("editModal").classList.add("hidden");
-    notify("\u0110\xE3 kh\xF4i ph\u1EE5c");
+    renderCard2();
+    renderQuiz2();
+    renderStudy2();
+    $2("editModal").classList.add("hidden");
+    notify2("\u0110\xE3 kh\xF4i ph\u1EE5c");
   }
   window.__LHRestoreEditor = restoreEditor;
-  window.notify = notify;
+  window.notify = notify2;
   function exportEdits() {
     let blob = new Blob([JSON.stringify(edits, null, 2)], { type: "application/json" }), a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -7747,10 +11255,10 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         edits = JSON.parse(fr.result) || {};
         localStorage.setItem(STORE, JSON.stringify(edits));
         rebuild();
-        renderCard();
-        renderQuiz();
-        renderStudy();
-        notify("\u0110\xE3 nh\u1EADp file s\u1EEDa");
+        renderCard2();
+        renderQuiz2();
+        renderStudy2();
+        notify2("\u0110\xE3 nh\u1EADp file s\u1EEDa");
       } catch (e) {
         alert("File JSON kh\xF4ng h\u1EE3p l\u1EC7");
       }
@@ -7758,11 +11266,11 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     fr.readAsText(f);
   }
   function applyCardFontSize() {
-    let n = parseFloat(LHState.cardFontSize || "1");
+    let n = parseFloat(LHState2.cardFontSize || "1");
     if (!isFinite(n)) n = 1;
     n = Math.max(0.8, Math.min(1.3, n));
-    LHState.cardFontSize = String(n);
-    let root = document.documentElement, fc = $("fc");
+    LHState2.cardFontSize = String(n);
+    let root = document.documentElement, fc = $2("fc");
     let set = (k, v) => {
       root.style.setProperty(k, v);
       if (fc) fc.style.setProperty(k, v);
@@ -7774,17 +11282,17 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     set("--card-letter", (24 * Math.min(1.2, base)).toFixed(0) + "px");
     set("--card-letterfs", (0.72 * base).toFixed(3) + "rem");
     localStorage.setItem("hod102_card_font_size_v3", String(n));
-    if ($("stCardFont")) $("stCardFont").value = Math.round(n * 100);
-    if ($("stCardFontState")) $("stCardFontState").textContent = Math.round(n * 100) + "%";
+    if ($2("stCardFont")) $2("stCardFont").value = Math.round(n * 100);
+    if ($2("stCardFontState")) $2("stCardFontState").textContent = Math.round(n * 100) + "%";
   }
   function updateCardTools() {
-    LHState.hideOptions = false;
+    LHState2.hideOptions = false;
     try {
       localStorage.removeItem("hod102_hide_options");
     } catch (e) {
-      lhWarn("appCore", e);
+      lhWarn2("appCore", e);
     }
-    let sh = $("shuffle"), eye = $("toggleOpts");
+    let sh = $2("shuffle"), eye = $2("toggleOpts");
     if (sh) {
       sh.classList.remove("active");
       sh.title = "X\xE1o ng\u1EABu nhi\xEAn";
@@ -7800,12 +11308,12 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     }
   }
   function setupCardTools() {
-    let card = $("card");
-    if (!card || $("cardTools")) return;
+    let card = $2("card");
+    if (!card || $2("cardTools")) return;
     let tools = document.createElement("div");
     tools.id = "cardTools";
     tools.className = "cardTools";
-    let sh = $("shuffle"), eye = $("toggleOpts"), ed = $("editCard");
+    let sh = $2("shuffle"), eye = $2("toggleOpts"), ed = $2("editCard");
     if (eye) eye.remove();
     if (sh) {
       sh.textContent = "\u2682";
@@ -7818,55 +11326,55 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     updateCardTools();
   }
   function updateSettingsUI() {
-    if (!$("stFlipState")) return;
-    $("stFlipState").textContent = "\u0110ang d\xF9ng: " + (LHState.flipMode === "single" ? "1x - b\u1EA5m 1 l\u1EA7n \u0111\u1EC3 l\u1EADt" : "2x - h\u1EA1n ch\u1EBF l\u1EADt nh\u1EA7m");
-    if ($("stOptState")) $("stOptState").textContent = "\u0110ang hi\u1EC7n l\u1EF1a ch\u1ECDn";
-    if ($("stToggleOpts")) $("stToggleOpts").style.display = "none";
-    if ($("stGoInput")) $("stGoInput").value = LHState.pool[LHState.ci]?.num || "";
+    if (!$2("stFlipState")) return;
+    $2("stFlipState").textContent = "\u0110ang d\xF9ng: " + (LHState2.flipMode === "single" ? "1x - b\u1EA5m 1 l\u1EA7n \u0111\u1EC3 l\u1EADt" : "2x - h\u1EA1n ch\u1EBF l\u1EADt nh\u1EA7m");
+    if ($2("stOptState")) $2("stOptState").textContent = "\u0110ang hi\u1EC7n l\u1EF1a ch\u1ECDn";
+    if ($2("stToggleOpts")) $2("stToggleOpts").style.display = "none";
+    if ($2("stGoInput")) $2("stGoInput").value = LHState2.pool[LHState2.ci]?.num || "";
     applyCardFontSize();
     updateCardTools();
   }
   function toggleFlipMode() {
-    LHState.flipMode = LHState.flipMode === "single" ? "double" : "single";
-    LHState.flipped = false;
-    renderCard();
+    LHState2.flipMode = LHState2.flipMode === "single" ? "double" : "single";
+    LHState2.flipped = false;
+    renderCard2();
     updateSettingsUI();
   }
   function goToQuestionNum() {
-    let n = +$("stGoInput").value;
+    let n = +$2("stGoInput").value;
     if (!n) {
       alert("Nh\u1EADp s\u1ED1 c\xE2u tr\u01B0\u1EDBc nha.");
       return;
     }
-    let i = LHState.pool.findIndex((c) => c.num === n);
-    if (i < 0) i = LHState.RAW.findIndex((c) => c.num === n);
+    let i = LHState2.pool.findIndex((c) => c.num === n);
+    if (i < 0) i = LHState2.RAW.findIndex((c) => c.num === n);
     if (i < 0) {
       alert("Kh\xF4ng t\xECm th\u1EA5y c\xE2u " + n);
       return;
     }
-    if (!LHState.pool.find((c) => c.num === n)) LHState.pool = [...LHState.RAW];
-    LHState.ci = i;
-    LHState.flipped = false;
-    renderCard();
+    if (!LHState2.pool.find((c) => c.num === n)) LHState2.pool = [...LHState2.RAW];
+    LHState2.ci = i;
+    LHState2.flipped = false;
+    renderCard2();
     updateSettingsUI();
-    $("settingsModal").classList.add("hidden");
+    $2("settingsModal").classList.add("hidden");
   }
   function init() {
     setupGlobalHeader();
     document.querySelectorAll(".tab").forEach((btn) => btn.onclick = () => switchTab(btn.dataset.tab, btn));
-    $("shuffle").onclick = shuffle;
-    $("reset").onclick = () => triggerReset();
-    if ($("toggleOpts")) $("toggleOpts").remove();
+    $2("shuffle").onclick = shuffle;
+    $2("reset").onclick = () => triggerReset();
+    if ($2("toggleOpts")) $2("toggleOpts").remove();
     try {
       localStorage.removeItem("hod102_hide_options");
     } catch (e) {
-      lhWarn("appCore", e);
+      lhWarn2("appCore", e);
     }
-    $("openSettings").onclick = () => {
-      $("settingsModal").classList.remove("hidden");
+    $2("openSettings").onclick = () => {
+      $2("settingsModal").classList.remove("hidden");
       updateSettingsUI();
     };
-    $("closeSettings").onclick = () => $("settingsModal").classList.add("hidden");
+    $2("closeSettings").onclick = () => $2("settingsModal").classList.add("hidden");
     document.querySelectorAll(".modal,.overlay").forEach((m) => {
       m.addEventListener("mousedown", (e) => {
         if (e.target === m) m.classList.add("hidden");
@@ -7887,70 +11395,70 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       }
     });
     setupCardTools();
-    if ($("toggleGuide"))
-      $("toggleGuide").onclick = () => {
-        let g = $("guidePanel"), open = g.classList.toggle("hidden") === false;
-        $("toggleGuide").textContent = open ? "\u1EA8n h\u01B0\u1EDBng d\u1EABn" : "M\u1EDF h\u01B0\u1EDBng d\u1EABn";
+    if ($2("toggleGuide"))
+      $2("toggleGuide").onclick = () => {
+        let g = $2("guidePanel"), open = g.classList.toggle("hidden") === false;
+        $2("toggleGuide").textContent = open ? "\u1EA8n h\u01B0\u1EDBng d\u1EABn" : "M\u1EDF h\u01B0\u1EDBng d\u1EABn";
       };
-    if ($("stCardFont"))
-      $("stCardFont").oninput = (e) => {
-        LHState.cardFontSize = (+e.target.value / 100).toFixed(2);
+    if ($2("stCardFont"))
+      $2("stCardFont").oninput = (e) => {
+        LHState2.cardFontSize = (+e.target.value / 100).toFixed(2);
         applyCardFontSize();
-        renderCard();
+        renderCard2();
       };
-    if ($("stCardFontReset"))
-      $("stCardFontReset").onclick = () => {
-        LHState.cardFontSize = "1";
+    if ($2("stCardFontReset"))
+      $2("stCardFontReset").onclick = () => {
+        LHState2.cardFontSize = "1";
         applyCardFontSize();
-        renderCard();
+        renderCard2();
         updateSettingsUI();
       };
-    if ($("stToggleFlipMode")) $("stToggleFlipMode").onclick = toggleFlipMode;
-    if ($("stToggleOpts")) $("stToggleOpts").style.display = "none";
-    if ($("stShuffle"))
-      $("stShuffle").onclick = () => {
+    if ($2("stToggleFlipMode")) $2("stToggleFlipMode").onclick = toggleFlipMode;
+    if ($2("stToggleOpts")) $2("stToggleOpts").style.display = "none";
+    if ($2("stShuffle"))
+      $2("stShuffle").onclick = () => {
         shuffle();
         updateSettingsUI();
       };
-    if ($("stReset"))
-      $("stReset").onclick = () => {
+    if ($2("stReset"))
+      $2("stReset").onclick = () => {
         triggerReset();
         updateSettingsUI();
       };
-    if ($("stGo")) $("stGo").onclick = goToQuestionNum;
-    if ($("stGoInput"))
-      $("stGoInput").onkeydown = (e) => {
+    if ($2("stGo")) $2("stGo").onclick = goToQuestionNum;
+    if ($2("stGoInput"))
+      $2("stGoInput").onkeydown = (e) => {
         if (e.key === "Enter") goToQuestionNum();
       };
-    if ($("stEdit"))
-      $("stEdit").onclick = () => {
+    if ($2("stEdit"))
+      $2("stEdit").onclick = () => {
         openEditor2();
-        $("settingsModal").classList.add("hidden");
+        $2("settingsModal").classList.add("hidden");
       };
-    $("editCard").title = "B\xE1o c\xE1o / \u0111\u1EC1 xu\u1EA5t s\u1EEDa c\xE2u";
-    $("editCard").textContent = "!";
-    $("editCard").onclick = (e) => {
+    $2("editCard").title = "B\xE1o c\xE1o / \u0111\u1EC1 xu\u1EA5t s\u1EEDa c\xE2u";
+    $2("editCard").textContent = "!";
+    $2("editCard").onclick = (e) => {
       e.stopPropagation();
       openEditor2();
     };
-    $("prev").onclick = prev;
-    $("next").onclick = next;
-    $("mode").onclick = toggleFlipMode;
+    $2("prev").onclick = prev2;
+    $2("next").onclick = next2;
+    $2("mode").onclick = toggleFlipMode;
     const handleCardClick = (e) => {
       if (e.target.closest("#editCard") || e.target.closest("#cardTools") || e.target.closest(".modal")) return;
-      if (LHState.flipMode === "single") {
+      if (LHState2.flipMode === "single") {
         flip("horizontal");
       }
     };
-    $("zone").onclick = (e) => {
-      const cardNode = $("card");
+    $2("zone").onclick = (e) => {
+      const cardNode = $2("card");
       if (cardNode && !cardNode.contains(e.target)) {
         let r = cardNode.getBoundingClientRect();
-        typeof slideChange === "function" ? slideChange(e.clientX < r.left ? "prev" : "next") : e.clientX < r.left ? prev() : next();
+        typeof slideChange === "function" ? slideChange(e.clientX < r.left ? "prev" : "next") : e.clientX < r.left ? prev2() : next2();
         return;
       }
     };
-    const cardEl = $("card");
+    const cardEl = $2("card");
     if (cardEl) {
       cardEl.onclick = (e) => {
         e.stopPropagation();
@@ -7958,33 +11466,33 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       };
       cardEl.ondblclick = (e) => {
         e.stopPropagation();
-        if (LHState.flipMode === "double") {
+        if (LHState2.flipMode === "double") {
           flip("horizontal");
         }
       };
     }
-    $("search").oninput = renderStudy;
-    $("studyList").onclick = (e) => {
+    $2("search").oninput = renderStudy2;
+    $2("studyList").onclick = (e) => {
       let it = e.target.closest(".sitem");
       if (it) it.classList.toggle("open");
     };
-    $("closeEdit").onclick = () => $("editModal").classList.add("hidden");
-    $("saveEdit").onclick = saveEditor;
-    $("restoreEdit").onclick = restoreEditor;
-    $("editImgs").onclick = (e) => {
+    $2("closeEdit").onclick = () => $2("editModal").classList.add("hidden");
+    $2("saveEdit").onclick = saveEditor;
+    $2("restoreEdit").onclick = restoreEditor;
+    $2("editImgs").onclick = (e) => {
       let b = e.target.closest("[data-rm]");
       if (b) {
-        LHState.editDraft.images.splice(+b.dataset.rm, 1);
-        renderEditImages();
+        LHState2.editDraft.images.splice(+b.dataset.rm, 1);
+        renderEditImages2();
       }
     };
-    $("imgUpload").onchange = async (e) => {
+    $2("imgUpload").onchange = async (e) => {
       const files = [...e.target.files];
       if (!files.length) return;
       window.__LH_EDIT_IMAGE_UPLOADING = (window.__LH_EDIT_IMAGE_UPLOADING || 0) + files.length;
-      const saveBtn = $("saveEdit");
+      const saveBtn = $2("saveEdit");
       if (saveBtn) saveBtn.disabled = true;
-      if (typeof notify === "function") notify("\u0110ang t\u1EA3i \u1EA3nh l\xEAn Cloudinary...");
+      if (typeof notify2 === "function") notify2("\u0110ang t\u1EA3i \u1EA3nh l\xEAn Cloudinary...");
       try {
         for (const file of files) {
           try {
@@ -8001,8 +11509,8 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
               throw new Error(errData.error?.message || "Upload Cloudinary th\u1EA5t b\u1EA1i");
             }
             const data = await res.json();
-            LHState.editDraft.images = LHState.editDraft.images || [];
-            LHState.editDraft.images.push({
+            LHState2.editDraft.images = LHState2.editDraft.images || [];
+            LHState2.editDraft.images.push({
               id: data.public_id,
               src: data.secure_url,
               url: data.secure_url,
@@ -8011,9 +11519,9 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
               name: file.name
             });
             if (typeof window.__LHCleanImages === "function")
-              LHState.editDraft.images = window.__LHCleanImages(LHState.editDraft.images);
-            renderEditImages();
-            if (typeof notify === "function") notify("\u0110\xE3 upload \u1EA3nh l\xEAn Cloudinary");
+              LHState2.editDraft.images = window.__LHCleanImages(LHState2.editDraft.images);
+            renderEditImages2();
+            if (typeof notify2 === "function") notify2("\u0110\xE3 upload \u1EA3nh l\xEAn Cloudinary");
           } catch (err) {
             console.error("[Upload Error]:", err);
             alert("Kh\xF4ng th\u1EC3 t\u1EA3i \u1EA3nh l\xEAn: " + err.message);
@@ -8026,24 +11534,24 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         if (saveBtn) saveBtn.disabled = window.__LH_EDIT_IMAGE_UPLOADING > 0;
       }
     };
-    $("exportEdits").onclick = exportEdits;
-    $("importEdits").onclick = () => $("importFile").click();
-    $("importFile").onchange = (e) => {
+    $2("exportEdits").onclick = exportEdits;
+    $2("importEdits").onclick = () => $2("importFile").click();
+    $2("importFile").onchange = (e) => {
       if (e.target.files[0]) importEditsFile(e.target.files[0]);
     };
-    $("clearEdits").onclick = () => {
+    $2("clearEdits").onclick = () => {
       if (confirm("X\xF3a t\u1EA5t c\u1EA3 ch\u1EC9nh s\u1EEDa \u0111\xE3 l\u01B0u?")) {
         edits = {};
         localStorage.removeItem(STORE);
         rebuild();
-        renderCard();
-        notify("\u0110\xE3 x\xF3a t\u1EA5t c\u1EA3 s\u1EEDa");
+        renderCard2();
+        notify2("\u0110\xE3 x\xF3a t\u1EA5t c\u1EA3 s\u1EEDa");
       }
     };
     window.onkeydown = (e) => {
       if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if ($("quiz") && $("quiz").classList.contains("active")) {
+      if ($2("quiz") && $2("quiz").classList.contains("active")) {
         return;
       }
       if (e.code === "Space") {
@@ -8060,11 +11568,11 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       }
       if (e.key === "ArrowRight") {
         e.preventDefault();
-        typeof slideChange === "function" ? slideChange("next", e.repeat) : next();
+        typeof slideChange === "function" ? slideChange("next", e.repeat) : next2();
       }
       if (e.key === "ArrowLeft") {
         e.preventDefault();
-        typeof slideChange === "function" ? slideChange("prev", e.repeat) : prev();
+        typeof slideChange === "function" ? slideChange("prev", e.repeat) : prev2();
       }
       if (e.key.toLowerCase() === "r") triggerReset();
       if (e.key.toLowerCase() === "e") openEditor2();
@@ -8074,1051 +11582,23 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     };
     applyCardFontSize();
     setupCardTools();
-    renderCard();
-    renderQuiz();
+    renderCard2();
+    renderQuiz2();
   }
   document.addEventListener("DOMContentLoaded", init);
-  window.HODSupabase = (() => {
-    const CONFIG = window.APP_CONFIG || {
-      SUPABASE_URL: "",
-      SUPABASE_ANON_KEY: ""
-    };
-    let client = null;
-    let currentUser = null;
-    let currentProfile = null;
-    const configured = () => CONFIG.SUPABASE_URL.startsWith("https://") && !CONFIG.SUPABASE_ANON_KEY.startsWith("PASTE_");
-    const isReady = () => !!client && !!currentUser;
-    const isAdmin = () => currentProfile?.role === "admin";
-    const canOpenDashboard = () => ["admin", "editor"].includes(currentProfile?.role);
-    const $id = (id) => document.getElementById(id);
-    function safeJson(obj) {
-      try {
-        return JSON.stringify(obj, null, 2);
-      } catch (e) {
-        return String(obj);
-      }
-    }
-    function questionToRow(q) {
-      const imgs = q.images || [];
-      return {
-        question: q.question,
-        options: q.options || {},
-        answer: q.answer,
-        answer_text: finalAnswerText(q),
-        images: imgs,
-        has_image: !!(q.has_image || imgs.length),
-        error_risk: q.error_risk || "low",
-        error_risk_reason: q.error_risk_reason || null
-      };
-    }
-    function rowToQuestion(row) {
-      return {
-        id: row.id,
-        subject_code: row.subject_code,
-        num: row.num,
-        question: row.question,
-        options: row.options || {},
-        answer: row.answer,
-        answer_text: row.answer_text,
-        images: row.images || [],
-        has_image: !!(row.has_image || (row.images || []).length),
-        error_risk: row.error_risk || "low",
-        error_risk_reason: row.error_risk_reason || "",
-        // Đánh dấu đã có đủ dữ liệu từ Turso, để các đoạn code cũ (fallback gọi
-        // sang Supabase để "lazy load" ảnh/dữ liệu) không kích hoạt nữa - Supabase
-        // giờ chỉ dùng cho Auth, mọi dữ liệu câu hỏi đều lấy từ Turso.
-        __imagesChecked: true,
-        __imagesLoaded: true
-      };
-    }
-    function notify2(msg) {
-      if (typeof notify === "function") notify(msg);
-      else console.log("[HOD102]", msg);
-    }
-    function openAuth() {
-      $id("authModal")?.classList.remove("hidden");
-    }
-    function closeAuth() {
-      $id("authModal")?.classList.add("hidden");
-    }
-    function openAdmin() {
-      if (!canOpenDashboard()) {
-        alert("T\xE0i kho\u1EA3n Google n\xE0y ch\u01B0a c\xF3 quy\u1EC1n admin.");
-        return;
-      }
-      window.open("admin.html", "_blank");
-    }
-    function closeAdmin() {
-      $id("adminModal")?.classList.add("hidden");
-    }
-    function setupHeaderAuthUI() {
-      const actions = document.querySelector(".globalTop .actions") || document.querySelector("#fc .actions") || document.querySelector(".actions");
-      if (!actions || $id("authStatusBtn")) return;
-      const adminBtn = document.createElement("button");
-      adminBtn.id = "adminOpenBtn";
-      adminBtn.className = "btn adminBtn hidden";
-      adminBtn.title = "Dashboard qu\u1EA3n tr\u1ECB";
-      adminBtn.textContent = "";
-      adminBtn.style.display = "none";
-      adminBtn.onclick = () => window.open("admin.html", "_blank");
-      const authBtn = document.createElement("button");
-      authBtn.id = "authStatusBtn";
-      authBtn.className = "btn authBtn";
-      authBtn.title = "\u0110\u0103ng nh\u1EADp / \u0110\u0103ng xu\u1EA5t";
-      authBtn.textContent = configured() ? "\u0110\u0103ng nh\u1EADp" : "Local";
-      authBtn.onclick = async () => {
-        if (!configured()) return alert("B\u1EA1n c\u1EA7n \u0111i\u1EC1n SUPABASE_URL v\xE0 SUPABASE_ANON_KEY trong file HTML tr\u01B0\u1EDBc.");
-        if (currentUser) await signOut();
-        else openAuth();
-      };
-      actions.prepend(authBtn);
-      actions.prepend(adminBtn);
-    }
-    function updateAuthUI() {
-      const authBtn = $id("authStatusBtn");
-      const adminBtn = $id("adminOpenBtn");
-      if (!authBtn) return;
-      if (!configured()) {
-        authBtn.textContent = "Local";
-        authBtn.classList.remove("userChip");
-        adminBtn?.classList.add("hidden");
-        return;
-      }
-      if (currentUser) {
-        authBtn.textContent = currentProfile?.email || currentUser.email || "User";
-        authBtn.classList.add("userChip");
-        const admin = canOpenDashboard();
-        adminBtn?.classList.toggle("hidden", !admin);
-        if (adminBtn) adminBtn.style.display = admin ? "" : "none";
-        const floatAdmin = $id("hodFloatAdmin");
-        floatAdmin?.classList.toggle("hidden", !admin);
-        if (floatAdmin) floatAdmin.style.display = admin ? "" : "none";
-        if (!admin) $id("adminModal")?.classList.add("hidden");
-      } else {
-        authBtn.textContent = "\u0110\u0103ng nh\u1EADp";
-        authBtn.classList.remove("userChip");
-        adminBtn?.classList.add("hidden");
-        if (adminBtn) adminBtn.style.display = "none";
-        const floatAdmin = $id("hodFloatAdmin");
-        floatAdmin?.classList.add("hidden");
-        if (floatAdmin) floatAdmin.style.display = "none";
-        $id("adminModal")?.classList.add("hidden");
-      }
-    }
-    const PENDING_DEFAULT_TITLE = "Ch\u1EDD ph\xEA duy\u1EC7t";
-    const PENDING_DEFAULT_MESSAGE = "T\xE0i kho\u1EA3n c\u1EE7a b\u1EA1n \u0111ang ch\u1EDD admin ph\xEA duy\u1EC7t.<br>B\u1EA1n s\u1EBD c\xF3 th\u1EC3 s\u1EED d\u1EE5ng Learning Hub sau khi \u0111\u01B0\u1EE3c duy\u1EC7t.";
-    const BLOCKED_TITLE = "T\xE0i kho\u1EA3n b\u1ECB kh\xF3a";
-    const BLOCKED_MESSAGE = "T\xE0i kho\u1EA3n c\u1EE7a b\u1EA1n \u0111\xE3 b\u1ECB qu\u1EA3n tr\u1ECB vi\xEAn kh\xF3a.<br>B\u1EA1n \u0111\xE3 \u0111\u01B0\u1EE3c \u0111\u0103ng xu\u1EA5t kh\u1ECFi h\u1EC7 th\u1ED1ng.";
-    function truthyFlag(v) {
-      return v === 1 || v === true || v === "1";
-    }
-    function hasFullAccess(profile) {
-      if (!profile || typeof profile !== "object") return false;
-      if (truthyFlag(profile.blocked) || truthyFlag(profile.is_blocked) || profile.status === "blocked") return false;
-      return truthyFlag(profile.approved);
-    }
-    window.lhHasFullAccess = hasFullAccess;
-    function showPendingApproval(opts) {
-      const el = $id("hodPendingApproval");
-      if (el) el.classList.remove("hidden");
-      const titleEl = $id("hodPendingTitle");
-      if (titleEl) titleEl.textContent = opts?.title || PENDING_DEFAULT_TITLE;
-      const msgEl = $id("hodPendingMessage");
-      if (msgEl) msgEl.innerHTML = opts?.message || PENDING_DEFAULT_MESSAGE;
-      const emailEl = $id("hodPendingEmail");
-      if (emailEl) emailEl.textContent = currentUser?.email || "";
-      $id("hodLoginGate")?.classList.add("hidden");
-      document.body?.classList.add("hod-locked");
-      window.__LH_ACCESS_OK = false;
-      window.__LH_GATE_LOCKED = true;
-    }
-    window.showPendingApproval = showPendingApproval;
-    function showAccessCheckError() {
-      showPendingApproval({
-        title: "Kh\xF4ng th\u1EC3 ki\u1EC3m tra quy\u1EC1n",
-        message: "Kh\xF4ng th\u1EC3 ki\u1EC3m tra quy\u1EC1n, vui l\xF2ng th\u1EED l\u1EA1i."
-      });
-    }
-    window.showAccessCheckError = showAccessCheckError;
-    function hidePendingApproval() {
-      const el = $id("hodPendingApproval");
-      if (el) el.classList.add("hidden");
-      document.body?.classList.remove("hod-locked");
-      window.__LH_GATE_LOCKED = false;
-    }
-    async function sendLoginToDiscord(email, role) {
-      try {
-        const res = await fetch("/api/notify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kind: "login", user_id: currentUser?.id, email, role, source: "web" })
-        });
-        if (!res.ok) console.warn("Discord login notify failed:", res.status, await res.text().catch(() => ""));
-      } catch (error) {
-        console.warn("L\u1ED7i g\u1EEDi th\xF4ng b\xE1o login web:", error);
-      }
-    }
-    async function notifyLoginToDiscordOnce() {
-      if (!currentUser) return;
-      const key = "hod_web_login_discord_notified_" + currentUser.id;
-      if (sessionStorage.getItem(key)) return;
-      await sendLoginToDiscord(currentProfile?.email || currentUser.email, currentProfile?.role || "user");
-      sessionStorage.setItem(key, "true");
-    }
-    let lhApiAbortController = typeof AbortController !== "undefined" ? new AbortController() : null;
-    function getLhApiSignal() {
-      return lhApiAbortController ? lhApiAbortController.signal : void 0;
-    }
-    window.getLhApiSignal = getLhApiSignal;
-    function purgeOfflineQuestionCache() {
-      try {
-        LHState.RAW = [];
-        LHState.pool = [];
-        LHState.ci = 0;
-        LHState.flipped = false;
-        const q = $("question");
-        if (q) q.textContent = "T\xE0i kho\u1EA3n ch\u01B0a \u0111\u01B0\u1EE3c duy\u1EC7t ho\u1EB7c \u0111\xE3 b\u1ECB kh\xF3a.";
-        const opts = $("options");
-        if (opts) opts.innerHTML = "";
-        const imgs = $("images");
-        if (imgs) imgs.innerHTML = "";
-        const total = $("total");
-        if (total) total.textContent = "0";
-        const idx = $("idx");
-        if (idx) idx.textContent = "0";
-        if (typeof renderQuiz === "function") renderQuiz();
-        if (typeof renderStudy === "function") renderStudy();
-        for (let i = localStorage.length - 1; i >= 0; i--) {
-          const k = localStorage.key(i);
-          if (k && (k.startsWith("lh_question_") || k.startsWith("lh_raw_") || k.startsWith("lh_starred_") || k.startsWith("learninghub_questions_"))) {
-            localStorage.removeItem(k);
-          }
-        }
-        for (let i = sessionStorage.length - 1; i >= 0; i--) {
-          const k = sessionStorage.key(i);
-          if (k && (k.startsWith("lh_") || k.startsWith("learninghub_"))) {
-            sessionStorage.removeItem(k);
-          }
-        }
-        if (typeof caches !== "undefined" && caches.keys) {
-          caches.keys().then((names) => {
-            names.forEach((name) => {
-              if (name.includes("questions") || name.includes("learninghub")) caches.delete(name);
-            });
-          }).catch(() => {
-          });
-        }
-        if (typeof indexedDB !== "undefined" && indexedDB.databases) {
-          indexedDB.databases().then((dbs) => {
-            dbs.forEach((dbInfo) => {
-              if (dbInfo.name && dbInfo.name.includes("learninghub")) indexedDB.deleteDatabase(dbInfo.name);
-            });
-          }).catch(() => {
-          });
-        }
-      } catch (e) {
-        console.warn("purgeOfflineQuestionCache error:", e);
-      }
-    }
-    function handleAccessRevoked(reason, code = null) {
-      if (window.__LH_REVOKING_ACCESS) return;
-      window.__LH_REVOKING_ACCESS = true;
-      console.warn("[LH Auth] Thu h\u1ED3i quy\u1EC1n:", reason, "| code:", code);
-      try {
-        if (lhApiAbortController) {
-          lhApiAbortController.abort("Access revoked");
-          lhApiAbortController = typeof AbortController !== "undefined" ? new AbortController() : null;
-        }
-      } catch (e) {
-        lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
-      }
-      window.__LH_ACCESS_OK = false;
-      currentProfile = null;
-      purgeOfflineQuestionCache();
-      try {
-        if (typeof window.lhTeardownAccessWatch === "function") window.lhTeardownAccessWatch();
-      } catch (e) {
-        lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
-      }
-      const mustSignOut = code === "BLOCKED" || code === "UNAUTHORIZED";
-      if (code === "BLOCKED") {
-        showPendingApproval({ title: BLOCKED_TITLE, message: BLOCKED_MESSAGE });
-      } else if (code === "UNAUTHORIZED") {
-        showPendingApproval({
-          title: "Phi\xEAn \u0111\u0103ng nh\u1EADp \u0111\xE3 h\u1EBFt h\u1EA1n",
-          message: "Vui l\xF2ng \u0111\u0103ng nh\u1EADp l\u1EA1i \u0111\u1EC3 ti\u1EBFp t\u1EE5c."
-        });
-      } else {
-        showPendingApproval({ title: PENDING_DEFAULT_TITLE, message: PENDING_DEFAULT_MESSAGE });
-      }
-      if (mustSignOut) {
-        try {
-          unsubscribeUserStatusRealtime();
-        } catch (e) {
-          lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
-        }
-        if (typeof signOut === "function") signOut().catch(() => {
-        });
-      }
-      updateAuthUI();
-      setTimeout(() => {
-        window.__LH_REVOKING_ACCESS = false;
-      }, 3e3);
-    }
-    window.handleAccessRevoked = handleAccessRevoked;
-    let statusRealtimeChannel = null;
-    let lastRealtimeSignalAt = 0;
-    function unsubscribeUserStatusRealtime() {
-      if (!statusRealtimeChannel) return;
-      try {
-        statusRealtimeChannel.unsubscribe();
-      } catch (e) {
-        lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
-      }
-      statusRealtimeChannel = null;
-      window.__lhRealtimeConnected = false;
-    }
-    window.lhUnsubscribeUserStatus = unsubscribeUserStatusRealtime;
-    function onRealtimeSignal(reason) {
-      const now = Date.now();
-      if (now - lastRealtimeSignalAt < 2e3) return;
-      lastRealtimeSignalAt = now;
-      if (typeof window.lhRevalidateAccess === "function") {
-        window.lhRevalidateAccess("realtime:" + (reason || "status_changed"));
-      }
-    }
-    let globalRealtimeChannel = null;
-    function subscribeGlobalRealtime() {
-      if (globalRealtimeChannel) return;
-      try {
-        const supa = window.HODSupabase?.__client;
-        if (!supa || typeof supa.channel !== "function") return;
-        globalRealtimeChannel = supa.channel("lh-global");
-        globalRealtimeChannel.on("broadcast", { event: "reload_notice" }, () => {
-          window.lhHandleReloadNotice?.();
-        });
-        globalRealtimeChannel.subscribe((status) => {
-          if (status === "SUBSCRIBED") console.log("[Realtime] \u0111\xE3 theo d\xF5i k\xEAnh chung lh-global");
-        });
-      } catch (e) {
-        lhWarn("RELOAD_NOTICE_REALTIME_20260729", e);
-        globalRealtimeChannel = null;
-      }
-    }
-    function unsubscribeGlobalRealtime() {
-      if (!globalRealtimeChannel) return;
-      try {
-        globalRealtimeChannel.unsubscribe();
-      } catch (e) {
-        lhWarn("RELOAD_NOTICE_REALTIME_20260729", e);
-      }
-      globalRealtimeChannel = null;
-    }
-    function subscribeUserStatusRealtime(userId) {
-      if (!userId || statusRealtimeChannel) return;
-      try {
-        const supa = window.HODSupabase?.__client;
-        if (!supa || typeof supa.channel !== "function") return;
-        statusRealtimeChannel = supa.channel("user-status-" + userId);
-        statusRealtimeChannel.on("broadcast", { event: "status_changed" }, (msg) => {
-          const data = msg?.payload || {};
-          if (data.reason === "reload_notice") window.lhHandleReloadNotice?.();
-          onRealtimeSignal(data.reason);
-        });
-        statusRealtimeChannel.subscribe((status) => {
-          if (status === "SUBSCRIBED") {
-            console.log("[Realtime] \u0111\xE3 theo d\xF5i tr\u1EA1ng th\xE1i t\xE0i kho\u1EA3n:", userId);
-            window.__lhRealtimeConnected = true;
-            if (typeof window.stopFallbackPolling === "function") window.stopFallbackPolling();
-            if (typeof window.lhRevalidateAccess === "function") window.lhRevalidateAccess("realtime:subscribed");
-          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-            console.warn("[Realtime] m\u1EA5t k\u1EBFt n\u1ED1i:", status);
-            window.__lhRealtimeConnected = false;
-            if (document.visibilityState === "visible" && typeof window.startFallbackPolling === "function") {
-              window.startFallbackPolling();
-            }
-          }
-        });
-      } catch (e) {
-        console.warn("[Realtime] kh\xF4ng \u0111\u0103ng k\xFD \u0111\u01B0\u1EE3c k\xEAnh:", e);
-        statusRealtimeChannel = null;
-        window.__lhRealtimeConnected = false;
-        if (document.visibilityState === "visible" && typeof window.startFallbackPolling === "function") {
-          window.startFallbackPolling();
-        }
-      }
-    }
-    window.addEventListener("lh:profile-ready", () => {
-      const u = window.HODSupabase?.getUser?.();
-      if (u?.id) subscribeUserStatusRealtime(u.id);
-      subscribeGlobalRealtime();
-    });
-    let activeProfilePromise = null;
-    async function loadProfile(force = false, checkOnly = false) {
-      window.loadProfile = loadProfile;
-      if (!currentUser) {
-        currentProfile = null;
-        updateAuthUI();
-        return null;
-      }
-      if (activeProfilePromise) return activeProfilePromise;
-      activeProfilePromise = (async () => {
-        try {
-          const activeSubjectCode = (localStorage.getItem("learninghub_subject_code_merged_v1") || "").trim();
-          const body = checkOnly ? { check_only: true } : {
-            id: currentUser.id,
-            email: currentUser.email || "",
-            full_name: currentUser.user_metadata?.full_name || "",
-            avatar_url: currentUser.user_metadata?.avatar_url || currentUser.user_metadata?.picture || "",
-            current_subject: activeSubjectCode,
-            device_info: typeof getDeviceTypeString === "function" ? getDeviceTypeString() : void 0,
-            last_login: (/* @__PURE__ */ new Date()).toISOString(),
-            last_activity: (/* @__PURE__ */ new Date()).toISOString()
-          };
-          const res = await fetch("/api/profile?turso=1&ts=" + Date.now(), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            cache: "no-store",
-            body: JSON.stringify(body)
-          });
-          const json = await res.json().catch(() => ({}));
-          if (!res.ok || json.error) {
-            currentProfile = null;
-            window.__LH_ACCESS_OK = false;
-            if (res.status === 401 || res.status === 403) {
-              handleAccessRevoked(
-                json.error || "T\xE0i kho\u1EA3n ch\u01B0a \u0111\u01B0\u1EE3c duy\u1EC7t ho\u1EB7c \u0111\xE3 b\u1ECB kh\xF3a.",
-                json.code || (res.status === 401 ? "UNAUTHORIZED" : "PENDING_APPROVAL")
-              );
-            } else {
-              showAccessCheckError();
-              updateAuthUI();
-            }
-            throw new Error(json.error || `Kh\xF4ng ki\u1EC3m tra \u0111\u01B0\u1EE3c quy\u1EC1n (HTTP ${res.status})`);
-          }
-          currentProfile = json.data || json.profile || json;
-          if (checkOnly && json.reload_notice) showReloadNoticeNow();
-          if (truthyFlag(currentProfile?.blocked)) {
-            handleAccessRevoked("T\xE0i kho\u1EA3n \u0111\xE3 b\u1ECB kh\xF3a", "BLOCKED");
-            return null;
-          }
-          if (!hasFullAccess(currentProfile)) {
-            handleAccessRevoked("T\xE0i kho\u1EA3n ch\u01B0a \u0111\u01B0\u1EE3c ph\xEA duy\u1EC7t", "PENDING_APPROVAL");
-            return null;
-          }
-          if (!checkOnly) await notifyLoginToDiscordOnce();
-          window.__LH_ACCESS_OK = true;
-          hidePendingApproval();
-          updateAuthUI();
-          window.dispatchEvent(new CustomEvent("lh:profile-ready"));
-          return currentProfile;
-        } catch (e) {
-          console.error("[Turso profile]", e);
-          currentProfile = null;
-          window.__LH_ACCESS_OK = false;
-          if (!document.getElementById("hodPendingApproval")?.classList.contains("hidden")) {
-          } else {
-            showAccessCheckError();
-          }
-          updateAuthUI();
-          return null;
-        } finally {
-          activeProfilePromise = null;
-        }
-      })();
-      return activeProfilePromise;
-    }
-    window.lhCheckProfileOnce = function(reason) {
-      console.debug("[LH access] x\xE1c minh l\u1EA1i quy\u1EC1n t\u1EEB Turso, ngu\u1ED3n:", reason || "unknown");
-      return loadProfile(true, true);
-    };
-    async function loadQuestionsFromSupabase() {
-      if (!currentUser) return false;
-      if (!hasFullAccess(currentProfile)) {
-        showPendingApproval();
-        return false;
-      }
-      const activeSubject = localStorage.getItem("learninghub_subject_code_merged_v1") || "";
-      if (!activeSubject) return false;
-      try {
-        const res = await fetch(
-          "/api/questions?subject_code=" + encodeURIComponent(activeSubject) + "&ts=" + Date.now(),
-          { cache: "no-store" }
-        );
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c questions t\u1EEB Turso");
-        const rows = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
-        LHState.RAW = rows.map(rowToQuestion);
-        LHState.pool = [...LHState.RAW];
-        var _sci = +localStorage.getItem("learninghub_progress_" + activeSubject) || 0;
-        LHState.ci = Math.max(0, Math.min(_sci, Math.max(0, LHState.pool.length - 1)));
-        LHState.flipped = false;
-        if ($id("total")) $id("total").textContent = LHState.pool.length;
-        try {
-          renderCard();
-        } catch (e) {
-          lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
-        }
-        try {
-          renderQuiz();
-        } catch (e) {
-          lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
-        }
-        try {
-          renderStudy();
-        } catch (e) {
-          lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
-        }
-        notify2("\u0110\xE3 t\u1EA3i c\xE2u h\u1ECFi t\u1EEB Turso");
-        return true;
-      } catch (e) {
-        console.warn("[Turso questions]", e);
-        notify2("Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c c\xE2u h\u1ECFi t\u1EEB Turso.");
-        return false;
-      }
-    }
-    async function signInGoogle() {
-      if (!window.supabase) return alert("Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c Supabase. Ki\u1EC3m tra m\u1EA1ng ho\u1EB7c CDN.");
-      if (!client) return alert("Supabase ch\u01B0a s\u1EB5n s\xE0ng.");
-      const { error } = await client.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: window.location.href.split("#")[0] }
-      });
-      if (error) alert(error.message);
-    }
-    async function signIn() {
-      if (!client) return;
-      const email = $id("authEmail")?.value.trim();
-      const password = $id("authPassword")?.value;
-      if (!email || !password) return alert("Nh\u1EADp email v\xE0 m\u1EADt kh\u1EA9u nha.");
-      const { data, error } = await client.auth.signInWithPassword({ email, password });
-      if (error) return alert(error.message);
-      currentUser = data.user;
-      await loadProfile();
-      await loadQuestionsFromSupabase();
-      closeAuth();
-      notify2("\u0110\xE3 \u0111\u0103ng nh\u1EADp");
-    }
-    async function signUp() {
-      if (!client) return;
-      const email = $id("authEmail")?.value.trim();
-      const password = $id("authPassword")?.value;
-      if (!email || !password) return alert("Nh\u1EADp email v\xE0 m\u1EADt kh\u1EA9u nha.");
-      const { data, error } = await client.auth.signUp({ email, password });
-      if (error) return alert(error.message);
-      alert("\u0110\xE3 t\u1EA1o t\xE0i kho\u1EA3n. N\u1EBFu Supabase y\xEAu c\u1EA7u x\xE1c nh\u1EADn email, h\xE3y x\xE1c nh\u1EADn r\u1ED3i \u0111\u0103ng nh\u1EADp.");
-    }
-    function showReloadNoticeNow() {
-      if (window.__LH_RELOAD_NOTICE_SHOWN) return;
-      window.__LH_RELOAD_NOTICE_SHOWN = true;
-      try {
-        if (typeof window.lhShowReloadNotice === "function") window.lhShowReloadNotice();
-      } catch (e) {
-        lhWarn("RELOAD_NOTICE_CLIENT_20260729", e);
-      }
-    }
-    window.lhHandleReloadNotice = showReloadNoticeNow;
-    async function signOut() {
-      if (!client) return;
-      try {
-        unsubscribeUserStatusRealtime();
-        unsubscribeGlobalRealtime();
-      } catch (e) {
-        lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
-      }
-      try {
-        if (typeof window.lhTeardownAccessWatch === "function") window.lhTeardownAccessWatch();
-      } catch (e) {
-        lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
-      }
-      Object.keys(sessionStorage).filter((k) => k.startsWith("hod_web_login_discord_notified_")).forEach((k) => sessionStorage.removeItem(k));
-      await client.auth.signOut();
-      currentUser = null;
-      currentProfile = null;
-      window.__LH_ACCESS_OK = false;
-      updateAuthUI();
-      notify2("\u0110\xE3 \u0111\u0103ng xu\u1EA5t");
-    }
-    async function submitEditRequest(newDraft, oldQ) {
-      if (!client) return alert("Ch\u01B0a c\u1EA5u h\xECnh Supabase.");
-      if (!currentUser) {
-        openAuth();
-        return;
-      }
-      if (!oldQ?.id) {
-        alert(
-          "C\xE2u h\u1ECFi hi\u1EC7n \u0111ang l\u1EA5y t\u1EEB data local. H\xE3y \u0111\u0103ng nh\u1EADp v\xE0 t\u1EA3i questions t\u1EEB Supabase tr\u01B0\u1EDBc khi g\u1EEDi y\xEAu c\u1EA7u s\u1EEDa."
-        );
-        return;
-      }
-      try {
-        if (typeof window.__LHGetPendingImageUpload === "function") {
-          const p = window.__LHGetPendingImageUpload();
-          if (p) await p;
-        }
-        if (typeof window.__LHUploadPendingDataUrls === "function") await window.__LHUploadPendingDataUrls();
-      } catch (e) {
-        console.warn("Ch\u1EDD upload \u1EA3nh tr\u01B0\u1EDBc khi g\u1EEDi y\xEAu c\u1EA7u s\u1EEDa th\u1EA5t b\u1EA1i:", e);
-      }
-      const payload = {
-        question_id: oldQ.id,
-        question_num: oldQ.num,
-        subject_code: oldQ.subject_code || newDraft.subject_code || "",
-        user_id: currentUser.id,
-        user_email: currentUser.email || currentProfile?.email || "",
-        old_data: questionToRow(oldQ),
-        new_data: questionToRow(newDraft),
-        reason: ""
-      };
-      const res = await fetch("/api/edit-requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify(payload)
-      });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok || out.error) return alert("G\u1EEDi y\xEAu c\u1EA7u s\u1EEDa th\u1EA5t b\u1EA1i: " + (out.error || res.status));
-      $id("editModal")?.classList.add("hidden");
-      notify2("\u0110\xE3 g\u1EEDi y\xEAu c\u1EA7u s\u1EEDa, \u0111ang ch\u1EDD admin duy\u1EC7t");
-    }
-    async function loadPendingRequests() {
-      if (!client || !isAdmin()) return;
-      const list = $id("adminRequests");
-      const count = $id("adminCount");
-      if (list) list.innerHTML = '<div class="more">\u0110ang t\u1EA3i...</div>';
-      let data = [];
-      try {
-        const res = await fetch("/api/admin-dashboard", { cache: "no-store" });
-        const dash = await res.json().catch(() => ({}));
-        if (!res.ok || dash.error) throw new Error(dash.error || res.status);
-        data = (dash.requests || []).filter((r) => r.status === "pending").map((r) => ({
-          ...r,
-          old_data: typeof r.old_data === "string" ? JSON.parse(r.old_data || "{}") : r.old_data,
-          new_data: typeof r.new_data === "string" ? JSON.parse(r.new_data || "{}") : r.new_data
-        }));
-      } catch (e) {
-        if (list) list.innerHTML = '<div class="more">' + esc(e.message || "L\u1ED7i t\u1EA3i") + "</div>";
-        return;
-      }
-      if (count) count.textContent = `${data.length} y\xEAu c\u1EA7u`;
-      if (!list) return;
-      list.innerHTML = data.length ? data.map(
-        (r) => `
-      <div class="adminReq" data-request-id="${r.id}">
-        <div class="adminReqHead"><span>Request #${r.id} \xB7 C\xE2u ${r.question_num || r.question_id}</span><span>${new Date(r.created_at).toLocaleString()}</span></div>
-        <div class="compareGrid">
-          <div class="compareBox"><h4>N\u1ED9i dung c\u0169</h4><pre>${esc(safeJson(r.old_data))}</pre></div>
-          <div class="compareBox"><h4>N\u1ED9i dung \u0111\u1EC1 xu\u1EA5t</h4><pre>${esc(safeJson(r.new_data))}</pre></div>
-        </div>
-        <div class="adminActions">
-          <button class="btn approveBtn" data-approve="${r.id}">Duy\u1EC7t</button>
-          <button class="btn rejectBtn" data-reject="${r.id}">T\u1EEB ch\u1ED1i</button>
-        </div>
-      </div>`
-      ).join("") : '<div class="more">Kh\xF4ng c\xF3 y\xEAu c\u1EA7u ch\u1EDD duy\u1EC7t.</div>';
-      list.querySelectorAll("[data-approve]").forEach(
-        (btn) => btn.onclick = () => approveRequest(
-          Number(btn.dataset.approve),
-          data.find((x) => x.id === Number(btn.dataset.approve))
-        )
-      );
-      list.querySelectorAll("[data-reject]").forEach((btn) => btn.onclick = () => rejectRequest(Number(btn.dataset.reject)));
-    }
-    async function approveRequest(id, req) {
-      if (!isAdmin()) return alert("Ch\u1EC9 admin m\u1EDBi duy\u1EC7t \u0111\u01B0\u1EE3c.");
-      const res = await fetch("/api/admin-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify({ user_id: currentUser.id, action: "approve_request", payload: { request_id: id } })
-      });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok || out.error) return alert("Kh\xF4ng duy\u1EC7t \u0111\u01B0\u1EE3c: " + (out.error || res.status));
-      if (typeof window.clearLearningHubQuestionCache === "function") window.clearLearningHubQuestionCache();
-      notify2("\u0110\xE3 duy\u1EC7t y\xEAu c\u1EA7u");
-      try {
-        await loadPendingRequests();
-      } catch (e) {
-        console.warn("loadPendingRequests failed:", e);
-      }
-      try {
-        await loadQuestionsFromSupabase();
-      } catch (e) {
-        console.warn("loadQuestions failed:", e);
-      }
-    }
-    async function rejectRequest(id) {
-      if (!isAdmin()) return alert("Ch\u1EC9 admin m\u1EDBi t\u1EEB ch\u1ED1i \u0111\u01B0\u1EE3c.");
-      const note = prompt("L\xFD do t\u1EEB ch\u1ED1i (tu\u1EF3 ch\u1ECDn):") || "";
-      const res = await fetch("/api/admin-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          action: "reject_request",
-          payload: { request_id: id, admin_note: note }
-        })
-      });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok || out.error) return alert("Kh\xF4ng t\u1EEB ch\u1ED1i \u0111\u01B0\u1EE3c: " + (out.error || res.status));
-      notify2("\u0110\xE3 t\u1EEB ch\u1ED1i y\xEAu c\u1EA7u");
-      try {
-        await loadPendingRequests();
-      } catch (e) {
-        console.warn("loadPendingRequests failed:", e);
-      }
-    }
-    async function applyOAuthHashSession(supaClient) {
-      try {
-        let h = window.location.hash || "";
-        if (!h) return false;
-        h = h.replace(/^#/, "").replace(/&amp;/g, "&");
-        const p = new URLSearchParams(h);
-        const access_token = p.get("access_token");
-        const refresh_token = p.get("refresh_token");
-        if (!access_token || !refresh_token) return false;
-        const { error } = await supaClient.auth.setSession({ access_token, refresh_token });
-        if (error) {
-          console.warn("setSession from hash failed:", error);
-          return false;
-        }
-        history.replaceState(null, "", window.location.pathname + window.location.search);
-        return true;
-      } catch (e) {
-        console.warn("applyOAuthHashSession error:", e);
-        return false;
-      }
-    }
-    async function init2() {
-      setupHeaderAuthUI();
-      $id("authGoogle")?.addEventListener("click", signInGoogle);
-      $id("authLogin")?.addEventListener("click", signIn);
-      $id("authSignup")?.addEventListener("click", signUp);
-      $id("authClose")?.addEventListener("click", closeAuth);
-      $id("adminClose")?.addEventListener("click", closeAdmin);
-      $id("adminReload")?.addEventListener("click", loadPendingRequests);
-      $id("hodPendingRefresh")?.addEventListener("click", async () => {
-        const btn = $id("hodPendingRefresh");
-        if (btn) {
-          btn.disabled = true;
-          btn.textContent = "\u0110ang ki\u1EC3m tra...";
-        }
-        await loadProfile();
-        if (hasFullAccess(currentProfile)) await loadQuestionsFromSupabase();
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = "Ki\u1EC3m tra l\u1EA1i";
-        }
-      });
-      $id("hodPendingLogout")?.addEventListener("click", async () => {
-        await signOut();
-        hidePendingApproval();
-      });
-      if (!configured()) {
-        updateAuthUI();
-        return;
-      }
-      client = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
-      await applyOAuthHashSession(client);
-      const { data } = await client.auth.getSession();
-      currentUser = data.session?.user || null;
-      if (currentUser) {
-        const prof = await loadProfile();
-        if (prof) {
-          await loadQuestionsFromTurso();
-          if (typeof window.__LHTriggerSubjectCheck === "function") window.__LHTriggerSubjectCheck();
-        }
-      } else updateAuthUI();
-      client.auth.onAuthStateChange(async (_event, session) => {
-        currentUser = session?.user || null;
-        if (currentUser) {
-          const prof = await loadProfile();
-          if (prof) {
-            await loadQuestionsFromTurso();
-            if (typeof window.__LHTriggerSubjectCheck === "function") window.__LHTriggerSubjectCheck();
-          }
-        } else {
-          currentProfile = null;
-          updateAuthUI();
-        }
-      });
-    }
-    async function loadQuestionsFromTurso() {
-      if (typeof window.loadCurrentSubjectOnly === "function") return window.loadCurrentSubjectOnly();
-      return loadQuestionsFromSupabase();
-    }
-    document.addEventListener("DOMContentLoaded", init2);
-    return {
-      init: init2,
-      isReady,
-      isAdmin,
-      canOpenDashboard,
-      submitEditRequest,
-      loadQuestionsFromSupabase,
-      openAuth,
-      openAdmin,
-      signOut,
-      signInGoogle,
-      getUser: () => currentUser,
-      getProfile: () => currentProfile,
-      get __client() {
-        return client;
-      }
-    };
-  })();
-  (function() {
-    function $2(id) {
-      return document.getElementById(id);
-    }
-    function hideLanding() {
-      $2("hodLoginScreen")?.classList.add("hidden");
-    }
-    function openLogin() {
-      hideLanding();
-      if (window.HODSupabase?.openAuth) window.HODSupabase.openAuth();
-      else alert("Supabase UI ch\u01B0a s\u1EB5n s\xE0ng, h\xE3y t\u1EA3i l\u1EA1i trang.");
-    }
-    function openAdmin() {
-      hideLanding();
-      if (window.HODSupabase?.canOpenDashboard?.()) window.HODSupabase.openAdmin();
-      else {
-        if (window.HODSupabase?.openAuth) window.HODSupabase.openAuth();
-        setTimeout(() => alert("\u0110\u0103ng nh\u1EADp t\xE0i kho\u1EA3n admin tr\u01B0\u1EDBc. Sau \u0111\xF3 b\u1EA5m n\xFAt Admin l\u1EA1i."), 80);
-      }
-    }
-    function bind() {
-      $2("hodGuestEnter")?.addEventListener("click", hideLanding);
-      $2("hodOpenLogin")?.addEventListener("click", openLogin);
-      $2("hodOpenAdmin")?.addEventListener("click", openAdmin);
-      $2("hodFloatLogin")?.addEventListener("click", openLogin);
-      $2("hodFloatAdmin")?.addEventListener("click", openAdmin);
-      const box = document.querySelector("#authModal .box.authBox");
-      if (box && !document.getElementById("hodAuthExtraHint")) {
-        const hint = document.createElement("div");
-        hint.id = "hodAuthExtraHint";
-        hint.className = "hodAuthHint";
-        hint.textContent = "Ng\u01B0\u1EDDi h\u1ECDc d\xF9ng \u0110\u0103ng nh\u1EADp/\u0110\u0103ng k\xFD. Admin \u0111\u0103ng nh\u1EADp b\u1EB1ng t\xE0i kho\u1EA3n \u0111\xE3 \u0111\u01B0\u1EE3c set role = admin trong Supabase.";
-        box.appendChild(hint);
-      }
-    }
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
-    else bind();
-  })();
-  (function() {
-    function applyAdminGuard() {
-      const isAdmin = !!window.HODSupabase?.canOpenDashboard?.();
-      document.body?.classList.toggle("hod-is-admin", isAdmin);
-      ["adminOpenBtn", "hodFloatAdmin"].forEach((id) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.classList.toggle("hidden", !isAdmin);
-        el.style.display = isAdmin ? "" : "none";
-      });
-      const modal = document.getElementById("adminModal");
-      if (modal && !isAdmin) modal.classList.add("hidden");
-    }
-    function patchOpenAdmin() {
-      if (!window.HODSupabase || window.HODSupabase.__adminGuardPatched) return;
-      const oldOpen = window.HODSupabase.openAdmin;
-      window.HODSupabase.openAdmin = function() {
-        if (!window.HODSupabase.canOpenDashboard?.()) {
-          document.getElementById("adminModal")?.classList.add("hidden");
-          alert("T\xE0i kho\u1EA3n Google n\xE0y ch\u01B0a c\xF3 quy\u1EC1n admin.");
-          applyAdminGuard();
-          return;
-        }
-        return oldOpen?.apply(this, arguments);
-      };
-      window.HODSupabase.__adminGuardPatched = true;
-    }
-    function tick() {
-      patchOpenAdmin();
-      applyAdminGuard();
-    }
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", tick);
-    else tick();
-    setInterval(tick, 500);
-  })();
-  (function() {
-    function $2(id) {
-      return document.getElementById(id);
-    }
-    function user() {
-      return window.HODSupabase?.getUser?.() || null;
-    }
-    function profile() {
-      return window.HODSupabase?.getProfile?.() || null;
-    }
-    function isAdmin() {
-      return !!window.HODSupabase?.canOpenDashboard?.();
-    }
-    function email() {
-      return profile()?.email || user()?.email || "";
-    }
-    function meta() {
-      return user()?.user_metadata || {};
-    }
-    function avatarHTML() {
-      const u = meta().avatar_url || meta().picture || "";
-      const e = email();
-      const l = (e || "U").trim().charAt(0).toUpperCase();
-      return u ? '<img src="' + esc(u) + '" alt="avatar" loading="lazy" decoding="async">' : l;
-    }
-    function ensureAvatar() {
-      const actions = document.querySelector(".globalTop .actions") || document.querySelector("#fc .actions") || document.querySelector(".actions");
-      if (!actions || $2("hodTopAvatar")) return;
-      const btn = document.createElement("button");
-      btn.id = "hodTopAvatar";
-      btn.className = "hodTopAvatar";
-      btn.type = "button";
-      btn.onclick = toggleMenu;
-      actions.appendChild(btn);
-    }
-    function toggleMenu() {
-      if (!user()) return showLogin();
-      updateMenu();
-      $2("hodAccountMenu")?.classList.toggle("hidden");
-    }
-    function showLogin() {
-      if (window.__LOCAL_DEV_MODE) return;
-      document.body?.classList.add("hod-locked");
-      $2("hodLoginGate")?.classList.remove("hidden");
-      $2("hodAccountMenu")?.classList.add("hidden");
-      $2("hodPendingApproval")?.classList.add("hidden");
-    }
-    function hideLogin() {
-      document.body?.classList.remove("hod-locked");
-      $2("hodLoginGate")?.classList.add("hidden");
-    }
-    function login() {
-      const api = window.HODSupabase;
-      if (!api) {
-        alert("Supabase ch\u01B0a s\u1EB5n s\xE0ng, h\xE3y t\u1EA3i l\u1EA1i trang.");
-        return;
-      }
-      if (api.signInGoogle) {
-        api.signInGoogle();
-        return;
-      }
-      api.openAuth?.();
-    }
-    async function logout() {
-      await window.HODSupabase?.signOut?.();
-      showLogin();
-      updateAll();
-    }
-    function openDash() {
-      if (isAdmin()) window.open("admin.html", "_blank");
-      else alert("T\xE0i kho\u1EA3n n\xE0y kh\xF4ng c\xF3 quy\u1EC1n admin.");
-    }
-    function updateMenu() {
-      const admin = isAdmin();
-      const pRole = profile()?.role || (email() === "trongbm2004@gmail.com" ? "admin" : "user");
-      const rawRole = String(pRole).toLowerCase();
-      const mail = $2("hodAccountEmail");
-      if (mail) mail.textContent = email() || "Ch\u01B0a \u0111\u0103ng nh\u1EADp";
-      const role = $2("hodAccountRole");
-      if (role)
-        role.textContent = rawRole === "admin" || email() === "trongbm2004@gmail.com" ? "Admin" : rawRole === "editor" ? "Editor" : "Ng\u01B0\u1EDDi h\u1ECDc";
-      const av = $2("hodAccountAvatarBig");
-      if (av) {
-        const __avb = avatarHTML();
-        if (av.dataset.av !== __avb) {
-          av.innerHTML = __avb;
-          av.dataset.av = __avb;
-        }
-      }
-      $2("hodAccountDashboard")?.classList.toggle("hidden", !admin);
-    }
-    function denied() {
-      const u = user();
-      if (!u) return false;
-      if (window.__LH_GATE_LOCKED === true) return true;
-      const p = profile();
-      return !!p && !(window.lhHasFullAccess?.(p) ?? true);
-    }
-    function updateAll() {
-      ensureAvatar();
-      const u = user();
-      const p = profile();
-      const admin = isAdmin();
-      const pending = denied();
-      document.body?.classList.toggle("hod-is-admin-final", admin);
-      if (pending) {
-        $2("hodLoginGate")?.classList.add("hidden");
-        $2("hodPendingApproval")?.classList.remove("hidden");
-        document.body?.classList.add("hod-locked");
-        const emailEl = $2("hodPendingEmail");
-        if (emailEl && !emailEl.textContent) emailEl.textContent = p?.email || u.email || "";
-      } else if (u) {
-        hideLogin();
-        $2("hodPendingApproval")?.classList.add("hidden");
-      } else if (window.__LH_GATE_LOCKED === true) {
-      } else {
-        showLogin();
-      }
-      const top = $2("hodTopAvatar");
-      if (top) {
-        const __ah = avatarHTML();
-        if (top.dataset.av !== __ah) {
-          top.innerHTML = __ah;
-          top.dataset.av = __ah;
-        }
-        top.style.display = u && !pending ? "grid" : "none";
-      }
-      const headerAdmin = $2("adminOpenBtn");
-      if (headerAdmin) {
-        headerAdmin.remove();
-      }
-      if (!admin) $2("adminModal")?.classList.add("hidden");
-      updateMenu();
-    }
-    function patchAdmin() {
-      if (!window.HODSupabase || window.HODSupabase.__avatarCleanPatch) return;
-      const old = window.HODSupabase.openAdmin;
-      window.HODSupabase.openAdmin = function() {
-        if (!window.HODSupabase.canOpenDashboard?.()) {
-          $2("adminModal")?.classList.add("hidden");
-          alert("T\xE0i kho\u1EA3n n\xE0y kh\xF4ng c\xF3 quy\u1EC1n admin.");
-          return;
-        }
-        return old?.apply(this, arguments);
-      };
-      window.HODSupabase.__avatarCleanPatch = true;
-    }
-    function bind() {
-      $2("hodGateLoginBtn")?.addEventListener("click", login);
-      $2("hodLogoutBtn")?.addEventListener("click", logout);
-      $2("hodAccountDashboard")?.addEventListener("click", openDash);
-      document.addEventListener("click", (e) => {
-        const m = $2("hodAccountMenu"), a = $2("hodTopAvatar");
-        if (m && !m.contains(e.target) && a && !a.contains(e.target)) m.classList.add("hidden");
-      });
-      setInterval(() => {
-        patchAdmin();
-        updateAll();
-      }, 500);
-      setTimeout(() => {
-        patchAdmin();
-        updateAll();
-      }, 250);
-    }
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
-    else bind();
-  })();
+  installHODSupabaseAndAvatar();
   installSubjectGate();
   (function() {
     const HUB_URL = window.APP_CONFIG?.SUPABASE_URL || "";
     const HUB_KEY = window.APP_CONFIG?.SUPABASE_ANON_KEY || "";
-    const $2 = (id) => document.getElementById(id);
+    const $3 = (id) => document.getElementById(id);
     let supa = null;
     function client() {
       if (!window.supabase) return null;
       if (!supa) supa = window.supabase.createClient(HUB_URL, HUB_KEY);
       return supa;
     }
-    function esc2(s) {
+    function esc22(s) {
       return String(s ?? "").replace(
         /[&<>"']/g,
         (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
@@ -9137,7 +11617,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       return isLoggedIn() && !(p?.blocked || p?.is_blocked || p?.status === "blocked");
     }
     function injectStyles() {
-      let style = $2("subjectTabsStyle");
+      let style = $3("subjectTabsStyle");
       if (!style) {
         style = document.createElement("style");
         style.id = "subjectTabsStyle";
@@ -9308,21 +11788,21 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       const listElements = [
         document.querySelector(".subjectGateSubline"),
         document.querySelector(".subjectGateTools"),
-        $2("subjectGateSearchWrap"),
+        $3("subjectGateSearchWrap"),
         // SUBJECT_FOLDER_BAR_IN_TABS_20260729: thanh thư mục nay nằm TRONG hàng tab, nên phải
         // nằm trong danh sách ẩn/hiện này — không thì "← Tất cả môn" còn nổi ở tab Thêm môn mới.
-        $2("subjectFolderCrumb"),
-        $2("subjectFolderCrumbMeta"),
-        $2("subjectList"),
-        $2("subjectLoading"),
-        $2("subjectError"),
-        $2("subjectEmpty"),
+        $3("subjectFolderCrumb"),
+        $3("subjectFolderCrumbMeta"),
+        $3("subjectList"),
+        $3("subjectLoading"),
+        $3("subjectError"),
+        $3("subjectEmpty"),
         document.querySelector(".subjectGateFooter")
       ];
       listElements.forEach((el) => {
         if (el) el.style.setProperty("display", isAdd ? "none" : "", isAdd ? "important" : "");
       });
-      const form = $2("addSubjectForm");
+      const form = $3("addSubjectForm");
       if (form) {
         form.classList.toggle("hidden", !isAdd);
         if (isAdd) {
@@ -9335,7 +11815,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     function ensureSubjectGateTabs() {
       const panel = document.querySelector(".polishedSubjectPanel");
       const header = document.querySelector(".subjectGateHeader");
-      if (!panel || !header || $2("subjectGateTabsBar")) return;
+      if (!panel || !header || $3("subjectGateTabsBar")) return;
       injectStyles();
       const tabsBar = document.createElement("div");
       tabsBar.id = "subjectGateTabsBar";
@@ -9348,14 +11828,14 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       <div class="subjectGateSearchWrap" id="subjectGateSearchWrap"></div>
     `;
       header.insertAdjacentElement("afterend", tabsBar);
-      const searchInput = $2("subjectSearch");
-      const searchWrap = $2("subjectGateSearchWrap");
+      const searchInput = $3("subjectSearch");
+      const searchWrap = $3("subjectGateSearchWrap");
       if (searchInput && searchWrap) {
         searchWrap.appendChild(searchInput);
       }
       const searchTools = document.querySelector(".subjectGateTools");
       if (searchTools) searchTools.style.display = "none";
-      const addBtn = $2("addSubjectBtn");
+      const addBtn = $3("addSubjectBtn");
       if (addBtn) addBtn.remove();
       tabsBar.querySelectorAll(".subjectGateTab").forEach((btn) => {
         btn.onclick = () => window.__switchSubjectGateTab(btn.dataset.sgtab);
@@ -9369,11 +11849,11 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     }
     function showAddBtn() {
       ensureSubjectGateTabs();
-      const btn = $2("addSubjectBtn");
-      const tabBtn = $2("subjectGateTabAdd");
+      const btn = $3("addSubjectBtn");
+      const tabBtn = $3("subjectGateTabAdd");
       const allowed = canAdd();
       if (btn) btn.classList.toggle("hidden", !allowed);
-      const note = $2("userApprovalNote");
+      const note = $3("userApprovalNote");
       if (note) {
         note.style.setProperty("display", allowed && !isAdminOrEditor() ? "block" : "none", "important");
       }
@@ -9450,9 +11930,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const name = localStorage.getItem("learninghub_add_subject_name_v1") || "";
       const desc = localStorage.getItem("learninghub_add_subject_desc_v1") || "";
       const savedStep = parseInt(localStorage.getItem("learninghub_add_subject_step_v1") || "1");
-      const codeInp = $2("addSubjectCode");
-      const nameInp = $2("addSubjectName");
-      const descInp = $2("addSubjectDesc");
+      const codeInp = $3("addSubjectCode");
+      const nameInp = $3("addSubjectName");
+      const descInp = $3("addSubjectDesc");
       if (codeInp) codeInp.value = code;
       if (nameInp) nameInp.value = name;
       if (descInp) descInp.value = desc;
@@ -9464,7 +11944,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         localStorage.setItem("learninghub_add_subject_name_v1", this.value);
       });
       const syncDescCount = () => {
-        const el = $2("addSubjectDescCount");
+        const el = $3("addSubjectDescCount");
         if (!el || !descInp) return;
         const n = descInp.value.length;
         el.textContent = n + "/160";
@@ -9480,17 +11960,17 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const fileSize = localStorage.getItem("learninghub_add_subject_file_size_v1");
       const fileData = localStorage.getItem("learninghub_add_subject_file_data_v1");
       if (fileName && fileData) {
-        if ($2("userImportData")) $2("userImportData").value = fileData;
-        const dropZone = $2("importDropZone");
-        const card = $2("userImportFileCard");
-        const nameEl = $2("userImportFileName");
-        const metaEl = $2("userImportFileMeta");
+        if ($3("userImportData")) $3("userImportData").value = fileData;
+        const dropZone = $3("importDropZone");
+        const card = $3("userImportFileCard");
+        const nameEl = $3("userImportFileName");
+        const metaEl = $3("userImportFileMeta");
         if (dropZone) dropZone.classList.add("hidden");
         if (card) card.classList.remove("hidden");
         if (nameEl) nameEl.textContent = fileName;
         if (metaEl)
           metaEl.textContent = Math.max(1, Math.round(parseInt(fileSize || "0") / 1024)) + " KB \xB7 S\u1EB5n s\xE0ng xem tr\u01B0\u1EDBc";
-        const pv = $2("previewImportBtn");
+        const pv = $3("previewImportBtn");
         if (pv) {
           pv.classList.remove("hidden");
           pv.disabled = false;
@@ -9504,7 +11984,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           }, 100);
         }
       }
-      $2("userImportFile")?.addEventListener("change", handleFileImport);
+      $3("userImportFile")?.addEventListener("change", handleFileImport);
       if (savedStep > 1 && code && name) {
         setTimeout(() => {
           window.__switchStep(savedStep);
@@ -9664,24 +12144,24 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         localStorage.setItem("learninghub_add_subject_file_size_v1", String(file.size));
         localStorage.removeItem("learninghub_add_subject_file_data_v1");
         localStorage.removeItem("learninghub_add_subject_file_previewed_v1");
-        const dropZone = $2("importDropZone");
-        const card = $2("userImportFileCard");
-        const nameEl = $2("userImportFileName");
-        const metaEl = $2("userImportFileMeta");
+        const dropZone = $3("importDropZone");
+        const card = $3("userImportFileCard");
+        const nameEl = $3("userImportFileName");
+        const metaEl = $3("userImportFileMeta");
         if (dropZone) dropZone.classList.add("hidden");
         if (card) card.classList.remove("hidden");
         if (nameEl) nameEl.textContent = file.name;
         if (metaEl)
           metaEl.textContent = (file.size / (1024 * 1024)).toFixed(1) + " MB \xB7 File ZIP (JSON & \u1EA3nh) \xB7 S\u1EB5n s\xE0ng xem tr\u01B0\u1EDBc";
-        const pv = $2("previewImportBtn");
+        const pv = $3("previewImportBtn");
         if (pv) {
           pv.classList.remove("hidden");
           pv.disabled = false;
         }
-        const saveBtn = $2("userImportBtn");
+        const saveBtn = $3("userImportBtn");
         if (saveBtn) saveBtn.disabled = true;
         parsedQuestions = [];
-        notify("\u0110\xE3 ch\u1ECDn file ZIP " + file.name + ". B\u1EA5m Xem tr\u01B0\u1EDBc \u0111\u1EC3 ki\u1EC3m tra & gi\u1EA3i n\xE9n.");
+        notify2("\u0110\xE3 ch\u1ECDn file ZIP " + file.name + ". B\u1EA5m Xem tr\u01B0\u1EDBc \u0111\u1EC3 ki\u1EC3m tra & gi\u1EA3i n\xE9n.");
         return;
       }
       window.__selectedImportFile = null;
@@ -9696,28 +12176,28 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           if (jsonMatch) jsonStr = jsonMatch[1];
         }
         const cleanedData = jsonStr.trim();
-        if ($2("userImportData")) $2("userImportData").value = cleanedData;
+        if ($3("userImportData")) $3("userImportData").value = cleanedData;
         localStorage.setItem("learninghub_add_subject_file_name_v1", file.name);
         localStorage.setItem("learninghub_add_subject_file_size_v1", String(file.size));
         localStorage.setItem("learninghub_add_subject_file_data_v1", cleanedData);
         localStorage.removeItem("learninghub_add_subject_file_previewed_v1");
-        const dropZone = $2("importDropZone");
-        const card = $2("userImportFileCard");
-        const nameEl = $2("userImportFileName");
-        const metaEl = $2("userImportFileMeta");
+        const dropZone = $3("importDropZone");
+        const card = $3("userImportFileCard");
+        const nameEl = $3("userImportFileName");
+        const metaEl = $3("userImportFileMeta");
         if (dropZone) dropZone.classList.add("hidden");
         if (card) card.classList.remove("hidden");
         if (nameEl) nameEl.textContent = file.name;
         if (metaEl) metaEl.textContent = Math.max(1, Math.round(file.size / 1024)) + " KB \xB7 S\u1EB5n s\xE0ng xem tr\u01B0\u1EDBc";
-        const pv = $2("previewImportBtn");
+        const pv = $3("previewImportBtn");
         if (pv) {
           pv.classList.remove("hidden");
           pv.disabled = false;
         }
-        const saveBtn = $2("userImportBtn");
+        const saveBtn = $3("userImportBtn");
         if (saveBtn) saveBtn.disabled = true;
         parsedQuestions = [];
-        notify("\u0110\xE3 \u0111\u1ECDc file " + file.name + ". B\u1EA5m Xem tr\u01B0\u1EDBc \u0111\u1EC3 ki\u1EC3m tra.");
+        notify2("\u0110\xE3 \u0111\u1ECDc file " + file.name + ". B\u1EA5m Xem tr\u01B0\u1EDBc \u0111\u1EC3 ki\u1EC3m tra.");
       };
       reader.readAsText(file);
     }
@@ -9765,7 +12245,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             return { term: t.term, def: t.definition };
           });
       } catch (e) {
-        lhWarn("QUIZLET_IMPORT_AUTODETECT_20260701", e);
+        lhWarn2("QUIZLET_IMPORT_AUTODETECT_20260701", e);
       }
       if (!terms) {
         var rows = [];
@@ -9839,23 +12319,23 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           window.__previewImportData = questions;
           parsedQuestions = questions;
           localStorage.setItem("learninghub_add_subject_file_previewed_v1", "true");
-          const codeInp = $2("addSubjectCode");
+          const codeInp = $3("addSubjectCode");
           if (codeInp && !codeInp.value.trim() && parsedZipData.suggestedCode) {
             codeInp.value = parsedZipData.suggestedCode;
           }
-          const metaEl2 = $2("userImportFileMeta");
+          const metaEl2 = $3("userImportFileMeta");
           if (metaEl2) metaEl2.textContent = questions.length + " c\xE2u h\u1ECFi \u0111\xE3 ki\u1EC3m tra \xB7 S\u1EB5n s\xE0ng l\u01B0u";
-          const btn2 = $2("userImportBtn");
+          const btn2 = $3("userImportBtn");
           if (btn2) btn2.disabled = false;
           window.__openImportPreviewModal(questions);
-          notify("OK! " + questions.length + " c\xE2u h\u1ECFi s\u1EB5n s\xE0ng");
+          notify2("OK! " + questions.length + " c\xE2u h\u1ECFi s\u1EB5n s\xE0ng");
         } catch (err) {
           alert("L\u1ED7i ki\u1EC3m tra ZIP:\n" + (err.message || err));
         }
         return;
       }
-      const raw = ($2("userImportData")?.value || "").trim();
-      const btn = $2("userImportBtn");
+      const raw = ($3("userImportData")?.value || "").trim();
+      const btn = $3("userImportBtn");
       if (!raw) {
         alert("B\u1EA1n h\xE3y ch\u1ECDn file .zip / .json / .md / .txt tr\u01B0\u1EDBc.");
         return;
@@ -9908,32 +12388,32 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       localStorage.setItem("learninghub_add_subject_file_previewed_v1", "true");
       parsedQuestions = data;
       window.__previewSelections = {};
-      const metaEl = $2("userImportFileMeta");
+      const metaEl = $3("userImportFileMeta");
       if (metaEl) metaEl.textContent = data.length + " c\xE2u h\u1ECFi \u0111\xE3 ki\u1EC3m tra \xB7 C\xF3 th\u1EC3 l\u01B0u";
       if (btn) btn.disabled = false;
       window.__openImportPreviewModal(data);
-      notify("OK! " + data.length + " c\xE2u h\u1ECFi s\u1EB5n s\xE0ng");
+      notify2("OK! " + data.length + " c\xE2u h\u1ECFi s\u1EB5n s\xE0ng");
     };
     window.__closeImportPreviewModal = function() {
       document.getElementById("importPreviewModal")?.classList.add("hidden");
     };
     window.__submitSubjectRequest = async function() {
-      const code = ($2("addSubjectCode")?.value || "").trim().toUpperCase();
-      const name = ($2("addSubjectName")?.value || "").trim();
-      const desc = ($2("addSubjectDesc")?.value || "").trim();
+      const code = ($3("addSubjectCode")?.value || "").trim().toUpperCase();
+      const name = ($3("addSubjectName")?.value || "").trim();
+      const desc = ($3("addSubjectDesc")?.value || "").trim();
       if (!code) {
         alert("Vui l\xF2ng nh\u1EADp m\xE3 m\xF4n");
-        $2("addSubjectCode")?.focus();
+        $3("addSubjectCode")?.focus();
         return;
       }
       if (!/^[A-Z0-9_]{2,20}$/.test(code)) {
         alert("M\xE3 m\xF4n ch\u1EC9 g\u1ED3m ch\u1EEF, s\u1ED1, g\u1EA1ch d\u01B0\u1EDBi (2-20 k\xFD t\u1EF1)");
-        $2("addSubjectCode")?.focus();
+        $3("addSubjectCode")?.focus();
         return;
       }
       if (!name) {
         alert("Vui l\xF2ng nh\u1EADp t\xEAn m\xF4n");
-        $2("addSubjectName")?.focus();
+        $3("addSubjectName")?.focus();
         return;
       }
       if (!parsedQuestions.length) {
@@ -9945,17 +12425,17 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         alert("Ch\u01B0a k\u1EBFt n\u1ED1i Supabase");
         return;
       }
-      const btn = $2("userImportBtn");
+      const btn = $3("userImportBtn");
       if (btn) {
         btn.disabled = true;
         btn.textContent = "\u0110ang l\u01B0u...";
       }
-      showProgress("B\u1EAFt \u0111\u1EA7u kh\u1EDFi t\u1EA1o m\xF4n h\u1ECDc...", 0, 100, "\u0110ang chu\u1EA9n b\u1ECB d\u1EEF li\u1EC7u...");
+      showProgress2("B\u1EAFt \u0111\u1EA7u kh\u1EDFi t\u1EA1o m\xF4n h\u1ECDc...", 0, 100, "\u0110ang chu\u1EA9n b\u1ECB d\u1EEF li\u1EC7u...");
       await new Promise((resolve) => setTimeout(resolve, 100));
       try {
         let successMsg = "";
         if (isAdminOrEditor()) {
-          showProgress("\u0110ang l\u01B0u m\xF4n h\u1ECDc...", 50, 100, "\u0110ang t\u1EA1o m\xF4n v\xE0 nh\u1EADp c\xE2u h\u1ECFi l\xEAn m\xE1y ch\u1EE7...");
+          showProgress2("\u0110ang l\u01B0u m\xF4n h\u1ECDc...", 50, 100, "\u0110ang t\u1EA1o m\xF4n v\xE0 nh\u1EADp c\xE2u h\u1ECFi l\xEAn m\xE1y ch\u1EE7...");
           const u0 = window.HODSupabase?.getUser?.();
           const res = await fetch("/api/admin-action", {
             method: "POST",
@@ -9990,20 +12470,20 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             window.clearLearningHubSupabaseCache?.("subjects");
             window.clearLearningHubSupabaseCache?.("questions");
           } catch (e) {
-            lhWarn("appCore", e);
+            lhWarn2("appCore", e);
           }
           alert(successMsg);
-          notify(successMsg);
+          notify2(successMsg);
           window.__switchSubjectGateTab("list");
           try {
-            $2("subjectRefresh")?.click();
-            setTimeout(() => $2("subjectRefresh")?.click(), 5600);
+            $3("subjectRefresh")?.click();
+            setTimeout(() => $3("subjectRefresh")?.click(), 5600);
             setTimeout(() => window.refreshSubjectCountsOnce?.(), 6500);
           } catch (e) {
-            lhWarn("appCore", e);
+            lhWarn2("appCore", e);
           }
         } else {
-          showProgress("\u0110ang g\u1EEDi y\xEAu c\u1EA7u t\u1EA1o m\xF4n h\u1ECDc...", 50, 100, "\u0110ang t\u1EA3i d\u1EEF li\u1EC7u c\xE2u h\u1ECFi l\xEAn m\xE1y ch\u1EE7...");
+          showProgress2("\u0110ang g\u1EEDi y\xEAu c\u1EA7u t\u1EA1o m\xF4n h\u1ECDc...", 50, 100, "\u0110ang t\u1EA3i d\u1EEF li\u1EC7u c\xE2u h\u1ECFi l\xEAn m\xE1y ch\u1EE7...");
           await new Promise((resolve) => setTimeout(resolve, 100));
           const u = window.HODSupabase?.getUser?.();
           const res = await fetch("/api/admin-action", {
@@ -10023,7 +12503,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           }
           successMsg = "\u0110\xE3 g\u1EEDi y\xEAu c\u1EA7u th\xEAm m\xF4n " + code + ". Vui l\xF2ng ch\u1EDD admin duy\u1EC7t.";
           alert(successMsg);
-          notify(successMsg);
+          notify2(successMsg);
           window.__switchSubjectGateTab("list");
         }
         parsedQuestions = [];
@@ -10032,20 +12512,20 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       } catch (e) {
         console.warn("Add subject error:", e);
         alert("L\u1ED7i khi l\u01B0u m\xF4n h\u1ECDc: " + (e?.message || e));
-        notify("L\u1ED7i khi l\u01B0u m\xF4n h\u1ECDc");
+        notify2("L\u1ED7i khi l\u01B0u m\xF4n h\u1ECDc");
       } finally {
         if (btn) {
           btn.disabled = false;
           btn.textContent = "L\u01B0u M\xF4n H\u1ECDc";
         }
-        hideProgress();
+        hideProgress2();
       }
     };
     window.__closeAddSubject = function() {
       window.__switchSubjectGateTab("list");
     };
     function bind() {
-      $2("addSubjectBtn")?.addEventListener("click", () => window.__switchSubjectGateTab("add"));
+      $3("addSubjectBtn")?.addEventListener("click", () => window.__switchSubjectGateTab("add"));
       showAddBtn();
       setInterval(showAddBtn, 2e3);
     }
@@ -10054,32 +12534,32 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
   })();
   (function() {
     const SUBJECT_STORE2 = "learninghub_subject_code_merged_v1";
-    const $2 = (id) => document.getElementById(id);
+    const $3 = (id) => document.getElementById(id);
     const code = () => localStorage.getItem(SUBJECT_STORE2) || "";
     const supa = () => window.HODSupabase?.__client || null;
     const logged = () => !!window.HODSupabase?.getUser?.();
     function empty(msg) {
       try {
-        LHState.RAW = [];
-        LHState.pool = [];
-        LHState.ci = 0;
-        LHState.flipped = false;
-        LHState.randomActive = false;
+        LHState2.RAW = [];
+        LHState2.pool = [];
+        LHState2.ci = 0;
+        LHState2.flipped = false;
+        LHState2.randomActive = false;
         localStorage.setItem("hod102_random_active", "0");
       } catch (e) {
-        lhWarn("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
+        lhWarn2("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
       }
       try {
-        if ($2("idx")) $2("idx").textContent = "0";
-        if ($2("total")) $2("total").textContent = "0";
-        if ($2("bar")) $2("bar").style.width = "0%";
-        if ($2("question")) $2("question").textContent = msg || "Ch\u01B0a t\u1EA3i d\u1EEF li\u1EC7u t\u1EEB Supabase";
-        if ($2("options")) $2("options").innerHTML = "";
-        if ($2("images")) $2("images").innerHTML = "";
-        renderQuiz?.();
-        renderStudy?.();
+        if ($3("idx")) $3("idx").textContent = "0";
+        if ($3("total")) $3("total").textContent = "0";
+        if ($3("bar")) $3("bar").style.width = "0%";
+        if ($3("question")) $3("question").textContent = msg || "Ch\u01B0a t\u1EA3i d\u1EEF li\u1EC7u t\u1EEB Supabase";
+        if ($3("options")) $3("options").innerHTML = "";
+        if ($3("images")) $3("images").innerHTML = "";
+        renderQuiz2?.();
+        renderStudy2?.();
       } catch (e) {
-        lhWarn("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
+        lhWarn2("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
       }
     }
     async function loadSubjectOnly() {
@@ -10100,7 +12580,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           syncUserSubjectToProfile(subject);
         } catch (e) {
-          lhWarn("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
+          lhWarn2("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
         }
       }
       try {
@@ -10110,7 +12590,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         const json = await res.json().catch(() => ({}));
         if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c questions t\u1EEB Turso");
         const data = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
-        LHState.RAW = data.map((r) => ({
+        LHState2.RAW = data.map((r) => ({
           id: r.id,
           subject_code: r.subject_code || subject,
           num: r.num,
@@ -10125,18 +12605,18 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           __imagesChecked: true,
           __imagesLoaded: true
         }));
-        LHState.pool = [...LHState.RAW];
+        LHState2.pool = [...LHState2.RAW];
         var _saved2 = +localStorage.getItem("learninghub_progress_" + subject) || 0;
-        LHState.ci = Math.max(0, Math.min(_saved2, Math.max(0, LHState.pool.length - 1)));
-        LHState.flipped = false;
-        LHState.randomActive = false;
+        LHState2.ci = Math.max(0, Math.min(_saved2, Math.max(0, LHState2.pool.length - 1)));
+        LHState2.flipped = false;
+        LHState2.randomActive = false;
         localStorage.setItem("hod102_random_active", "0");
         try {
-          if ($2("total")) $2("total").textContent = String(LHState.RAW.length);
+          if ($3("total")) $3("total").textContent = String(LHState2.RAW.length);
         } catch (e) {
-          lhWarn("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
+          lhWarn2("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
         }
-        renderAllSafe();
+        renderAllSafe2();
         try {
           syncSubjectTexts?.();
           updateCardTools?.();
@@ -10154,12 +12634,12 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     function patchLoaders() {
       try {
         window.rebuild = function() {
-          LHState.RAW = [];
-          LHState.pool = [];
-          return LHState.RAW;
+          LHState2.RAW = [];
+          LHState2.pool = [];
+          return LHState2.RAW;
         };
       } catch (e) {
-        lhWarn("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
+        lhWarn2("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
       }
       if (window.HODSupabase) {
         window.HODSupabase.loadQuestionsFromSupabase = loadSubjectOnly;
@@ -10169,13 +12649,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       patchLoaders();
       const subject = code();
       try {
-        if (!Array.isArray(LHState.RAW) || !LHState.RAW.length) {
+        if (!Array.isArray(LHState2.RAW) || !LHState2.RAW.length) {
           if (logged() && subject) loadSubjectOnly();
           return;
         }
-        if (LHState.RAW.some((q) => !q.id || !q.subject_code || q.subject_code !== subject)) loadSubjectOnly();
+        if (LHState2.RAW.some((q) => !q.id || !q.subject_code || q.subject_code !== subject)) loadSubjectOnly();
       } catch (e) {
-        lhWarn("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
+        lhWarn2("PATCH_NO_LOCAL_QUESTIONS_SUPABASE_ONLY", e);
       }
     }
     document.addEventListener("DOMContentLoaded", () => {
@@ -10185,12 +12665,12 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     patchLoaders();
   })();
   (function() {
-    function $2(id) {
+    function $3(id) {
       return document.getElementById(id);
     }
     function hide() {
       ["shuffle", "stShuffle"].forEach((id) => {
-        let e = $2(id);
+        let e = $3(id);
         if (e) {
           e.style.display = "none";
           e.disabled = true;
@@ -10198,10 +12678,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         }
       });
       try {
-        LHState.randomActive = false;
+        LHState2.randomActive = false;
         localStorage.setItem("hod102_random_active", "0");
       } catch (e) {
-        lhWarn("PATCH_REMOVE_RANDOM_FEATURE_FINAL", e);
+        lhWarn2("PATCH_REMOVE_RANDOM_FEATURE_FINAL", e);
       }
     }
     window.shuffle = shuffle = function() {
@@ -10219,20 +12699,20 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     try {
       window.HOD_DATA = [];
     } catch (e) {
-      lhWarn("PATCH_SUPABASE_SINGLE_SOURCE_ONLY", e);
+      lhWarn2("PATCH_SUPABASE_SINGLE_SOURCE_ONLY", e);
     }
     try {
       const dataNode = document.getElementById("data");
       if (dataNode) dataNode.textContent = "[]";
     } catch (e) {
-      lhWarn("PATCH_SUPABASE_SINGLE_SOURCE_ONLY", e);
+      lhWarn2("PATCH_SUPABASE_SINGLE_SOURCE_ONLY", e);
     }
   })();
-  if (typeof finalAnswerText !== "function") {
-    let finalAnswerText2 = function(c) {
+  if (typeof finalAnswerText2 !== "function") {
+    let finalAnswerText3 = function(c) {
       const raw = String(c?.answer_text ?? "").trim();
       const ans = String(c?.answer ?? "").trim().toUpperCase();
-      if (!raw || raw.toUpperCase() === ans || /^[A-E]+$/i.test(raw)) return answerText(c);
+      if (!raw || raw.toUpperCase() === ans || /^[A-E]+$/i.test(raw)) return answerText2(c);
       return raw;
     };
   }
@@ -10379,14 +12859,14 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     window.addEventListener("resize", resizeDebounced, { passive: true });
   })();
   (function() {
-    const $2 = (id) => document.getElementById(id);
-    const esc2 = (s) => String(s ?? "").replace(
+    const $3 = (id) => document.getElementById(id);
+    const esc3 = (s) => String(s ?? "").replace(
       /[&<>"']/g,
       (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
     );
     const user = () => window.HODSupabase?.getUser?.() || null;
     function ensureReportModal() {
-      if ($2("hodReportModal")) return;
+      if ($3("hodReportModal")) return;
       const modal = document.createElement("div");
       modal.id = "hodReportModal";
       modal.className = "modal hidden hodReportModal";
@@ -10404,21 +12884,21 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         <div id="hodReportModalList" class="hodReportModalList">Ch\u01B0a t\u1EA3i.</div>
       </div>`;
       document.body.appendChild(modal);
-      $2("hodReportModalClose")?.addEventListener("click", () => modal.classList.add("hidden"));
-      $2("hodReportModalReload")?.addEventListener("click", loadReportModalList);
+      $3("hodReportModalClose")?.addEventListener("click", () => modal.classList.add("hidden"));
+      $3("hodReportModalReload")?.addEventListener("click", loadReportModalList);
       modal.addEventListener("mousedown", (e) => {
         if (e.target === modal) modal.classList.add("hidden");
       });
     }
     function ensureReportButton() {
-      const menu = $2("hodAccountMenu");
+      const menu = $3("hodAccountMenu");
       if (!menu) return;
-      let box = $2("hodReportBox");
+      let box = $3("hodReportBox");
       if (!box) {
         box = document.createElement("div");
         box.id = "hodReportBox";
         box.className = "hodReportBox";
-        const logout = $2("hodLogoutBtn");
+        const logout = $3("hodLogoutBtn");
         logout ? menu.insertBefore(box, logout) : menu.appendChild(box);
       }
       box.innerHTML = `
@@ -10426,7 +12906,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         <span>B\xE1o c\xE1o \u0111\xE3 g\u1EEDi</span>
         <b>Xem</b>
       </button>`;
-      $2("hodOpenReportsBtn")?.addEventListener("click", openReportsTab);
+      $3("hodOpenReportsBtn")?.addEventListener("click", openReportsTab);
     }
     function statusText(s) {
       return { pending: "\u0110ang ch\u1EDD", approved: "\u0110\xE3 duy\u1EC7t", rejected: "T\u1EEB ch\u1ED1i" }[s] || s || "Kh\xF4ng r\xF5";
@@ -10436,7 +12916,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }
     async function loadReportModalList() {
       ensureReportModal();
-      const list = $2("hodReportModalList");
+      const list = $3("hodReportModalList");
       const u = user();
       if (!list) return;
       if (!u) {
@@ -10463,18 +12943,18 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         (r) => `
       <div class="hodReportRow">
         <div class="hodReportRowTop">
-          <b>C\xE2u ${esc2(r.question_num || "?")}</b>
-          <span class="hodReportStatus ${statusClass(r.status)}">${esc2(statusText(r.status))}</span>
+          <b>C\xE2u ${esc3(r.question_num || "?")}</b>
+          <span class="hodReportStatus ${statusClass(r.status)}">${esc3(statusText(r.status))}</span>
         </div>
-        <div class="hodReportTime">G\u1EEDi: ${esc2(new Date(r.created_at).toLocaleString("vi-VN"))}</div>
-        ${r.admin_note ? `<div class="hodReportNote">Ghi ch\xFA admin: ${esc2(r.admin_note)}</div>` : ""}
+        <div class="hodReportTime">G\u1EEDi: ${esc3(new Date(r.created_at).toLocaleString("vi-VN"))}</div>
+        ${r.admin_note ? `<div class="hodReportNote">Ghi ch\xFA admin: ${esc3(r.admin_note)}</div>` : ""}
       </div>`
       ).join("");
     }
     async function openReportsTab() {
       ensureReportModal();
-      $2("hodAccountMenu")?.classList.add("hidden");
-      $2("hodReportModal")?.classList.remove("hidden");
+      $3("hodAccountMenu")?.classList.add("hidden");
+      $3("hodReportModal")?.classList.remove("hidden");
       await loadReportModalList();
     }
     function boot() {
@@ -10486,20 +12966,20 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     setInterval(ensureReportButton, 700);
   })();
   (function() {
-    function $2(id) {
+    function $3(id) {
       return document.getElementById(id);
     }
     function goPrev() {
-      if (typeof prev === "function") prev();
+      if (typeof prev2 === "function") prev2();
     }
     function goNext() {
-      if (typeof next === "function") next();
+      if (typeof next2 === "function") next2();
     }
     const isMobile = () => window.matchMedia("(max-width:760px)").matches;
     function ensureSlideWrap() {
-      let wrap = $2("cardSlideWrap");
+      let wrap = $3("cardSlideWrap");
       if (wrap) return wrap;
-      const card = $2("card");
+      const card = $3("card");
       if (!card || !card.parentNode) return null;
       wrap = document.createElement("div");
       wrap.id = "cardSlideWrap";
@@ -10511,7 +12991,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     let __sliding = false;
     let __activeFinishSlide = null;
     function slideChange2(dir, isRepeat = false) {
-      const zone = $2("zone");
+      const zone = $3("zone");
       if (!zone) {
         dir === "next" ? goNext() : goPrev();
         return;
@@ -10533,7 +13013,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         zone.querySelectorAll(".lhGhost").forEach((g) => g.remove());
       } catch (e) {
-        lhWarn("MOBILE_FLASHCARD_NAVIGATION_20260702", e);
+        lhWarn2("MOBILE_FLASHCARD_NAVIGATION_20260702", e);
       }
       const zr = zone.getBoundingClientRect();
       const r = wrap.getBoundingClientRect();
@@ -10671,8 +13151,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       });
     }
     function ensureMobileNav() {
-      const zone = $2("zone");
-      if (!zone || $2("mobileCardNav")) return;
+      const zone = $3("zone");
+      if (!zone || $3("mobileCardNav")) return;
       const nav = document.createElement("div");
       nav.id = "mobileCardNav";
       nav.className = "mobileCardNav";
@@ -10684,13 +13164,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         if (localStorage.getItem("learninghub_swipe_hint_seen_v1") === "1") zone.classList.add("swiped");
       } catch (e) {
-        lhWarn("MOBILE_FLASHCARD_NAVIGATION_20260702", e);
+        lhWarn2("MOBILE_FLASHCARD_NAVIGATION_20260702", e);
       }
-      bindHoldRepeat($2("mobilePrev"), "prev");
-      bindHoldRepeat($2("mobileNext"), "next");
+      bindHoldRepeat($3("mobilePrev"), "prev");
+      bindHoldRepeat($3("mobileNext"), "next");
     }
     function bindDrag() {
-      const zone = $2("zone");
+      const zone = $3("zone");
       if (!zone || zone.__mobileDragBound) return;
       zone.__mobileDragBound = true;
       let sx = 0, sy = 0, st = 0, dragging = false, decided = false, axis = null, moved = false;
@@ -10701,7 +13181,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           localStorage.setItem("learninghub_swipe_hint_seen_v1", "1");
         } catch (e) {
-          lhWarn("MOBILE_FLASHCARD_NAVIGATION_20260702", e);
+          lhWarn2("MOBILE_FLASHCARD_NAVIGATION_20260702", e);
         }
       }
       zone.addEventListener(
@@ -10795,8 +13275,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     function boot() {
       ensureSlideWrap();
       ensureMobileNav();
-      bindHoldRepeat($2("prev"), "prev");
-      bindHoldRepeat($2("next"), "next");
+      bindHoldRepeat($3("prev"), "prev");
+      bindHoldRepeat($3("next"), "next");
       bindHoldRepeat(document.querySelector(".arrow.left"), "prev");
       bindHoldRepeat(document.querySelector(".arrow.right"), "next");
       bindDrag();
@@ -10884,14 +13364,14 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           window.lhHandleReloadNotice?.();
         }
       } catch (e) {
-        lhWarn("RELOAD_NOTICE_POLL_20260729", e);
+        lhWarn2("RELOAD_NOTICE_POLL_20260729", e);
       }
     }, 6e4);
   })();
   (function() {
     const STORE2 = "learninghub_subject_code_merged_v1";
     let _lastCounterHTML = "", _lastBrandHTML = "";
-    function $2(id) {
+    function $3(id) {
       return document.getElementById(id);
     }
     function escStr(s) {
@@ -10907,11 +13387,11 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const counter = document.querySelector(".globalTop .counter") || document.querySelector("#fc .top .counter") || document.querySelector(".counter");
       if (!counter) return;
       const tab = document.querySelector(".tab.active")?.dataset?.tab || "fc";
-      const rawLen = typeof LHState.RAW !== "undefined" && Array.isArray(LHState.RAW) ? String(LHState.RAW.length) : "637";
+      const rawLen = typeof LHState2.RAW !== "undefined" && Array.isArray(LHState2.RAW) ? String(LHState2.RAW.length) : "637";
       let html;
       if (tab === "fc") {
-        const idx = $2("idx")?.textContent || "1";
-        const total = $2("total")?.textContent || rawLen;
+        const idx = $3("idx")?.textContent || "1";
+        const total = $3("total")?.textContent || rawLen;
         html = 'C\xE2u <b id="idx">' + idx + '</b> / <b id="total">' + total + "</b>";
       } else {
         html = '<b id="subjectTotalCount">' + rawLen + "</b> c\xE2u";
@@ -10947,26 +13427,26 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     setInterval(run, 500);
   })();
   (function() {
-    function $2(id) {
+    function $3(id) {
       return document.getElementById(id);
     }
     function moveSubjectButton() {
       const actions = document.querySelector(".globalTop .actions") || document.querySelector("#fc .actions") || document.querySelector(".actions");
       if (!actions) return;
-      let btn = $2("subjectTopChip");
+      let btn = $3("subjectTopChip");
       if (!btn) {
         btn = document.createElement("button");
         btn.id = "subjectTopChip";
         btn.type = "button";
         btn.className = "subjectChip";
         btn.onclick = function() {
-          $2("hodChangeSubjectBtn")?.click();
+          $3("hodChangeSubjectBtn")?.click();
         };
       }
       btn.textContent = "\u0110\u1ED5i m\xF4n";
       btn.classList.remove("hidden");
       btn.style.display = "inline-flex";
-      const settings = $2("openSettings");
+      const settings = $3("openSettings");
       if (settings && settings.parentNode === actions) {
         if (settings.previousElementSibling !== btn) actions.insertBefore(btn, settings);
       } else if (!actions.contains(btn)) {
@@ -10982,26 +13462,26 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
   (function() {
     function getQuestionByNum(num) {
       num = Number(num);
-      return (LHState.RAW || []).find((c) => Number(c.num) === num) || (LHState.pool || []).find((c) => Number(c.num) === num) || null;
+      return (LHState2.RAW || []).find((c) => Number(c.num) === num) || (LHState2.pool || []).find((c) => Number(c.num) === num) || null;
     }
     function setCurrentQuestionByNum(num) {
       num = Number(num);
-      let idx = (LHState.pool || []).findIndex((c) => Number(c.num) === num);
+      let idx = (LHState2.pool || []).findIndex((c) => Number(c.num) === num);
       if (idx < 0) {
-        const rawIdx = (LHState.RAW || []).findIndex((c) => Number(c.num) === num);
+        const rawIdx = (LHState2.RAW || []).findIndex((c) => Number(c.num) === num);
         if (rawIdx >= 0) {
-          LHState.pool = [...LHState.RAW];
+          LHState2.pool = [...LHState2.RAW];
           idx = rawIdx;
         }
       }
       if (idx >= 0) {
-        LHState.ci = idx;
-        LHState.flipped = false;
-        LHState.flipDir = "horizontal";
+        LHState2.ci = idx;
+        LHState2.flipped = false;
+        LHState2.flipDir = "horizontal";
         try {
-          renderCard();
+          renderCard2();
         } catch (e) {
-          lhWarn("FINAL_APP_REPORT_BUTTON_NO_TOGGLE_20260614", e);
+          lhWarn2("FINAL_APP_REPORT_BUTTON_NO_TOGGLE_20260614", e);
         }
         return true;
       }
@@ -11199,3165 +13679,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     window.addEventListener("focus", bootDebounced);
     window.addEventListener("resize", bootDebounced, { passive: true });
   })();
-  (function() {
-    const STOPWORDS = /* @__PURE__ */ new Set([
-      "a",
-      "an",
-      "the",
-      "and",
-      "or",
-      "but",
-      "if",
-      "then",
-      "else",
-      "when",
-      "where",
-      "why",
-      "how",
-      "what",
-      "which",
-      "who",
-      "whom",
-      "whose",
-      "is",
-      "am",
-      "are",
-      "was",
-      "were",
-      "be",
-      "been",
-      "being",
-      "do",
-      "does",
-      "did",
-      "done",
-      "have",
-      "has",
-      "had",
-      "having",
-      "can",
-      "could",
-      "should",
-      "would",
-      "will",
-      "shall",
-      "may",
-      "might",
-      "must",
-      "in",
-      "on",
-      "at",
-      "by",
-      "for",
-      "from",
-      "to",
-      "of",
-      "with",
-      "without",
-      "into",
-      "onto",
-      "over",
-      "under",
-      "between",
-      "among",
-      "about",
-      "as",
-      "than",
-      "that",
-      "this",
-      "these",
-      "those",
-      "it",
-      "its",
-      "their",
-      "there",
-      "here",
-      "two",
-      "three",
-      "four",
-      "five",
-      "one",
-      "option",
-      "options",
-      "choose",
-      "check",
-      "select",
-      "following",
-      "main",
-      "la",
-      "l\xE0",
-      "cua",
-      "c\u1EE7a",
-      "va",
-      "v\xE0",
-      "cac",
-      "c\xE1c",
-      "nhung",
-      "nh\u1EEFng",
-      "mot",
-      "m\u1ED9t",
-      "cho",
-      "voi",
-      "v\u1EDBi",
-      "trong",
-      "ngoai",
-      "ngo\xE0i",
-      "duoc",
-      "\u0111\u01B0\u1EE3c",
-      "khong",
-      "kh\xF4ng",
-      "nao",
-      "n\xE0o",
-      "gi",
-      "g\xEC",
-      "hay",
-      "hoac",
-      "ho\u1EB7c",
-      "dap",
-      "an",
-      "dapan",
-      "dap\xE1n",
-      "cau",
-      "c\xE2u"
-    ]);
-    function normText(s) {
-      return String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/[^a-z0-9#:\s]/g, " ").replace(/\s+/g, " ").trim();
-    }
-    function splitTokens(s) {
-      return normText(s).split(/\s+/).filter(Boolean);
-    }
-    function meaningfulTokens(q) {
-      const raw = splitTokens(q);
-      return raw.filter((t) => {
-        if (!t) return false;
-        if (STOPWORDS.has(t)) return false;
-        if (t.length < 3 && !/^\d+$/.test(t)) return false;
-        if (/^(answer|ans|multi|multiple|chon|nhieu|lua|dap|an|dapan)$/.test(t)) return false;
-        if (t.includes(":")) return false;
-        return true;
-      });
-    }
-    function parseQuery(q) {
-      const raw = String(q ?? "").trim();
-      const n = normText(raw);
-      const p = { raw, norm: n, num: null, answer: null, multi: false, tokens: [], numericOnly: false, phrase: "" };
-      p.numericOnly = /^\d+$/.test(n);
-      let m = n.match(/(?:^|\s)#\s*(\d+)(?:\s|$)/) || n.match(/(?:^|\s)cau\s*(\d+)(?:\s|$)/);
-      if (m) p.num = Number(m[1]);
-      if (p.numericOnly) p.num = Number(n);
-      m = n.match(/(?:answer|ans|dap\s*an|dapan)\s*:\s*([a-e]+)/i);
-      if (m) p.answer = m[1].toUpperCase().split("").sort().join("");
-      p.multi = /(^|\s)(multi|multiple|chon nhieu|nhieu dap an|nhieu lua chon)(\s|$)/.test(n);
-      p.tokens = meaningfulTokens(raw).filter((t) => {
-        if (/^#?\d+$/.test(t) && p.num !== null) return false;
-        if (/^[a-e]+$/.test(t) && p.answer) return false;
-        return true;
-      });
-      p.phrase = p.tokens.join(" ");
-      return p;
-    }
-    function optionText(c) {
-      return Object.values(c?.options || {}).join(" ");
-    }
-    function correctAnswerText(c) {
-      const ans = String(c?.answer || "").toUpperCase();
-      const opts = c?.options || {};
-      return ans.split("").map((k) => opts[k] || "").join(" ");
-    }
-    function hasWholeNumber(text, num) {
-      return new RegExp("(^|\\D)" + String(num).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?=\\D|$)").test(
-        String(text ?? "")
-      );
-    }
-    function editDistanceOne(a, b) {
-      if (a === b) return true;
-      if (Math.abs(a.length - b.length) > 1) return false;
-      let i = 0, j = 0, ed = 0;
-      while (i < a.length && j < b.length) {
-        if (a[i] === b[j]) {
-          i++;
-          j++;
-          continue;
-        }
-        ed++;
-        if (ed > 1) return false;
-        if (a.length > b.length) i++;
-        else if (a.length < b.length) j++;
-        else {
-          i++;
-          j++;
-        }
-      }
-      return ed + (i < a.length ? 1 : 0) + (j < b.length ? 1 : 0) <= 1;
-    }
-    function tokenInText(token, textNorm) {
-      if (!token) return true;
-      if (textNorm.includes(token)) return true;
-      if (token.length < 5) return false;
-      const words = textNorm.split(/\s+/).filter((w) => Math.abs(w.length - token.length) <= 1);
-      return words.some((w) => editDistanceOne(token, w));
-    }
-    function countMatches(tokens, textNorm) {
-      let n = 0;
-      for (const t of tokens) if (tokenInText(t, textNorm)) n++;
-      return n;
-    }
-    function scoreQuestion(c, p) {
-      if (!p.raw) return { ok: true, score: 0, auto: false };
-      const ansSorted = sortAns(String(c.answer || "").toUpperCase());
-      if (p.answer && ansSorted !== p.answer) return { ok: false, score: -1, auto: false };
-      if (p.multi && String(c.answer || "").length <= 1) return { ok: false, score: -1, auto: false };
-      const qNorm = normText(c.question || "");
-      const optNorm = normText(optionText(c));
-      const corNorm = normText(correctAnswerText(c));
-      const ansLineNorm = normText([c.answer, c.answer_text, correctAnswerText(c)].join(" "));
-      const allNorm = normText([c.num, c.question, c.answer, c.answer_text, optionText(c)].join(" "));
-      let score = 0, auto = false;
-      if (p.num !== null) {
-        const exact = Number(c.num) === p.num;
-        const answerHasNum = hasWholeNumber([c.answer_text, correctAnswerText(c)].join(" "), p.num);
-        if (p.numericOnly) {
-          if (!exact && !answerHasNum) return { ok: false, score: -1, auto: false };
-          score += exact ? 2e3 : 850;
-          auto = answerHasNum;
-        } else {
-          if (!exact) return { ok: false, score: -1, auto: false };
-          score += 2e3;
-        }
-      }
-      if (p.answer) {
-        score += 900;
-        auto = true;
-      }
-      if (p.multi) {
-        score += 350;
-      }
-      const tokens = p.tokens;
-      if (tokens.length) {
-        const qHit = countMatches(tokens, qNorm);
-        const optHit = countMatches(tokens, optNorm);
-        const corHit = countMatches(tokens, corNorm);
-        const allHit = countMatches(tokens, allNorm);
-        const required = tokens.length <= 2 ? tokens.length : Math.ceil(tokens.length * 0.72);
-        if (allHit < required) return { ok: false, score: -1, auto: false };
-        if (p.phrase && qNorm.includes(p.phrase)) score += 1200;
-        if (p.phrase && optNorm.includes(p.phrase)) score += 850;
-        if (p.phrase && corNorm.includes(p.phrase)) {
-          score += 1e3;
-          auto = true;
-        }
-        score += qHit * 180 + optHit * 95 + corHit * 160;
-        if (corHit > 0 || p.phrase && ansLineNorm.includes(p.phrase)) auto = true;
-        if (tokens.length >= 3 && qHit === 0 && optHit < required) return { ok: false, score: -1, auto: false };
-        if (tokens.length >= 4 && allHit < tokens.length) score -= (tokens.length - allHit) * 220;
-      } else if (!p.num && !p.answer && !p.multi) {
-        return { ok: false, score: -1, auto: false };
-      }
-      return { ok: true, score, auto };
-    }
-    function smartBetter(q) {
-      const p = parseQuery(q);
-      if (!p.raw) return LHState.RAW;
-      return LHState.RAW.map((c) => ({ c, m: scoreQuestion(c, p) })).filter((x) => x.m.ok).sort((a, b) => b.m.score - a.m.score || Number(a.c.num) - Number(b.c.num)).map((x) => Object.assign({}, x.c, { __autoOpenAnswer: x.m.auto }));
-    }
-    function markText(text, query, cls = "tokenMark") {
-      const parser = typeof parseQuery === "function" ? parseQuery : parseQ;
-      const p = parser(query);
-      const source = String(text ?? "");
-      function escLocal(s) {
-        return esc(s);
-      }
-      function normWithMap(s) {
-        let norm = "", map = [], lastSpace = true;
-        for (let i = 0; i < s.length; i++) {
-          const ch = s[i];
-          const n = normText(ch);
-          if (n) {
-            for (const c of n) {
-              norm += c;
-              map.push(i);
-            }
-            lastSpace = false;
-          } else if (!lastSpace) {
-            norm += " ";
-            map.push(i);
-            lastSpace = true;
-          }
-        }
-        norm = norm.trimEnd();
-        while (norm.startsWith(" ")) {
-          norm = norm.slice(1);
-          map.shift();
-        }
-        return { norm, map };
-      }
-      if (cls === "phraseMark" && p.norm && p.norm.length >= 6 && !p.numericOnly && !p.answer && !p.multi) {
-        const nm = normWithMap(source);
-        const hit = nm.norm.indexOf(p.norm);
-        if (hit >= 0) {
-          const start = nm.map[hit] ?? 0;
-          const end = (nm.map[hit + p.norm.length - 1] ?? source.length - 1) + 1;
-          return escLocal(source.slice(0, start)) + `<mark class="searchMark phraseMark">${escLocal(source.slice(start, end))}</mark>` + escLocal(source.slice(end));
-        }
-      }
-      const tokens = p.numericOnly ? [String(p.num)] : (p.tokens || []).slice(0, 10);
-      if (!tokens.length) return escLocal(source);
-      const parts = source.match(/[\p{L}\p{N}]+|[^\p{L}\p{N}]+/gu) || [source];
-      return parts.map((part) => {
-        const np = normText(part);
-        if (np && tokens.some((t) => np === t || np.includes(t) || t.includes(np))) {
-          return `<mark class="searchMark ${cls}">${escLocal(part)}</mark>`;
-        }
-        return escLocal(part);
-      }).join("");
-    }
-    function optionStudy(c, q) {
-      return Object.entries(c.options || {}).map(([k, v]) => {
-        const right = String(c.answer || "").includes(k);
-        return `<div class="sopt ${right ? "ans correct" : ""}"><div class="skey">${right ? "\u2713" : esc(k)}</div><div>${esc(k + ". ")}${markText(v, q)}</div></div>`;
-      }).join("");
-    }
-    function renderStudyBetter() {
-      const input = $("search");
-      const q = input ? input.value || "" : "";
-      if (input) input.placeholder = "T\xECm c\xE2u / \u0111\xE1p \xE1n: adopted laws, #26, answer:BC, multi...";
-      const arr = smartBetter(q);
-      const max = arr.length;
-      const html = arr.slice(0, max).map((c) => {
-        const auto = !!c.__autoOpenAnswer;
-        return `<div class="sitem compactStudyCard ${auto ? "autoOpenAnswer open" : ""}" data-num="${esc(c.num)}" tabindex="0">
-        <div class="compactCardLine">
-          <div class="compactCardMeta"><span class="snum compactSubject">C\xC2U ${esc(c.num)}</span></div>
-          <div class="sq compactQuestionText">${markText(c.question, q, "phraseMark")}</div>
-          <div class="compactCardRight">${auto ? '<span class="answerMatchChip">Kh\u1EDBp \u0111\xE1p \xE1n</span>' : ""}<button type="button" class="studyReportBtn" data-report-num="${esc(c.num)}" title="B\xE1o c\xE1o c\xE2u ${esc(c.num)}">!</button><span class="expandHint"></span></div>
-        </div>
-        <div class="compactCardDetails"><div class="qimgs">${imgsHTML(c)}</div><div class="sopts">${optionStudy(c, q)}</div></div>
-      </div>`;
-      }).join("");
-      $("studyList").innerHTML = html + (arr.length > max ? `<div class="more">\u0110ang hi\u1EC3n th\u1ECB ${max} / ${arr.length} k\u1EBFt qu\u1EA3.</div>` : arr.length ? "" : '<div class="more">Kh\xF4ng t\xECm th\u1EA5y k\u1EBFt qu\u1EA3.</div>');
-    }
-    function bindBetterSearch() {
-      const s = $("search");
-      if (s) {
-        s.oninput = renderStudyBetter;
-        s.placeholder = "T\xECm c\xE2u / \u0111\xE1p \xE1n: adopted laws, #26, answer:BC, multi...";
-      }
-      const list = $("studyList");
-      if (list && !list.__betterSearchBound) {
-        list.__betterSearchBound = true;
-        list.addEventListener(
-          "click",
-          function(e) {
-            const rb = e.target.closest("[data-report-num]");
-            if (rb) {
-              e.preventDefault();
-              e.stopImmediatePropagation();
-              window.openStudyReport?.(rb.dataset.reportNum, e);
-              return;
-            }
-            const it = e.target.closest(".sitem");
-            if (!it) return;
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            it.classList.toggle("open");
-            it.classList.remove("autoOpenAnswer");
-          },
-          true
-        );
-      }
-    }
-    smart = smartBetter;
-    document.addEventListener("DOMContentLoaded", function() {
-      bindBetterSearch();
-      setTimeout(bindBetterSearch, 100);
-      setTimeout(bindBetterSearch, 600);
-      try {
-        renderStudyBetter();
-      } catch (e) {
-        lhWarn("FINAL_SMART_SEARCH_STOPWORDS_RELEVANCE_20260614", e);
-      }
-    });
-  })();
-  (function() {
-    const SUBJECT_STORE2 = "learninghub_subject_code_merged_v1";
-    const $2 = (id) => document.getElementById(id);
-    const subjectCode = () => localStorage.getItem(SUBJECT_STORE2) || "";
-    const client = () => window.HODSupabase?.__client || null;
-    const user = () => window.HODSupabase?.getUser?.() || null;
-    const profile = () => window.HODSupabase?.getProfile?.() || null;
-    const esc2 = (s) => String(s ?? "").replace(
-      /[&<>"']/g,
-      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
-    );
-    const ADD_IMG_DRAFT_KEY = "learninghub_add_question_images_draft_v1";
-    function saveAddImagesDraft() {
-      try {
-        localStorage.setItem(ADD_IMG_DRAFT_KEY, JSON.stringify(addImages));
-      } catch (e) {
-        lhWarn("COPILOT_MERGED_ADD_QUESTION_DISPLAY_VERSION_20260629", e);
-      }
-    }
-    function loadAddImagesDraft() {
-      try {
-        return JSON.parse(localStorage.getItem(ADD_IMG_DRAFT_KEY) || "[]") || [];
-      } catch (e) {
-        return [];
-      }
-    }
-    function clearAddImagesDraft() {
-      try {
-        localStorage.removeItem(ADD_IMG_DRAFT_KEY);
-      } catch (e) {
-        lhWarn("COPILOT_MERGED_ADD_QUESTION_DISPLAY_VERSION_20260629", e);
-      }
-    }
-    let addImages = loadAddImagesDraft();
-    let addUploading = 0;
-    function canManage() {
-      const p = profile();
-      const role = String(p?.role || "").toLowerCase();
-      return !!user() && (role === "admin" || role === "editor") && !(p?.blocked || p?.is_blocked || p?.status === "blocked");
-    }
-    function isAllTab() {
-      return $2("study")?.classList.contains("active") || document.querySelector(".tab.active")?.dataset?.tab === "study";
-    }
-    function nextNum() {
-      const nums = (LHState.RAW || []).map((q) => Number(q.num)).filter(Number.isFinite);
-      return nums.length ? Math.max(...nums) + 1 : 1;
-    }
-    function notifyOk(msg) {
-      if (typeof notify === "function") notify(msg);
-      else alert(msg);
-    }
-    function ensurePlus() {
-      let btn = $2("addQuestionFab");
-      if (!btn) {
-        btn = document.createElement("button");
-        btn.id = "addQuestionFab";
-        btn.type = "button";
-        btn.title = "Th\xEAm c\xE2u h\u1ECFi";
-        btn.textContent = "+";
-        document.body.appendChild(btn);
-      }
-      btn.classList.add("prettyAddFab");
-      btn.innerHTML = "<span>+</span>";
-      btn.onclick = function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        openPrettyAddModal();
-      };
-      return btn;
-    }
-    function modalOpen() {
-      const m = $2("addQuestionModal");
-      return !!m && !m.classList.contains("hidden") && getComputedStyle(m).display !== "none";
-    }
-    function updatePlus() {
-      const btn = ensurePlus();
-      const open = modalOpen();
-      const show = canManage() && isAllTab() && !open;
-      document.body.classList.toggle("add-question-visible", show);
-      document.body.classList.toggle("add-question-modal-open", open);
-      btn.classList.toggle("hidden", !show);
-      btn.setAttribute("aria-hidden", show ? "false" : "true");
-      btn.style.setProperty("display", show ? "flex" : "none", "important");
-      btn.style.setProperty("visibility", show ? "visible" : "hidden", "important");
-      btn.style.setProperty("opacity", show ? "1" : "0", "important");
-      btn.style.setProperty("pointer-events", show ? "auto" : "none", "important");
-      if (!canManage() || !isAllTab()) $2("addQuestionModal")?.classList.add("hidden");
-    }
-    function cleanupLimitText() {
-      const list = $2("studyList");
-      if (!list) return;
-      list.querySelectorAll(".more").forEach((x) => {
-        if (/Đang hiển thị\s+\d+\s*\//i.test(x.textContent || "")) x.remove();
-      });
-    }
-    function getImageFilesFromPaste(e) {
-      const items = [...e.clipboardData?.items || []];
-      return items.filter((item) => item.kind === "file" && String(item.type || "").startsWith("image/")).map((item) => item.getAsFile()).filter(Boolean);
-    }
-    async function uploadPrettyImageFiles(files, sourceLabel) {
-      files = [...files || []].filter((file) => file && String(file.type || "").startsWith("image/"));
-      const st = $2("addUploadStatus");
-      const input = $2("addImgUpload");
-      const saveBtn = $2("saveAddQuestion");
-      if (!files.length) return;
-      if (!window.__LHUploadCloudinary) {
-        alert("Ch\u01B0a s\u1EB5n s\xE0ng upload Cloudinary. T\u1EA3i l\u1EA1i trang r\u1ED3i th\u1EED l\u1EA1i.");
-        return;
-      }
-      addUploading++;
-      if (input) input.disabled = true;
-      if (saveBtn) saveBtn.disabled = true;
-      if (st) {
-        st.style.display = "block";
-        st.textContent = "\u0110ang upload " + files.length + " \u1EA3nh l\xEAn Cloudinary...";
-      }
-      notifyOk(sourceLabel === "paste" ? "\u0110ang upload \u1EA3nh v\u1EEBa d\xE1n..." : "\u0110ang upload \u1EA3nh l\xEAn Cloudinary...");
-      try {
-        let done = 0;
-        for (const file of files) {
-          const uploaded = await window.__LHUploadCloudinary(file);
-          if (uploaded) addImages.push(uploaded);
-          done++;
-          if (st) st.textContent = "\u0110ang upload \u1EA3nh " + done + "/" + files.length + "...";
-        }
-        if (window.__LHCleanImages) addImages = window.__LHCleanImages(addImages);
-        saveAddImagesDraft();
-        renderPrettyImages();
-        if (st) {
-          st.textContent = "\u0110\xE3 upload xong. URL n\u1EB1m d\u01B0\u1EDBi \u1EA3nh.";
-          setTimeout(() => {
-            if (addUploading === 0) st.style.display = "none";
-          }, 2200);
-        }
-        notifyOk("\u0110\xE3 upload \u1EA3nh th\xE0nh URL");
-      } catch (err) {
-        if (st) st.textContent = "Upload l\u1ED7i: " + (err.message || err);
-        alert(err.message || err);
-      } finally {
-        addUploading = Math.max(0, addUploading - 1);
-        if (addUploading === 0) {
-          if (input) {
-            input.disabled = false;
-            input.value = "";
-          }
-          if (saveBtn) saveBtn.disabled = false;
-        }
-      }
-    }
-    function ensurePrettyModal() {
-      let modal = $2("addQuestionModal");
-      if (!modal) {
-        modal = document.createElement("div");
-        modal.id = "addQuestionModal";
-        modal.className = "modal hidden addQuestionModal";
-        document.body.appendChild(modal);
-      }
-      if (modal.dataset.prettyVersion === "20260614") return modal;
-      modal.dataset.prettyVersion = "20260614";
-      modal.className = "modal hidden addQuestionModal";
-      modal.innerHTML = `
-      <div class="box editPreviewBox quizEditLayoutV2">
-        <button type="button" class="modalX" id="addQuestionClose">\xD7</button>
-        <div class="v7Head editPreviewHead">
-          <div>
-            <span class="v7Label">TH\xCAM M\u1EDAI</span>
-            <h2>Th\xEAm c\xE2u h\u1ECFi m\u1EDBi</h2>
-            <p class="v7Hint">Nh\u1EADp n\u1ED9i dung c\xE2u h\u1ECFi, c\xE1c \u0111\xE1p \xE1n v\xE0 upload \u1EA3nh n\u1EBFu c\xF3.</p>
-          </div>
-        </div>
-        <article class="v7Card editPreviewCard" style="margin:0!important; border:0!important; background:transparent!important; padding:0!important;">
-          <div class="editPreviewTwoColumns">
-            <div class="editPreviewLeftCol">
-              <div class="v7Field">
-                <label>C\xE2u h\u1ECFi</label>
-                <textarea id="addQuestionText" placeholder="Nh\u1EADp n\u1ED9i dung c\xE2u h\u1ECFi..." style="min-height: 120px;"></textarea>
-              </div>
-              <div class="v7Field" style="margin-top: 10px;">
-                <label>\u0110\xE1p \xE1n \u0111\xFAng</label>
-                <input id="addQuestionAnswer" placeholder="V\xED d\u1EE5: A ho\u1EB7c BC">
-              </div>
-              <div class="v7Field" style="margin-top: 10px;">
-                <label>S\u1ED1 c\xE2u</label>
-                <input id="addQuestionNum" type="number" min="1" placeholder="T\u1EF1 l\u1EA5y s\u1ED1 ti\u1EBFp theo n\u1EBFu \u0111\u1EC3 tr\u1ED1ng">
-              </div>
-              <div class="v7Field" style="margin-top: 10px;">
-                <label>H\xECnh \u1EA3nh</label>
-                <input id="addImgUpload" type="file" accept="image/*" multiple>
-                <div class="pasteImageHint addPasteImageHint">C\xF3 th\u1EC3 ch\u1EE5p/copy \u1EA3nh r\u1ED3i b\u1EA5m Ctrl + V trong khung n\xE0y \u0111\u1EC3 t\u1EF1 upload URL.</div>
-                <div id="addUploadStatus" style="display:none;margin-top:7px;color:var(--gold2);font-weight:900;font-size:.86rem;">\u0110ang upload \u1EA3nh...</div>
-                <div id="addImgs" class="editImgs addImgs" style="margin-top: 8px;">Ch\u01B0a c\xF3 h\xECnh.</div>
-              </div>
-            </div>
-            <div class="editPreviewRightCol">
-              <div class="v7Field" style="margin: 0!important;">
-                <label>C\xE1c \u0111\xE1p \xE1n</label>
-                <div id="editPreviewOptions" class="v7Options">
-                  <div class="v7OptRow">
-                    <div class="v7Key">A</div>
-                    <input id="addOptA" placeholder="Nh\u1EADp \u0111\xE1p \xE1n A">
-                    <button class="v7DelOpt" type="button" onclick="document.getElementById('addOptA').value=''">\xD7</button>
-                  </div>
-                  <div class="v7OptRow" style="margin-top: 8px;">
-                    <div class="v7Key">B</div>
-                    <input id="addOptB" placeholder="Nh\u1EADp \u0111\xE1p \xE1n B">
-                    <button class="v7DelOpt" type="button" onclick="document.getElementById('addOptB').value=''">\xD7</button>
-                  </div>
-                  <div class="v7OptRow" style="margin-top: 8px;">
-                    <div class="v7Key">C</div>
-                    <input id="addOptC" placeholder="Nh\u1EADp \u0111\xE1p \xE1n C">
-                    <button class="v7DelOpt" type="button" onclick="document.getElementById('addOptC').value=''">\xD7</button>
-                  </div>
-                  <div class="v7OptRow" style="margin-top: 8px;">
-                    <div class="v7Key">D</div>
-                    <input id="addOptD" placeholder="Nh\u1EADp \u0111\xE1p \xE1n D">
-                    <button class="v7DelOpt" type="button" onclick="document.getElementById('addOptD').value=''">\xD7</button>
-                  </div>
-                  <div class="v7OptRow" style="margin-top: 8px;">
-                    <div class="v7Key">E</div>
-                    <input id="addOptE" placeholder="C\xF3 th\u1EC3 b\u1ECF tr\u1ED1ng (E)">
-                    <button class="v7DelOpt" type="button" onclick="document.getElementById('addOptE').value=''">\xD7</button>
-                  </div>
-                </div>
-              </div>
-              <div class="v7Bottom" style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 8px; width: 100%;">
-                <button type="button" class="btn" id="cancelAddQuestion">\u0110\xF3ng</button>
-                <button type="button" class="primary" id="saveAddQuestion">L\u01B0u c\xE2u h\u1ECFi</button>
-              </div>
-            </div>
-          </div>
-        </article>
-      </div>`;
-      $2("addQuestionClose").onclick = closePrettyAddModal;
-      $2("cancelAddQuestion").onclick = closePrettyAddModal;
-      $2("saveAddQuestion").onclick = savePrettyQuestion;
-      $2("addImgUpload").onchange = (e) => uploadPrettyImageFiles(e.target.files, "file");
-      modal.addEventListener("paste", (e) => {
-        const files = getImageFilesFromPaste(e);
-        if (!files.length) return;
-        e.preventDefault();
-        uploadPrettyImageFiles(files, "paste");
-      });
-      modal.addEventListener("dragover", (e) => {
-        const hasFile = [...e.dataTransfer?.items || []].some((item) => item.kind === "file");
-        if (!hasFile) return;
-        e.preventDefault();
-        modal.classList.add("dragImageOver");
-      });
-      modal.addEventListener("dragleave", () => modal.classList.remove("dragImageOver"));
-      modal.addEventListener("drop", (e) => {
-        const files = [...e.dataTransfer?.files || []].filter((file) => String(file.type || "").startsWith("image/"));
-        if (!files.length) return;
-        e.preventDefault();
-        modal.classList.remove("dragImageOver");
-        uploadPrettyImageFiles(files, "drop");
-      });
-      $2("addImgs").onclick = (e) => {
-        const b = e.target.closest("[data-add-rm]");
-        if (!b) return;
-        addImages.splice(Number(b.dataset.addRm), 1);
-        saveAddImagesDraft();
-        renderPrettyImages();
-      };
-      modal.addEventListener("mousedown", (e) => {
-        if (e.target === modal) closePrettyAddModal();
-      });
-      return modal;
-    }
-    function renderPrettyImages() {
-      const box = $2("addImgs");
-      if (!box) return;
-      box.innerHTML = addImages.length ? addImages.map(
-        (im, i) => `
-      <div class="editImg addPreviewImg">
-        <button type="button" class="rm" data-add-rm="${i}">\xD7</button>
-        <img src="${esc2(im.src)}" alt="" loading="lazy" decoding="async">
-        <input class="imgUrlBox" value="${esc2(im.src)}" readonly onclick="this.select()" title="B\u1EA5m \u0111\u1EC3 ch\u1ECDn URL \u1EA3nh" style="margin-top:6px;width:100%;max-width:260px;border:1px solid rgba(200,169,110,.24);border-radius:10px;background:rgba(0,0,0,.22);color:var(--gold2);padding:7px;font-size:.72rem;">
-      </div>`
-      ).join("") : "Ch\u01B0a c\xF3 h\xECnh.";
-    }
-    function openPrettyAddModal() {
-      if (!canManage()) return;
-      if (!isAllTab()) return;
-      const modal = ensurePrettyModal();
-      addImages = loadAddImagesDraft();
-      $2("addQuestionNum").value = nextNum();
-      $2("addQuestionText").value = "";
-      ["A", "B", "C", "D", "E"].forEach((k) => {
-        const el = $2("addOpt" + k);
-        if (el) el.value = "";
-      });
-      $2("addQuestionAnswer").value = "";
-      renderPrettyImages();
-      modal.classList.remove("hidden");
-      updatePlus();
-      setTimeout(() => $2("addQuestionText")?.focus(), 80);
-    }
-    function closePrettyAddModal() {
-      $2("addQuestionModal")?.classList.add("hidden");
-      setTimeout(updatePlus, 30);
-    }
-    function answerTextLine(answer, options) {
-      return String(answer || "").toUpperCase().split("").filter(Boolean).map((k) => k + ". " + (options[k] || "")).join("; ");
-    }
-    async function savePrettyQuestion() {
-      if (!canManage()) return alert("T\xE0i kho\u1EA3n n\xE0y kh\xF4ng c\xF3 quy\u1EC1n th\xEAm c\xE2u h\u1ECFi.");
-      if (addUploading > 0) return alert("\u1EA2nh \u0111ang upload, ch\u1EDD xong r\u1ED3i l\u01B0u nha.");
-      const c = client();
-      if (!c) return alert("Ch\u01B0a k\u1EBFt n\u1ED1i Supabase.");
-      const subject = subjectCode();
-      if (!subject) return alert("B\u1EA1n c\u1EA7n ch\u1ECDn m\xF4n tr\u01B0\u1EDBc.");
-      const num = Number(($2("addQuestionNum")?.value || "").trim()) || nextNum();
-      const question = ($2("addQuestionText")?.value || "").trim();
-      const answer = ($2("addQuestionAnswer")?.value || "").trim().toUpperCase().replace(/[^A-E]/g, "");
-      const options = {};
-      ["A", "B", "C", "D", "E"].forEach((k) => {
-        const v = ($2("addOpt" + k)?.value || "").trim();
-        if (v) options[k] = v;
-      });
-      if (!question) return alert("Nh\u1EADp c\xE2u h\u1ECFi tr\u01B0\u1EDBc.");
-      if (Object.keys(options).length < 2) return alert("Nh\u1EADp \xEDt nh\u1EA5t 2 \u0111\xE1p \xE1n.");
-      if (!answer) return alert("Nh\u1EADp \u0111\xE1p \xE1n \u0111\xFAng, v\xED d\u1EE5 A ho\u1EB7c BC.");
-      for (const k of answer) {
-        if (!options[k]) return alert("\u0110\xE1p \xE1n \u0111\xFAng " + k + " ch\u01B0a c\xF3 n\u1ED9i dung.");
-      }
-      const imgs = typeof window.__LHCleanImages === "function" ? window.__LHCleanImages(addImages || []) : addImages || [];
-      const payload = {
-        subject_code: subject,
-        num,
-        question,
-        options,
-        answer,
-        answer_text: answerTextLine(answer, options),
-        images: imgs,
-        has_image: imgs.length > 0,
-        updated_at: (/* @__PURE__ */ new Date()).toISOString()
-      };
-      const btn = $2("saveAddQuestion");
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = "\u0110ang l\u01B0u...";
-      }
-      try {
-        const u = user();
-        const res = await fetch("/api/admin-action", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          cache: "no-store",
-          body: JSON.stringify({ user_id: u?.id, action: "add_question", payload: { question_data: payload } })
-        });
-        const out = await res.json().catch(() => ({}));
-        if (!res.ok || out.error) throw new Error(out.error || "Kh\xF4ng l\u01B0u \u0111\u01B0\u1EE3c v\xE0o Turso (HTTP " + res.status + ")");
-        clearAddImagesDraft();
-        addImages = [];
-        closePrettyAddModal();
-        notifyOk("\u0110\xE3 th\xEAm c\xE2u h\u1ECFi");
-        if (typeof window.clearLearningHubQuestionCache === "function") window.clearLearningHubQuestionCache();
-        if (typeof window.loadCurrentSubjectOnly === "function") await window.loadCurrentSubjectOnly(true);
-        else if (window.HODSupabase?.loadQuestionsFromSupabase) await window.HODSupabase.loadQuestionsFromSupabase();
-        try {
-          const idx = (LHState.RAW || []).findIndex((q) => Number(q.num) === num);
-          if (idx >= 0) {
-            LHState.pool = [...LHState.RAW];
-            LHState.ci = idx;
-            LHState.flipped = false;
-            renderCard?.();
-            renderStudy?.();
-          }
-        } catch (e) {
-          lhWarn("COPILOT_MERGED_ADD_QUESTION_DISPLAY_VERSION_20260629", e);
-        }
-      } catch (err) {
-        alert("Th\xEAm c\xE2u h\u1ECFi th\u1EA5t b\u1EA1i: " + (err?.message || err));
-      } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = "L\u01B0u c\xE2u h\u1ECFi";
-        }
-      }
-    }
-    function boot() {
-      ensurePlus();
-      const modal = ensurePrettyModal();
-      cleanupLimitText();
-      updatePlus();
-      if (modal && !modal.__mergedAddObserver) {
-        modal.__mergedAddObserver = true;
-        const obs = new MutationObserver(() => setTimeout(updatePlus, 30));
-        obs.observe(modal, { attributes: true, attributeFilter: ["class", "style"] });
-        modal.addEventListener("click", () => setTimeout(updatePlus, 30), true);
-        modal.addEventListener("mousedown", () => setTimeout(updatePlus, 30), true);
-      }
-      document.querySelectorAll(".tab").forEach((t) => {
-        if (t.__prettyAddTabBound) return;
-        t.__prettyAddTabBound = true;
-        t.addEventListener(
-          "click",
-          () => setTimeout(() => {
-            cleanupLimitText();
-            updatePlus();
-          }, 80)
-        );
-      });
-    }
-    window.openAddQuestionModal = openPrettyAddModal;
-    window.openPrettyAddModal = openPrettyAddModal;
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
-    else boot();
-    setTimeout(boot, 300);
-    setTimeout(boot, 1e3);
-    setInterval(updatePlus, 250);
-  })();
-  (function() {
-    function escPrompt(s) {
-      return String(s ?? "").replace(
-        /[&<>"']/g,
-        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
-      );
-    }
-    function getPromptText() {
-      return window.__ADD_SUBJECT_AI_PROMPT || window.AI_PROMPT || document.getElementById("userAiPromptText")?.textContent || "";
-    }
-    window.__openUserAIPromptModal = function() {
-      const prompt2 = getPromptText();
-      let modal = document.getElementById("userPromptModal");
-      if (!modal) {
-        modal = document.createElement("div");
-        modal.id = "userPromptModal";
-        modal.className = "modal userPromptModal hidden";
-        modal.innerHTML = `<div class="box userPromptModalBox">
-        <button class="modalX" type="button" id="userPromptModalClose">\xD7</button>
-        <div class="userPromptModalHead">
-          <div>
-            <span class="userPromptLabel">PROMPT T\u1EA0O C\xC2U H\u1ECEI</span>
-            <h2>Xem prompt</h2>
-            <p>Copy prompt n\xE0y r\u1ED3i d\xE1n v\xE0o Gemini / ChatGPT / Claude k\xE8m t\xE0i li\u1EC7u m\xF4n h\u1ECDc.</p>
-          </div>
-          <button class="primary userPromptCopyTop" type="button" id="userPromptModalCopy">\u{1F4CB} Sao ch\xE9p</button>
-        </div>
-        <pre class="userPromptModalPre" id="userPromptModalPre"></pre>
-      </div>`;
-        modal.addEventListener("mousedown", (e) => {
-          if (e.target === modal) window.__closeUserAIPromptModal();
-        });
-        document.body.appendChild(modal);
-        document.getElementById("userPromptModalClose")?.addEventListener("click", window.__closeUserAIPromptModal);
-        document.getElementById("userPromptModalCopy")?.addEventListener("click", window.__copyUserAIPrompt);
-      }
-      const pre = document.getElementById("userPromptModalPre");
-      if (pre) pre.textContent = prompt2;
-      modal.classList.remove("hidden");
-    };
-    window.__closeUserAIPromptModal = function() {
-      document.getElementById("userPromptModal")?.classList.add("hidden");
-    };
-    window.__copyUserAIPrompt = function() {
-      const prompt2 = getPromptText();
-      const done = () => {
-        const btn = document.getElementById("btnCopyPrompt");
-        if (btn) {
-          const oldText = btn.innerHTML;
-          btn.innerHTML = "\u2705 \u0110\xE3 copy";
-          setTimeout(() => {
-            btn.innerHTML = oldText;
-          }, 1800);
-        }
-        if (typeof notify === "function") notify("\u0110\xE3 copy prompt!");
-      };
-      if (navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(prompt2).then(done).catch(() => {
-          const ta = document.createElement("textarea");
-          ta.value = prompt2;
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand("copy");
-          ta.remove();
-          done();
-        });
-      } else {
-        const ta = document.createElement("textarea");
-        ta.value = prompt2;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        ta.remove();
-        done();
-      }
-    };
-    document.addEventListener(
-      "click",
-      function(e) {
-        const viewBtn = e.target.closest && e.target.closest("#btnViewPrompt,.aiViewPromptBtn");
-        if (viewBtn) {
-          e.preventDefault();
-          e.stopPropagation();
-          window.__openUserAIPromptModal();
-          return;
-        }
-        const copyBtn = e.target.closest && e.target.closest("#btnCopyPrompt");
-        if (copyBtn) {
-          e.preventDefault();
-          e.stopPropagation();
-          window.__copyUserAIPrompt();
-        }
-      },
-      true
-    );
-  })();
-  (function() {
-    function $2(id) {
-      return document.getElementById(id);
-    }
-    function notifySafe(msg) {
-      if (typeof notify === "function") notify(msg);
-      else console.log(msg);
-    }
-    window.__clearUserImportFile = function() {
-      window.__selectedImportFile = null;
-      if (window.LHSubjectImport) {
-        window.LHSubjectImport.resetSubjectImportState();
-      }
-      const fileInput = $2("userImportFile");
-      const hiddenData = $2("userImportData");
-      const dropZone = $2("importDropZone");
-      const fileCard = $2("userImportFileCard");
-      const fileName = $2("userImportFileName");
-      const fileMeta = $2("userImportFileMeta");
-      const previewBtn = $2("previewImportBtn");
-      const saveBtn = $2("userImportBtn");
-      if (fileInput) fileInput.value = "";
-      if (hiddenData) hiddenData.value = "";
-      if (dropZone) dropZone.classList.remove("hidden");
-      if (fileCard) fileCard.classList.add("hidden");
-      if (fileName) fileName.textContent = "Ch\u01B0a ch\u1ECDn file";
-      if (fileMeta) fileMeta.textContent = "File import c\xE2u h\u1ECFi";
-      if (previewBtn) {
-        previewBtn.classList.add("hidden");
-        previewBtn.disabled = true;
-      }
-      if (saveBtn) saveBtn.disabled = true;
-      localStorage.removeItem("learninghub_add_subject_file_name_v1");
-      localStorage.removeItem("learninghub_add_subject_file_size_v1");
-      localStorage.removeItem("learninghub_add_subject_file_data_v1");
-      localStorage.removeItem("learninghub_add_subject_file_previewed_v1");
-      window.__previewSelections = {};
-      try {
-        window.__closeImportPreviewModal?.();
-      } catch (e) {
-        lhWarn("FIX_DELETE_IMPORT_FILE_20260625", e);
-      }
-      notifySafe("\u0110\xE3 x\xF3a file import");
-    };
-    document.addEventListener(
-      "click",
-      function(e) {
-        const btn = e.target.closest?.(".removeFileBtn");
-        if (!btn) return;
-        e.preventDefault();
-        e.stopPropagation();
-        window.__clearUserImportFile();
-      },
-      true
-    );
-  })();
-  (function() {
-    function $2(id) {
-      return document.getElementById(id);
-    }
-    function enhancePromptStep() {
-      const step = $2("addStep2");
-      if (!step || step.dataset.promptPolished === "1") return;
-      step.dataset.promptPolished = "1";
-      step.classList.add("promptPolished");
-      step.innerHTML = `
-      <div class="promptStepGrid">
-        <section class="promptMainCard">
-          <div class="promptEyebrow">B\u01B0\u1EDBc 2 \xB7 T\u1EA1o file c\xE2u h\u1ECFi</div>
-          <h3 class="promptMainTitle">L\u1EA5y prompt r\u1ED3i \u0111\u01B0a t\xE0i li\u1EC7u cho AI</h3>
-          <p class="promptMainDesc">B\u1EA5m sao ch\xE9p prompt, d\xE1n v\xE0o AI b\u1EA1n mu\u1ED1n d\xF9ng, sau \u0111\xF3 g\u1EEDi k\xE8m t\xE0i li\u1EC7u m\xF4n h\u1ECDc. AI s\u1EBD tr\u1EA3 v\u1EC1 file c\xE2u h\u1ECFi \u0111\u1EC3 import \u1EDF b\u01B0\u1EDBc ti\u1EBFp theo.</p>
-
-          <div class="promptActionGrid">
-            <button class="aiCopyBtn" type="button" onclick="window.__copyUserAIPrompt()" id="btnCopyPrompt">\u{1F4CB} Sao ch\xE9p prompt</button>
-            <button class="aiViewPromptBtn" type="button" onclick="window.__openUserAIPromptModal()" id="btnViewPrompt">\u{1F441} Xem prompt</button>
-          </div>
-
-          <div class="promptMiniGuide">
-            <div class="guideRow"><div class="guideNum">1</div><div><b>Copy prompt</b><span>Prompt \u0111\xE3 c\xF3 s\u1EB5n format JSON \u0111\xFAng cho h\u1EC7 th\u1ED1ng.</span></div></div>
-            <div class="guideRow"><div class="guideNum">2</div><div><b>D\xE1n v\xE0o AI + g\u1EEDi t\xE0i li\u1EC7u</b><span>G\u1EEDi PDF, Word, slide ho\u1EB7c n\u1ED9i dung m\xF4n h\u1ECDc cho AI.</span></div></div>
-            <div class="guideRow"><div class="guideNum">3</div><div><b>T\u1EA3i file .md / .txt</b><span>Sau khi AI t\u1EA1o xong, qua b\u01B0\u1EDBc Import \u0111\u1EC3 l\u01B0u m\xF4n h\u1ECDc.</span></div></div>
-          </div>
-        </section>
-
-        <aside class="promptSideCard">
-          <div class="promptToolTitle">Ch\u1ECDn c\xF4ng c\u1EE5 AI</div>
-          <div class="promptToolGrid">
-            <a href="https://gemini.google.com" target="_blank" class="aiToolBtn gemini">\u2726 Gemini</a>
-            <a href="https://chatgpt.com" target="_blank" class="aiToolBtn chatgpt">\u25C9 ChatGPT</a>
-            <a href="https://claude.ai" target="_blank" class="aiToolBtn claude">\u25C8 Claude</a>
-          </div>
-          <div class="promptNoteBox">M\u1EB9o: n\u1EBFu t\xE0i li\u1EC7u d\xE0i, h\xE3y y\xEAu c\u1EA7u AI t\u1EA1o t\u1EEBng ph\u1EA7n r\u1ED3i g\u1ED9p l\u1EA1i th\xE0nh m\u1ED9t file JSON.</div>
-        </aside>
-      </div>
-
-      <div class="step-actions">
-        <button class="btn" type="button" onclick="window.__switchStep(1)">\u2B05 Quay l\u1EA1i</button>
-        <button class="primary" type="button" onclick="window.__switchStep(3)">\u0110\xE3 c\xF3 file, ti\u1EBFp t\u1EE5c \u2794</button>
-      </div>
-    `;
-    }
-    const oldSwitch = window.__switchStep;
-    window.__switchStep = function(step) {
-      if (typeof oldSwitch === "function") oldSwitch.apply(this, arguments);
-      setTimeout(() => {
-        if (Number(step) === 2) enhancePromptStep();
-      }, 0);
-    };
-    document.addEventListener(
-      "click",
-      function(e) {
-        const btn = e.target.closest?.('[onclick*="__switchStep(2)"]');
-        if (btn) setTimeout(enhancePromptStep, 0);
-      },
-      true
-    );
-    document.addEventListener("DOMContentLoaded", () => setTimeout(enhancePromptStep, 800));
-  })();
-  (function() {
-    function cleanStrayPromptButtons() {
-      document.querySelectorAll(
-        ".subjectGate .polishedSubjectPanel > .aiCopyBtn, .subjectGate .polishedSubjectPanel > #btnCopyPrompt, .subjectGate > .aiCopyBtn, .subjectGate > #btnCopyPrompt"
-      ).forEach((btn) => {
-        if (!btn.closest("#addStep2")) btn.remove();
-      });
-    }
-    document.addEventListener("DOMContentLoaded", () => {
-      cleanStrayPromptButtons();
-      setTimeout(cleanStrayPromptButtons, 300);
-      setTimeout(cleanStrayPromptButtons, 1e3);
-    });
-    document.addEventListener("click", () => setTimeout(cleanStrayPromptButtons, 0), true);
-  })();
-  (function() {
-    function removePromptGuideRows() {
-      document.querySelectorAll("#addStep2 .promptMiniGuide").forEach((el) => el.remove());
-    }
-    document.addEventListener("DOMContentLoaded", () => {
-      removePromptGuideRows();
-      setTimeout(removePromptGuideRows, 300);
-      setTimeout(removePromptGuideRows, 1e3);
-    });
-    document.addEventListener("click", () => setTimeout(removePromptGuideRows, 0), true);
-  })();
-  (function() {
-    function cleanPromptTip() {
-      document.querySelectorAll("#addStep2 .promptNoteBox, .promptNoteBox").forEach((el) => el.remove());
-    }
-    function patchPromptModal() {
-      const modal = document.getElementById("userPromptModal");
-      if (!modal) return;
-      modal.classList.remove("modal");
-      modal.classList.add("userPromptModal");
-      const box = modal.querySelector(".userPromptModalBox");
-      if (box) box.classList.remove("box");
-    }
-    const oldOpen = window.__openUserAIPromptModal;
-    window.__openUserAIPromptModal = function() {
-      if (typeof oldOpen === "function") oldOpen.apply(this, arguments);
-      setTimeout(() => {
-        patchPromptModal();
-        cleanPromptTip();
-      }, 0);
-    };
-    document.addEventListener("DOMContentLoaded", () => {
-      cleanPromptTip();
-      patchPromptModal();
-      setTimeout(() => {
-        cleanPromptTip();
-        patchPromptModal();
-      }, 300);
-      setTimeout(() => {
-        cleanPromptTip();
-        patchPromptModal();
-      }, 1e3);
-    });
-    document.addEventListener(
-      "click",
-      () => setTimeout(() => {
-        cleanPromptTip();
-        patchPromptModal();
-      }, 0),
-      true
-    );
-  })();
-  (function() {
-    function escHtml(s) {
-      return String(s ?? "").replace(
-        /[&<>"']/g,
-        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
-      );
-    }
-    function getPreviewData(data) {
-      const arr = data || window.__previewImportData || [];
-      window.__previewImportData = arr;
-      return arr;
-    }
-    function opt(q, k) {
-      return q?.options?.[k] || "";
-    }
-    window.__previewQualityFilter = "all";
-    function autoDetectQuality(q) {
-      const hasImg = !!(q.has_image || q.images && q.images.length > 0);
-      let risk = q.error_risk || "";
-      let reason = q.error_risk_reason || "";
-      if (!risk) {
-        if (hasImg && (!q.images || !q.images.length || q.images.some((im) => {
-          const src = typeof im === "string" ? im : im.src || im.url || "";
-          return !src || src.includes("URL_") || src.includes("M\xD4_T\u1EA2");
-        }))) {
-          risk = "high";
-          reason = reason || "C\xE2u c\u1EA7n h\xECnh \u1EA3nh nh\u01B0ng ch\u01B0a c\xF3 \u1EA3nh th\u1EF1c t\u1EBF";
-        } else if (String(q.answer || "").length > 1) {
-          risk = "medium";
-          reason = reason || "C\xE2u c\xF3 nhi\u1EC1u \u0111\xE1p \xE1n \u0111\xFAng, c\u1EA7n ki\u1EC3m tra k\u1EF9";
-        } else {
-          risk = "low";
-        }
-      }
-      q.has_image = hasImg;
-      q.error_risk = risk;
-      q.error_risk_reason = reason;
-    }
-    function riskLabel(r) {
-      return { low: "Th\u1EA5p", medium: "Trung b\xECnh", high: "Cao" }[r] || r;
-    }
-    function riskColor(r) {
-      return { low: "#27ae60", medium: "#f39c12", high: "#e74c3c" }[r] || "#999";
-    }
-    function renderQualityStats(data) {
-      var stats = document.getElementById("importPreviewStats");
-      if (!stats) return;
-      var imgCount = data.filter(function(q) {
-        return q.has_image;
-      }).length;
-      var highCount = data.filter(function(q) {
-        return q.error_risk === "high";
-      }).length;
-      var medCount = data.filter(function(q) {
-        return q.error_risk === "medium";
-      }).length;
-      var lowCount = data.filter(function(q) {
-        return q.error_risk === "low";
-      }).length;
-      var f = window.__previewQualityFilter;
-      stats.textContent = "";
-      var statRow = document.createElement("div");
-      statRow.className = "previewStatRow";
-      var statItems = [
-        { text: data.length + " c\xE2u", color: "" },
-        { text: imgCount + " c\xF3 \u1EA3nh", color: "#3498db" },
-        { text: highCount + " r\u1EE7i ro cao", color: "#e74c3c" },
-        { text: medCount + " trung b\xECnh", color: "#f39c12" },
-        { text: lowCount + " th\u1EA5p", color: "#27ae60" }
-      ];
-      statItems.forEach(function(item) {
-        var span = document.createElement("span");
-        span.className = "previewStatItem";
-        span.textContent = item.text;
-        if (item.color) span.style.color = item.color;
-        statRow.appendChild(span);
-      });
-      var filterRow = document.createElement("div");
-      filterRow.className = "previewFilterRow";
-      var filters = [
-        { key: "all", label: "Th\u01B0 vi\u1EC7n", border: "" },
-        { key: "has_image", label: "\u{1F4F7} C\xF3 \u1EA3nh", border: "" },
-        { key: "high", label: "R\u1EE7i ro cao", border: "#e74c3c" },
-        { key: "medium", label: "Trung b\xECnh", border: "#f39c12" },
-        { key: "low", label: "Th\u1EA5p", border: "#27ae60" }
-      ];
-      filters.forEach(function(fl) {
-        var btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "previewFilterBtn" + (f === fl.key ? " active" : "");
-        btn.textContent = fl.label;
-        if (fl.border) btn.style.borderColor = fl.border;
-        btn.addEventListener("click", function() {
-          window.__setQualityFilter(fl.key);
-        });
-        filterRow.appendChild(btn);
-      });
-      stats.appendChild(statRow);
-      stats.appendChild(filterRow);
-    }
-    window.__setQualityFilter = function(f) {
-      window.__previewQualityFilter = f;
-      const data = getPreviewData();
-      renderQualityStats(data);
-      renderQualityList(data);
-    };
-    window.__toggleQualityImage = function(i, val) {
-      const data = getPreviewData();
-      if (data[i]) {
-        data[i].has_image = val;
-        renderQualityStats(data);
-      }
-    };
-    window.__setQualityRisk = function(i, val) {
-      const data = getPreviewData();
-      if (data[i]) {
-        data[i].error_risk = val;
-        renderQualityStats(data);
-        const card = document.querySelector(`[data-pcard="${i}"]`);
-        if (card) {
-          card.style.borderLeftColor = riskColor(val);
-          card.style.background = { low: "rgba(39,174,96,0.08)", medium: "rgba(243,156,18,0.08)", high: "rgba(231,76,60,0.08)" }[val] || "";
-          const badge = card.querySelector(".riskBadge");
-          if (badge) {
-            badge.style.background = riskColor(val);
-            badge.textContent = riskLabel(val);
-          }
-        }
-      }
-    };
-    function renderQualityList(data) {
-      var list = document.getElementById("importPreviewList");
-      if (!list) return;
-      var f = window.__previewQualityFilter;
-      var filtered = data.filter(function(q) {
-        if (f === "all") return true;
-        if (f === "has_image") return q.has_image;
-        return q.error_risk === f;
-      });
-      list.textContent = "";
-      if (!filtered.length) {
-        var empty = document.createElement("div");
-        empty.style.cssText = "text-align:center;padding:30px;opacity:.6";
-        empty.textContent = "Kh\xF4ng c\xF3 c\xE2u h\u1ECFi n\xE0o ph\xF9 h\u1EE3p b\u1ED9 l\u1ECDc.";
-        list.appendChild(empty);
-        return;
-      }
-      filtered.forEach(function(q) {
-        var i = data.indexOf(q);
-        list.appendChild(buildCard(q, i));
-      });
-    }
-    function renderPreviewInline(data) {
-      data = getPreviewData(data);
-      data.forEach(autoDetectQuality);
-      window.__previewQualityFilter = "all";
-      let modal = document.getElementById("importPreviewModal");
-      if (modal) {
-        modal.remove();
-        modal = null;
-      }
-      modal = document.createElement("div");
-      modal.id = "importPreviewModal";
-      modal.className = "modal importPreviewModal";
-      var box = document.createElement("div");
-      box.className = "box importPreviewModalBox";
-      var closeBtn = document.createElement("button");
-      closeBtn.className = "modalX";
-      closeBtn.type = "button";
-      closeBtn.textContent = "\xD7";
-      closeBtn.onclick = function() {
-        window.__closeImportPreviewModal();
-      };
-      var head = document.createElement("div");
-      head.className = "importPreviewHead";
-      var headLeft = document.createElement("div");
-      var label = document.createElement("span");
-      label.className = "importPreviewLabel";
-      label.textContent = "XEM TR\u01AF\u1EDAC IMPORT";
-      var h2 = document.createElement("h2");
-      h2.textContent = "Ki\u1EC3m tra c\xE2u h\u1ECFi";
-      var desc = document.createElement("p");
-      desc.textContent = "\u0110\xE1p \xE1n \u0111\xFAng \u0111\xE3 hi\u1EC3n th\u1ECB s\u1EB5n. \u0110\xE1nh d\u1EA5u c\xE2u c\xF3 \u1EA3nh v\xE0 m\u1EE9c r\u1EE7i ro, b\u1EA5m \u201CS\u1EEDa\u201D \u0111\u1EC3 ch\u1EC9nh n\u1ED9i dung.";
-      headLeft.appendChild(label);
-      headLeft.appendChild(h2);
-      headLeft.appendChild(desc);
-      var saveBtn = document.createElement("button");
-      saveBtn.className = "primary importPreviewSaveTop";
-      saveBtn.type = "button";
-      saveBtn.textContent = "L\u01B0u M\xF4n H\u1ECDc";
-      saveBtn.onclick = function() {
-        window.__closeImportPreviewModal();
-        window.__submitSubjectRequest();
-      };
-      head.appendChild(headLeft);
-      head.appendChild(saveBtn);
-      var stats = document.createElement("div");
-      stats.id = "importPreviewStats";
-      stats.className = "importPreviewStats";
-      var list = document.createElement("div");
-      list.id = "importPreviewList";
-      list.className = "importPreviewList";
-      box.appendChild(closeBtn);
-      box.appendChild(head);
-      box.appendChild(stats);
-      box.appendChild(list);
-      modal.appendChild(box);
-      modal.addEventListener("mousedown", function(e) {
-        if (e.target === modal) window.__closeImportPreviewModal();
-      });
-      document.body.appendChild(modal);
-      renderQualityStats(data);
-      renderQualityList(data);
-      modal.classList.remove("hidden");
-    }
-    function buildCard(q, i) {
-      var answer = String(q.answer || "").toUpperCase();
-      var risk = q.error_risk || "low";
-      var riskBg = { low: "rgba(39,174,96,0.08)", medium: "rgba(243,156,18,0.08)", high: "rgba(231,76,60,0.08)" }[risk] || "";
-      var card = document.createElement("article");
-      card.className = "previewQuestionCard";
-      card.dataset.pcard = i;
-      card.style.borderLeft = "4px solid " + riskColor(risk);
-      card.style.background = riskBg;
-      var top = document.createElement("div");
-      top.className = "previewQuestionTop";
-      var numB = document.createElement("b");
-      numB.textContent = "C\xE2u " + (q.num || i + 1);
-      var actions = document.createElement("div");
-      actions.className = "previewTopActions";
-      if (q.has_image) {
-        var imgBadge = document.createElement("span");
-        imgBadge.className = "previewBadge imgBadge";
-        imgBadge.textContent = "\u{1F4F7} C\xF3 \u1EA3nh";
-        actions.appendChild(imgBadge);
-      }
-      var rBadge = document.createElement("span");
-      rBadge.className = "previewBadge riskBadge";
-      rBadge.style.background = riskColor(risk);
-      rBadge.style.color = "#fff";
-      rBadge.textContent = riskLabel(risk);
-      actions.appendChild(rBadge);
-      var ansBadge = document.createElement("span");
-      ansBadge.className = "previewAnswerBadge";
-      ansBadge.textContent = "\u0110\xE1p \xE1n: " + (answer || "?");
-      actions.appendChild(ansBadge);
-      var editBtn = document.createElement("button");
-      editBtn.className = "previewEditBtn";
-      editBtn.type = "button";
-      editBtn.textContent = "S\u1EEDa";
-      editBtn.addEventListener("click", function() {
-        window.__editImportPreviewQuestion(i);
-      });
-      actions.appendChild(editBtn);
-      top.appendChild(numB);
-      top.appendChild(actions);
-      card.appendChild(top);
-      if (q.error_risk_reason) {
-        var reasonDiv = document.createElement("div");
-        reasonDiv.className = "previewRiskReason";
-        reasonDiv.textContent = "\u26A0 " + q.error_risk_reason;
-        card.appendChild(reasonDiv);
-      }
-      var qText = document.createElement("div");
-      qText.className = "previewQuestionText";
-      qText.textContent = q.question || "";
-      card.appendChild(qText);
-      var imgArea = document.createElement("div");
-      imgArea.className = "previewImgArea";
-      imgArea.dataset.imgIdx = i;
-      function renderImgThumbs() {
-        imgArea.textContent = "";
-        var imgs = q.images || [];
-        if (imgs.length) {
-          var thumbRow = document.createElement("div");
-          thumbRow.className = "previewQuestionImages";
-          imgs.forEach(function(im, idx) {
-            var src = typeof im === "string" ? im : im.src || im.url || "";
-            if (!src) return;
-            var wrap = document.createElement("div");
-            wrap.className = "previewImgThumb";
-            var img = document.createElement("img");
-            img.src = src;
-            img.alt = "\u1EA2nh " + (idx + 1);
-            img.loading = "lazy";
-            var rmBtn = document.createElement("button");
-            rmBtn.className = "previewImgRm";
-            rmBtn.type = "button";
-            rmBtn.textContent = "\xD7";
-            rmBtn.addEventListener("click", function() {
-              q.images.splice(idx, 1);
-              renderImgThumbs();
-              renderQualityStats(getPreviewData());
-            });
-            wrap.appendChild(rmBtn);
-            wrap.appendChild(img);
-            thumbRow.appendChild(wrap);
-          });
-          imgArea.appendChild(thumbRow);
-        }
-        var uploadRow = document.createElement("div");
-        uploadRow.className = "previewImgUploadRow";
-        var fileInput = document.createElement("input");
-        fileInput.type = "file";
-        fileInput.accept = "image/*";
-        fileInput.multiple = true;
-        fileInput.className = "previewImgFileInput";
-        fileInput.addEventListener("change", function(e) {
-          var files = e.target.files || [];
-          Array.prototype.forEach.call(files, function(file) {
-            var fr = new FileReader();
-            fr.onload = function() {
-              if (!q.images) q.images = [];
-              q.images.push({
-                id: "prev_" + Date.now() + "_" + Math.random().toString(16).slice(2),
-                src: fr.result,
-                source: "user-upload",
-                name: file.name
-              });
-              if (!q.has_image) {
-                q.has_image = true;
-              }
-              renderImgThumbs();
-              renderQualityStats(getPreviewData());
-            };
-            fr.readAsDataURL(file);
-          });
-          e.target.value = "";
-        });
-        var uploadBtn = document.createElement("button");
-        uploadBtn.className = "previewImgUploadBtn";
-        uploadBtn.type = "button";
-        uploadBtn.textContent = "\u{1F4F7} Th\xEAm \u1EA3nh";
-        uploadBtn.addEventListener("click", function() {
-          fileInput.click();
-        });
-        uploadRow.appendChild(fileInput);
-        uploadRow.appendChild(uploadBtn);
-        if (q.images && q.images.length) {
-          var countSpan = document.createElement("span");
-          countSpan.className = "previewImgCount";
-          countSpan.textContent = q.images.length + " \u1EA3nh";
-          uploadRow.appendChild(countSpan);
-        }
-        imgArea.appendChild(uploadRow);
-      }
-      renderImgThumbs();
-      card.appendChild(imgArea);
-      var grid = document.createElement("div");
-      grid.className = "previewAnswerGrid";
-      Object.entries(q.options || {}).forEach(function(entry) {
-        var k = entry[0], v = entry[1];
-        var key = String(k).toUpperCase();
-        var isCorrect = answer.includes(key);
-        var optDiv = document.createElement("div");
-        optDiv.className = "previewAnswerOption" + (isCorrect ? " correct" : "");
-        optDiv.dataset.pi = i;
-        optDiv.dataset.k = key;
-        var b = document.createElement("b");
-        b.textContent = key;
-        var s = document.createElement("span");
-        s.textContent = v;
-        optDiv.appendChild(b);
-        optDiv.appendChild(s);
-        grid.appendChild(optDiv);
-      });
-      card.appendChild(grid);
-      var controls = document.createElement("div");
-      controls.className = "previewQualityControls";
-      var toggleLabel = document.createElement("label");
-      toggleLabel.className = "previewToggle";
-      var cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = !!q.has_image;
-      cb.addEventListener("change", function() {
-        window.__toggleQualityImage(i, this.checked);
-      });
-      var cbText = document.createElement("span");
-      cbText.textContent = "C\xF3 \u1EA3nh";
-      toggleLabel.appendChild(cb);
-      toggleLabel.appendChild(cbText);
-      var riskDiv = document.createElement("div");
-      riskDiv.className = "previewRiskSelect";
-      var riskSpan = document.createElement("span");
-      riskSpan.textContent = "R\u1EE7i ro:";
-      var sel = document.createElement("select");
-      ["low", "medium", "high"].forEach(function(val) {
-        var opt2 = document.createElement("option");
-        opt2.value = val;
-        opt2.textContent = { low: "Th\u1EA5p", medium: "Trung b\xECnh", high: "Cao" }[val];
-        if (risk === val) opt2.selected = true;
-        sel.appendChild(opt2);
-      });
-      sel.addEventListener("change", function() {
-        window.__setQualityRisk(i, this.value);
-      });
-      riskDiv.appendChild(riskSpan);
-      riskDiv.appendChild(sel);
-      controls.appendChild(toggleLabel);
-      controls.appendChild(riskDiv);
-      card.appendChild(controls);
-      return card;
-    }
-    window.__openImportPreviewModal = renderPreviewInline;
-  })();
-  (function() {
-    const LETTERS = ["A", "B", "C", "D", "E", "F", "G"];
-    function escHtml(s) {
-      return String(s ?? "").replace(
-        /[&<>"']/g,
-        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
-      );
-    }
-    function getData() {
-      return window.__previewImportData || [];
-    }
-    function optionKeys(q) {
-      const keys = Object.keys(q?.options || {}).map((k) => String(k).toUpperCase());
-      return LETTERS.filter((k) => keys.includes(k));
-    }
-    function nextKey(keys) {
-      return LETTERS.find((k) => !keys.includes(k));
-    }
-    function markCorrect(card, answer) {
-      card.querySelectorAll(".previewAnswerOption").forEach((opt) => {
-        const k = String(opt.dataset.k || "").toUpperCase();
-        opt.classList.toggle("correct", answer.includes(k));
-      });
-    }
-    function refreshCardOnly(i) {
-      const q = getData()[i];
-      if (!q) return;
-      const open = window.__openImportPreviewModal;
-      if (typeof open === "function") {
-        open(getData());
-      }
-    }
-    window.__editImportPreviewQuestion = function(i) {
-      const data = getData();
-      const q = data[i];
-      const card = document.querySelector(`[data-pcard="${i}"]`);
-      if (!q || !card) return;
-      if (card.classList.contains("inlineEditing")) return;
-      card.dataset.backupHtml = card.innerHTML;
-      card.classList.add("inlineEditing");
-      const questionEl = card.querySelector(".previewQuestionText");
-      if (questionEl) {
-        questionEl.setAttribute("contenteditable", "true");
-        questionEl.dataset.field = "question";
-      }
-      card.querySelectorAll(".previewAnswerOption").forEach((opt) => {
-        const span = opt.querySelector("span");
-        if (span) {
-          span.setAttribute("contenteditable", "true");
-          span.dataset.optText = opt.dataset.k || "";
-        }
-      });
-      const badge = card.querySelector(".previewAnswerBadge");
-      if (badge) {
-        badge.innerHTML = `\u0110\xE1p \xE1n \u0111\xFAng: <input class="inlineCorrectInput" value="${escHtml(String(q.answer || "").toUpperCase())}" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z]/g,'')">`;
-        const input = badge.querySelector("input");
-        input?.addEventListener("input", () => markCorrect(card, String(input.value || "").toUpperCase()));
-      }
-      const grid = card.querySelector(".previewAnswerGrid");
-      if (grid && !card.querySelector(".inlineAddOptionMini")) {
-        grid.insertAdjacentHTML(
-          "afterend",
-          `<button class="inlineAddOptionMini" type="button" title="Th\xEAm \u0111\xE1p \xE1n" onclick="window.__inlineAddPreviewOption(${i})">+</button>`
-        );
-      }
-      if (!card.querySelector(".inlineEditActionsMini")) {
-        card.insertAdjacentHTML(
-          "beforeend",
-          `<div class="inlineEditActionsMini"><button class="btn" type="button" onclick="window.__cancelInlineKeepEdit(${i})">H\u1EE7y</button><button class="primary" type="button" onclick="window.__saveInlineKeepEdit(${i})">L\u01B0u s\u1EEDa</button></div>`
-        );
-      }
-      questionEl?.focus();
-    };
-    window.__inlineAddPreviewOption = function(i) {
-      const card = document.querySelector(`[data-pcard="${i}"]`);
-      const grid = card?.querySelector(".previewAnswerGrid");
-      if (!card || !grid) return;
-      const keys = Array.from(grid.querySelectorAll(".previewAnswerOption")).map(
-        (x) => String(x.dataset.k || "").toUpperCase()
-      );
-      const k = nextKey(keys);
-      if (!k) return alert("\u0110\xE3 \u0111\u1EE7 s\u1ED1 l\u1EF1a ch\u1ECDn.");
-      grid.insertAdjacentHTML(
-        "beforeend",
-        `<div class="previewAnswerOption" data-pi="${i}" data-k="${k}"><b>${k}</b><span contenteditable="true" data-opt-text="${k}"></span></div>`
-      );
-      grid.querySelector(`[data-k="${k}"] span`)?.focus();
-    };
-    window.__cancelInlineKeepEdit = function(i) {
-      const card = document.querySelector(`[data-pcard="${i}"]`);
-      if (!card) return;
-      card.innerHTML = card.dataset.backupHtml || card.innerHTML;
-      card.classList.remove("inlineEditing");
-      delete card.dataset.backupHtml;
-    };
-    window.__saveInlineKeepEdit = function(i) {
-      const data = getData();
-      const q = data[i];
-      const card = document.querySelector(`[data-pcard="${i}"]`);
-      if (!q || !card) return;
-      const question = (card.querySelector(".previewQuestionText")?.textContent || "").trim();
-      const answer = (card.querySelector(".inlineCorrectInput")?.value || "").trim().toUpperCase();
-      if (!question) return alert("C\xE2u h\u1ECFi kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
-      if (!answer) return alert("\u0110\xE1p \xE1n \u0111\xFAng kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
-      const options = {};
-      card.querySelectorAll(".previewAnswerOption").forEach((opt) => {
-        const k = String(opt.dataset.k || "").toUpperCase();
-        const v = (opt.querySelector("span")?.textContent || "").trim();
-        if (k && v) options[k] = v;
-      });
-      if (!Object.keys(options).length) return alert("C\u1EA7n c\xF3 \xEDt nh\u1EA5t m\u1ED9t \u0111\xE1p \xE1n l\u1EF1a ch\u1ECDn.");
-      q.question = question;
-      q.options = options;
-      q.answer = answer;
-      refreshCardOnly(i);
-      if (typeof notify === "function") notify("\u0110\xE3 c\u1EADp nh\u1EADt c\xE2u h\u1ECFi");
-    };
-  })();
-  (function() {
-    function ensureDeleteButtons(card) {
-      if (!card) return;
-      card.querySelectorAll(".previewAnswerOption").forEach((opt) => {
-        if (opt.querySelector(".inlineDeleteOptionBtn")) return;
-        const k = opt.dataset.k || "";
-        opt.insertAdjacentHTML(
-          "beforeend",
-          `<button class="inlineDeleteOptionBtn" type="button" title="X\xF3a \u0111\xE1p \xE1n ${k}" onclick="window.__deleteInlinePreviewOption(this)">\xD7</button>`
-        );
-      });
-    }
-    window.__deleteInlinePreviewOption = function(btn) {
-      const opt = btn?.closest?.(".previewAnswerOption");
-      const card = btn?.closest?.(".previewQuestionCard");
-      if (!opt || !card) return;
-      const count = card.querySelectorAll(".previewAnswerOption").length;
-      if (count <= 1) return alert("Ph\u1EA3i c\xF2n \xEDt nh\u1EA5t 1 \u0111\xE1p \xE1n.");
-      const k = String(opt.dataset.k || "").toUpperCase();
-      const input = card.querySelector(".inlineCorrectInput");
-      if (input && k) {
-        input.value = String(input.value || "").toUpperCase().replaceAll(k, "");
-        card.querySelectorAll(".previewAnswerOption").forEach((o) => {
-          const ok = String(input.value || "").includes(String(o.dataset.k || "").toUpperCase());
-          o.classList.toggle("correct", ok);
-        });
-      }
-      opt.remove();
-    };
-    const oldEdit = window.__editImportPreviewQuestion;
-    window.__editImportPreviewQuestion = function(i) {
-      if (typeof oldEdit === "function") oldEdit.apply(this, arguments);
-      setTimeout(() => ensureDeleteButtons(document.querySelector(`[data-pcard="${i}"]`)), 0);
-    };
-    const oldAdd = window.__inlineAddPreviewOption;
-    window.__inlineAddPreviewOption = function(i) {
-      if (typeof oldAdd === "function") oldAdd.apply(this, arguments);
-      setTimeout(() => ensureDeleteButtons(document.querySelector(`[data-pcard="${i}"]`)), 0);
-    };
-  })();
-  (function() {
-    const STORE2 = "learninghub_import_preview_compact_v1";
-    function applyCompact(modal, compact) {
-      if (!modal) return;
-      modal.classList.toggle("compactMode", !!compact);
-      const btn = modal.querySelector(".previewCompactToggle");
-      if (btn) {
-        btn.classList.toggle("active", !!compact);
-        btn.textContent = compact ? "Chi ti\u1EBFt" : "Danh s\xE1ch nhanh";
-        btn.title = compact ? "B\u1EA5m \u0111\u1EC3 xem \u0111\u1EA7y \u0111\u1EE7 \u0111\xE1p \xE1n v\xE0 c\xF4ng c\u1EE5" : "B\u1EA5m \u0111\u1EC3 xem nhi\u1EC1u c\xE2u h\u01A1n";
-      }
-    }
-    function enhanceImportPreview() {
-      const modal = document.getElementById("importPreviewModal");
-      if (!modal || modal.dataset.compactEnhanced === "1") return;
-      const save = modal.querySelector(".importPreviewSaveTop");
-      if (!save || !save.parentNode) return;
-      modal.dataset.compactEnhanced = "1";
-      let compact = localStorage.getItem(STORE2);
-      compact = compact === null ? true : compact === "1";
-      const actions = document.createElement("div");
-      actions.className = "importPreviewHeadActions";
-      const toggle = document.createElement("button");
-      toggle.type = "button";
-      toggle.className = "previewCompactToggle";
-      toggle.addEventListener("click", function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        compact = !modal.classList.contains("compactMode");
-        localStorage.setItem(STORE2, compact ? "1" : "0");
-        applyCompact(modal, compact);
-      });
-      save.parentNode.insertBefore(actions, save);
-      actions.appendChild(toggle);
-      actions.appendChild(save);
-      applyCompact(modal, compact);
-    }
-    function start() {
-      enhanceImportPreview();
-      if (window.MutationObserver && document.body) {
-        new MutationObserver(enhanceImportPreview).observe(document.body, { childList: true, subtree: true });
-      }
-      setInterval(enhanceImportPreview, 700);
-    }
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
-    else start();
-  })();
-  (function() {
-    const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
-    function esc2(s) {
-      return String(s ?? "").replace(
-        /[&<>"']/g,
-        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
-      );
-    }
-    function getData(data) {
-      const arr = data || window.__previewImportData || [];
-      window.__previewImportData = arr;
-      return arr;
-    }
-    function normAns(q) {
-      return String(q?.answer || "").toUpperCase().replace(/[^A-Z]/g, "");
-    }
-    function correctText(q) {
-      const ans = normAns(q);
-      if (!ans) return "Ch\u01B0a c\xF3 \u0111\xE1p \xE1n";
-      return ans.split("").map((k) => k + ". " + (q.options?.[k] || "")).join(" | ");
-    }
-    function nextKey(opts) {
-      const used = new Set(Object.keys(opts || {}).map((k) => String(k).toUpperCase()));
-      return LETTERS.find((k) => !used.has(k));
-    }
-    function renderCard2(q, i) {
-      const ans = normAns(q) || "?";
-      return `<article class="simplePreviewCard" data-simple-card="${i}"><div class="simplePreviewRow"><div class="simplePreviewNum">C\xE2u ${esc2(q.num || i + 1)}</div><div class="simplePreviewMain"><div class="simplePreviewQuestion">${esc2(q.question || "")}</div><div class="simplePreviewCorrect"><b>\u0110\xE1p \xE1n: ${esc2(ans)}</b><span>${esc2(correctText(q))}</span></div></div><button class="simplePreviewEditBtn" type="button" data-simple-edit="${i}">S\u1EEDa</button></div></article>`;
-    }
-    function renderEditCard(q, i) {
-      const opts = q.options || {};
-      const optionRows = Object.keys(opts).sort().map(
-        (k) => `<div class="simpleEditOption" data-opt-row="${esc2(k)}"><div class="simpleEditKey">${esc2(k)}</div><input value="${esc2(opts[k] || "")}" data-edit-opt="${esc2(k)}"><button class="simpleEditDel" type="button" data-del-opt="${esc2(k)}">\xD7</button></div>`
-      ).join("");
-      return `<article class="simplePreviewCard simpleEditCard" data-simple-card="${i}"><div class="simpleEditHead"><div class="simpleEditTitle">S\u1EEDa to\xE0n b\u1ED9 C\xE2u ${esc2(q.num || i + 1)}</div></div><div class="simpleEditGrid"><div class="simpleEditField"><label>C\xE2u h\u1ECFi</label><textarea data-edit-question>${esc2(q.question || "")}</textarea></div><div class="simpleEditField"><label>\u0110\xE1p \xE1n \u0111\xFAng</label><input data-edit-answer value="${esc2(normAns(q))}" placeholder="VD: A ho\u1EB7c AC"></div></div><div class="simpleEditField" style="margin-top:10px"><label>C\xE1c \u0111\xE1p \xE1n</label><div class="simpleEditOptions">${optionRows}</div></div><div class="simpleEditBottom"><button class="btn" type="button" data-add-opt="${i}">+ Th\xEAm \u0111\xE1p \xE1n</button><div class="simpleEditMiniActions"><button class="btn" type="button" data-cancel-simple="${i}">H\u1EE7y</button><button class="primary" type="button" data-save-simple="${i}">L\u01B0u s\u1EEDa</button></div></div></article>`;
-    }
-    function renderList(data) {
-      const list = document.getElementById("simplePreviewList");
-      if (list) list.innerHTML = data.map(renderCard2).join("");
-    }
-    function openSimplePreview(data) {
-      data = getData(data);
-      let modal = document.getElementById("importPreviewModal");
-      if (modal) modal.remove();
-      modal = document.createElement("div");
-      modal.id = "importPreviewModal";
-      modal.className = "modal simpleImportPreviewModal";
-      modal.innerHTML = `<div class="box simpleImportPreviewBox"><button class="modalX" type="button" data-simple-close>\xD7</button><div class="simplePreviewHead"><div><span class="simplePreviewLabel">XEM TR\u01AF\u1EDAC IMPORT</span><h2>Ki\u1EC3m tra c\xE2u h\u1ECFi</h2><p class="simplePreviewHint">Ch\u1EC9 hi\u1EC7n c\xE2u h\u1ECFi v\xE0 \u0111\xE1p \xE1n \u0111\xFAng. B\u1EA5m \u201CS\u1EEDa\u201D \u0111\u1EC3 ch\u1EC9nh to\xE0n b\u1ED9 c\xE2u v\xE0 c\xE1c \u0111\xE1p \xE1n.</p></div><div class="simplePreviewActions"><button class="primary simplePreviewSave" type="button" data-simple-save>L\u01B0u M\xF4n H\u1ECDc</button></div></div><div class="simplePreviewCount">${data.length} c\xE2u h\u1ECFi</div><div id="simplePreviewList" class="simplePreviewList"></div></div>`;
-      document.body.appendChild(modal);
-      renderList(data);
-    }
-    function saveEdit(i) {
-      const data = getData();
-      const q = data[i];
-      const card = document.querySelector(`[data-simple-card="${i}"]`);
-      if (!q || !card) return;
-      const question = (card.querySelector("[data-edit-question]")?.value || "").trim();
-      const answer = (card.querySelector("[data-edit-answer]")?.value || "").trim().toUpperCase().replace(/[^A-Z]/g, "");
-      if (!question) return alert("C\xE2u h\u1ECFi kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
-      if (!answer) return alert("\u0110\xE1p \xE1n \u0111\xFAng kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
-      const options = {};
-      card.querySelectorAll("[data-edit-opt]").forEach((inp) => {
-        const k = String(inp.dataset.editOpt || "").toUpperCase();
-        const v = (inp.value || "").trim();
-        if (k && v) options[k] = v;
-      });
-      if (!Object.keys(options).length) return alert("C\u1EA7n \xEDt nh\u1EA5t 1 \u0111\xE1p \xE1n.");
-      for (const k of answer.split("")) {
-        if (!options[k]) return alert("\u0110\xE1p \xE1n \u0111\xFAng " + k + " ch\u01B0a c\xF3 n\u1ED9i dung.");
-      }
-      q.question = question;
-      q.answer = answer;
-      q.options = options;
-      q.answer_text = answer.split("").map((k) => k + ". " + (options[k] || "")).join("; ");
-      renderList(data);
-      if (typeof notify === "function") notify("\u0110\xE3 l\u01B0u s\u1EEDa c\xE2u " + (q.num || i + 1));
-    }
-    document.addEventListener("click", function(e) {
-      if (e.target.closest("[data-simple-close]")) {
-        document.getElementById("importPreviewModal")?.classList.add("hidden");
-        return;
-      }
-      if (e.target.closest("[data-simple-save]")) {
-        document.getElementById("importPreviewModal")?.classList.add("hidden");
-        window.__submitSubjectRequest?.();
-        return;
-      }
-      const edit = e.target.closest("[data-simple-edit]");
-      if (edit) {
-        const i = +edit.dataset.simpleEdit;
-        const data = getData();
-        const card = document.querySelector(`[data-simple-card="${i}"]`);
-        if (card && data[i]) {
-          card.outerHTML = renderEditCard(data[i], i);
-          document.querySelector(`[data-simple-card="${i}"] textarea`)?.focus();
-        }
-        return;
-      }
-      const cancel = e.target.closest("[data-cancel-simple]");
-      if (cancel) {
-        renderList(getData());
-        return;
-      }
-      const save = e.target.closest("[data-save-simple]");
-      if (save) {
-        saveEdit(+save.dataset.saveSimple);
-        return;
-      }
-      const add = e.target.closest("[data-add-opt]");
-      if (add) {
-        const i = +add.dataset.addOpt;
-        const data = getData();
-        const q = data[i];
-        const k = nextKey(q.options || {});
-        if (!k) return alert("\u0110\xE3 \u0111\u1EE7 s\u1ED1 \u0111\xE1p \xE1n.");
-        q.options = q.options || {};
-        q.options[k] = "";
-        const card = document.querySelector(`[data-simple-card="${i}"]`);
-        if (card) {
-          card.outerHTML = renderEditCard(q, i);
-          document.querySelector(`[data-simple-card="${i}"] [data-edit-opt="${k}"]`)?.focus();
-        }
-        return;
-      }
-      const del = e.target.closest("[data-del-opt]");
-      if (del) {
-        const card = del.closest("[data-simple-card]");
-        const i = +(card?.dataset.simpleCard || 0);
-        const q = getData()[i];
-        const k = del.dataset.delOpt;
-        if (q?.options && k) {
-          delete q.options[k];
-          card.outerHTML = renderEditCard(q, i);
-        }
-        return;
-      }
-    });
-    window.__openImportPreviewModal = openSimplePreview;
-    window.__editImportPreviewQuestion = function(i) {
-      const data = getData();
-      const card = document.querySelector(`[data-simple-card="${i}"]`);
-      if (card && data[i]) card.outerHTML = renderEditCard(data[i], i);
-    };
-  })();
-  (function() {
-    const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
-    let currentFilter = "all";
-    function esc2(s) {
-      return String(s ?? "").replace(
-        /[&<>"']/g,
-        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
-      );
-    }
-    function getData(data) {
-      const arr = data || window.__previewImportData || [];
-      window.__previewImportData = arr;
-      arr.forEach(detect);
-      return arr;
-    }
-    function normAns(q) {
-      return String(q?.answer || "").toUpperCase().replace(/[^A-Z]/g, "");
-    }
-    function detect(q) {
-      q.has_image = !!(q.has_image || q.images && q.images.length);
-      if (!q.error_risk) q.error_risk = normAns(q).length > 1 ? "medium" : "low";
-      return q;
-    }
-    function correctText(q) {
-      const ans = normAns(q);
-      if (!ans) return "Ch\u01B0a c\xF3 \u0111\xE1p \xE1n";
-      return ans.split("").map((k) => k + ". " + (q.options?.[k] || "")).join(" | ");
-    }
-    function riskColor(r) {
-      return { high: "#e74c3c", medium: "#f39c12", low: "#27ae60" }[r] || "#999";
-    }
-    function riskLabel(r) {
-      return { high: "Cao", medium: "Trung b\xECnh", low: "Th\u1EA5p" }[r] || r;
-    }
-    function nextKey(opts) {
-      const used = new Set(Object.keys(opts || {}).map((k) => String(k).toUpperCase()));
-      return LETTERS.find((k) => !used.has(k));
-    }
-    function pass(q) {
-      if (currentFilter === "all") return true;
-      if (currentFilter === "has_image") return !!q.has_image;
-      return q.error_risk === currentFilter;
-    }
-    function stat(data) {
-      return {
-        total: data.length,
-        img: data.filter((q) => q.has_image).length,
-        high: data.filter((q) => q.error_risk === "high").length,
-        medium: data.filter((q) => q.error_risk === "medium").length,
-        low: data.filter((q) => q.error_risk === "low").length
-      };
-    }
-    function renderStats(data) {
-      const s = stat(data);
-      const box = document.getElementById("simplePreviewStats");
-      if (!box) return;
-      const filters = [
-        ["all", "Th\u01B0 vi\u1EC7n"],
-        ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"],
-        ["high", "R\u1EE7i ro cao"],
-        ["medium", "Trung b\xECnh"],
-        ["low", "Th\u1EA5p"]
-      ];
-      box.innerHTML = `<div class="simplePreviewStatLine"><span class="simplePreviewStatItem">${s.total} c\xE2u</span><span class="simplePreviewStatItem" style="color:#3498db">${s.img} c\xF3 \u1EA3nh</span><span class="simplePreviewStatItem" style="color:#e74c3c">${s.high} r\u1EE7i ro cao</span><span class="simplePreviewStatItem" style="color:#f39c12">${s.medium} trung b\xECnh</span><span class="simplePreviewStatItem" style="color:#27ae60">${s.low} th\u1EA5p</span></div><div class="simplePreviewFilterLine">${filters.map((f) => `<button type="button" class="simpleFilterBtn ${currentFilter === f[0] ? "active" : ""}" data-filter="${f[0]}">${f[1]}</button>`).join("")}</div>`;
-    }
-    function renderCard2(q, i) {
-      const ans = normAns(q) || "?";
-      return `<article class="simplePreviewCard" data-simple-card="${i}" style="border-left-color:${riskColor(q.error_risk)}!important"><div class="simplePreviewRow"><div class="simplePreviewNum">C\xE2u ${esc2(q.num || i + 1)}</div><div class="simplePreviewMain"><div class="simplePreviewQuestion">${esc2(q.question || "")}</div><div class="simplePreviewCorrect"><b>\u0110\xE1p \xE1n: ${esc2(ans)}</b><span>${esc2(correctText(q))}</span></div></div><div class="simplePreviewMetaMini"><span class="simplePreviewRiskDot" style="background:${riskColor(q.error_risk)}" title="R\u1EE7i ro: ${esc2(riskLabel(q.error_risk))}"></span>${q.has_image ? '<span class="simplePreviewImgMark">\u{1F4F7}</span>' : ""}<button class="simplePreviewEditBtn" type="button" data-simple-edit="${i}">S\u1EEDa</button></div></div></article>`;
-    }
-    function renderEditCard(q, i) {
-      const opts = q.options || {};
-      const optionRows = Object.keys(opts).sort().map(
-        (k) => `<div class="simpleEditOption" data-opt-row="${esc2(k)}"><div class="simpleEditKey">${esc2(k)}</div><input value="${esc2(opts[k] || "")}" data-edit-opt="${esc2(k)}"><button class="simpleEditDel" type="button" data-del-opt="${esc2(k)}">\xD7</button></div>`
-      ).join("");
-      return `<article class="simplePreviewCard simpleEditCard" data-simple-card="${i}"><div class="simpleEditHead"><div class="simpleEditTitle">S\u1EEDa to\xE0n b\u1ED9 C\xE2u ${esc2(q.num || i + 1)}</div></div><div class="simpleEditGrid"><div class="simpleEditField"><label>C\xE2u h\u1ECFi</label><textarea data-edit-question>${esc2(q.question || "")}</textarea></div><div class="simpleEditField"><label>\u0110\xE1p \xE1n \u0111\xFAng</label><input data-edit-answer value="${esc2(normAns(q))}" placeholder="VD: A ho\u1EB7c AC"></div></div><div class="simpleEditField" style="margin-top:10px"><label>C\xE1c \u0111\xE1p \xE1n</label><div class="simpleEditOptions">${optionRows}</div></div><div class="simpleEditBottom"><button class="btn" type="button" data-add-opt="${i}">+ Th\xEAm \u0111\xE1p \xE1n</button><div class="simpleEditMiniActions"><button class="btn" type="button" data-cancel-simple="${i}">H\u1EE7y</button><button class="primary" type="button" data-save-simple="${i}">L\u01B0u s\u1EEDa</button></div></div></article>`;
-    }
-    function renderList(data) {
-      const list = document.getElementById("simplePreviewList");
-      if (!list) return;
-      const filtered = data.map((q, i) => ({ q, i })).filter((x) => pass(x.q));
-      list.innerHTML = filtered.length ? filtered.map((x) => renderCard2(x.q, x.i)).join("") : '<div class="simplePreviewEmpty">Kh\xF4ng c\xF3 c\xE2u n\xE0o ph\xF9 h\u1EE3p b\u1ED9 l\u1ECDc.</div>';
-      renderStats(data);
-    }
-    function openSimplePreview(data) {
-      data = getData(data);
-      let modal = document.getElementById("importPreviewModal");
-      if (modal) modal.remove();
-      modal = document.createElement("div");
-      modal.id = "importPreviewModal";
-      modal.className = "modal simpleImportPreviewModal";
-      modal.innerHTML = `<div class="box simpleImportPreviewBox"><button class="modalX" type="button" data-simple-close>\xD7</button><div class="simplePreviewHead"><div><span class="simplePreviewLabel">XEM TR\u01AF\u1EDAC IMPORT</span><h2>Ki\u1EC3m tra c\xE2u h\u1ECFi</h2><p class="simplePreviewHint">Ch\u1EC9 hi\u1EC7n c\xE2u h\u1ECFi v\xE0 \u0111\xE1p \xE1n \u0111\xFAng. D\xF9ng b\u1ED9 l\u1ECDc \u0111\u1EC3 xem c\xE2u c\xF3 \u1EA3nh ho\u1EB7c c\xE2u d\u1EC5 sai.</p></div><div class="simplePreviewActions"><button class="primary simplePreviewSave" type="button" data-simple-save>L\u01B0u M\xF4n H\u1ECDc</button></div></div><div id="simplePreviewStats" class="simplePreviewStats"></div><div id="simplePreviewList" class="simplePreviewList"></div></div>`;
-      document.body.appendChild(modal);
-      renderList(data);
-    }
-    function saveEdit(i) {
-      const data = getData();
-      const q = data[i];
-      const card = document.querySelector(`[data-simple-card="${i}"]`);
-      if (!q || !card) return;
-      const question = (card.querySelector("[data-edit-question]")?.value || "").trim();
-      const answer = (card.querySelector("[data-edit-answer]")?.value || "").trim().toUpperCase().replace(/[^A-Z]/g, "");
-      if (!question) return alert("C\xE2u h\u1ECFi kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
-      if (!answer) return alert("\u0110\xE1p \xE1n \u0111\xFAng kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
-      const options = {};
-      card.querySelectorAll("[data-edit-opt]").forEach((inp) => {
-        const k = String(inp.dataset.editOpt || "").toUpperCase();
-        const v = (inp.value || "").trim();
-        if (k && v) options[k] = v;
-      });
-      if (!Object.keys(options).length) return alert("C\u1EA7n \xEDt nh\u1EA5t 1 \u0111\xE1p \xE1n.");
-      for (const k of answer.split("")) {
-        if (!options[k]) return alert("\u0110\xE1p \xE1n \u0111\xFAng " + k + " ch\u01B0a c\xF3 n\u1ED9i dung.");
-      }
-      q.question = question;
-      q.answer = answer;
-      q.options = options;
-      q.answer_text = answer.split("").map((k) => k + ". " + (options[k] || "")).join("; ");
-      renderList(data);
-      if (typeof notify === "function") notify("\u0110\xE3 l\u01B0u s\u1EEDa c\xE2u " + (q.num || i + 1));
-    }
-    document.addEventListener("click", function(e) {
-      const filter = e.target.closest(".simpleFilterBtn");
-      if (filter) {
-        currentFilter = filter.dataset.filter || "all";
-        renderList(getData());
-        return;
-      }
-      if (e.target.closest("[data-simple-close]")) {
-        document.getElementById("importPreviewModal")?.classList.add("hidden");
-        return;
-      }
-      if (e.target.closest("[data-simple-save]")) {
-        document.getElementById("importPreviewModal")?.classList.add("hidden");
-        window.__submitSubjectRequest?.();
-        return;
-      }
-      const edit = e.target.closest("[data-simple-edit]");
-      if (edit) {
-        const i = +edit.dataset.simpleEdit;
-        const data = getData();
-        const card = document.querySelector(`[data-simple-card="${i}"]`);
-        if (card && data[i]) {
-          card.outerHTML = renderEditCard(data[i], i);
-          document.querySelector(`[data-simple-card="${i}"] textarea`)?.focus();
-        }
-        return;
-      }
-      const cancel = e.target.closest("[data-cancel-simple]");
-      if (cancel) {
-        renderList(getData());
-        return;
-      }
-      const save = e.target.closest("[data-save-simple]");
-      if (save) {
-        saveEdit(+save.dataset.saveSimple);
-        return;
-      }
-      const add = e.target.closest("[data-add-opt]");
-      if (add) {
-        const i = +add.dataset.addOpt;
-        const data = getData();
-        const q = data[i];
-        const k = nextKey(q.options || {});
-        if (!k) return alert("\u0110\xE3 \u0111\u1EE7 s\u1ED1 \u0111\xE1p \xE1n.");
-        q.options = q.options || {};
-        q.options[k] = "";
-        const card = document.querySelector(`[data-simple-card="${i}"]`);
-        if (card) {
-          card.outerHTML = renderEditCard(q, i);
-          document.querySelector(`[data-simple-card="${i}"] [data-edit-opt="${k}"]`)?.focus();
-        }
-        return;
-      }
-      const del = e.target.closest("[data-del-opt]");
-      if (del) {
-        const card = del.closest("[data-simple-card]");
-        const i = +(card?.dataset.simpleCard || 0);
-        const q = getData()[i];
-        const k = del.dataset.delOpt;
-        if (q?.options && k) {
-          delete q.options[k];
-          card.outerHTML = renderEditCard(q, i);
-        }
-        return;
-      }
-    });
-    window.__openImportPreviewModal = openSimplePreview;
-    window.__editImportPreviewQuestion = function(i) {
-      const data = getData();
-      const card = document.querySelector(`[data-simple-card="${i}"]`);
-      if (card && data[i]) card.outerHTML = renderEditCard(data[i], i);
-    };
-  })();
-  (function() {
-    const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
-    let currentFilter = "all";
-    function esc2(s) {
-      return String(s ?? "").replace(
-        /[&<>"']/g,
-        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
-      );
-    }
-    function getData(data) {
-      const arr = data || window.__previewImportData || [];
-      window.__previewImportData = arr;
-      arr.forEach(detect);
-      return arr;
-    }
-    function normAns(q) {
-      return String(q?.answer || "").toUpperCase().replace(/[^A-Z]/g, "");
-    }
-    function detect(q) {
-      q.images = q.images || [];
-      q.has_image = !!(q.has_image || q.images && q.images.length);
-      if (!q.error_risk) q.error_risk = normAns(q).length > 1 ? "medium" : "low";
-      return q;
-    }
-    function correctText(q) {
-      const ans = normAns(q);
-      if (!ans) return "Ch\u01B0a c\xF3 \u0111\xE1p \xE1n";
-      return ans.split("").map((k) => k + ". " + (q.options?.[k] || "")).join(" | ");
-    }
-    function riskColor(r) {
-      return { high: "#e74c3c", medium: "#f39c12", low: "#27ae60" }[r] || "#999";
-    }
-    function riskLabel(r) {
-      return { high: "Cao", medium: "Trung b\xECnh", low: "Th\u1EA5p" }[r] || r;
-    }
-    function nextKey(opts) {
-      const used = new Set(Object.keys(opts || {}).map((k) => String(k).toUpperCase()));
-      return LETTERS.find((k) => !used.has(k));
-    }
-    function imgSrc(im) {
-      return typeof im === "string" ? im : im?.src || im?.url || "";
-    }
-    function pass(q) {
-      if (currentFilter === "all") return true;
-      if (currentFilter === "has_image") return !!q.has_image;
-      return q.error_risk === currentFilter;
-    }
-    function stat(data) {
-      return {
-        total: data.length,
-        img: data.filter((q) => q.has_image).length,
-        high: data.filter((q) => q.error_risk === "high").length,
-        medium: data.filter((q) => q.error_risk === "medium").length,
-        low: data.filter((q) => q.error_risk === "low").length
-      };
-    }
-    function renderStats(data) {
-      const s = stat(data), box = document.getElementById("simplePreviewStats");
-      if (!box) return;
-      const filters = [
-        ["all", "Th\u01B0 vi\u1EC7n"],
-        ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"],
-        ["high", "R\u1EE7i ro cao"],
-        ["medium", "Trung b\xECnh"],
-        ["low", "Th\u1EA5p"]
-      ];
-      box.innerHTML = `<div class="simplePreviewStatLine"><span class="simplePreviewStatItem">${s.total} c\xE2u</span><span class="simplePreviewStatItem" style="color:#3498db">${s.img} c\xF3 \u1EA3nh</span><span class="simplePreviewStatItem" style="color:#e74c3c">${s.high} r\u1EE7i ro cao</span><span class="simplePreviewStatItem" style="color:#f39c12">${s.medium} trung b\xECnh</span><span class="simplePreviewStatItem" style="color:#27ae60">${s.low} th\u1EA5p</span></div><div class="simplePreviewFilterLine">${filters.map((f) => `<button type="button" class="imagePreviewFilterBtn ${currentFilter === f[0] ? "active" : ""}" data-imgui-filter="${f[0]}">${f[1]}</button>`).join("")}</div>`;
-    }
-    function miniImages(q) {
-      const imgs = (q.images || []).map(imgSrc).filter(Boolean);
-      if (!imgs.length) return '<div class="imageMiniPreview"></div>';
-      return `<div class="imageMiniPreview"><img src="${esc2(imgs[0])}" alt="\u1EA2nh preview" loading="lazy" decoding="async">${imgs.length > 1 ? `<span class="imageMiniCount">+${imgs.length - 1}</span>` : ""}</div>`;
-    }
-    function renderCard2(q, i) {
-      const ans = normAns(q) || "?";
-      return `<article class="simplePreviewCard" data-imgui-card="${i}" style="border-left-color:${riskColor(q.error_risk)}!important"><div class="imagePreviewListRow"><div class="simplePreviewNum">C\xE2u ${esc2(q.num || i + 1)}</div><div class="simplePreviewMain"><div class="simplePreviewQuestion">${esc2(q.question || "")}</div><div class="simplePreviewCorrect"><b>\u0110\xE1p \xE1n: ${esc2(ans)}</b><span>${esc2(correctText(q))}</span></div></div>${miniImages(q)}<div class="simplePreviewMetaMini"><span class="simplePreviewRiskDot" style="background:${riskColor(q.error_risk)}" title="R\u1EE7i ro: ${esc2(riskLabel(q.error_risk))}"></span><button class="simplePreviewEditBtn" type="button" data-imgui-edit="${i}">S\u1EEDa</button></div></div></article>`;
-    }
-    function renderImages(q, i) {
-      const imgs = q.images || [];
-      return `<div class="simpleEditImages"><div class="simpleEditImagesHead"><span>\u1EA2nh c\u1EE7a c\xE2u h\u1ECFi</span><button class="simpleImageUploadBtn" type="button" data-imgui-pick-img="${i}">+ Th\xEAm \u1EA3nh</button><input class="simpleImgHiddenInput" type="file" accept="image/*" multiple data-imgui-input="${i}"></div><div class="simpleImageThumbs">${imgs.length ? imgs.map((im, idx) => `<div class="simpleImageThumb"><button class="simpleImageRemove" type="button" data-imgui-rm-img="${idx}">\xD7</button><img src="${esc2(imgSrc(im))}" alt="\u1EA2nh ${idx + 1}" loading="lazy" decoding="async"></div>`).join("") : '<div class="simpleNoImage">Ch\u01B0a c\xF3 \u1EA3nh. B\u1EA5m \u201C+ Th\xEAm \u1EA3nh\u201D n\u1EBFu c\xE2u n\xE0y c\u1EA7n h\xECnh.</div>'}</div></div>`;
-    }
-    function renderEditCard(q, i) {
-      const opts = q.options || {};
-      const optionRows = Object.keys(opts).sort().map(
-        (k) => `<div class="simpleEditOption" data-opt-row="${esc2(k)}"><div class="simpleEditKey">${esc2(k)}</div><input value="${esc2(opts[k] || "")}" data-imgui-opt="${esc2(k)}"><button class="simpleEditDel" type="button" data-imgui-del-opt="${esc2(k)}">\xD7</button></div>`
-      ).join("");
-      return `<article class="simplePreviewCard simpleEditCard" data-imgui-card="${i}"><div class="simpleEditHead imageEditHeadTop"><div class="simpleEditTitle">S\u1EEDa to\xE0n b\u1ED9 C\xE2u ${esc2(q.num || i + 1)}</div><div class="imageEditHeadActions"><button class="btn" type="button" data-imgui-cancel="${i}">H\u1EE7y</button><button class="primary" type="button" data-imgui-save="${i}">L\u01B0u s\u1EEDa</button></div></div><div class="simpleEditGrid"><div class="simpleEditField"><label>C\xE2u h\u1ECFi</label><textarea data-imgui-question>${esc2(q.question || "")}</textarea></div><div class="simpleEditField"><label>\u0110\xE1p \xE1n \u0111\xFAng</label><input data-imgui-answer value="${esc2(normAns(q))}" placeholder="VD: A ho\u1EB7c AC"></div></div><div class="simpleEditField" style="margin-top:10px"><label>C\xE1c \u0111\xE1p \xE1n</label><div class="simpleEditOptions">${optionRows}</div></div>${renderImages(q, i)}<div class="simpleEditBottom imageEditBottomOnlyAdd"><button class="btn" type="button" data-imgui-add-opt="${i}">+ Th\xEAm \u0111\xE1p \xE1n</button></div></article>`;
-    }
-    function renderList(data) {
-      const list = document.getElementById("simplePreviewList");
-      if (!list) return;
-      const filtered = data.map((q, i) => ({ q, i })).filter((x) => pass(x.q));
-      list.innerHTML = filtered.length ? filtered.map((x) => renderCard2(x.q, x.i)).join("") : '<div class="simplePreviewEmpty">Kh\xF4ng c\xF3 c\xE2u n\xE0o ph\xF9 h\u1EE3p b\u1ED9 l\u1ECDc.</div>';
-      renderStats(data);
-    }
-    function openPreview(data) {
-      data = getData(data);
-      let modal = document.getElementById("importPreviewModal");
-      if (modal) modal.remove();
-      modal = document.createElement("div");
-      modal.id = "importPreviewModal";
-      modal.className = "modal simpleImportPreviewModal";
-      modal.innerHTML = `<div class="box simpleImportPreviewBox"><button class="modalX" type="button" data-imgui-close>\xD7</button><div class="simplePreviewHead"><div><span class="simplePreviewLabel">XEM TR\u01AF\u1EDAC IMPORT</span><h2>Ki\u1EC3m tra c\xE2u h\u1ECFi</h2><p class="simplePreviewHint">Ch\u1EC9 hi\u1EC7n c\xE2u h\u1ECFi v\xE0 \u0111\xE1p \xE1n \u0111\xFAng. C\xE2u c\xF3 \u1EA3nh s\u1EBD hi\u1EC7n preview nh\u1ECF.</p></div><div class="simplePreviewActions"><button class="primary simplePreviewSave" type="button" data-imgui-submit>L\u01B0u M\xF4n H\u1ECDc</button></div></div><div id="simplePreviewStats" class="simplePreviewStats"></div><div id="simplePreviewList" class="simplePreviewList"></div></div>`;
-      document.body.appendChild(modal);
-      renderList(data);
-    }
-    function saveEdit(i) {
-      const data = getData();
-      const q = data[i];
-      const card = document.querySelector(`[data-imgui-card="${i}"]`);
-      if (!q || !card) return;
-      const question = (card.querySelector("[data-imgui-question]")?.value || "").trim();
-      const answer = (card.querySelector("[data-imgui-answer]")?.value || "").trim().toUpperCase().replace(/[^A-Z]/g, "");
-      if (!question) return alert("C\xE2u h\u1ECFi kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
-      if (!answer) return alert("\u0110\xE1p \xE1n \u0111\xFAng kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
-      const options = {};
-      card.querySelectorAll("[data-imgui-opt]").forEach((inp) => {
-        const k = String(inp.dataset.imguiOpt || "").toUpperCase();
-        const v = (inp.value || "").trim();
-        if (k && v) options[k] = v;
-      });
-      if (!Object.keys(options).length) return alert("C\u1EA7n \xEDt nh\u1EA5t 1 \u0111\xE1p \xE1n.");
-      for (const k of answer.split("")) {
-        if (!options[k]) return alert("\u0110\xE1p \xE1n \u0111\xFAng " + k + " ch\u01B0a c\xF3 n\u1ED9i dung.");
-      }
-      q.question = question;
-      q.answer = answer;
-      q.options = options;
-      q.answer_text = answer.split("").map((k) => k + ". " + (options[k] || "")).join("; ");
-      q.has_image = !!(q.images && q.images.length);
-      renderList(data);
-      if (typeof notify === "function") notify("\u0110\xE3 l\u01B0u s\u1EEDa c\xE2u " + (q.num || i + 1));
-    }
-    document.addEventListener("click", function(e) {
-      const filter = e.target.closest("[data-imgui-filter]");
-      if (filter) {
-        currentFilter = filter.dataset.imguiFilter || "all";
-        renderList(getData());
-        return;
-      }
-      if (e.target.closest("[data-imgui-close]")) {
-        document.getElementById("importPreviewModal")?.classList.add("hidden");
-        return;
-      }
-      if (e.target.closest("[data-imgui-submit]")) {
-        document.getElementById("importPreviewModal")?.classList.add("hidden");
-        window.__submitSubjectRequest?.();
-        return;
-      }
-      const edit = e.target.closest("[data-imgui-edit]");
-      if (edit) {
-        const i = +edit.dataset.imguiEdit;
-        const data = getData();
-        const card = document.querySelector(`[data-imgui-card="${i}"]`);
-        if (card && data[i]) {
-          card.outerHTML = renderEditCard(data[i], i);
-          document.querySelector(`[data-imgui-card="${i}"] textarea`)?.focus();
-        }
-        return;
-      }
-      const cancel = e.target.closest("[data-imgui-cancel]");
-      if (cancel) {
-        renderList(getData());
-        return;
-      }
-      const save = e.target.closest("[data-imgui-save]");
-      if (save) {
-        saveEdit(+save.dataset.imguiSave);
-        return;
-      }
-      const pick = e.target.closest("[data-imgui-pick-img]");
-      if (pick) {
-        document.querySelector(`[data-imgui-input="${pick.dataset.imguiPickImg}"]`)?.click();
-        return;
-      }
-      const rm = e.target.closest("[data-imgui-rm-img]");
-      if (rm) {
-        const card = rm.closest("[data-imgui-card]");
-        const i = +(card?.dataset.imguiCard || 0);
-        const q = getData()[i];
-        if (q?.images) {
-          q.images.splice(+rm.dataset.imguiRmImg, 1);
-          q.has_image = !!q.images.length;
-          card.outerHTML = renderEditCard(q, i);
-        }
-        return;
-      }
-      const add = e.target.closest("[data-imgui-add-opt]");
-      if (add) {
-        const i = +add.dataset.imguiAddOpt;
-        const data = getData();
-        const q = data[i];
-        const k = nextKey(q.options || {});
-        if (!k) return alert("\u0110\xE3 \u0111\u1EE7 s\u1ED1 \u0111\xE1p \xE1n.");
-        q.options = q.options || {};
-        q.options[k] = "";
-        const card = document.querySelector(`[data-imgui-card="${i}"]`);
-        if (card) {
-          card.outerHTML = renderEditCard(q, i);
-          document.querySelector(`[data-imgui-card="${i}"] [data-imgui-opt="${k}"]`)?.focus();
-        }
-        return;
-      }
-      const del = e.target.closest("[data-imgui-del-opt]");
-      if (del) {
-        const card = del.closest("[data-imgui-card]");
-        const i = +(card?.dataset.imguiCard || 0);
-        const q = getData()[i];
-        const k = del.dataset.imguiDelOpt;
-        if (q?.options && k) {
-          delete q.options[k];
-          card.outerHTML = renderEditCard(q, i);
-        }
-        return;
-      }
-    });
-    document.addEventListener("change", async function(e) {
-      const inp = e.target.closest("[data-imgui-input]");
-      if (!inp) return;
-      const i = +inp.dataset.imguiInput;
-      const q = getData()[i];
-      if (!q) return;
-      q.images = q.images || [];
-      const files = Array.from(inp.files || []);
-      if (!files.length) return;
-      inp.disabled = true;
-      if (typeof notify === "function") notify("\u0110ang upload \u1EA3nh...");
-      try {
-        for (const file of files) {
-          if (window.__LHUploadCloudinary) {
-            const uploaded = await window.__LHUploadCloudinary(file);
-            if (uploaded) q.images.push(uploaded);
-          } else {
-            const fr = new FileReader();
-            const p = new Promise((resolve) => {
-              fr.onload = function() {
-                q.images.push({
-                  id: "import_" + Date.now() + "_" + Math.random().toString(16).slice(2),
-                  src: fr.result,
-                  source: "user-upload",
-                  name: file.name
-                });
-                resolve();
-              };
-              fr.readAsDataURL(file);
-            });
-            await p;
-          }
-        }
-        q.has_image = true;
-        const card = document.querySelector(`[data-imgui-card="${i}"]`);
-        if (card) card.outerHTML = renderEditCard(q, i);
-        if (typeof notify === "function") notify("\u0110\xE3 upload \u1EA3nh th\xE0nh URL");
-      } catch (err) {
-        alert(err.message || err);
-      } finally {
-        inp.disabled = false;
-        inp.value = "";
-      }
-    });
-    window.__openImportPreviewModal = openPreview;
-    window.__editImportPreviewQuestion = function(i) {
-      const data = getData();
-      const card = document.querySelector(`[data-imgui-card="${i}"]`);
-      if (card && data[i]) card.outerHTML = renderEditCard(data[i], i);
-    };
-  })();
-  (function() {
-    const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
-    let currentFilter = "all";
-    function esc2(s) {
-      return String(s ?? "").replace(
-        /[&<>"']/g,
-        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
-      );
-    }
-    function getData(data) {
-      const arr = data || window.__previewImportData || [];
-      window.__previewImportData = arr;
-      arr.forEach(detect);
-      return arr;
-    }
-    function normAns(q) {
-      return String(q?.answer || "").toUpperCase().replace(/[^A-Z]/g, "");
-    }
-    function detect(q) {
-      q.images = q.images || [];
-      q.has_image = !!(q.has_image || q.images && q.images.length);
-      if (!q.error_risk) q.error_risk = normAns(q).length > 1 ? "medium" : "low";
-      return q;
-    }
-    function correctText(q) {
-      const ans = normAns(q);
-      if (!ans) return "Ch\u01B0a c\xF3 \u0111\xE1p \xE1n";
-      return ans.split("").map((k) => k + ". " + (q.options?.[k] || "")).join(" | ");
-    }
-    function riskColor(r) {
-      return { high: "#e74c3c", medium: "#f39c12", low: "#27ae60" }[r] || "#999";
-    }
-    function riskLabel(r) {
-      return { high: "Cao", medium: "Trung b\xECnh", low: "Th\u1EA5p" }[r] || r;
-    }
-    function nextKey(opts) {
-      const used = new Set(Object.keys(opts || {}).map((k) => String(k).toUpperCase()));
-      return LETTERS.find((k) => !used.has(k));
-    }
-    function imgSrc(im) {
-      return typeof im === "string" ? im : im?.src || im?.url || "";
-    }
-    function pass(q) {
-      if (currentFilter === "all") return true;
-      if (currentFilter === "has_image") return !!q.has_image;
-      return q.error_risk === currentFilter;
-    }
-    function stats(data) {
-      return {
-        total: data.length,
-        img: data.filter((q) => q.has_image).length,
-        high: data.filter((q) => q.error_risk === "high").length,
-        medium: data.filter((q) => q.error_risk === "medium").length,
-        low: data.filter((q) => q.error_risk === "low").length
-      };
-    }
-    function renderStats(data) {
-      const s = stats(data), box = document.getElementById("v7Stats");
-      if (!box) return;
-      const filters = [
-        ["all", "Th\u01B0 vi\u1EC7n"],
-        ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"],
-        ["high", "R\u1EE7i ro cao"],
-        ["medium", "Trung b\xECnh"],
-        ["low", "Th\u1EA5p"]
-      ];
-      box.innerHTML = `<div class="v7StatLine"><span class="v7StatItem">${s.total} c\xE2u</span><span class="v7StatItem" style="color:#3498db">${s.img} c\xF3 \u1EA3nh</span><span class="v7StatItem" style="color:#e74c3c">${s.high} r\u1EE7i ro cao</span><span class="v7StatItem" style="color:#f39c12">${s.medium} trung b\xECnh</span><span class="v7StatItem" style="color:#27ae60">${s.low} th\u1EA5p</span></div><div class="v7FilterLine">${filters.map((f) => `<button type="button" class="v7FilterBtn ${currentFilter === f[0] ? "active" : ""}" data-v7-filter="${f[0]}">${f[1]}</button>`).join("")}</div>`;
-    }
-    function miniImages(q) {
-      const imgs = (q.images || []).map(imgSrc).filter(Boolean);
-      if (!imgs.length) return '<div class="v7MiniImgs"></div>';
-      return `<div class="v7MiniImgs"><img src="${esc2(imgs[0])}" alt="\u1EA2nh preview" loading="lazy" decoding="async">${imgs.length > 1 ? `<span class="v7ImgCount">+${imgs.length - 1}</span>` : ""}</div>`;
-    }
-    function renderCard2(q, i) {
-      const ans = normAns(q) || "?";
-      return `<article class="v7Card" data-v7-card="${i}" style="border-left-color:${riskColor(q.error_risk)}!important"><div class="v7Row"><div class="v7Num">C\xE2u ${esc2(q.num || i + 1)}</div><div class="v7Main"><div class="v7Question">${esc2(q.question || "")}</div><div class="v7Answer"><b>\u0110\xE1p \xE1n: ${esc2(ans)}</b><span>${esc2(correctText(q))}</span></div></div>${miniImages(q)}<div class="v7Meta"><span class="v7RiskDot" style="background:${riskColor(q.error_risk)}" title="R\u1EE7i ro: ${esc2(riskLabel(q.error_risk))}"></span><button class="v7EditBtn" type="button" data-v7-edit="${i}">S\u1EEDa</button></div></div></article>`;
-    }
-    function renderImages(q, i) {
-      const imgs = q.images || [];
-      return `<div class="v7Images"><div class="v7ImagesHead"><span>\u1EA2nh c\u1EE7a c\xE2u h\u1ECFi</span><button class="v7UploadBtn" type="button" data-v7-pick-img="${i}">+ Th\xEAm \u1EA3nh</button><input class="v7HiddenInput" type="file" accept="image/*" multiple data-v7-input="${i}"></div><div class="v7Thumbs">${imgs.length ? imgs.map((im, idx) => `<div class="v7Thumb"><button class="v7RemoveImg" type="button" data-v7-rm-img="${idx}">\xD7</button><img src="${esc2(imgSrc(im))}" alt="\u1EA2nh ${idx + 1}" loading="lazy" decoding="async"></div>`).join("") : '<div class="v7NoImage">Ch\u01B0a c\xF3 \u1EA3nh. B\u1EA5m \u201C+ Th\xEAm \u1EA3nh\u201D n\u1EBFu c\xE2u n\xE0y c\u1EA7n h\xECnh.</div>'}</div></div>`;
-    }
-    function renderEditCard(q, i) {
-      const opts = q.options || {};
-      const optionRows = Object.keys(opts).sort().map(
-        (k) => `<div class="v7OptRow"><div class="v7Key">${esc2(k)}</div><input value="${esc2(opts[k] || "")}" data-v7-opt="${esc2(k)}"><button class="v7DelOpt" type="button" data-v7-del-opt="${esc2(k)}">\xD7</button></div>`
-      ).join("");
-      return `<article class="v7Card" data-v7-card="${i}"><div class="v7EditHead"><div class="v7EditTitle">S\u1EEDa to\xE0n b\u1ED9 C\xE2u ${esc2(q.num || i + 1)}</div><div class="v7EditHeadActions"><button class="btn" type="button" data-v7-cancel="${i}">H\u1EE7y</button><button class="primary" type="button" data-v7-save="${i}">L\u01B0u s\u1EEDa</button></div></div><div class="v7EditGrid"><div class="v7Field"><label>C\xE2u h\u1ECFi</label><textarea data-v7-question>${esc2(q.question || "")}</textarea></div><div class="v7Field"><label>\u0110\xE1p \xE1n \u0111\xFAng</label><input data-v7-answer value="${esc2(normAns(q))}" placeholder="VD: A ho\u1EB7c AC"></div></div><div class="v7Field" style="margin-top:10px"><label>C\xE1c \u0111\xE1p \xE1n</label><div class="v7Options">${optionRows}</div></div>${renderImages(q, i)}<div class="v7Bottom"><button class="btn" type="button" data-v7-add-opt="${i}">+ Th\xEAm \u0111\xE1p \xE1n</button></div></article>`;
-    }
-    function renderList(data) {
-      const list = document.getElementById("v7List");
-      if (!list) return;
-      const filtered = data.map((q, i) => ({ q, i })).filter((x) => pass(x.q));
-      list.innerHTML = filtered.length ? filtered.map((x) => renderCard2(x.q, x.i)).join("") : '<div class="v7Empty">Kh\xF4ng c\xF3 c\xE2u n\xE0o ph\xF9 h\u1EE3p b\u1ED9 l\u1ECDc.</div>';
-      renderStats(data);
-    }
-    function openPreview(data) {
-      data = getData(data);
-      let modal = document.getElementById("importPreviewModal");
-      if (modal) modal.remove();
-      modal = document.createElement("div");
-      modal.id = "importPreviewModal";
-      modal.className = "modal v7ImportModal";
-      modal.innerHTML = `<div class="box v7ImportBox"><button class="modalX" type="button" data-v7-close>\xD7</button><div class="v7Head"><div><span class="v7Label">XEM TR\u01AF\u1EDAC IMPORT</span><h2>Ki\u1EC3m tra c\xE2u h\u1ECFi</h2><p class="v7Hint">Ch\u1EC9 hi\u1EC7n c\xE2u h\u1ECFi v\xE0 \u0111\xE1p \xE1n \u0111\xFAng. C\xE2u c\xF3 \u1EA3nh s\u1EBD hi\u1EC7n preview nh\u1ECF.</p></div><div class="v7TopActions"><button class="primary v7SaveTop" type="button" data-v7-submit>L\u01B0u M\xF4n H\u1ECDc</button></div></div><div id="v7Stats" class="v7Stats"></div><div id="v7List" class="v7List"></div></div>`;
-      document.body.appendChild(modal);
-      renderList(data);
-    }
-    function saveEdit(i) {
-      const data = getData();
-      const q = data[i];
-      const card = document.querySelector(`[data-v7-card="${i}"]`);
-      if (!q || !card) return;
-      const question = (card.querySelector("[data-v7-question]")?.value || "").trim();
-      const answer = (card.querySelector("[data-v7-answer]")?.value || "").trim().toUpperCase().replace(/[^A-Z]/g, "");
-      if (!question) return alert("C\xE2u h\u1ECFi kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
-      if (!answer) return alert("\u0110\xE1p \xE1n \u0111\xFAng kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
-      const options = {};
-      card.querySelectorAll("[data-v7-opt]").forEach((inp) => {
-        const k = String(inp.dataset.v7Opt || "").toUpperCase();
-        const v = (inp.value || "").trim();
-        if (k && v) options[k] = v;
-      });
-      if (!Object.keys(options).length) return alert("C\u1EA7n \xEDt nh\u1EA5t 1 \u0111\xE1p \xE1n.");
-      for (const k of answer.split("")) {
-        if (!options[k]) return alert("\u0110\xE1p \xE1n \u0111\xFAng " + k + " ch\u01B0a c\xF3 n\u1ED9i dung.");
-      }
-      q.question = question;
-      q.answer = answer;
-      q.options = options;
-      q.answer_text = answer.split("").map((k) => k + ". " + (options[k] || "")).join("; ");
-      q.has_image = !!(q.images && q.images.length);
-      renderList(data);
-      if (typeof notify === "function") notify("\u0110\xE3 l\u01B0u s\u1EEDa c\xE2u " + (q.num || i + 1));
-    }
-    document.addEventListener("click", function(e) {
-      const filter = e.target.closest("[data-v7-filter]");
-      if (filter) {
-        currentFilter = filter.dataset.v7Filter || "all";
-        renderList(getData());
-        return;
-      }
-      if (e.target.closest("[data-v7-close]")) {
-        document.getElementById("importPreviewModal")?.classList.add("hidden");
-        return;
-      }
-      if (e.target.closest("[data-v7-submit]")) {
-        document.getElementById("importPreviewModal")?.classList.add("hidden");
-        window.__submitSubjectRequest?.();
-        return;
-      }
-      const edit = e.target.closest("[data-v7-edit]");
-      if (edit) {
-        const i = +edit.dataset.v7Edit;
-        const data = getData();
-        const card = document.querySelector(`[data-v7-card="${i}"]`);
-        if (card && data[i]) {
-          card.outerHTML = renderEditCard(data[i], i);
-          document.querySelector(`[data-v7-card="${i}"] textarea`)?.focus();
-        }
-        return;
-      }
-      const cancel = e.target.closest("[data-v7-cancel]");
-      if (cancel) {
-        renderList(getData());
-        return;
-      }
-      const save = e.target.closest("[data-v7-save]");
-      if (save) {
-        saveEdit(+save.dataset.v7Save);
-        return;
-      }
-      const pick = e.target.closest("[data-v7-pick-img]");
-      if (pick) {
-        document.querySelector(`[data-v7-input="${pick.dataset.v7PickImg}"]`)?.click();
-        return;
-      }
-      const rm = e.target.closest("[data-v7-rm-img]");
-      if (rm) {
-        const card = rm.closest("[data-v7-card]");
-        const i = +(card?.dataset.v7Card || 0);
-        const q = getData()[i];
-        if (q?.images) {
-          q.images.splice(+rm.dataset.v7RmImg, 1);
-          q.has_image = !!q.images.length;
-          card.outerHTML = renderEditCard(q, i);
-        }
-        return;
-      }
-      const add = e.target.closest("[data-v7-add-opt]");
-      if (add) {
-        const i = +add.dataset.v7AddOpt;
-        const data = getData();
-        const q = data[i];
-        const k = nextKey(q.options || {});
-        if (!k) return alert("\u0110\xE3 \u0111\u1EE7 s\u1ED1 \u0111\xE1p \xE1n.");
-        q.options = q.options || {};
-        q.options[k] = "";
-        const card = document.querySelector(`[data-v7-card="${i}"]`);
-        if (card) {
-          card.outerHTML = renderEditCard(q, i);
-          document.querySelector(`[data-v7-card="${i}"] [data-v7-opt="${k}"]`)?.focus();
-        }
-        return;
-      }
-      const del = e.target.closest("[data-v7-del-opt]");
-      if (del) {
-        const card = del.closest("[data-v7-card]");
-        const i = +(card?.dataset.v7Card || 0);
-        const q = getData()[i];
-        const k = del.dataset.v7DelOpt;
-        if (q?.options && k) {
-          delete q.options[k];
-          card.outerHTML = renderEditCard(q, i);
-        }
-        return;
-      }
-    });
-    document.addEventListener("change", async function(e) {
-      const inp = e.target.closest("[data-v7-input]");
-      if (!inp) return;
-      const i = +inp.dataset.v7Input;
-      const q = getData()[i];
-      if (!q) return;
-      q.images = q.images || [];
-      const files = Array.from(inp.files || []);
-      if (!files.length) return;
-      inp.disabled = true;
-      if (typeof notify === "function") notify("\u0110ang upload \u1EA3nh...");
-      try {
-        for (const file of files) {
-          if (window.__LHUploadCloudinary) {
-            const uploaded = await window.__LHUploadCloudinary(file);
-            if (uploaded) q.images.push(uploaded);
-          } else {
-            const fr = new FileReader();
-            const p = new Promise((resolve) => {
-              fr.onload = function() {
-                q.images.push({
-                  id: "import_" + Date.now() + "_" + Math.random().toString(16).slice(2),
-                  src: fr.result,
-                  source: "user-upload",
-                  name: file.name
-                });
-                resolve();
-              };
-              fr.readAsDataURL(file);
-            });
-            await p;
-          }
-        }
-        q.has_image = true;
-        const card = document.querySelector(`[data-v7-card="${i}"]`);
-        if (card) card.outerHTML = renderEditCard(q, i);
-        if (typeof notify === "function") notify("\u0110\xE3 upload \u1EA3nh th\xE0nh URL");
-      } catch (err) {
-        alert(err.message || err);
-      } finally {
-        inp.disabled = false;
-        inp.value = "";
-      }
-    });
-    window.__openImportPreviewModal = openPreview;
-    window.__editImportPreviewQuestion = function(i) {
-      const data = getData();
-      const card = document.querySelector(`[data-v7-card="${i}"]`);
-      if (card && data[i]) card.outerHTML = renderEditCard(data[i], i);
-    };
-  })();
-  (function() {
-    function ensureLightbox() {
-      let lb = document.getElementById("v7ImageLightbox");
-      if (lb) return lb;
-      lb = document.createElement("div");
-      lb.id = "v7ImageLightbox";
-      lb.className = "v7Lightbox hidden";
-      lb.innerHTML = '<div class="v7LightboxInner"><button class="v7LightboxClose" type="button" aria-label="\u0110\xF3ng">\xD7</button><img class="v7LightboxImg" alt="\u1EA2nh ph\xF3ng to" loading="lazy" decoding="async"></div>';
-      document.body.appendChild(lb);
-      return lb;
-    }
-    function openImg(src) {
-      if (!src) return;
-      const lb = ensureLightbox();
-      const img = lb.querySelector(".v7LightboxImg");
-      if (img) img.src = src;
-      lb.classList.remove("hidden");
-    }
-    function closeImg() {
-      const lb = document.getElementById("v7ImageLightbox");
-      if (!lb) return;
-      lb.classList.add("hidden");
-      const img = lb.querySelector(".v7LightboxImg");
-      if (img) img.removeAttribute("src");
-    }
-    document.addEventListener(
-      "click",
-      function(e) {
-        const thumb = e.target.closest(".v7MiniImgs img, .v7Thumb img");
-        if (thumb) {
-          e.preventDefault();
-          e.stopPropagation();
-          openImg(thumb.currentSrc || thumb.src);
-          return;
-        }
-        if (e.target.closest(".v7LightboxClose") || e.target.id === "v7ImageLightbox") {
-          closeImg();
-        }
-      },
-      true
-    );
-    document.addEventListener("keydown", function(e) {
-      if (e.key === "Escape") closeImg();
-    });
-  })();
-  (function() {
-    window.__APP_UI_CLEAN_FINAL__ = "20260627";
-    function cleanupOldUI() {
-      [
-        "#hodLoginScreen",
-        "#hodRoleBar",
-        "#hodUserDock",
-        "#hodFinalRoleBar",
-        "#hodFinalLogin",
-        ".hodAuthLanding",
-        ".hodFloatingAuth",
-        ".legacyLogin",
-        ".legacyAuth",
-        ".oldLanding"
-      ].forEach(function(s) {
-        document.querySelectorAll(s).forEach(function(el) {
-          el.remove();
-        });
-      });
-      ["#hodTopAvatar", "#subjectTopChip", "#hodAccountMenu"].forEach(function(s) {
-        var arr = Array.from(document.querySelectorAll(s));
-        arr.slice(0, Math.max(0, arr.length - 1)).forEach(function(el) {
-          el.remove();
-        });
-      });
-      if (!window.HODSupabase?.canOpenDashboard?.()) {
-        document.querySelectorAll("#adminOpenBtn,#hodFloatAdmin").forEach(function(el) {
-          el.remove();
-        });
-        document.getElementById("adminModal")?.classList.add("hidden");
-      }
-      document.querySelectorAll("#shuffle,#stShuffle").forEach(function(el) {
-        el.style.display = "none";
-        el.disabled = true;
-      });
-    }
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", cleanupOldUI);
-    else cleanupOldUI();
-    setTimeout(cleanupOldUI, 300);
-    setTimeout(cleanupOldUI, 1200);
-  })();
+  installSmartSearch();
+  installAddQuestionDisplay();
   installExam();
   installLibraryLabelFix();
   installEditor();
   installLibrary();
-  (function() {
-    const CLOUDINARY_CLOUD_NAME = window.APP_CONFIG?.CLOUDINARY_CLOUD_NAME || "";
-    const CLOUDINARY_UPLOAD_PRESET = window.APP_CONFIG?.CLOUDINARY_UPLOAD_PRESET || "";
-    const CLOUDINARY_UPLOAD_FOLDER = window.APP_CONFIG?.CLOUDINARY_UPLOAD_FOLDER || "learninghub/questions";
-    const CLOUDINARY_UPLOAD_URL = window.APP_CONFIG?.CLOUDINARY_UPLOAD_URL || (CLOUDINARY_CLOUD_NAME ? `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload` : "");
-    const SUBJECT_STORE2 = "learninghub_subject_code_merged_v1";
-    const QUESTION_LIGHT_COLUMNS = "id,subject_code,num,question,options,answer,answer_text,images,is_active,updated_at,has_image,error_risk,error_risk_reason,has_image,error_risk,error_risk_reason";
-    function $2(id) {
-      return document.getElementById(id);
-    }
-    function supa() {
-      return window.HODSupabase?.__client || null;
-    }
-    function user() {
-      return window.HODSupabase?.getUser?.() || null;
-    }
-    function subject() {
-      return localStorage.getItem(SUBJECT_STORE2) || "";
-    }
-    function notifyX(t) {
-      if (typeof notify === "function") notify(t);
-      else console.log(t);
-    }
-    async function uploadCloudinary(file) {
-      if (!CLOUDINARY_UPLOAD_URL || !CLOUDINARY_UPLOAD_PRESET) throw new Error("Thi\u1EBFu Cloudinary trong config.js.");
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-      fd.append("folder", CLOUDINARY_UPLOAD_FOLDER);
-      const res = await fetch(CLOUDINARY_UPLOAD_URL, { method: "POST", body: fd });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error?.message || "Upload Cloudinary th\u1EA5t b\u1EA1i");
-      return {
-        id: data.public_id,
-        public_id: data.public_id,
-        src: data.secure_url,
-        url: data.secure_url,
-        width: data.width,
-        height: data.height,
-        source: "cloudinary"
-      };
-    }
-    async function loadSubjectLight(force = false) {
-      const code = subject();
-      if (!code) return false;
-      try {
-        if (typeof window.__examResetForSubjectChange === "function") window.__examResetForSubjectChange();
-      } catch (e) {
-        lhWarn("COPILOT_CLOUDINARY_IMAGE_FIX_20260627", e);
-      }
-      try {
-        const res = await fetch("/api/questions?subject_code=" + encodeURIComponent(code) + "&ts=" + Date.now(), {
-          cache: "no-store"
-        });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c c\xE2u h\u1ECFi t\u1EEB Turso");
-        const data = Array.isArray(json.data) ? json.data : [];
-        LHState.RAW = data.map((r) => {
-          const images = typeof cleanImages === "function" ? cleanImages(r.images || []) : r.images || [];
-          return {
-            id: r.id,
-            subject_code: r.subject_code || code,
-            num: r.num,
-            question: r.question,
-            options: r.options || {},
-            answer: r.answer || "",
-            answer_text: r.answer_text || "",
-            images,
-            has_image: !!(r.has_image || images.length),
-            error_risk: r.error_risk,
-            error_risk_reason: r.error_risk_reason,
-            __imagesChecked: true,
-            __imagesLoaded: true
-          };
-        });
-        LHState.pool = [...LHState.RAW];
-        const saved = +localStorage.getItem("learninghub_progress_" + code) || 0;
-        LHState.ci = Math.max(0, Math.min(saved, Math.max(0, LHState.pool.length - 1)));
-        LHState.flipped = false;
-        renderAllSafe();
-        return true;
-      } catch (e) {
-        console.warn("[light load]", e);
-        return false;
-      }
-    }
-    window.loadCurrentSubjectOnly = loadSubjectLight;
-    function patchApi() {
-      if (window.HODSupabase) window.HODSupabase.loadQuestionsFromSupabase = loadSubjectLight;
-    }
-    patchApi();
-    setTimeout(patchApi, 500);
-    setTimeout(patchApi, 1500);
-    async function fetchImagesForCurrent() {
-      const c = supa();
-      const q = LHState.pool && LHState.pool[LHState.ci] || null;
-      if (!c || !q || !q.id || q.__imagesChecked) return;
-      q.__imagesChecked = true;
-      const { data, error } = await c.from("questions").select("id,images").eq("id", q.id).maybeSingle();
-      if (!error && data) {
-        q.images = data.images || [];
-        q.__imagesLoaded = true;
-        try {
-          renderCard();
-        } catch (e) {
-          lhWarn("COPILOT_CLOUDINARY_IMAGE_FIX_20260627", e);
-        }
-      }
-    }
-    const oldRenderCard = typeof renderCard === "function" ? renderCard : null;
-    if (oldRenderCard && !oldRenderCard.__cloudinaryLazy) {
-      renderCard = function() {
-        oldRenderCard.apply(this, arguments);
-      };
-      renderCard.__cloudinaryLazy = true;
-      window.renderCard = renderCard;
-    }
-    function bindEditorUpload() {
-      const inp = $2("imgUpload");
-      if (!inp || inp.__cloudinaryBound) return;
-      inp.__cloudinaryBound = true;
-      inp.onchange = async function(e) {
-        const files = Array.from(e.target.files || []);
-        if (!files.length) return;
-        inp.disabled = true;
-        notifyX("\u0110ang upload \u1EA3nh l\xEAn Cloudinary...");
-        try {
-          LHState.editDraft.images = LHState.editDraft.images || [];
-          for (const file of files) {
-            LHState.editDraft.images.push(await uploadCloudinary(file));
-          }
-          if (typeof renderEditImages === "function") renderEditImages();
-          notifyX("\u0110\xE3 upload \u1EA3nh l\xEAn Cloudinary");
-        } catch (err) {
-          alert(err.message || err);
-        } finally {
-          inp.disabled = false;
-          e.target.value = "";
-        }
-      };
-    }
-    document.addEventListener("DOMContentLoaded", () => {
-      patchApi();
-      setTimeout(bindEditorUpload, 300);
-    });
-  })();
-  (function() {
-    const CLOUD_NAME = window.APP_CONFIG?.CLOUDINARY_CLOUD_NAME || "";
-    const UPLOAD_PRESET = window.APP_CONFIG?.CLOUDINARY_UPLOAD_PRESET || "";
-    const UPLOAD_FOLDER = window.APP_CONFIG?.CLOUDINARY_UPLOAD_FOLDER || "learninghub/questions";
-    const UPLOAD_URL = window.APP_CONFIG?.CLOUDINARY_UPLOAD_URL || (CLOUD_NAME ? `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload` : "");
-    const SUBJECT_STORE2 = "learninghub_subject_code_merged_v1";
-    const LIGHT_COLUMNS = "id,subject_code,num,question,options,answer,answer_text,is_active,updated_at,has_image,error_risk,error_risk_reason";
-    const FULL_COLUMNS = "id,subject_code,num,question,options,answer,answer_text,images,is_active,updated_at,has_image,error_risk,error_risk_reason,has_image,error_risk,error_risk_reason";
-    let lastAutoReload = 0;
-    function $2(id) {
-      return document.getElementById(id);
-    }
-    function supa() {
-      return window.HODSupabase?.__client || null;
-    }
-    function user() {
-      return window.HODSupabase?.getUser?.() || null;
-    }
-    function subject() {
-      return localStorage.getItem(SUBJECT_STORE2) || "";
-    }
-    function notifyX(msg) {
-      if (typeof notify === "function") notify(msg);
-      else console.log(msg);
-    }
-    function isDataImage(s) {
-      return /^data:image\//i.test(String(s || ""));
-    }
-    function isLikelyBase64(s) {
-      s = String(s || "").trim();
-      return s.length > 500 && /^(iVBORw0KGgo|\/9j\/|R0lGOD|UklGR)/.test(s);
-    }
-    function cleanImageOne(im) {
-      if (!im) return null;
-      if (typeof im === "string") {
-        const s = im.trim();
-        if (!s || isDataImage(s) || isLikelyBase64(s)) return null;
-        if (/^https?:\/\//i.test(s)) return { src: s, url: s, source: "url" };
-        return null;
-      }
-      if (typeof im === "object") {
-        const raw = im.secure_url || im.src || im.url || im.publicUrl || im.public_url || im.image_url || im.imageUrl || im.file_url || im.fileUrl || im.href || im.path || "";
-        if (!raw || isDataImage(raw) || isLikelyBase64(raw)) return null;
-        if (!/^https?:\/\//i.test(String(raw))) return null;
-        return {
-          id: im.public_id || im.id || void 0,
-          public_id: im.public_id || im.id || void 0,
-          src: String(raw),
-          url: String(raw),
-          width: im.width || void 0,
-          height: im.height || void 0,
-          source: im.source || "url"
-        };
-      }
-      return null;
-    }
-    function cleanImages2(arr) {
-      let raw = arr || [];
-      if (typeof raw === "string") {
-        const s = raw.trim();
-        if (s.startsWith("[") && s.endsWith("]") || s.startsWith("{") && s.endsWith("}")) {
-          try {
-            raw = JSON.parse(s);
-          } catch (e) {
-            raw = [raw];
-          }
-        } else raw = [raw];
-      }
-      if (!Array.isArray(raw)) raw = [raw];
-      return raw.map(cleanImageOne).filter(Boolean);
-    }
-    function imageUrl(im) {
-      const c = cleanImageOne(im);
-      return c?.src || "";
-    }
-    async function uploadCloudinary(file) {
-      if (!UPLOAD_URL || !UPLOAD_PRESET) throw new Error("Thi\u1EBFu Cloudinary trong config.js.");
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("upload_preset", UPLOAD_PRESET);
-      fd.append("folder", UPLOAD_FOLDER);
-      const res = await fetch(UPLOAD_URL, { method: "POST", body: fd });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error?.message || "Upload \u1EA3nh l\xEAn Cloudinary th\u1EA5t b\u1EA1i");
-      return cleanImageOne({
-        public_id: data.public_id,
-        secure_url: data.secure_url,
-        width: data.width,
-        height: data.height,
-        source: "cloudinary"
-      });
-    }
-    window.__LHCleanImages = cleanImages2;
-    window.__LHUploadCloudinary = uploadCloudinary;
-    function optimizeImageUrl(src) {
-      if (!src) return "";
-      if (src.includes("res.cloudinary.com/") && src.includes("/image/upload/")) {
-        if (!src.includes("q_auto") && !src.includes("f_auto")) {
-          return src.replace("/image/upload/", "/image/upload/c_limit,w_600,q_auto,f_auto/");
-        }
-      }
-      return src;
-    }
-    window.imgsHTML = imgsHTML = function(c) {
-      return cleanImages2(c?.images || []).map((im) => `<img src="${esc(optimizeImageUrl(im.src))}" alt="" loading="lazy" decoding="async">`).join("");
-    };
-    function bindEditorUpload() {
-      const inp = $2("imgUpload");
-      if (!inp || inp.__urlOnlyBound) return;
-      inp.__urlOnlyBound = true;
-      inp.onchange = async function(e) {
-        const files = Array.from(e.target.files || []);
-        if (!files.length) return;
-        inp.disabled = true;
-        notifyX("\u0110ang upload \u1EA3nh...");
-        try {
-          LHState.editDraft.images = cleanImages2(LHState.editDraft.images);
-          for (const file of files) {
-            const uploaded = await uploadCloudinary(file);
-            if (uploaded) LHState.editDraft.images.push(uploaded);
-          }
-          if (typeof renderEditImages === "function") renderEditImages();
-          notifyX("\u0110\xE3 upload \u1EA3nh b\u1EB1ng URL");
-        } catch (err) {
-          alert(err.message || err);
-        } finally {
-          inp.disabled = false;
-          inp.value = "";
-        }
-      };
-    }
-    const oldRenderEditImages = typeof renderEditImages === "function" ? renderEditImages : null;
-    renderEditImages = window.renderEditImages = function() {
-      const box = $2("editImgs");
-      if (!box) return oldRenderEditImages ? oldRenderEditImages() : void 0;
-      LHState.editDraft.images = cleanImages2(LHState.editDraft.images);
-      box.innerHTML = LHState.editDraft.images.length ? LHState.editDraft.images.map(
-        (im, i) => `<div class="editImg"><button class="rm" data-rm="${i}">\xD7</button><img src="${esc(im.src)}" loading="lazy" decoding="async"></div>`
-      ).join("") : '<p style="color:var(--mist)">Ch\u01B0a c\xF3 h\xECnh.</p>';
-    };
-    if (window.HODSupabase?.submitEditRequest && !window.HODSupabase.submitEditRequest.__urlOnlyPatch) {
-      const oldSubmit = window.HODSupabase.submitEditRequest.bind(window.HODSupabase);
-      window.HODSupabase.submitEditRequest = async function(newDraft, oldQ) {
-        if (newDraft) newDraft.images = cleanImages2(newDraft.images);
-        if (oldQ) oldQ.images = cleanImages2(oldQ.images);
-        return oldSubmit(newDraft, oldQ);
-      };
-      window.HODSupabase.submitEditRequest.__urlOnlyPatch = true;
-    }
-    const CACHE_TTL = 12 * 60 * 60 * 1e3;
-    function cacheKey(code) {
-      return "learninghub_questions_cache_v2_" + code;
-    }
-    function readQuestionCache(code) {
-      try {
-        const raw = localStorage.getItem(cacheKey(code));
-        if (!raw) return null;
-        const obj = JSON.parse(raw);
-        if (!obj || !obj.savedAt || !Array.isArray(obj.rows)) return null;
-        if (Date.now() - obj.savedAt > CACHE_TTL) return null;
-        return obj.rows;
-      } catch (e) {
-        return null;
-      }
-    }
-    function writeQuestionCache(code, rows) {
-      try {
-        localStorage.setItem(cacheKey(code), JSON.stringify({ savedAt: Date.now(), rows: rows || [] }));
-      } catch (e) {
-        lhWarn("FINAL_URL_ONLY_IMAGES_AND_CURRENT_RELOAD_20260628", e);
-      }
-    }
-    async function fetchTursoQuestions(code, fresh = false) {
-      const res = await fetch(
-        "/api/questions?subject_code=" + encodeURIComponent(code) + (fresh ? "&fresh=1" : "") + "&ts=" + Date.now(),
-        { cache: "no-store" }
-      );
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || json.error) throw new Error(json.error || "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c c\xE2u h\u1ECFi t\u1EEB Turso");
-      return Array.isArray(json.data) ? json.data : [];
-    }
-    function mapTursoRow(r, code) {
-      const images = cleanImages2(r.images || []);
-      return {
-        id: r.id,
-        subject_code: r.subject_code || code,
-        num: r.num,
-        question: r.question,
-        options: r.options || {},
-        answer: r.answer || "",
-        answer_text: r.answer_text || "",
-        images,
-        is_active: r.is_active !== false && r.is_active !== 0 && r.is_active !== "0",
-        updated_at: r.updated_at,
-        has_image: !!(r.has_image || images.length),
-        error_risk: r.error_risk || "low",
-        error_risk_reason: r.error_risk_reason || "",
-        __imagesChecked: true,
-        __imagesLoaded: true
-      };
-    }
-    function applyQuestionRows(rows, code) {
-      LHState.RAW = (rows || []).map((r) => mapTursoRow(r, code));
-      LHState.pool = [...LHState.RAW];
-      const saved = +localStorage.getItem("learninghub_progress_" + code) || 0;
-      LHState.ci = Math.max(0, Math.min(saved, Math.max(0, LHState.pool.length - 1)));
-      LHState.flipped = false;
-      renderAllSafe();
-    }
-    let revalidating = {};
-    async function revalidateQuestions(code) {
-      if (revalidating[code]) return;
-      revalidating[code] = true;
-      try {
-        const rows = await fetchTursoQuestions(code);
-        if (!rows.length || subject() !== code) return;
-        writeQuestionCache(code, rows);
-        const byId = new Map(rows.map((r) => [String(r.id), mapTursoRow(r, code)]));
-        let changed = 0;
-        const patch = (row) => {
-          const next2 = byId.get(String(row?.id));
-          if (!next2) return row;
-          if (row.question !== next2.question || row.answer !== next2.answer || JSON.stringify(row.images || []) !== JSON.stringify(next2.images || []))
-            changed++;
-          return Object.assign(row, next2);
-        };
-        LHState.RAW = (LHState.RAW || []).map(patch);
-        LHState.pool = (LHState.pool || []).map(patch);
-        if (changed) {
-          console.info("[revalidateQuestions] " + code + ": c\u1EADp nh\u1EADt " + changed + " c\xE2u t\u1EEB server");
-          renderAllSafe();
-        }
-      } catch (e) {
-        console.warn("[revalidateQuestions]", e);
-      } finally {
-        delete revalidating[code];
-      }
-    }
-    let activeLoadPromises = {};
-    async function loadSubjectLight(force = false) {
-      const code = subject();
-      if (!user() || !code) return false;
-      if (!force) {
-        const cached = readQuestionCache(code);
-        if (cached && cached.length && cached.every((r) => Object.prototype.hasOwnProperty.call(r, "images"))) {
-          applyQuestionRows(cached, code);
-          revalidateQuestions(code);
-          return true;
-        }
-      }
-      if (activeLoadPromises[code]) return activeLoadPromises[code];
-      if (typeof window.showLibrarySkeleton === "function") window.showLibrarySkeleton();
-      activeLoadPromises[code] = (async () => {
-        try {
-          const data = await fetchTursoQuestions(code, force);
-          writeQuestionCache(code, data);
-          applyQuestionRows(data, code);
-          return true;
-        } catch (e) {
-          console.warn("[loadSubjectLight]", e);
-          return false;
-        } finally {
-          delete activeLoadPromises[code];
-        }
-      })();
-      return activeLoadPromises[code];
-    }
-    async function fetchImagesForCurrent(force = false) {
-      const q = LHState.pool && LHState.pool[LHState.ci] || null;
-      const code = subject();
-      if (!q?.id || !code) return false;
-      if (!force && q.__imagesLoaded) return true;
-      if (q.__imagesLoading) return true;
-      if (!force && q.images && q.images.length) {
-        q.__imagesLoaded = true;
-        return true;
-      }
-      if (!force && !q.has_image) {
-        q.images = [];
-        q.__imagesLoaded = true;
-        return true;
-      }
-      q.__imagesLoading = true;
-      try {
-        const rows = await fetchTursoQuestions(code);
-        const data = rows.find((r) => String(r.id) === String(q.id));
-        if (data) {
-          const mapped = mapTursoRow(data, code);
-          Object.assign(q, mapped);
-          try {
-            writeQuestionCache(
-              code,
-              LHState.pool.map((x) => ({
-                id: x.id,
-                subject_code: x.subject_code,
-                num: x.num,
-                question: x.question,
-                options: x.options,
-                answer: x.answer,
-                answer_text: x.answer_text,
-                images: x.images,
-                is_active: x.is_active,
-                updated_at: x.updated_at,
-                has_image: x.has_image,
-                error_risk: x.error_risk,
-                error_risk_reason: x.error_risk_reason
-              }))
-            );
-          } catch (e) {
-            lhWarn("FINAL_URL_ONLY_IMAGES_AND_CURRENT_RELOAD_20260628", e);
-          }
-          renderAllSafe();
-        }
-        q.__imagesLoaded = true;
-        return !!data;
-      } catch (e) {
-        q.__imagesLoaded = true;
-        return false;
-      } finally {
-        q.__imagesLoading = false;
-      }
-    }
-    async function reloadCurrentQuestion(silent = false) {
-      const q = LHState.pool && LHState.pool[LHState.ci] || null;
-      const code = subject();
-      if (!q?.id || !code) return false;
-      try {
-        const rows = await fetchTursoQuestions(code, true);
-        const data = rows.find((r) => String(r.id) === String(q.id));
-        if (!data) {
-          if (!silent) alert("Kh\xF4ng reload \u0111\u01B0\u1EE3c c\xE2u hi\u1EC7n t\u1EA1i.");
-          return false;
-        }
-        const clean = mapTursoRow(data, code);
-        const upd = (row) => String(row.id) === String(clean.id) ? Object.assign(row, clean) : row;
-        LHState.RAW = (LHState.RAW || []).map(upd);
-        LHState.pool = (LHState.pool || []).map(upd);
-        renderAllSafe();
-        if (!silent) notifyX("\u0110\xE3 reload c\xE2u hi\u1EC7n t\u1EA1i");
-        return true;
-      } catch (e) {
-        if (!silent) alert("Kh\xF4ng reload \u0111\u01B0\u1EE3c c\xE2u hi\u1EC7n t\u1EA1i.");
-        return false;
-      }
-    }
-    window.loadCurrentSubjectOnly = loadSubjectLight;
-    window.reloadCurrentQuestion = reloadCurrentQuestion;
-    if (window.HODSupabase) window.HODSupabase.loadQuestionsFromSupabase = loadSubjectLight;
-    let lazyLoadTimeout = null;
-    const oldRenderCard = typeof renderCard === "function" ? renderCard : null;
-    if (oldRenderCard && !oldRenderCard.__urlOnlyLazy) {
-      renderCard = window.renderCard = function() {
-        oldRenderCard.apply(this, arguments);
-        if (lazyLoadTimeout) clearTimeout(lazyLoadTimeout);
-        lazyLoadTimeout = setTimeout(() => {
-          fetchImagesForCurrent(false);
-        }, 300);
-      };
-      renderCard.__urlOnlyLazy = true;
-    }
-    function ensureReloadButton() {
-      return;
-    }
-    function autoReloadCurrent() {
-      const now = Date.now();
-      if (now - lastAutoReload < 45e3) return;
-      lastAutoReload = now;
-      reloadCurrentQuestion(true);
-    }
-  })();
+  installSubjectDataLoader();
   (function() {
     function all(sel) {
       return Array.from(document.querySelectorAll(sel));
@@ -14450,24 +13778,24 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     function doResetKeepTab() {
       const tab = currentTabId();
       try {
-        if (Array.isArray(LHState.RAW)) LHState.pool = [...LHState.RAW];
-        LHState.ci = 0;
-        LHState.flipped = false;
-        LHState.flipDir = "horizontal";
-        LHState.randomActive = false;
+        if (Array.isArray(LHState2.RAW)) LHState2.pool = [...LHState2.RAW];
+        LHState2.ci = 0;
+        LHState2.flipped = false;
+        LHState2.flipDir = "horizontal";
+        LHState2.randomActive = false;
         localStorage.setItem("hod102_random_active", "0");
         const subject = localStorage.getItem("learninghub_subject_code_merged_v1") || "";
         if (subject) localStorage.setItem("learninghub_progress_" + subject, "0");
         localStorage.setItem("hod102_ci", "0");
-        if (typeof renderCard === "function") renderCard();
-        if (typeof renderQuiz === "function") renderQuiz();
-        if (typeof renderStudy === "function") renderStudy();
+        if (typeof renderCard2 === "function") renderCard2();
+        if (typeof renderQuiz2 === "function") renderQuiz2();
+        if (typeof renderStudy2 === "function") renderStudy2();
         if (typeof updateSettingsUI === "function") updateSettingsUI();
       } catch (e) {
         console.warn("[reset keep tab]", e);
       }
       restoreTab(tab);
-      if (typeof notify === "function") notify("\u0110\xE3 reset");
+      if (typeof notify2 === "function") notify2("\u0110\xE3 reset");
     }
     window.resetKeepCurrentTab = doResetKeepTab;
     if (typeof reset === "function")
@@ -14513,36 +13841,36 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           img.src = src;
         });
       } catch (e) {
-        lhWarn("FINAL_IMAGE_NO_FLICKER_HARD_FIX_20260628", e);
+        lhWarn2("FINAL_IMAGE_NO_FLICKER_HARD_FIX_20260628", e);
       }
     }
     function preloadAround() {
       try {
-        if (!Array.isArray(LHState.pool) || !LHState.pool.length) return;
-        preloadQuestionImages(LHState.pool[LHState.ci]);
-        preloadQuestionImages(LHState.pool[(LHState.ci + 1) % LHState.pool.length]);
-        preloadQuestionImages(LHState.pool[(LHState.ci - 1 + LHState.pool.length) % LHState.pool.length]);
+        if (!Array.isArray(LHState2.pool) || !LHState2.pool.length) return;
+        preloadQuestionImages(LHState2.pool[LHState2.ci]);
+        preloadQuestionImages(LHState2.pool[(LHState2.ci + 1) % LHState2.pool.length]);
+        preloadQuestionImages(LHState2.pool[(LHState2.ci - 1 + LHState2.pool.length) % LHState2.pool.length]);
       } catch (e) {
-        lhWarn("FINAL_IMAGE_NO_FLICKER_HARD_FIX_20260628", e);
+        lhWarn2("FINAL_IMAGE_NO_FLICKER_HARD_FIX_20260628", e);
       }
     }
-    const oldNext = typeof next === "function" ? next : null;
-    const oldPrev = typeof prev === "function" ? prev : null;
+    const oldNext = typeof next2 === "function" ? next2 : null;
+    const oldPrev = typeof prev2 === "function" ? prev2 : null;
     if (oldNext && !oldNext.__noFlicker) {
-      next = function() {
+      next2 = function() {
         oldNext.apply(this, arguments);
         setTimeout(preloadAround, 0);
       };
-      next.__noFlicker = true;
-      window.next = next;
+      next2.__noFlicker = true;
+      window.next = next2;
     }
     if (oldPrev && !oldPrev.__noFlicker) {
-      prev = function() {
+      prev2 = function() {
         oldPrev.apply(this, arguments);
         setTimeout(preloadAround, 0);
       };
-      prev.__noFlicker = true;
-      window.prev = prev;
+      prev2.__noFlicker = true;
+      window.prev = prev2;
     }
     document.addEventListener("DOMContentLoaded", () => setTimeout(preloadAround, 800));
   })();
@@ -14553,7 +13881,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         tab = localStorage.getItem(TAB_STORE) || "";
       } catch (e) {
-        lhWarn("PERSIST_LAST_TAB_AND_EXAM_20260628", e);
+        lhWarn2("PERSIST_LAST_TAB_AND_EXAM_20260628", e);
       }
       if (!/^(fc|quiz|study)$/.test(tab)) return;
       const btn = document.querySelector(`.tab[data-tab="${tab}"],[data-tab="${tab}"]`);
@@ -14568,7 +13896,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           try {
             localStorage.setItem(TAB_STORE, tabId);
           } catch (_e) {
-            lhWarn("PERSIST_LAST_TAB_AND_EXAM_20260628", _e);
+            lhWarn2("PERSIST_LAST_TAB_AND_EXAM_20260628", _e);
           }
           switchTab(tabId, t);
         }
@@ -14596,7 +13924,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       }
       if (typeof window.clearLearningHubSupabaseCache === "function") window.clearLearningHubSupabaseCache("questions");
     } catch (e) {
-      lhWarn("SUPABASE_CACHE_CLEAR_HELPER_20260628", e);
+      lhWarn2("SUPABASE_CACHE_CLEAR_HELPER_20260628", e);
     }
   };
   installUploadDiagnostics();
@@ -14630,125 +13958,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
   installImageVisibleAfterSave();
   installGateAriaFix();
   installSubjectCountsCache();
-  (function() {
-    if (window.__ACTIVE_SUBJECT_COUNT_SYNC_20260629) return;
-    window.__ACTIVE_SUBJECT_COUNT_SYNC_20260629 = true;
-    const STORE2 = "learninghub_subject_counts_cache_v3";
-    const SUBJECT_STORE2 = "learninghub_subject_code_merged_v1";
-    function code() {
-      return localStorage.getItem(SUBJECT_STORE2) || "";
-    }
-    function read() {
-      try {
-        return JSON.parse(localStorage.getItem(STORE2) || "{}") || {};
-      } catch (e) {
-        return {};
-      }
-    }
-    function write(x) {
-      try {
-        localStorage.setItem(STORE2, JSON.stringify(x || {}));
-      } catch (e) {
-        lhWarn("ACTIVE_SUBJECT_COUNT_SYNC_20260629", e);
-      }
-    }
-    function cssEscape(s) {
-      try {
-        return CSS.escape(String(s));
-      } catch (e) {
-        return String(s).replace(/"/g, '\\"');
-      }
-    }
-    function loadedCount() {
-      try {
-        if (Array.isArray(LHState.RAW) && LHState.RAW.length) return LHState.RAW.length;
-        if (Array.isArray(LHState.pool) && LHState.pool.length) return LHState.pool.length;
-      } catch (e) {
-        lhWarn("ACTIVE_SUBJECT_COUNT_SYNC_20260629", e);
-      }
-      return 0;
-    }
-    function setCardCount(subject, n) {
-      if (!subject || !Number.isFinite(Number(n)) || Number(n) <= 0) return;
-      const count = Number(n);
-      document.querySelectorAll('.subjectCard[data-code="' + cssEscape(subject) + '"]').forEach((card) => {
-        const meta = card.querySelector(".subjectMeta span:first-child");
-        if (meta) meta.textContent = count + " c\xE2u";
-        card.title = (card.title || subject).replace(/(?:\d+|—|0) câu/g, count + " c\xE2u");
-      });
-      const store = read();
-      store.counts = store.counts || {};
-      store.confirmed = store.confirmed || {};
-      store.counts[subject] = count;
-      store.confirmed[subject] = true;
-      store.updated_at = (/* @__PURE__ */ new Date()).toISOString();
-      write(store);
-    }
-    function syncActiveSubjectCount() {
-      const subject = code();
-      const n = loadedCount();
-      if (subject && n > 0) setCardCount(subject, n);
-    }
-    window.syncActiveSubjectCount = syncActiveSubjectCount;
-    const oldLoadCurrent = window.loadCurrentSubjectOnly;
-    if (typeof oldLoadCurrent === "function" && !oldLoadCurrent.__activeCountPatched) {
-      window.loadCurrentSubjectOnly = async function() {
-        const out = await oldLoadCurrent.apply(this, arguments);
-        setTimeout(syncActiveSubjectCount, 50);
-        setTimeout(syncActiveSubjectCount, 300);
-        return out;
-      };
-      window.loadCurrentSubjectOnly.__activeCountPatched = true;
-    }
-    const oldLoadBySubject = window.loadBySubject;
-    if (typeof oldLoadBySubject === "function" && !oldLoadBySubject.__activeCountPatched) {
-      window.loadBySubject = async function() {
-        const out = await oldLoadBySubject.apply(this, arguments);
-        setTimeout(syncActiveSubjectCount, 50);
-        setTimeout(syncActiveSubjectCount, 300);
-        return out;
-      };
-      window.loadBySubject.__activeCountPatched = true;
-    }
-    const oldRenderCard = typeof renderCard === "function" ? renderCard : null;
-    if (oldRenderCard && !window.__renderCardActiveCountPatched) {
-      window.__renderCardActiveCountPatched = true;
-      renderCard = function() {
-        const out = oldRenderCard.apply(this, arguments);
-        setTimeout(syncActiveSubjectCount, 0);
-        return out;
-      };
-      window.renderCard = renderCard;
-    }
-    document.addEventListener("DOMContentLoaded", () => {
-      setTimeout(syncActiveSubjectCount, 500);
-      setTimeout(syncActiveSubjectCount, 1500);
-    });
-    setInterval(() => {
-      const gate = document.getElementById("subjectGate");
-      if (gate && !gate.classList.contains("hidden")) syncActiveSubjectCount();
-    }, 800);
-  })();
-  (function() {
-    function apply() {
-      try {
-        localStorage.removeItem("hod102_hide_options");
-      } catch (e) {
-        lhWarn("REMOVE_EYE_HIDE_OPTIONS_20260629", e);
-      }
-      var opt = document.getElementById("options");
-      if (opt) opt.classList.remove("hide");
-      var eye = document.getElementById("toggleOpts");
-      if (eye) eye.remove();
-      var st = document.getElementById("stToggleOpts");
-      if (st) st.style.display = "none";
-      var stText = document.getElementById("stOptState");
-      if (stText) stText.textContent = "\u0110ang hi\u1EC7n l\u1EF1a ch\u1ECDn";
-    }
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", apply);
-    else apply();
-    setTimeout(apply, 300);
-  })();
+  installActiveSubjectCountSync();
   (function() {
     function injectExamStyle() {
       if (document.getElementById("examUiStyleMerged")) return;
@@ -14909,29 +14119,29 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     window.__LHNormalizeQuestionAttrs = normalizeQuestionAttrs;
     function normalizeAll() {
       try {
-        if (Array.isArray(LHState.RAW)) LHState.RAW.forEach(normalizeQuestionAttrs);
+        if (Array.isArray(LHState2.RAW)) LHState2.RAW.forEach(normalizeQuestionAttrs);
       } catch (e) {
-        lhWarn("COPILOT_KEEP_IMPORT_QUESTION_ATTRIBUTES_20260629", e);
+        lhWarn2("COPILOT_KEEP_IMPORT_QUESTION_ATTRIBUTES_20260629", e);
       }
       try {
-        if (Array.isArray(LHState.pool)) LHState.pool.forEach(normalizeQuestionAttrs);
+        if (Array.isArray(LHState2.pool)) LHState2.pool.forEach(normalizeQuestionAttrs);
       } catch (e) {
-        lhWarn("COPILOT_KEEP_IMPORT_QUESTION_ATTRIBUTES_20260629", e);
+        lhWarn2("COPILOT_KEEP_IMPORT_QUESTION_ATTRIBUTES_20260629", e);
       }
       try {
-        if (Array.isArray(LHState.qSet)) LHState.qSet.forEach(normalizeQuestionAttrs);
+        if (Array.isArray(LHState2.qSet)) LHState2.qSet.forEach(normalizeQuestionAttrs);
       } catch (e) {
-        lhWarn("COPILOT_KEEP_IMPORT_QUESTION_ATTRIBUTES_20260629", e);
+        lhWarn2("COPILOT_KEEP_IMPORT_QUESTION_ATTRIBUTES_20260629", e);
       }
     }
     window.__LHNormalizeAll = normalizeAll;
-    const oldRenderCard = typeof renderCard === "function" ? renderCard : null;
+    const oldRenderCard = typeof renderCard2 === "function" ? renderCard2 : null;
     if (oldRenderCard && !oldRenderCard.__keepAttrs) {
-      renderCard = function() {
+      renderCard2 = function() {
         normalizeAll();
         return oldRenderCard.apply(this, arguments);
       };
-      renderCard.__keepAttrs = true;
+      renderCard2.__keepAttrs = true;
     }
     normalizeAll();
   })();
@@ -14939,7 +14149,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
   installEditorPasteUpload();
   (function() {
     function msg(t) {
-      if (typeof notify === "function") notify(t);
+      if (typeof notify2 === "function") notify2(t);
       else console.log(t);
     }
     function modal() {
@@ -15050,93 +14260,12 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
   window.APP_CONFIG = window.APP_CONFIG || {};
   window.APP_CONFIG.USE_TURSO_API = true;
   installSubjectCountsFallback();
-  (function() {
-    if (window.__APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630) return;
-    window.__APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630 = true;
-    const SUBJECT_STORE2 = "learninghub_subject_code_merged_v1";
-    let running = false;
-    let doneFor = "";
-    function subject() {
-      return localStorage.getItem(SUBJECT_STORE2) || "";
-    }
-    function user() {
-      return window.HODSupabase?.getUser?.() || null;
-    }
-    function profile() {
-      return window.HODSupabase?.getProfile?.() || null;
-    }
-    function approved() {
-      return !!window.lhHasFullAccess?.(profile());
-    }
-    function dataOk(code) {
-      try {
-        return !!code && Array.isArray(LHState.RAW) && LHState.RAW.length > 0 && LHState.RAW.some((q) => String(q.subject_code || code).toUpperCase() === String(code).toUpperCase());
-      } catch (e) {
-        return false;
-      }
-    }
-    function renderAll() {
-      try {
-        renderCard?.();
-      } catch (e) {
-        lhWarn("APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630", e);
-      }
-      try {
-        renderQuiz?.();
-      } catch (e) {
-        lhWarn("APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630", e);
-      }
-      try {
-        renderStudy?.();
-      } catch (e) {
-        lhWarn("APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630", e);
-      }
-    }
-    async function loadOnce(reason) {
-      const code = subject();
-      if (!code || !user() || !approved() || running) return false;
-      if (dataOk(code)) {
-        doneFor = code;
-        renderAll();
-        return true;
-      }
-      if (doneFor === code) return true;
-      running = true;
-      try {
-        let ok = false;
-        if (typeof window.loadCurrentSubjectOnly === "function") ok = await window.loadCurrentSubjectOnly(false);
-        else if (window.HODSupabase?.loadQuestionsFromSupabase) ok = await window.HODSupabase.loadQuestionsFromSupabase();
-        if (ok || dataOk(code)) {
-          doneFor = code;
-          renderAll();
-          return true;
-        }
-      } catch (e) {
-        console.warn("[startup auto load]", reason, e);
-      } finally {
-        running = false;
-      }
-      return false;
-    }
-    function schedule(reason) {
-      [300, 1300, 3500].forEach((ms) => setTimeout(() => loadOnce(reason + ":" + ms), ms));
-    }
-    function boot() {
-      schedule("boot");
-      document.querySelectorAll(".tab").forEach((btn) => {
-        if (btn.__startupAutoLoadBound) return;
-        btn.__startupAutoLoadBound = true;
-        btn.addEventListener("click", () => setTimeout(() => loadOnce("tab"), 120));
-      });
-    }
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
-    else boot();
-  })();
+  installAppStartupAutoLoad();
   installImgsHTML();
   (function() {
     if (window.__FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701) return;
     window.__FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701 = true;
-    const $2 = (id) => document.getElementById(id);
+    const $3 = (id) => document.getElementById(id);
     const LARGE_LIMIT = 80;
     const CONCURRENCY = 8;
     function user() {
@@ -15151,23 +14280,23 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }
     function toast(msg) {
       try {
-        if (typeof notify === "function") notify(msg);
+        if (typeof notify2 === "function") notify2(msg);
       } catch (e) {
-        lhWarn("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
+        lhWarn2("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
       }
     }
     function prog(title, current, total, detail) {
       try {
-        if (typeof showProgress === "function") showProgress(title, current, total, detail || "");
+        if (typeof showProgress2 === "function") showProgress2(title, current, total, detail || "");
       } catch (e) {
-        lhWarn("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
+        lhWarn2("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
       }
     }
     function hideProg() {
       try {
-        if (typeof hideProgress === "function") hideProgress();
+        if (typeof hideProgress2 === "function") hideProgress2();
       } catch (e) {
-        lhWarn("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
+        lhWarn2("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
       }
     }
     function cleanQuestions(arr) {
@@ -15193,7 +14322,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       if (!Array.isArray(arr) || !arr.length) {
         try {
           let s = String(
-            $2("userImportData")?.value || localStorage.getItem("learninghub_add_subject_file_data_v1") || ""
+            $3("userImportData")?.value || localStorage.getItem("learninghub_add_subject_file_data_v1") || ""
           ).trim();
           const m = s.match(/```json\s*([\s\S]*?)```/i) || s.match(/```\s*([\s\S]*?)```/);
           if (m) s = m[1].trim();
@@ -15233,14 +14362,14 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         window.clearLearningHubSupabaseCache?.("questions");
         window.clearLearningHubQuestionCache?.();
       } catch (e) {
-        lhWarn("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
+        lhWarn2("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
       }
     }
     function clearState() {
       try {
         window.__previewImportData = [];
         window.__LH_LAST_PREVIEW_IMPORT_DATA = [];
-        $2("importPreviewModal")?.classList.add("hidden");
+        $3("importPreviewModal")?.classList.add("hidden");
         [
           "learninghub_add_subject_file_name_v1",
           "learninghub_add_subject_file_size_v1",
@@ -15248,7 +14377,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           "learninghub_add_subject_file_previewed_v1"
         ].forEach((k) => localStorage.removeItem(k));
       } catch (e) {
-        lhWarn("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
+        lhWarn2("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
       }
     }
     async function uploadOne(finalCode, q, i) {
@@ -15270,13 +14399,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }
     async function uploadParallel(finalCode, questions) {
       let done = 0;
-      let next2 = 0;
+      let next3 = 0;
       const total = questions.length;
       const errors = [];
       prog("\u0110ang upload c\xE2u h\u1ECFi...", 0, total, "Upload nhanh: g\u1EEDi " + CONCURRENCY + " c\xE2u c\xF9ng l\xFAc");
       async function worker() {
-        while (next2 < total && !errors.length) {
-          const i = next2++;
+        while (next3 < total && !errors.length) {
+          const i = next3++;
           try {
             await uploadOne(finalCode, questions[i], i);
           } catch (e) {
@@ -15314,23 +14443,23 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       return { finalCode, success: questions.length };
     }
     window.__submitSubjectRequest = async function() {
-      const code = ($2("addSubjectCode")?.value || "").trim().toUpperCase();
-      const name = ($2("addSubjectName")?.value || "").trim();
-      const desc = ($2("addSubjectDesc")?.value || "").trim();
+      const code = ($3("addSubjectCode")?.value || "").trim().toUpperCase();
+      const name = ($3("addSubjectName")?.value || "").trim();
+      const desc = ($3("addSubjectDesc")?.value || "").trim();
       const questions = readQuestions();
       if (!code) {
         alert("Vui l\xF2ng nh\u1EADp m\xE3 m\xF4n");
-        $2("addSubjectCode")?.focus();
+        $3("addSubjectCode")?.focus();
         return;
       }
       if (!/^[A-Z0-9_]{2,20}$/.test(code)) {
         alert("M\xE3 m\xF4n ch\u1EC9 g\u1ED3m ch\u1EEF, s\u1ED1, g\u1EA1ch d\u01B0\u1EDBi (2-20 k\xFD t\u1EF1)");
-        $2("addSubjectCode")?.focus();
+        $3("addSubjectCode")?.focus();
         return;
       }
       if (!name) {
         alert("Vui l\xF2ng nh\u1EADp t\xEAn m\xF4n");
-        $2("addSubjectName")?.focus();
+        $3("addSubjectName")?.focus();
         return;
       }
       if (!questions.length) {
@@ -15341,7 +14470,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         alert("B\u1EA1n c\u1EA7n \u0111\u0103ng nh\u1EADp tr\u01B0\u1EDBc khi l\u01B0u m\xF4n h\u1ECDc.");
         return;
       }
-      const btn = $2("userImportBtn");
+      const btn = $3("userImportBtn");
       const old = btn ? btn.textContent : "";
       if (btn) {
         btn.disabled = true;
@@ -15362,11 +14491,11 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           clearState();
           window.__switchSubjectGateTab?.("list");
           try {
-            $2("subjectRefresh")?.click();
-            setTimeout(() => $2("subjectRefresh")?.click(), 5600);
+            $3("subjectRefresh")?.click();
+            setTimeout(() => $3("subjectRefresh")?.click(), 5600);
             setTimeout(() => window.refreshSubjectCountsOnce?.(), 6500);
           } catch (e) {
-            lhWarn("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
+            lhWarn2("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
           }
         } else {
           prog("\u0110ang g\u1EEDi y\xEAu c\u1EA7u t\u1EA1o m\xF4n h\u1ECDc...", 0, 100, "\u0110ang t\u1EA3i d\u1EEF li\u1EC7u c\xE2u h\u1ECFi...");
@@ -15391,350 +14520,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       }
     };
   })();
-  (function() {
-    if (window.__LH_UNIFIED_FETCH_INSTALLED) return;
-    window.__LH_UNIFIED_FETCH_INSTALLED = true;
-    var originalFetch = typeof window.fetch === "function" ? window.fetch.bind(window) : null;
-    if (!originalFetch) return;
-    window.__lhOriginalFetch = originalFetch;
-    function validToken(t) {
-      return typeof t === "string" && t.trim().length > 0 && !/[\r\n]/.test(t);
-    }
-    function readTokenFromStorage(raw) {
-      if (!raw) return "";
-      var v;
-      try {
-        v = JSON.parse(raw);
-      } catch (e) {
-        return "";
-      }
-      var tok = v && (v.access_token || v.currentSession && v.currentSession.access_token || Array.isArray(v) && v[0]);
-      var exp = v && (v.expires_at || v.currentSession && v.currentSession.expires_at);
-      if (!validToken(tok)) return "";
-      if (exp && Date.now() / 1e3 > exp - 10) return "";
-      return tok.trim();
-    }
-    function storedSession() {
-      try {
-        var url = window.APP_CONFIG && window.APP_CONFIG.SUPABASE_URL || "";
-        var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
-        var keys = [];
-        if (m) keys.push("sb-" + m[1] + "-auth-token");
-        for (var i = 0; i < localStorage.length; i++) {
-          var k = localStorage.key(i);
-          if (k && k.slice(0, 3) === "sb-" && k.slice(-11) === "-auth-token" && keys.indexOf(k) === -1) keys.push(k);
-        }
-        for (var j = 0; j < keys.length; j++) {
-          var raw = localStorage.getItem(keys[j]);
-          if (!raw) continue;
-          var v = JSON.parse(raw);
-          var s = v && v.currentSession ? v.currentSession : v;
-          if (s && (s.access_token || s.refresh_token)) return s;
-        }
-      } catch (e) {
-        lhWarn("LH_SESSION_REFRESH_20260729", e);
-      }
-      return null;
-    }
-    function hasRefreshToken() {
-      var s = storedSession();
-      return !!(s && typeof s.refresh_token === "string" && s.refresh_token.length > 0);
-    }
-    function authClient() {
-      try {
-        var c = window.HODSupabase && window.HODSupabase.__client;
-        return c && c.auth ? c : null;
-      } catch (e) {
-        return null;
-      }
-    }
-    function freshTokenOf(session) {
-      if (!session) return "";
-      var tok = session.access_token;
-      if (!validToken(tok)) return "";
-      if (session.expires_at && Date.now() / 1e3 > session.expires_at - 10) return "";
-      return tok.trim();
-    }
-    var refreshInFlight = null;
-    function lhRefreshToken() {
-      if (refreshInFlight) return refreshInFlight;
-      var c = authClient();
-      if (!c || !hasRefreshToken()) return Promise.resolve("");
-      refreshInFlight = Promise.resolve().then(function() {
-        return c.auth.getSession();
-      }).then(function(r) {
-        var tok = freshTokenOf(r && r.data && r.data.session);
-        if (tok) return tok;
-        return c.auth.refreshSession().then(function(r2) {
-          return freshTokenOf(r2 && r2.data && r2.data.session);
-        });
-      }).catch(function(e) {
-        lhWarn("LH_SESSION_REFRESH_20260729", e);
-        return "";
-      }).then(function(tok) {
-        refreshInFlight = null;
-        return tok;
-      });
-      return refreshInFlight;
-    }
-    window.__lhRefreshAccessToken = lhRefreshToken;
-    function lhToken() {
-      try {
-        var url = window.APP_CONFIG && window.APP_CONFIG.SUPABASE_URL || "";
-        var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
-        var ref = m ? m[1] : "";
-        if (ref) {
-          var t = readTokenFromStorage(localStorage.getItem("sb-" + ref + "-auth-token"));
-          if (t) return t;
-        }
-        for (var i = 0; i < localStorage.length; i++) {
-          var k = localStorage.key(i);
-          if (k && k.slice(0, 3) === "sb-" && k.slice(-11) === "-auth-token") {
-            var t2 = readTokenFromStorage(localStorage.getItem(k));
-            if (t2) return t2;
-          }
-        }
-      } catch (e) {
-        lhWarn("LH_UNIFIED_FETCH_AND_ACCESS_20260726", e);
-      }
-      return "";
-    }
-    window.__lhAccessToken = lhToken;
-    function toUrl(input) {
-      try {
-        var raw = typeof input === "string" ? input : input && input.url || "";
-        if (!raw) return null;
-        return new URL(raw, location.href);
-      } catch (e) {
-        return null;
-      }
-    }
-    function isOwnApi(url) {
-      return !!url && url.origin === location.origin && url.pathname.indexOf("/api/") === 0;
-    }
-    function methodOf(input, init2) {
-      if (init2 && init2.method) return String(init2.method).toUpperCase();
-      if (input && typeof input === "object" && input.method) return String(input.method).toUpperCase();
-      return "GET";
-    }
-    var restCache = /* @__PURE__ */ new Map();
-    var restPending = /* @__PURE__ */ new Map();
-    function supabaseOrigin() {
-      try {
-        return new URL(window.APP_CONFIG && window.APP_CONFIG.SUPABASE_URL || "").origin;
-      } catch (e) {
-        return "";
-      }
-    }
-    function restTtl(url, method) {
-      if (method !== "GET") return 0;
-      var origin = supabaseOrigin();
-      if (!origin || url.origin !== origin) return 0;
-      var p = url.pathname;
-      if (p.indexOf("/rest/v1/") !== 0 && p.indexOf("/rest/v1/") === -1) return 0;
-      if (p.indexOf("/rest/v1/profiles") !== -1) return 0;
-      if (p.indexOf("/rest/v1/questions") !== -1) return 2 * 60 * 1e3;
-      if (p.indexOf("/rest/v1/subjects") !== -1) return 2 * 60 * 1e3;
-      if (p.indexOf("/rest/v1/site_settings") !== -1) return 60 * 1e3;
-      return 0;
-    }
-    function restKey(url) {
-      var params = Array.from(url.searchParams.entries()).sort(function(a, b) {
-        return (a[0] + "=" + a[1]).localeCompare(b[0] + "=" + b[1]);
-      });
-      return url.origin + url.pathname + "?" + params.map(function(x) {
-        return x[0] + "=" + x[1];
-      }).join("&");
-    }
-    function matchKind(text, kind) {
-      if (!kind || kind === "all") return true;
-      return text.indexOf("/" + kind) !== -1;
-    }
-    function clearRestCache(kind) {
-      Array.from(restCache.keys()).forEach(function(k) {
-        if (matchKind(k, kind)) restCache.delete(k);
-      });
-      Array.from(restPending.keys()).forEach(function(k) {
-        if (matchKind(k, kind)) restPending.delete(k);
-      });
-      try {
-        Object.keys(sessionStorage).forEach(function(k) {
-          if (k.indexOf("lh_f5_cache:") === 0) sessionStorage.removeItem(k);
-        });
-      } catch (e) {
-        lhWarn("LH_UNIFIED_FETCH_AND_ACCESS_20260726", e);
-      }
-    }
-    window.clearLearningHubSupabaseCache = clearRestCache;
-    var REVOKE_CODES = { UNAUTHORIZED: 1, BLOCKED: 1, PENDING_APPROVAL: 1, INSUFFICIENT_ROLE: 1 };
-    function dispatchDenial(code, message) {
-      if (code === "INSUFFICIENT_ROLE") {
-        if (typeof notify === "function") notify(message || "B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n th\u1EF1c hi\u1EC7n thao t\xE1c n\xE0y");
-        return;
-      }
-      if (typeof window.handleAccessRevoked === "function") {
-        window.handleAccessRevoked(message || "T\xE0i kho\u1EA3n b\u1ECB t\u1EEB ch\u1ED1i truy c\u1EADp.", code);
-      }
-    }
-    function inspectDenial(res) {
-      res.clone().json().then(function(data) {
-        var code = data && data.code;
-        if (code && REVOKE_CODES[code]) dispatchDenial(code, data.error);
-        else if (!code) {
-          dispatchDenial(res.status === 401 ? "UNAUTHORIZED" : "PENDING_APPROVAL", null);
-        }
-      }).catch(function() {
-        dispatchDenial(res.status === 401 ? "UNAUTHORIZED" : "PENDING_APPROVAL", null);
-      });
-    }
-    function withAuth(input, init2, tok, force) {
-      try {
-        if (input instanceof Request) {
-          if (tok && (force || !input.headers.has("Authorization"))) {
-            var h = new Headers(input.headers);
-            h.set("Authorization", "Bearer " + tok);
-            input = new Request(input, { headers: h });
-          }
-          return [input, init2];
-        }
-        init2 = init2 ? Object.assign({}, init2) : {};
-        var hh = new Headers(init2.headers || {});
-        if (tok && (force || !hh.has("Authorization"))) hh.set("Authorization", "Bearer " + tok);
-        init2.headers = hh;
-        if (!init2.signal && typeof window.getLhApiSignal === "function") {
-          var sig = window.getLhApiSignal();
-          if (sig) init2.signal = sig;
-        }
-        return [input, init2];
-      } catch (e) {
-        console.warn("[LH fetch] kh\xF4ng g\u1EAFn \u0111\u01B0\u1EE3c Authorization:", e);
-        return [input, init2];
-      }
-    }
-    window.fetch = function(input, init2) {
-      var url = toUrl(input);
-      var method = methodOf(input, init2);
-      var ownApi = isOwnApi(url);
-      if (ownApi) {
-        if (window.__LH_ACCESS_OK === false && /\/api\/(subjects|questions)\b/.test(url.pathname)) {
-          return Promise.resolve(
-            new Response(JSON.stringify({ error: "T\xE0i kho\u1EA3n ch\u01B0a \u0111\u01B0\u1EE3c ph\xEA duy\u1EC7t", code: "PENDING_APPROVAL" }), {
-              status: 403,
-              headers: { "content-type": "application/json" }
-            })
-          );
-        }
-        var retrySrc = input instanceof Request ? input.clone() : input;
-        var retryInit = init2;
-        var tok = lhToken();
-        var pre = tok || !hasRefreshToken() ? Promise.resolve(tok) : lhRefreshToken();
-        return pre.then(function(token) {
-          return originalFetch.apply(null, withAuth(input, init2, token)).then(function(res) {
-            if (url.pathname.indexOf("/api/version.json") !== -1) return res;
-            if (res.status === 401) {
-              return lhRefreshToken().then(function(fresh) {
-                if (!fresh || fresh === token) {
-                  inspectDenial(res);
-                  return res;
-                }
-                var args = withAuth(retrySrc, retryInit, fresh, true);
-                return originalFetch.apply(null, args).then(function(res2) {
-                  if (res2.status === 401 || res2.status === 403) inspectDenial(res2);
-                  return res2;
-                });
-              });
-            }
-            if (res.status === 403) inspectDenial(res);
-            return res;
-          });
-        });
-      }
-      var ttl = url ? restTtl(url, method) : 0;
-      if (!ttl) return originalFetch(input, init2);
-      var key = restKey(url);
-      var hit = restCache.get(key);
-      if (hit && Date.now() - hit.at < ttl) return Promise.resolve(hit.res.clone());
-      if (restPending.has(key)) {
-        return restPending.get(key).then(function(r) {
-          return r.clone();
-        });
-      }
-      var job = originalFetch(input, init2).then(function(res) {
-        if (res.ok) restCache.set(key, { at: Date.now(), res: res.clone() });
-        restPending.delete(key);
-        return res;
-      }).catch(function(err) {
-        restPending.delete(key);
-        throw err;
-      });
-      restPending.set(
-        key,
-        job.then(function(r) {
-          return r.clone();
-        })
-      );
-      return job;
-    };
-    var inflight = null;
-    var lastCheckAt = 0;
-    var MIN_INTERVAL = 3e3;
-    function lhRevalidateAccess(reason, force) {
-      if (inflight) return inflight;
-      if (!force && Date.now() - lastCheckAt < MIN_INTERVAL) return Promise.resolve(null);
-      var api = window.HODSupabase;
-      if (!api || typeof api.getUser !== "function" || !api.getUser()) return Promise.resolve(null);
-      if (typeof window.lhCheckProfileOnce !== "function") return Promise.resolve(null);
-      lastCheckAt = Date.now();
-      inflight = Promise.resolve(window.lhCheckProfileOnce(reason)).catch(function(e) {
-        console.warn("[LH access] ki\u1EC3m tra th\u1EA5t b\u1EA1i:", e);
-        return null;
-      }).then(function(r) {
-        inflight = null;
-        lastCheckAt = Date.now();
-        return r;
-      });
-      return inflight;
-    }
-    window.lhRevalidateAccess = lhRevalidateAccess;
-    var pollTimer = null;
-    var POLL_MS = 90 * 1e3;
-    function startFallbackPolling() {
-      if (pollTimer) return;
-      if (window.__lhRealtimeConnected) return;
-      console.log("[LH access] Realtime m\u1EA5t k\u1EBFt n\u1ED1i -> b\u1EADt polling d\u1EF1 ph\xF2ng", POLL_MS / 1e3 + "s");
-      pollTimer = setInterval(function() {
-        if (window.__lhRealtimeConnected) {
-          stopFallbackPolling();
-          return;
-        }
-        if (document.visibilityState !== "visible") return;
-        var api = window.HODSupabase;
-        if (!api || typeof api.getUser !== "function" || !api.getUser()) return;
-        lhRevalidateAccess("polling");
-      }, POLL_MS);
-    }
-    function stopFallbackPolling() {
-      if (!pollTimer) return;
-      console.log("[LH access] Realtime \u0111\xE3 k\u1EBFt n\u1ED1i l\u1EA1i -> t\u1EAFt polling d\u1EF1 ph\xF2ng");
-      clearInterval(pollTimer);
-      pollTimer = null;
-    }
-    window.startFallbackPolling = startFallbackPolling;
-    window.stopFallbackPolling = stopFallbackPolling;
-    window.lhTeardownAccessWatch = function() {
-      stopFallbackPolling();
-      inflight = null;
-      lastCheckAt = 0;
-    };
-    document.addEventListener("visibilitychange", function() {
-      if (document.visibilityState === "visible") {
-        lhRevalidateAccess("visibilitychange");
-        if (!window.__lhRealtimeConnected) startFallbackPolling();
-      } else {
-        stopFallbackPolling();
-      }
-    });
-  })();
+  installUnifiedFetchAndAccess();
   (function() {
     const BOOKMARK_PREFIX = "lh_starred_v1_";
     const SVG_UNSAVED = `<svg class="bmIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
@@ -15742,8 +14528,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     const SVG_LIB_UNSAVED = `<svg class="bmLibIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
     const SVG_LIB_SAVED = `<svg class="bmLibIcon" width="14" height="14" viewBox="0 0 24 24" fill="#f5c518" stroke="#f5c518" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
     function getSubjectCode2() {
-      if (typeof LHState.RAW !== "undefined" && Array.isArray(LHState.RAW) && LHState.RAW[0] && LHState.RAW[0].subject_code) {
-        return String(LHState.RAW[0].subject_code).trim();
+      if (typeof LHState2.RAW !== "undefined" && Array.isArray(LHState2.RAW) && LHState2.RAW[0] && LHState2.RAW[0].subject_code) {
+        return String(LHState2.RAW[0].subject_code).trim();
       }
       return localStorage.getItem("learninghub_subject_code_merged_v1") || "default_subject";
     }
@@ -15779,7 +14565,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         localStorage.setItem(bookmarkKey(), JSON.stringify(arr));
         localStorage.setItem("lh_starred_v1_backup_all", JSON.stringify(arr));
       } catch (e) {
-        lhWarn("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
+        lhWarn2("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
       }
     }
     function isBookmarked(qOrKey) {
@@ -15813,11 +14599,11 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const key = getQKey(q);
       if (!key) return "";
       const bookmarked = isBookmarked(key);
-      const esc2 = (s) => String(s ?? "").replace(
+      const esc22 = (s) => String(s ?? "").replace(
         /[&<>"']/g,
         (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
       );
-      return `<button type="button" class="libBookmarkBtn${bookmarked ? " bookmarked" : ""}" data-lib-bookmark="${esc2(key)}" title="${bookmarked ? "B\u1ECF l\u01B0u c\xE2u n\xE0y" : "L\u01B0u c\xE2u h\u1ECFi n\xE0y"}">${bookmarked ? SVG_LIB_SAVED : SVG_LIB_UNSAVED}</button>`;
+      return `<button type="button" class="libBookmarkBtn${bookmarked ? " bookmarked" : ""}" data-lib-bookmark="${esc22(key)}" title="${bookmarked ? "B\u1ECF l\u01B0u c\xE2u n\xE0y" : "L\u01B0u c\xE2u h\u1ECFi n\xE0y"}">${bookmarked ? SVG_LIB_SAVED : SVG_LIB_UNSAVED}</button>`;
     };
     (function injectBookmarkCSS() {
       if (document.getElementById("__bookmarkQCSS")) return;
@@ -15880,9 +14666,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     })();
     function getCurrentCard() {
       try {
-        const arr = typeof LHState.pool !== "undefined" && Array.isArray(LHState.pool) && LHState.pool.length ? LHState.pool : typeof LHState.RAW !== "undefined" ? LHState.RAW : [];
+        const arr = typeof LHState2.pool !== "undefined" && Array.isArray(LHState2.pool) && LHState2.pool.length ? LHState2.pool : typeof LHState2.RAW !== "undefined" ? LHState2.RAW : [];
         if (!arr.length) return null;
-        const index2 = Math.max(0, Math.min(typeof LHState.ci === "number" ? LHState.ci : 0, arr.length - 1));
+        const index2 = Math.max(0, Math.min(typeof LHState2.ci === "number" ? LHState2.ci : 0, arr.length - 1));
         return arr[index2] || null;
       } catch (e) {
         return null;
@@ -15929,11 +14715,11 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         void btn.offsetWidth;
         btn.classList.add("pop");
         btn.addEventListener("animationend", () => btn.classList.remove("pop"), { once: true });
-        const displayNum = card.num || (typeof LHState.ci === "number" ? LHState.ci : 0) + 1;
+        const displayNum = card.num || (typeof LHState2.ci === "number" ? LHState2.ci : 0) + 1;
         try {
-          notify(added ? `\u{1F516} \u0110\xE3 l\u01B0u c\xE2u ${displayNum}` : `\u0110\xE3 b\u1ECF l\u01B0u c\xE2u ${displayNum}`);
+          notify2(added ? `\u{1F516} \u0110\xE3 l\u01B0u c\xE2u ${displayNum}` : `\u0110\xE3 b\u1ECF l\u01B0u c\xE2u ${displayNum}`);
         } catch (err) {
-          lhWarn("BOOKMARK_QUESTIONS_FEATURE_20260726", err);
+          lhWarn2("BOOKMARK_QUESTIONS_FEATURE_20260726", err);
         }
         if (typeof window.renderStudy === "function") window.renderStudy();
       });
@@ -15963,9 +14749,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           btn.classList.add("pop");
           btn.addEventListener("animationend", () => btn.classList.remove("pop"), { once: true });
           try {
-            notify(added ? `\u{1F516} \u0110\xE3 l\u01B0u c\xE2u h\u1ECFi` : `\u0110\xE3 b\u1ECF l\u01B0u c\xE2u h\u1ECFi`);
+            notify2(added ? `\u{1F516} \u0110\xE3 l\u01B0u c\xE2u h\u1ECFi` : `\u0110\xE3 b\u1ECF l\u01B0u c\xE2u h\u1ECFi`);
           } catch (ex) {
-            lhWarn("BOOKMARK_QUESTIONS_FEATURE_20260726", ex);
+            lhWarn2("BOOKMARK_QUESTIONS_FEATURE_20260726", ex);
           }
           if (typeof window.renderStudy === "function") window.renderStudy();
           updateBookmarkBtn();
@@ -15980,7 +14766,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           renderUnified();
         } catch (e) {
-          lhWarn("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
+          lhWarn2("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
         }
       }
     }
@@ -15995,13 +14781,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           renderUnified();
         } catch (e) {
-          lhWarn("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
+          lhWarn2("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
         }
       } else if (typeof window.renderStudy === "function") {
         try {
           window.renderStudy();
         } catch (e) {
-          lhWarn("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
+          lhWarn2("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
         }
       }
     });
@@ -16010,8 +14796,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     const SEEN_KEY = "lh_edit_request_seen_v1";
     const POLL_MS = 6e4;
     const MIN_GAP_MS = 15e3;
-    const $2 = (id) => document.getElementById(id);
-    const esc2 = (s) => String(s ?? "").replace(
+    const $3 = (id) => document.getElementById(id);
+    const esc3 = (s) => String(s ?? "").replace(
       /[&<>"']/g,
       (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
     );
@@ -16042,7 +14828,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         localStorage.setItem(SEEN_KEY, JSON.stringify(map));
       } catch (e) {
-        lhWarn("HEADER_EDIT_REQUEST_BELL_20260726", e);
+        lhWarn2("HEADER_EDIT_REQUEST_BELL_20260726", e);
       }
     }
     function stampOf(r) {
@@ -16064,7 +14850,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       return isNaN(d.getTime()) ? String(v) : d.toLocaleString("vi-VN");
     }
     function mount() {
-      if (!bell) bell = $2("hodEditRequestBell");
+      if (!bell) bell = $3("hodEditRequestBell");
       if (!bell) return;
       if (!user()) {
         if (bell.isConnected) bell.remove();
@@ -16072,7 +14858,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       }
       const actions = actionsBar();
       if (!actions) return;
-      const anchor = $2("subjectTopChip") || $2("openSettings");
+      const anchor = $3("subjectTopChip") || $3("openSettings");
       if (anchor && anchor.parentNode === actions) {
         if (anchor.previousElementSibling !== bell) actions.insertBefore(bell, anchor);
       } else if (bell.parentNode !== actions) {
@@ -16085,7 +14871,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       const myFreshCount = items.filter((r) => isFresh(r, seen)).length;
       const staffPendingCount = isStaff() ? staffPendingItems.length : 0;
       const totalNew = myFreshCount + staffPendingCount;
-      const badge = $2("hodEditRequestBadge");
+      const badge = $3("hodEditRequestBadge");
       if (badge) {
         badge.textContent = totalNew > 9 ? "9+" : String(totalNew);
         badge.classList.toggle("hidden", totalNew === 0);
@@ -16102,7 +14888,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       bell.title = titleText;
     }
     function isModalOpen() {
-      return !!$2("hodEditRequestModal") && !$2("hodEditRequestModal").classList.contains("hidden");
+      return !!$3("hodEditRequestModal") && !$3("hodEditRequestModal").classList.contains("hidden");
     }
     function fetchNow() {
       loading = true;
@@ -16153,7 +14939,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       try {
         localStorage.setItem("learninghub_library_filter_v1", "all");
       } catch (e) {
-        lhWarn("HEADER_EDIT_REQUEST_BELL_20260726", e);
+        lhWarn2("HEADER_EDIT_REQUEST_BELL_20260726", e);
       }
       const targetSubject = String(subjectCode || "").trim();
       const currentSubject = (localStorage.getItem("learninghub_subject_code_merged_v1") || "").trim();
@@ -16162,10 +14948,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           localStorage.setItem("learninghub_subject_code_merged_v1", targetSubject);
           needReloadSubject = true;
-          if ($2("subjectInlineText")) $2("subjectInlineText").textContent = targetSubject;
-          if ($2("hodAccountSubjectText")) $2("hodAccountSubjectText").textContent = targetSubject;
+          if ($3("subjectInlineText")) $3("subjectInlineText").textContent = targetSubject;
+          if ($3("hodAccountSubjectText")) $3("hodAccountSubjectText").textContent = targetSubject;
         } catch (e) {
-          lhWarn("HEADER_EDIT_REQUEST_BELL_20260726", e);
+          lhWarn2("HEADER_EDIT_REQUEST_BELL_20260726", e);
         }
       }
       const tabBtn = document.querySelector('.tab[data-tab="study"]');
@@ -16187,7 +14973,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           localStorage.setItem("learninghub_library_search_v1", "#" + num);
         } catch (e) {
-          lhWarn("OPEN_QUESTION_LOCALLY_LOCALSTORAGE_SAVE", e);
+          lhWarn2("OPEN_QUESTION_LOCALLY_LOCALSTORAGE_SAVE", e);
         }
         searchInput.dispatchEvent(new Event("input", { bubbles: true }));
         searchInput.dispatchEvent(new Event("change", { bubbles: true }));
@@ -16196,7 +14982,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           window.renderStudy();
         } catch (e) {
-          lhWarn("HEADER_EDIT_REQUEST_BELL_20260726", e);
+          lhWarn2("HEADER_EDIT_REQUEST_BELL_20260726", e);
         }
       }
       setTimeout(() => {
@@ -16205,7 +14991,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       }, 150);
     };
     function renderList() {
-      const box = $2("hodEditRequestList");
+      const box = $3("hodEditRequestList");
       if (!box) return;
       if (!user()) {
         box.innerHTML = '<div class="hodReportEmpty">\u0110\u0103ng nh\u1EADp \u0111\u1EC3 xem th\xF4ng b\xE1o.</div>';
@@ -16230,9 +15016,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             return `
             <div style="font-size:12px; color:#e2d8c3; margin-top:6px; padding-top:6px; border-top:1px dashed rgba(200, 169, 110, 0.2); line-height:1.45; display:flex; justify-content:space-between; align-items:center; gap:8px;">
               <div>
-                <b style="color:#ffffff;">C\xE2u ${esc2(n)}</b> (${esc2(sc)}) - <span style="color:var(--gold2, #e8d4a8); font-weight:500;">${esc2(r.user_email || "H\u1ECDc sinh")}</span>: <span style="color:#c8bba6; font-style:italic;">"${esc2(r.reason || "\u0110\u1EC1 xu\u1EA5t s\u1EEDa c\xE2u h\u1ECFi")}"</span>
+                <b style="color:#ffffff;">C\xE2u ${esc3(n)}</b> (${esc3(sc)}) - <span style="color:var(--gold2, #e8d4a8); font-weight:500;">${esc3(r.user_email || "H\u1ECDc sinh")}</span>: <span style="color:#c8bba6; font-style:italic;">"${esc3(r.reason || "\u0110\u1EC1 xu\u1EA5t s\u1EEDa c\xE2u h\u1ECFi")}"</span>
               </div>
-              ${n !== "?" ? `<button type="button" onclick="window.jumpToQuestionInLibrary('${esc2(n)}', '${esc2(sc)}')" style="font-size:11px; font-weight:600; padding:2px 8px; border-radius:6px; background:rgba(200, 169, 110, 0.15); border:1px solid rgba(200, 169, 110, 0.3); color:var(--gold2, #e8d4a8); cursor:pointer; white-space:nowrap;">Tra c\xE2u \u2197</button>` : ""}
+              ${n !== "?" ? `<button type="button" onclick="window.jumpToQuestionInLibrary('${esc3(n)}', '${esc3(sc)}')" style="font-size:11px; font-weight:600; padding:2px 8px; border-radius:6px; background:rgba(200, 169, 110, 0.15); border:1px solid rgba(200, 169, 110, 0.3); color:var(--gold2, #e8d4a8); cursor:pointer; white-space:nowrap;">Tra c\xE2u \u2197</button>` : ""}
             </div>`;
           }).join("")}
           ${staffPendingItems.length > 3 ? `<div style="font-size:11px; color:#c8bba6; margin-top:6px; font-style:italic;">...v\xE0 ${staffPendingItems.length - 3} y\xEAu c\u1EA7u kh\xE1c</div>` : ""}
@@ -16258,17 +15044,17 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         return `
       <div class="hodEditRequestItem${fresh ? " is-new" : ""}">
         <div class="hodEditRequestHead">
-          <b>C\xE2u ${esc2(num)}${code ? " \xB7 " + esc2(code) : ""}</b>
-          <span class="hodEditRequestStatus ${statusClass(r.status)}">${esc2(statusText(r.status))}</span>
+          <b>C\xE2u ${esc3(num)}${code ? " \xB7 " + esc3(code) : ""}</b>
+          <span class="hodEditRequestStatus ${statusClass(r.status)}">${esc3(statusText(r.status))}</span>
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; gap:8px;">
-          <p class="hodEditRequestMeta" style="margin:0;">G\u1EEDi: ${esc2(timeText(r.created_at))}${r.reviewed_at ? " \xB7 Ph\u1EA3n h\u1ED3i: " + esc2(timeText(r.reviewed_at)) : ""}</p>
+          <p class="hodEditRequestMeta" style="margin:0;">G\u1EEDi: ${esc3(timeText(r.created_at))}${r.reviewed_at ? " \xB7 Ph\u1EA3n h\u1ED3i: " + esc3(timeText(r.reviewed_at)) : ""}</p>
           ${num !== "?" ? `
-          <button type="button" class="hodJumpStudyBtn" data-num="${esc2(num)}" data-subject="${esc2(code)}" style="font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: rgba(200, 169, 110, 0.15); border: 1px solid rgba(200, 169, 110, 0.35); color: var(--gold2, #e8d4a8); cursor: pointer; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; flex-shrink: 0;">
+          <button type="button" class="hodJumpStudyBtn" data-num="${esc3(num)}" data-subject="${esc3(code)}" style="font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: rgba(200, 169, 110, 0.15); border: 1px solid rgba(200, 169, 110, 0.35); color: var(--gold2, #e8d4a8); cursor: pointer; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; flex-shrink: 0;">
             \u{1F50D} Tra c\xE2u \u2197
           </button>` : ""}
         </div>
-        ${r.admin_note ? `<p class="hodEditRequestNote" style="margin-top:4px;">Ghi ch\xFA admin: ${esc2(r.admin_note)}</p>` : ""}
+        ${r.admin_note ? `<p class="hodEditRequestNote" style="margin-top:4px;">Ghi ch\xFA admin: ${esc3(r.admin_note)}</p>` : ""}
         ${fresh ? '<span class="hodEditRequestNew">M\u1EDBi</span>' : ""}
       </div>`;
       }).join("");
@@ -16282,12 +15068,12 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       writeSeen(seen);
     }
     function closeModal() {
-      $2("hodEditRequestModal")?.classList.add("hidden");
+      $3("hodEditRequestModal")?.classList.add("hidden");
     }
     async function openModal() {
-      const modal = $2("hodEditRequestModal");
+      const modal = $3("hodEditRequestModal");
       if (!modal) return;
-      $2("hodAccountMenu")?.classList.add("hidden");
+      $3("hodAccountMenu")?.classList.add("hidden");
       modal.classList.remove("hidden");
       renderList();
       await load(true);
@@ -16296,7 +15082,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       paint();
     }
     function bind() {
-      if (!bell) bell = $2("hodEditRequestBell");
+      if (!bell) bell = $3("hodEditRequestBell");
       if (bell && !bell.__lhBellBound) {
         bell.__lhBellBound = true;
         bell.addEventListener("click", (e) => {
@@ -16305,19 +15091,19 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           openModal();
         });
       }
-      const closeBtn = $2("hodEditRequestClose");
+      const closeBtn = $3("hodEditRequestClose");
       if (closeBtn && !closeBtn.__lhBellBound) {
         closeBtn.__lhBellBound = true;
         closeBtn.addEventListener("click", closeModal);
       }
-      const modal = $2("hodEditRequestModal");
+      const modal = $3("hodEditRequestModal");
       if (modal && !modal.__lhBellBound) {
         modal.__lhBellBound = true;
         modal.addEventListener("mousedown", (e) => {
           if (e.target === modal) closeModal();
         });
       }
-      const listEl = $2("hodEditRequestList");
+      const listEl = $3("hodEditRequestList");
       if (listEl && !listEl.__lhJumpBound) {
         listEl.__lhJumpBound = true;
         listEl.addEventListener("click", (e) => {
@@ -16363,6 +15149,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
   // src/student/subjectImport.js
   var subjectImport_exports = {};
   __export(subjectImport_exports, {
+    installAddSubjectFeature: () => installAddSubjectFeature,
+    installFastParallelUpload: () => installFastParallelUpload,
+    installImportPreviewInlineEdit: () => installImportPreviewInlineEdit,
     prepareZipQuestionsBeforeSave: () => prepareZipQuestionsBeforeSave,
     processSelectedJsonFromZip: () => processSelectedJsonFromZip,
     readAndValidateZipFile: () => readAndValidateZipFile,
@@ -16405,7 +15194,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         try {
           URL.revokeObjectURL(url);
         } catch (e) {
-          lhWarn("subjectImport:revokeZipObjectUrls", e);
+          lhWarn2("subjectImport:revokeZipObjectUrls", e);
         }
       });
       currentObjectUrls = [];
@@ -16563,7 +15352,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         const cleanPath = imgPath.replace(/^\/+/, "");
         currentZipImageBlobs.set(cleanPath, item);
       } catch (err) {
-        lhWarn("subjectImport:blobCreateError", imgPath, err);
+        lhWarn2("subjectImport:blobCreateError", imgPath, err);
       }
     }
     const validatedQuestions = [];
@@ -16608,16 +15397,16 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           });
         }
       }
-      let answerText2 = "";
+      let answerText3 = "";
       if (answer && cleanedOptions[answer]) {
-        answerText2 = `${answer}. ${cleanedOptions[answer]}`;
+        answerText3 = `${answer}. ${cleanedOptions[answer]}`;
       }
       validatedQuestions.push({
         num,
         question: questionText,
         options: cleanedOptions,
         answer: answer || "",
-        answer_text: answerText2,
+        answer_text: answerText3,
         images: mappedImages,
         has_image: mappedImages.length > 0,
         error_risk: ["low", "medium", "high"].includes(errorRisk) ? errorRisk : "low",
@@ -16680,7 +15469,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           currentUploadedImageUrls.set(zipPath, cloudinaryUrl);
         } catch (err) {
           failedUploads.set(zipPath, err.message || "L\u1ED7i upload Cloudinary.");
-          lhWarn("subjectImport:uploadError", zipPath, err);
+          lhWarn2("subjectImport:uploadError", zipPath, err);
         } finally {
           completedCount++;
           if (onProgress) {
@@ -16732,6 +15521,3697 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     });
     return questions;
   }
+  function installAddSubjectFeature() {
+    (function() {
+      const HUB_URL = window.APP_CONFIG?.SUPABASE_URL || "";
+      const HUB_KEY = window.APP_CONFIG?.SUPABASE_ANON_KEY || "";
+      const $3 = (id) => document.getElementById(id);
+      let supa = null;
+      function client() {
+        if (!window.supabase) return null;
+        if (!supa) supa = window.supabase.createClient(HUB_URL, HUB_KEY);
+        return supa;
+      }
+      function esc22(s) {
+        return String(s ?? "").replace(
+          /[&<>"']/g,
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+        );
+      }
+      function isLoggedIn() {
+        return !!window.HODSupabase?.getUser?.();
+      }
+      function isAdminOrEditor() {
+        const p = window.HODSupabase?.getProfile?.() || null;
+        const role = String(p?.role || "").toLowerCase();
+        return isLoggedIn() && (role === "admin" || role === "editor") && !(p?.blocked || p?.is_blocked || p?.status === "blocked");
+      }
+      function canAdd() {
+        const p = window.HODSupabase?.getProfile?.() || null;
+        return isLoggedIn() && !(p?.blocked || p?.is_blocked || p?.status === "blocked");
+      }
+      function injectStyles() {
+        let style = $3("subjectTabsStyle");
+        if (!style) {
+          style = document.createElement("style");
+          style.id = "subjectTabsStyle";
+          document.head.appendChild(style);
+        }
+        style.textContent = `
+      .subjectGateTabs {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin: -5px 0 0 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        padding-bottom: 8px;
+        flex-wrap: wrap;
+      }
+      body .polishedSubjectPanel > #subjectList {
+        margin-top: -8px !important;
+        padding-top: 12px !important;
+      }
+      body .polishedSubjectPanel > #subjectList.inFolder {
+        margin-top: -10px !important;
+        padding-top: 4px !important;
+      }
+      body .polishedSubjectPanel > #subjectList.inFolder .subjectFolderBar {
+        margin-top: 0 !important;
+      }
+      body .polishedSubjectPanel .subjectGateFooter {
+        margin-top: 4px !important;
+        padding: 8px 14px !important;
+        border-radius: 16px !important;
+      }
+      body .polishedSubjectPanel .subjectSelectedBox {
+        padding: 2px 0 2px 42px !important;
+      }
+      body .polishedSubjectPanel .subjectSelectedBox::before {
+        width: 28px !important;
+        height: 28px !important;
+        border-radius: 10px !important;
+      }
+      body .polishedSubjectPanel .subjectSelectedBox span {
+        font-size: 0.68rem !important;
+      }
+      body .polishedSubjectPanel .subjectSelectedBox b,
+      body .polishedSubjectPanel .subjectSelectedBox strong {
+        font-size: 0.95rem !important;
+      }
+      body .polishedSubjectPanel #subjectEnter {
+        height: 42px !important;
+        min-height: 42px !important;
+        border-radius: 12px !important;
+        padding: 0 20px !important;
+        font-size: 0.88rem !important;
+      }
+      .subjectGateTabsLeft {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .subjectGateTab {
+        background: none;
+        border: none;
+        color: var(--mist, #a0aec0);
+        padding: 10px 18px;
+        font-size: 0.9rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+      }
+      .subjectGateTab.active {
+        color: var(--gold, #e8d4a8);
+        border-bottom: 2px solid var(--gold, #e8d4a8);
+      }
+      #subjectGateTabAdd {
+        position: relative;
+        overflow: hidden;
+        background: rgba(200, 169, 110, 0.07);
+        border: 1px solid rgba(232, 212, 168, 0.3);
+        border-radius: 999px;
+        padding: 7px 18px;
+        color: var(--gold, #e8d4a8);
+        font-size: 0.88rem;
+        font-weight: 750;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: all 0.25s ease;
+      }
+      #subjectGateTabAdd::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -110%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(
+          120deg,
+          transparent 0%,
+          rgba(255, 235, 180, 0) 25%,
+          rgba(255, 235, 180, 0.45) 46%,
+          rgba(255, 255, 255, 0.85) 50%,
+          rgba(255, 235, 180, 0.45) 54%,
+          transparent 75%
+        );
+        animation: glitterShimmer 2.8s infinite ease-in-out;
+        pointer-events: none;
+      }
+      #subjectGateTabAdd:hover {
+        background: rgba(200, 169, 110, 0.15);
+        border-color: rgba(232, 212, 168, 0.65);
+        color: #fff;
+        box-shadow: 0 0 14px rgba(232, 212, 168, 0.25);
+      }
+      #subjectGateTabAdd.active {
+        color: var(--gold, #e8d4a8);
+        border: 1px solid var(--gold, #e8d4a8);
+        background: rgba(200, 169, 110, 0.2);
+        box-shadow: 0 0 16px rgba(232, 212, 168, 0.35);
+      }
+      @keyframes glitterShimmer {
+        0% { left: -110%; }
+        32% { left: 140%; }
+        100% { left: 140%; }
+      }
+      .subjectGateSearchWrap {
+        flex: 1;
+        min-width: 220px;
+        max-width: 480px;
+        display: flex;
+        align-items: center;
+      }
+      .subjectGateSearchWrap input, #subjectSearch {
+        width: 100%;
+        background: rgba(0, 0, 0, 0.25);
+        border: 1px solid rgba(200, 169, 110, 0.22);
+        border-radius: 12px;
+        padding: 8px 16px;
+        color: #fff;
+        font-size: 0.88rem;
+        outline: none;
+        transition: all 0.2s ease;
+      }
+      .subjectGateSearchWrap input:focus, #subjectSearch:focus {
+        border-color: var(--gold2, #e8d4a8);
+        box-shadow: 0 0 12px rgba(232, 212, 168, 0.2);
+        background: rgba(0, 0, 0, 0.4);
+      }
+      .userAddSubjectWrap {
+        animation: fadeInPane 0.25s ease-out;
+        padding-top: 5px;
+      }
+      @keyframes fadeInPane {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+    `;
+      }
+      window.__switchSubjectGateTab = function(mode) {
+        const isAdd = mode === "add";
+        localStorage.setItem("learninghub_subject_gate_tab_v1", mode);
+        document.querySelectorAll(".subjectGateTab").forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.sgtab === mode);
+        });
+        const listElements = [
+          document.querySelector(".subjectGateSubline"),
+          document.querySelector(".subjectGateTools"),
+          $3("subjectGateSearchWrap"),
+          // SUBJECT_FOLDER_BAR_IN_TABS_20260729: thanh thư mục nay nằm TRONG hàng tab, nên phải
+          // nằm trong danh sách ẩn/hiện này — không thì "← Tất cả môn" còn nổi ở tab Thêm môn mới.
+          $3("subjectFolderCrumb"),
+          $3("subjectFolderCrumbMeta"),
+          $3("subjectList"),
+          $3("subjectLoading"),
+          $3("subjectError"),
+          $3("subjectEmpty"),
+          document.querySelector(".subjectGateFooter")
+        ];
+        listElements.forEach((el) => {
+          if (el) el.style.setProperty("display", isAdd ? "none" : "", isAdd ? "important" : "");
+        });
+        const form = $3("addSubjectForm");
+        if (form) {
+          form.classList.toggle("hidden", !isAdd);
+          if (isAdd) {
+            form.innerHTML = getAddSubjectHTML();
+            parsedQuestions = [];
+            restoreAddSubjectState();
+          }
+        }
+      };
+      function ensureSubjectGateTabs() {
+        const panel = document.querySelector(".polishedSubjectPanel");
+        const header = document.querySelector(".subjectGateHeader");
+        if (!panel || !header || $3("subjectGateTabsBar")) return;
+        injectStyles();
+        const tabsBar = document.createElement("div");
+        tabsBar.id = "subjectGateTabsBar";
+        tabsBar.className = "subjectGateTabs";
+        tabsBar.innerHTML = `
+      <div class="subjectGateTabsLeft">
+        <button type="button" class="subjectGateTab active" data-sgtab="list">Danh s\xE1ch m\xF4n h\u1ECDc</button>
+        <button type="button" class="subjectGateTab" id="subjectGateTabAdd" data-sgtab="add" style="display:none;">Th\xEAm m\xF4n m\u1EDBi</button>
+      </div>
+      <div class="subjectGateSearchWrap" id="subjectGateSearchWrap"></div>
+    `;
+        header.insertAdjacentElement("afterend", tabsBar);
+        const searchInput = $3("subjectSearch");
+        const searchWrap = $3("subjectGateSearchWrap");
+        if (searchInput && searchWrap) {
+          searchWrap.appendChild(searchInput);
+        }
+        const searchTools = document.querySelector(".subjectGateTools");
+        if (searchTools) searchTools.style.display = "none";
+        const addBtn = $3("addSubjectBtn");
+        if (addBtn) addBtn.remove();
+        tabsBar.querySelectorAll(".subjectGateTab").forEach((btn) => {
+          btn.onclick = () => window.__switchSubjectGateTab(btn.dataset.sgtab);
+        });
+        const savedTab = localStorage.getItem("learninghub_subject_gate_tab_v1") || "list";
+        if (savedTab === "add" && canAdd()) {
+          window.__switchSubjectGateTab("add");
+        } else {
+          window.__switchSubjectGateTab("list");
+        }
+      }
+      function showAddBtn() {
+        ensureSubjectGateTabs();
+        const btn = $3("addSubjectBtn");
+        const tabBtn = $3("subjectGateTabAdd");
+        const allowed = canAdd();
+        if (btn) btn.classList.toggle("hidden", !allowed);
+        const note = $3("userApprovalNote");
+        if (note) {
+          note.style.setProperty("display", allowed && !isAdminOrEditor() ? "block" : "none", "important");
+        }
+        if (tabBtn) {
+          const wasHidden = tabBtn.style.display === "none";
+          tabBtn.style.display = allowed ? "block" : "none";
+          if (allowed && wasHidden) {
+            const savedTab = localStorage.getItem("learninghub_subject_gate_tab_v1") || "list";
+            if (savedTab === "add") {
+              window.__switchSubjectGateTab("add");
+            }
+          }
+        }
+      }
+      const AI_PROMPT = `B\u1EA1n l\xE0 tr\u1EE3 l\xFD chuy\u1EC3n \u0111\u1ED5i ng\xE2n h\xE0ng c\xE2u h\u1ECFi tr\u1EAFc nghi\u1EC7m sang JSON trong file Markdown.
+
+\u0110\u1ECCC FILE v\xE0 chuy\u1EC3n \u0111\u1ED5i NGUY\xCAN V\u1EB8N (KH\xD4NG t\u1EF1 bi\xEAn th\xEAm, KH\xD4NG b\u1ECF b\u1EDBt).
+
+QUY T\u1EAEC BATCH:
+
+- Sau m\u1ED7i batch D\u1EEANG v\xE0 n\xF3i: "G\xF5 'ti\u1EBFp' \u0111\u1EC3 xu\u1EA5t c\xE2u X-Y."
+- Khi nh\u1EADn "ti\u1EBFp", xu\u1EA5t batch ti\u1EBFp theo, \u0111\xE1nh s\u1ED1 "num" li\xEAn t\u1EE5c.
+- M\u1ED7i batch xu\u1EA5t 1 file .md ho\xE0n ch\u1EC9nh, t\u1EA3i \u0111\u01B0\u1EE3c ngay.
+
+QUY T\u1EAEC CHUY\u1EC2N \u0110\u1ED4I:
+- \u0110\xE1p \xE1n: ch\u1EC9 l\u1EA5y k\xFD t\u1EF1 ch\u1EEF c\xE1i \u0111\u1EA7u ti\xEAn sau "**\u0110\xE1p \xE1n:**" (b\u1ECF m\u1ECDi ch\xFA th\xEDch ph\xEDa sau).
+- N\u1EBFu c\xE2u ch\u1EC9 c\xF3 A/B/C (kh\xF4ng c\xF3 D): b\u1ECF key "D" kh\u1ECFi object options.
+- Gi\u1EEF NGUY\xCAN n\u1ED9i dung c\xE2u h\u1ECFi v\xE0 l\u1EF1a ch\u1ECDn, KH\xD4NG paraphrase.
+- "has_image": false (tr\u1EEB khi c\xE2u \u0111\u1EC1 c\u1EADp h\xECnh \u1EA3nh/bi\u1EC3u \u0111\u1ED3).
+- "error_risk": "low" (c\xE2u ng\u1EAFn, r\xF5) | "medium" (c\xE2u trung b\xECnh) | "high" (c\xE2u d\xE0i, ph\u1EE9c t\u1EA1p, d\u1EC5 nh\u1EA7m).
+
+FORMAT FILE .MD OUTPUT:
+---
+# [T\xEAn m\xF4n] - Batch [N] (C\xE2u [X]-[Y])
+> Xu\u1EA5t ng\xE0y: [ng\xE0y h\xF4m nay] | T\u1ED5ng: [s\u1ED1 c\xE2u trong batch] c\xE2u
+---
+
+\`\`\`json
+[
+  {
+    "num": 1,
+    "question": "\u2026?",
+    "options": {
+      "A": "\u2026",
+      "B": "\u2026",
+      "C": "\u2026",
+      "D": "\u2026"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low"
+  }
+]
+\`\`\`
+---
+
+KH\xD4NG th\xEAm b\u1EA5t k\u1EF3 text gi\u1EA3i th\xEDch n\xE0o b\xEAn ngo\xE0i c\u1EA5u tr\xFAc tr\xEAn.
+B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
+      window.__ADD_SUBJECT_AI_PROMPT = AI_PROMPT;
+      let parsedQuestions = [];
+      function clearAddSubjectLocalStorage() {
+        localStorage.removeItem("learninghub_add_subject_code_v1");
+        localStorage.removeItem("learninghub_add_subject_name_v1");
+        localStorage.removeItem("learninghub_add_subject_desc_v1");
+        localStorage.removeItem("learninghub_add_subject_step_v1");
+        localStorage.removeItem("learninghub_add_subject_file_name_v1");
+        localStorage.removeItem("learninghub_add_subject_file_size_v1");
+        localStorage.removeItem("learninghub_add_subject_file_data_v1");
+        localStorage.removeItem("learninghub_add_subject_file_previewed_v1");
+      }
+      function restoreAddSubjectState() {
+        const code = localStorage.getItem("learninghub_add_subject_code_v1") || "";
+        const name = localStorage.getItem("learninghub_add_subject_name_v1") || "";
+        const desc = localStorage.getItem("learninghub_add_subject_desc_v1") || "";
+        const savedStep = parseInt(localStorage.getItem("learninghub_add_subject_step_v1") || "1");
+        const codeInp = $3("addSubjectCode");
+        const nameInp = $3("addSubjectName");
+        const descInp = $3("addSubjectDesc");
+        if (codeInp) codeInp.value = code;
+        if (nameInp) nameInp.value = name;
+        if (descInp) descInp.value = desc;
+        codeInp?.addEventListener("input", function() {
+          this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, "");
+          localStorage.setItem("learninghub_add_subject_code_v1", this.value);
+        });
+        nameInp?.addEventListener("input", function() {
+          localStorage.setItem("learninghub_add_subject_name_v1", this.value);
+        });
+        const syncDescCount = () => {
+          const el = $3("addSubjectDescCount");
+          if (!el || !descInp) return;
+          const n = descInp.value.length;
+          el.textContent = n + "/160";
+          el.classList.toggle("nearLimit", n >= 140 && n <= 160);
+          el.classList.toggle("overLimit", n > 160);
+        };
+        syncDescCount();
+        descInp?.addEventListener("input", function() {
+          localStorage.setItem("learninghub_add_subject_desc_v1", this.value);
+          syncDescCount();
+        });
+        const fileName = localStorage.getItem("learninghub_add_subject_file_name_v1");
+        const fileSize = localStorage.getItem("learninghub_add_subject_file_size_v1");
+        const fileData = localStorage.getItem("learninghub_add_subject_file_data_v1");
+        if (fileName && fileData) {
+          if ($3("userImportData")) $3("userImportData").value = fileData;
+          const dropZone = $3("importDropZone");
+          const card = $3("userImportFileCard");
+          const nameEl = $3("userImportFileName");
+          const metaEl = $3("userImportFileMeta");
+          if (dropZone) dropZone.classList.add("hidden");
+          if (card) card.classList.remove("hidden");
+          if (nameEl) nameEl.textContent = fileName;
+          if (metaEl)
+            metaEl.textContent = Math.max(1, Math.round(parseInt(fileSize || "0") / 1024)) + " KB \xB7 S\u1EB5n s\xE0ng xem tr\u01B0\u1EDBc";
+          const pv = $3("previewImportBtn");
+          if (pv) {
+            pv.classList.remove("hidden");
+            pv.disabled = false;
+          }
+          const wasPreviewed = localStorage.getItem("learninghub_add_subject_file_previewed_v1") === "true";
+          if (wasPreviewed) {
+            setTimeout(() => {
+              if (typeof window.__previewUserImport === "function") {
+                window.__previewUserImport();
+              }
+            }, 100);
+          }
+        }
+        $3("userImportFile")?.addEventListener("change", handleFileImport);
+        if (savedStep > 1 && code && name) {
+          setTimeout(() => {
+            window.__switchStep(savedStep);
+          }, 50);
+        }
+      }
+      function getAddSubjectHTML() {
+        return `<div class="userAddSubjectWrap">
+      <div class="subject-stepper" id="subjectStepper">
+        <div class="step active" data-step="1"><span>1</span> Th\xF4ng tin</div>
+        <div class="step-line"></div>
+        <div class="step" data-step="2"><span>2</span> L\u1EA5y Prompt</div>
+        <div class="step-line"></div>
+        <div class="step" data-step="3"><span>3</span> Import</div>
+      </div>
+
+      <div id="addStep1" class="add-step-content active">
+        <div class="addSubjectFields">
+          <div class="addSubjectField">
+            <label>M\xE3 m\xF4n <span class="req">*</span></label>
+            <input id="addSubjectCode" type="text" placeholder="VD: ABC123" maxlength="20">
+          </div>
+          <div class="addSubjectField">
+            <label>T\xEAn m\xF4n <span class="req">*</span></label>
+            <input id="addSubjectName" type="text" placeholder="VD: T\xEAn m\xF4n h\u1ECDc" maxlength="100">
+          </div>
+          <div class="addSubjectField full">
+            <label>M\xF4 t\u1EA3 ng\u1EAFn <span class="descCounter" id="addSubjectDescCount">0/160</span></label>
+            <textarea id="addSubjectDesc" placeholder="M\xF4 t\u1EA3 m\xF4n h\u1ECDc..." rows="2" maxlength="160"></textarea>
+          </div>
+        </div>
+        <div class="step-actions right">
+          <button class="primary" type="button" onclick="window.__switchStep(2)">Ti\u1EBFp t\u1EE5c \u2794</button>
+        </div>
+      </div>
+
+      <div id="addStep2" class="add-step-content">
+        <div class="aiStepCard" style="margin-bottom:0;">
+          <p>Copy prompt d\u01B0\u1EDBi \u0111\xE2y v\xE0 d\xE1n v\xE0o AI (Gemini/ChatGPT/Claude) k\xE8m theo t\xE0i li\u1EC7u m\xF4n h\u1ECDc c\u1EE7a b\u1EA1n.</p>
+        </div>
+        
+        <div class="aiPromptActions">
+          <button class="aiCopyBtn" type="button" onclick="window.__copyUserAIPrompt()" id="btnCopyPrompt">\u{1F4CB} Sao ch\xE9p prompt</button>
+          <button class="aiViewPromptBtn" type="button" onclick="window.__openUserAIPromptModal()" id="btnViewPrompt">\u{1F441} Xem prompt</button>
+        </div>
+
+        <div class="aiToolLinks" style="margin-bottom: 25px;">
+          <a href="https://gemini.google.com" target="_blank" class="aiToolBtn gemini">\u2726 Gemini</a>
+          <a href="https://chatgpt.com" target="_blank" class="aiToolBtn chatgpt">\u25C9 ChatGPT</a>
+          <a href="https://claude.ai" target="_blank" class="aiToolBtn claude">\u25C8 Claude</a>
+        </div>
+
+        <div class="step-actions">
+          <button class="btn" type="button" onclick="window.__switchStep(1)">\u2B05 Quay l\u1EA1i</button>
+          <button class="primary" type="button" onclick="window.__switchStep(3)">\u0110\xE3 c\xF3 file, Ti\u1EBFp t\u1EE5c \u2794</button>
+        </div>
+      </div>
+
+      <div id="addStep3" class="add-step-content">
+        <div class="importUnifiedBox">
+          <div class="userFileInputWrap" id="importDropZone" onclick="document.getElementById('userImportFile').click()">
+            <span class="icon">\u2601\uFE0F</span>
+            <p><b>K\xE9o th\u1EA3 file .json ho\u1EB7c .zip (g\u1ED3m JSON & h\xECnh \u1EA3nh) v\xE0o \u0111\xE2y</b><br><span style="font-size:0.85rem; opacity:0.6;">Ho\u1EB7c b\u1EA5m \u0111\u1EC3 ch\u1ECDn file t\u1EEB m\xE1y (.json, .zip, .md, .txt)</span></p>
+            <input type="file" id="userImportFile" accept=".json,.zip,.md,.txt" style="display:none;">
+          </div>
+
+          <textarea id="userImportData" class="hiddenImportData" aria-hidden="true"></textarea>
+          <div id="userImportFileCard" class="userImportFileCard hidden">
+            <div class="fileIcon">\u{1F4C4}</div>
+            <div class="fileInfo">
+              <b id="userImportFileName">Ch\u01B0a ch\u1ECDn file</b>
+              <span id="userImportFileMeta">File import c\xE2u h\u1ECFi</span>
+            </div>
+            <button class="removeFileBtn" type="button" onclick="window.__clearUserImportFile()">X\xF3a file</button>
+          </div>
+
+          <div class="step-actions importStepActions">
+            <button class="btn" type="button" onclick="window.__switchStep(2)">\u2B05 Quay l\u1EA1i</button>
+            <div>
+              <button class="btn previewImportBtn hidden" type="button" id="previewImportBtn" onclick="window.__previewUserImport()">Xem tr\u01B0\u1EDBc</button>
+              <button class="primary" type="button" id="userImportBtn" onclick="window.__submitSubjectRequest()" disabled>L\u01B0u M\xF4n H\u1ECDc</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="userApprovalNote" id="userApprovalNote" style="margin-top:15px; display:none;">\u23F3 Y\xEAu c\u1EA7u s\u1EBD \u0111\u01B0\u1EE3c g\u1EEDi cho admin duy\u1EC7t tr\u01B0\u1EDBc.</div>
+    </div>`;
+      }
+      window.__switchStep = function(step) {
+        if (step >= 2) {
+          const code = (document.getElementById("addSubjectCode")?.value || "").trim();
+          const name = (document.getElementById("addSubjectName")?.value || "").trim();
+          if (!code) {
+            alert("Vui l\xF2ng nh\u1EADp m\xE3 m\xF4n tr\u01B0\u1EDBc khi ti\u1EBFp t\u1EE5c.");
+            document.getElementById("addSubjectCode")?.focus();
+            return;
+          }
+          if (!name) {
+            alert("Vui l\xF2ng nh\u1EADp t\xEAn m\xF4n tr\u01B0\u1EDBc khi ti\u1EBFp t\u1EE5c.");
+            document.getElementById("addSubjectName")?.focus();
+            return;
+          }
+        }
+        localStorage.setItem("learninghub_add_subject_step_v1", step);
+        document.querySelectorAll(".add-step-content").forEach((el) => el.classList.remove("active"));
+        const target = document.getElementById("addStep" + step);
+        if (target) target.classList.add("active");
+        document.querySelectorAll(".subject-stepper .step").forEach((el) => {
+          const s = parseInt(el.getAttribute("data-step"));
+          if (s <= step) el.classList.add("active");
+          else el.classList.remove("active");
+        });
+        if (step === 3 && !window._dropZoneInit) {
+          const dropZone = document.getElementById("importDropZone");
+          const fileInput = document.getElementById("userImportFile");
+          if (dropZone && fileInput) {
+            ["dragenter", "dragover", "dragleave", "drop"].forEach((evt) => {
+              dropZone.addEventListener(
+                evt,
+                (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                },
+                false
+              );
+            });
+            ["dragenter", "dragover"].forEach((evt) => {
+              dropZone.addEventListener(evt, () => dropZone.classList.add("dragover"), false);
+            });
+            ["dragleave", "drop"].forEach((evt) => {
+              dropZone.addEventListener(evt, () => dropZone.classList.remove("dragover"), false);
+            });
+            dropZone.addEventListener(
+              "drop",
+              (e) => {
+                const dt = e.dataTransfer;
+                if (dt.files && dt.files.length) {
+                  const one = new DataTransfer();
+                  one.items.add(dt.files[0]);
+                  fileInput.files = one.files;
+                  fileInput.dispatchEvent(new Event("change"));
+                }
+              },
+              false
+            );
+            window._dropZoneInit = true;
+          }
+        }
+      };
+      function handleFileImport(e) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (file.name.toLowerCase().endsWith(".zip")) {
+          window.__selectedImportFile = file;
+          localStorage.setItem("learninghub_add_subject_file_name_v1", file.name);
+          localStorage.setItem("learninghub_add_subject_file_size_v1", String(file.size));
+          localStorage.removeItem("learninghub_add_subject_file_data_v1");
+          localStorage.removeItem("learninghub_add_subject_file_previewed_v1");
+          const dropZone = $3("importDropZone");
+          const card = $3("userImportFileCard");
+          const nameEl = $3("userImportFileName");
+          const metaEl = $3("userImportFileMeta");
+          if (dropZone) dropZone.classList.add("hidden");
+          if (card) card.classList.remove("hidden");
+          if (nameEl) nameEl.textContent = file.name;
+          if (metaEl)
+            metaEl.textContent = (file.size / (1024 * 1024)).toFixed(1) + " MB \xB7 File ZIP (JSON & \u1EA3nh) \xB7 S\u1EB5n s\xE0ng xem tr\u01B0\u1EDBc";
+          const pv = $3("previewImportBtn");
+          if (pv) {
+            pv.classList.remove("hidden");
+            pv.disabled = false;
+          }
+          const saveBtn = $3("userImportBtn");
+          if (saveBtn) saveBtn.disabled = true;
+          parsedQuestions = [];
+          notify("\u0110\xE3 ch\u1ECDn file ZIP " + file.name + ". B\u1EA5m Xem tr\u01B0\u1EDBc \u0111\u1EC3 ki\u1EC3m tra & gi\u1EA3i n\xE9n.");
+          return;
+        }
+        window.__selectedImportFile = null;
+        const reader = new FileReader();
+        reader.onload = function() {
+          const text = reader.result;
+          let jsonStr = text;
+          const mdMatch = text.match(/```json\s*([\s\S]*?)```/);
+          if (mdMatch) jsonStr = mdMatch[1];
+          else {
+            const jsonMatch = text.match(/```\s*([\s\S]*?)```/);
+            if (jsonMatch) jsonStr = jsonMatch[1];
+          }
+          const cleanedData = jsonStr.trim();
+          if ($3("userImportData")) $3("userImportData").value = cleanedData;
+          localStorage.setItem("learninghub_add_subject_file_name_v1", file.name);
+          localStorage.setItem("learninghub_add_subject_file_size_v1", String(file.size));
+          localStorage.setItem("learninghub_add_subject_file_data_v1", cleanedData);
+          localStorage.removeItem("learninghub_add_subject_file_previewed_v1");
+          const dropZone = $3("importDropZone");
+          const card = $3("userImportFileCard");
+          const nameEl = $3("userImportFileName");
+          const metaEl = $3("userImportFileMeta");
+          if (dropZone) dropZone.classList.add("hidden");
+          if (card) card.classList.remove("hidden");
+          if (nameEl) nameEl.textContent = file.name;
+          if (metaEl) metaEl.textContent = Math.max(1, Math.round(file.size / 1024)) + " KB \xB7 S\u1EB5n s\xE0ng xem tr\u01B0\u1EDBc";
+          const pv = $3("previewImportBtn");
+          if (pv) {
+            pv.classList.remove("hidden");
+            pv.disabled = false;
+          }
+          const saveBtn = $3("userImportBtn");
+          if (saveBtn) saveBtn.disabled = true;
+          parsedQuestions = [];
+          notify("\u0110\xE3 \u0111\u1ECDc file " + file.name + ". B\u1EA5m Xem tr\u01B0\u1EDBc \u0111\u1EC3 ki\u1EC3m tra.");
+        };
+        reader.readAsText(file);
+      }
+      window.__LHConvertQuizlet = function(raw) {
+        function scanNeedsImage(t) {
+          return /(hình vẽ|hình bên|hình sau|đồ thị|bảng biến thiên|sơ đồ|xem hình|picture shows|shows an image|this (picture|image|figure)|the (image|figure|picture|diagram) (below|above)|following (image|figure|picture|diagram)|shown below|pictured|in the (picture|image|figure))/i.test(
+            String(t || "")
+          );
+        }
+        function parseTerm(term, def) {
+          var re = /([A-Fa-f])\.(?=\s|[A-Z])/g, m, marks = [];
+          while ((m = re.exec(term)) !== null) marks.push({ L: m[1].toUpperCase(), idx: m.index, end: m.index + 2 });
+          var seq2 = [], expect = 65;
+          marks.forEach(function(mk) {
+            if (mk.L === String.fromCharCode(expect)) {
+              seq2.push(mk);
+              expect++;
+            }
+          });
+          if (seq2.length < 2) return null;
+          var question = term.slice(0, seq2[0].idx).trim(), options = {};
+          for (var i = 0; i < seq2.length; i++) {
+            var s = seq2[i].end, e = i + 1 < seq2.length ? seq2[i + 1].idx : term.length;
+            options[seq2[i].L] = term.slice(s, e).trim().replace(/\s+/g, " ").replace(/\.$/, "").trim();
+          }
+          var ams = (String(def || "").match(/(?:^|\s)([A-Fa-f])\.(?=\s|[A-Z]|$)/g) || []).map(function(x) {
+            return x.trim()[0].toUpperCase();
+          });
+          var answer = ams.length ? Array.from(new Set(ams)).join("") : String(def || "").toUpperCase().replace(/[^A-F]/g, "");
+          answer = Array.from(answer).filter(function(a) {
+            return options[a];
+          }).join("");
+          if (!question || !answer) return null;
+          return { question, options, answer };
+        }
+        var terms = null;
+        try {
+          var j = JSON.parse(raw);
+          if (j && Array.isArray(j.terms))
+            terms = j.terms.map(function(t) {
+              return { term: t.term, def: t.definition };
+            });
+          else if (Array.isArray(j) && j.length && j[0] && "term" in j[0] && "definition" in j[0])
+            terms = j.map(function(t) {
+              return { term: t.term, def: t.definition };
+            });
+        } catch (e) {
+          lhWarn2("QUIZLET_IMPORT_AUTODETECT_20260701", e);
+        }
+        if (!terms) {
+          var rows = [];
+          raw.split(/\r?\n/).forEach(function(ln) {
+            if (!ln.trim().startsWith("|")) return;
+            var c = ln.split("|").map(function(s) {
+              return s.trim();
+            });
+            if (!c[1] || c[1] === "Term" || /^-+$/.test(c[1])) return;
+            rows.push({ term: c[1], def: c[2] });
+          });
+          if (rows.length) terms = rows;
+        }
+        if (!terms || !terms.length) return null;
+        var out = [], seen = {};
+        terms.forEach(function(t) {
+          var p = parseTerm(String(t.term || ""), String(t.def || ""));
+          if (!p) return;
+          var key = p.question.toLowerCase().replace(/\s+/g, " ").slice(0, 90);
+          if (seen[key]) return;
+          seen[key] = 1;
+          var needImg = scanNeedsImage(p.question + " " + Object.values(p.options).join(" "));
+          out.push({
+            question: p.question,
+            options: p.options,
+            answer: p.answer,
+            images: [],
+            has_image: needImg,
+            error_risk: "low",
+            error_risk_reason: ""
+          });
+        });
+        return out.length ? out : null;
+      };
+      window.__previewUserImport = async function() {
+        if (window.__selectedImportFile && window.__selectedImportFile.name.toLowerCase().endsWith(".zip")) {
+          try {
+            const importer = window.LHSubjectImport;
+            if (!importer) {
+              alert("Module LHSubjectImport ch\u01B0a s\u1EB5n s\xE0ng.");
+              return;
+            }
+            const res = await importer.readAndValidateZipFile(window.__selectedImportFile);
+            let parsedZipData = res;
+            if (res.needSelectJson) {
+              const selected = prompt(
+                "File ZIP ch\u1EE9a nhi\u1EC1u file JSON c\xE2u h\u1ECFi:\n\n" + res.jsonCandidates.join("\n") + "\n\nVui l\xF2ng nh\u1EADp \u0111\xFAng t\xEAn file JSON b\u1EA1n mu\u1ED1n d\xF9ng:",
+                res.jsonCandidates[0]
+              );
+              if (!selected) return;
+              const chosen = res.jsonCandidates.find((p) => p.toLowerCase() === selected.toLowerCase().trim());
+              if (!chosen) {
+                alert("File JSON \u0111\xE3 ch\u1ECDn kh\xF4ng c\xF3 trong danh s\xE1ch.");
+                return;
+              }
+              const imageEntries = /* @__PURE__ */ new Map();
+              Object.keys(res.zipInstance.files).forEach((k) => {
+                const ext = k.slice(k.lastIndexOf(".")).toLowerCase();
+                if ([".png", ".jpg", ".jpeg", ".webp", ".gif"].includes(ext)) {
+                  imageEntries.set(k, res.zipInstance.files[k]);
+                }
+              });
+              parsedZipData = await importer.processSelectedJsonFromZip(
+                res.zipInstance,
+                chosen,
+                imageEntries,
+                res.zipFile.name
+              );
+            }
+            const questions = parsedZipData.questions;
+            window.__previewImportData = questions;
+            parsedQuestions = questions;
+            localStorage.setItem("learninghub_add_subject_file_previewed_v1", "true");
+            const codeInp = $3("addSubjectCode");
+            if (codeInp && !codeInp.value.trim() && parsedZipData.suggestedCode) {
+              codeInp.value = parsedZipData.suggestedCode;
+            }
+            const metaEl2 = $3("userImportFileMeta");
+            if (metaEl2) metaEl2.textContent = questions.length + " c\xE2u h\u1ECFi \u0111\xE3 ki\u1EC3m tra \xB7 S\u1EB5n s\xE0ng l\u01B0u";
+            const btn2 = $3("userImportBtn");
+            if (btn2) btn2.disabled = false;
+            window.__openImportPreviewModal(questions);
+            notify("OK! " + questions.length + " c\xE2u h\u1ECFi s\u1EB5n s\xE0ng");
+          } catch (err) {
+            alert("L\u1ED7i ki\u1EC3m tra ZIP:\n" + (err.message || err));
+          }
+          return;
+        }
+        const raw = ($3("userImportData")?.value || "").trim();
+        const btn = $3("userImportBtn");
+        if (!raw) {
+          alert("B\u1EA1n h\xE3y ch\u1ECDn file .zip / .json / .md / .txt tr\u01B0\u1EDBc.");
+          return;
+        }
+        let data;
+        try {
+          var quizletData = window.__LHConvertQuizlet ? window.__LHConvertQuizlet(raw) : null;
+          if (quizletData && quizletData.length) {
+            data = quizletData;
+          } else {
+            var jsonBlocks = raw.match(/```json\s*([\s\S]*?)```/g);
+            if (jsonBlocks && jsonBlocks.length > 0) {
+              data = [];
+              jsonBlocks.forEach(function(block) {
+                var cleaned2 = block.replace(/^```json\s*/, "").replace(/```\s*$/, "");
+                var parsed = JSON.parse(cleaned2);
+                if (Array.isArray(parsed)) data = data.concat(parsed);
+                else if (parsed.questions && Array.isArray(parsed.questions)) data = data.concat(parsed.questions);
+              });
+            } else {
+              var cleaned = raw;
+              if (cleaned.startsWith("```")) cleaned = cleaned.replace(/^```\w*\s*/, "").replace(/```\s*$/, "");
+              data = JSON.parse(cleaned);
+            }
+          }
+        } catch (e) {
+          localStorage.removeItem("learninghub_add_subject_file_previewed_v1");
+          alert("JSON kh\xF4ng h\u1EE3p l\u1EC7. H\xE3y ki\u1EC3m tra l\u1EA1i format.\n\nL\u1ED7i: " + e.message);
+          return;
+        }
+        if (!Array.isArray(data)) {
+          if (data.questions && Array.isArray(data.questions)) data = data.questions;
+          else {
+            localStorage.removeItem("learninghub_add_subject_file_previewed_v1");
+            alert("D\u1EEF li\u1EC7u ph\u1EA3i l\xE0 m\u1EA3ng JSON [...]");
+            return;
+          }
+        }
+        const errors = [];
+        data.forEach((q, i) => {
+          if (!q.question) errors.push("C\xE2u " + (i + 1) + ': thi\u1EBFu "question"');
+          if (!q.options || typeof q.options !== "object") errors.push("C\xE2u " + (i + 1) + ': thi\u1EBFu "options"');
+          if (!q.answer) errors.push("C\xE2u " + (i + 1) + ': thi\u1EBFu "answer"');
+        });
+        if (errors.length) {
+          localStorage.removeItem("learninghub_add_subject_file_previewed_v1");
+          alert("D\u1EEF li\u1EC7u c\xF3 l\u1ED7i:\n\n" + errors.slice(0, 10).join("\n"));
+          return;
+        }
+        localStorage.setItem("learninghub_add_subject_file_previewed_v1", "true");
+        parsedQuestions = data;
+        window.__previewSelections = {};
+        const metaEl = $3("userImportFileMeta");
+        if (metaEl) metaEl.textContent = data.length + " c\xE2u h\u1ECFi \u0111\xE3 ki\u1EC3m tra \xB7 C\xF3 th\u1EC3 l\u01B0u";
+        if (btn) btn.disabled = false;
+        window.__openImportPreviewModal(data);
+        notify("OK! " + data.length + " c\xE2u h\u1ECFi s\u1EB5n s\xE0ng");
+      };
+      window.__closeImportPreviewModal = function() {
+        document.getElementById("importPreviewModal")?.classList.add("hidden");
+      };
+      window.__submitSubjectRequest = async function() {
+        const code = ($3("addSubjectCode")?.value || "").trim().toUpperCase();
+        const name = ($3("addSubjectName")?.value || "").trim();
+        const desc = ($3("addSubjectDesc")?.value || "").trim();
+        if (!code) {
+          alert("Vui l\xF2ng nh\u1EADp m\xE3 m\xF4n");
+          $3("addSubjectCode")?.focus();
+          return;
+        }
+        if (!/^[A-Z0-9_]{2,20}$/.test(code)) {
+          alert("M\xE3 m\xF4n ch\u1EC9 g\u1ED3m ch\u1EEF, s\u1ED1, g\u1EA1ch d\u01B0\u1EDBi (2-20 k\xFD t\u1EF1)");
+          $3("addSubjectCode")?.focus();
+          return;
+        }
+        if (!name) {
+          alert("Vui l\xF2ng nh\u1EADp t\xEAn m\xF4n");
+          $3("addSubjectName")?.focus();
+          return;
+        }
+        if (!parsedQuestions.length) {
+          alert("B\u1EA1n c\u1EA7n ch\u1ECDn file v\xE0 b\u1EA5m Xem tr\u01B0\u1EDBc tr\u01B0\u1EDBc khi l\u01B0u m\xF4n h\u1ECDc.");
+          return;
+        }
+        const c = client();
+        if (!c) {
+          alert("Ch\u01B0a k\u1EBFt n\u1ED1i Supabase");
+          return;
+        }
+        const btn = $3("userImportBtn");
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "\u0110ang l\u01B0u...";
+        }
+        showProgress("B\u1EAFt \u0111\u1EA7u kh\u1EDFi t\u1EA1o m\xF4n h\u1ECDc...", 0, 100, "\u0110ang chu\u1EA9n b\u1ECB d\u1EEF li\u1EC7u...");
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        try {
+          let successMsg = "";
+          if (isAdminOrEditor()) {
+            showProgress("\u0110ang l\u01B0u m\xF4n h\u1ECDc...", 50, 100, "\u0110ang t\u1EA1o m\xF4n v\xE0 nh\u1EADp c\xE2u h\u1ECFi l\xEAn m\xE1y ch\u1EE7...");
+            const u0 = window.HODSupabase?.getUser?.();
+            const res = await fetch("/api/admin-action", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              cache: "no-store",
+              body: JSON.stringify({
+                user_id: u0?.id,
+                action: "add_subject",
+                payload: { code, name: name || code, description: desc || "", questions: parsedQuestions || [] }
+              })
+            });
+            const out = await res.json().catch(() => ({}));
+            if (!res.ok || out.error) {
+              alert("L\u1ED7i t\u1EA1o m\xF4n: " + (out.error || res.status));
+              return;
+            }
+            const finalCode = out.code || code;
+            const success = (parsedQuestions || []).length;
+            successMsg = "\u0110\xE3 th\xEAm m\xF4n " + finalCode + " v\u1EDBi " + success + " c\xE2u h\u1ECFi";
+            try {
+              const key = "learninghub_subject_counts_cache_v3";
+              const store = JSON.parse(localStorage.getItem(key) || "{}") || {};
+              store.counts = store.counts || {};
+              store.confirmed = store.confirmed || {};
+              store.counts[finalCode] = success;
+              store.confirmed[finalCode] = true;
+              store.updated_at = (/* @__PURE__ */ new Date()).toISOString();
+              localStorage.setItem(key, JSON.stringify(store));
+              localStorage.setItem("learninghub_subjects_dirty_v3", String(Date.now()));
+              localStorage.removeItem("learninghub_subjects_cache_v1");
+              sessionStorage.removeItem("learninghub_subject_counts_cache_v1");
+              window.clearLearningHubSupabaseCache?.("subjects");
+              window.clearLearningHubSupabaseCache?.("questions");
+            } catch (e) {
+              lhWarn2("appCore", e);
+            }
+            alert(successMsg);
+            notify(successMsg);
+            window.__switchSubjectGateTab("list");
+            try {
+              $3("subjectRefresh")?.click();
+              setTimeout(() => $3("subjectRefresh")?.click(), 5600);
+              setTimeout(() => window.refreshSubjectCountsOnce?.(), 6500);
+            } catch (e) {
+              lhWarn2("appCore", e);
+            }
+          } else {
+            showProgress("\u0110ang g\u1EEDi y\xEAu c\u1EA7u t\u1EA1o m\xF4n h\u1ECDc...", 50, 100, "\u0110ang t\u1EA3i d\u1EEF li\u1EC7u c\xE2u h\u1ECFi l\xEAn m\xE1y ch\u1EE7...");
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            const u = window.HODSupabase?.getUser?.();
+            const res = await fetch("/api/admin-action", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              cache: "no-store",
+              body: JSON.stringify({
+                user_id: u?.id,
+                action: "add_subject_request",
+                payload: { code, name, description: desc || "", questions_data: parsedQuestions || [] }
+              })
+            });
+            const out = await res.json().catch(() => ({}));
+            if (!res.ok || out.error) {
+              alert("L\u1ED7i g\u1EEDi y\xEAu c\u1EA7u: " + (out.error || res.status));
+              return;
+            }
+            successMsg = "\u0110\xE3 g\u1EEDi y\xEAu c\u1EA7u th\xEAm m\xF4n " + code + ". Vui l\xF2ng ch\u1EDD admin duy\u1EC7t.";
+            alert(successMsg);
+            notify(successMsg);
+            window.__switchSubjectGateTab("list");
+          }
+          parsedQuestions = [];
+          document.getElementById("importPreviewModal")?.classList.add("hidden");
+          clearAddSubjectLocalStorage();
+        } catch (e) {
+          console.warn("Add subject error:", e);
+          alert("L\u1ED7i khi l\u01B0u m\xF4n h\u1ECDc: " + (e?.message || e));
+          notify("L\u1ED7i khi l\u01B0u m\xF4n h\u1ECDc");
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "L\u01B0u M\xF4n H\u1ECDc";
+          }
+          hideProgress();
+        }
+      };
+      window.__closeAddSubject = function() {
+        window.__switchSubjectGateTab("list");
+      };
+      function bind() {
+        $3("addSubjectBtn")?.addEventListener("click", () => window.__switchSubjectGateTab("add"));
+        showAddBtn();
+        setInterval(showAddBtn, 2e3);
+      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
+      else bind();
+    })();
+  }
+  function installImportPreviewInlineEdit() {
+    (function() {
+      function escPrompt(s) {
+        return String(s ?? "").replace(
+          /[&<>"']/g,
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+        );
+      }
+      function getPromptText() {
+        return window.__ADD_SUBJECT_AI_PROMPT || window.AI_PROMPT || document.getElementById("userAiPromptText")?.textContent || "";
+      }
+      window.__openUserAIPromptModal = function() {
+        const prompt2 = getPromptText();
+        let modal = document.getElementById("userPromptModal");
+        if (!modal) {
+          modal = document.createElement("div");
+          modal.id = "userPromptModal";
+          modal.className = "modal userPromptModal hidden";
+          modal.innerHTML = `<div class="box userPromptModalBox">
+        <button class="modalX" type="button" id="userPromptModalClose">\xD7</button>
+        <div class="userPromptModalHead">
+          <div>
+            <span class="userPromptLabel">PROMPT T\u1EA0O C\xC2U H\u1ECEI</span>
+            <h2>Xem prompt</h2>
+            <p>Copy prompt n\xE0y r\u1ED3i d\xE1n v\xE0o Gemini / ChatGPT / Claude k\xE8m t\xE0i li\u1EC7u m\xF4n h\u1ECDc.</p>
+          </div>
+          <button class="primary userPromptCopyTop" type="button" id="userPromptModalCopy">\u{1F4CB} Sao ch\xE9p</button>
+        </div>
+        <pre class="userPromptModalPre" id="userPromptModalPre"></pre>
+      </div>`;
+          modal.addEventListener("mousedown", (e) => {
+            if (e.target === modal) window.__closeUserAIPromptModal();
+          });
+          document.body.appendChild(modal);
+          document.getElementById("userPromptModalClose")?.addEventListener("click", window.__closeUserAIPromptModal);
+          document.getElementById("userPromptModalCopy")?.addEventListener("click", window.__copyUserAIPrompt);
+        }
+        const pre = document.getElementById("userPromptModalPre");
+        if (pre) pre.textContent = prompt2;
+        modal.classList.remove("hidden");
+      };
+      window.__closeUserAIPromptModal = function() {
+        document.getElementById("userPromptModal")?.classList.add("hidden");
+      };
+      window.__copyUserAIPrompt = function() {
+        const prompt2 = getPromptText();
+        const done = () => {
+          const btn = document.getElementById("btnCopyPrompt");
+          if (btn) {
+            const oldText = btn.innerHTML;
+            btn.innerHTML = "\u2705 \u0110\xE3 copy";
+            setTimeout(() => {
+              btn.innerHTML = oldText;
+            }, 1800);
+          }
+          if (typeof notify === "function") notify("\u0110\xE3 copy prompt!");
+        };
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(prompt2).then(done).catch(() => {
+            const ta = document.createElement("textarea");
+            ta.value = prompt2;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            ta.remove();
+            done();
+          });
+        } else {
+          const ta = document.createElement("textarea");
+          ta.value = prompt2;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          ta.remove();
+          done();
+        }
+      };
+      document.addEventListener(
+        "click",
+        function(e) {
+          const viewBtn = e.target.closest && e.target.closest("#btnViewPrompt,.aiViewPromptBtn");
+          if (viewBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.__openUserAIPromptModal();
+            return;
+          }
+          const copyBtn = e.target.closest && e.target.closest("#btnCopyPrompt");
+          if (copyBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.__copyUserAIPrompt();
+          }
+        },
+        true
+      );
+    })();
+    (function() {
+      function $3(id) {
+        return document.getElementById(id);
+      }
+      function notifySafe(msg) {
+        if (typeof notify === "function") notify(msg);
+        else console.log(msg);
+      }
+      window.__clearUserImportFile = function() {
+        window.__selectedImportFile = null;
+        if (window.LHSubjectImport) {
+          window.LHSubjectImport.resetSubjectImportState();
+        }
+        const fileInput = $3("userImportFile");
+        const hiddenData = $3("userImportData");
+        const dropZone = $3("importDropZone");
+        const fileCard = $3("userImportFileCard");
+        const fileName = $3("userImportFileName");
+        const fileMeta = $3("userImportFileMeta");
+        const previewBtn = $3("previewImportBtn");
+        const saveBtn = $3("userImportBtn");
+        if (fileInput) fileInput.value = "";
+        if (hiddenData) hiddenData.value = "";
+        if (dropZone) dropZone.classList.remove("hidden");
+        if (fileCard) fileCard.classList.add("hidden");
+        if (fileName) fileName.textContent = "Ch\u01B0a ch\u1ECDn file";
+        if (fileMeta) fileMeta.textContent = "File import c\xE2u h\u1ECFi";
+        if (previewBtn) {
+          previewBtn.classList.add("hidden");
+          previewBtn.disabled = true;
+        }
+        if (saveBtn) saveBtn.disabled = true;
+        localStorage.removeItem("learninghub_add_subject_file_name_v1");
+        localStorage.removeItem("learninghub_add_subject_file_size_v1");
+        localStorage.removeItem("learninghub_add_subject_file_data_v1");
+        localStorage.removeItem("learninghub_add_subject_file_previewed_v1");
+        window.__previewSelections = {};
+        try {
+          window.__closeImportPreviewModal?.();
+        } catch (e) {
+          lhWarn2("FIX_DELETE_IMPORT_FILE_20260625", e);
+        }
+        notifySafe("\u0110\xE3 x\xF3a file import");
+      };
+      document.addEventListener(
+        "click",
+        function(e) {
+          const btn = e.target.closest?.(".removeFileBtn");
+          if (!btn) return;
+          e.preventDefault();
+          e.stopPropagation();
+          window.__clearUserImportFile();
+        },
+        true
+      );
+    })();
+    (function() {
+      function $3(id) {
+        return document.getElementById(id);
+      }
+      function enhancePromptStep() {
+        const step = $3("addStep2");
+        if (!step || step.dataset.promptPolished === "1") return;
+        step.dataset.promptPolished = "1";
+        step.classList.add("promptPolished");
+        step.innerHTML = `
+      <div class="promptStepGrid">
+        <section class="promptMainCard">
+          <div class="promptEyebrow">B\u01B0\u1EDBc 2 \xB7 T\u1EA1o file c\xE2u h\u1ECFi</div>
+          <h3 class="promptMainTitle">L\u1EA5y prompt r\u1ED3i \u0111\u01B0a t\xE0i li\u1EC7u cho AI</h3>
+          <p class="promptMainDesc">B\u1EA5m sao ch\xE9p prompt, d\xE1n v\xE0o AI b\u1EA1n mu\u1ED1n d\xF9ng, sau \u0111\xF3 g\u1EEDi k\xE8m t\xE0i li\u1EC7u m\xF4n h\u1ECDc. AI s\u1EBD tr\u1EA3 v\u1EC1 file c\xE2u h\u1ECFi \u0111\u1EC3 import \u1EDF b\u01B0\u1EDBc ti\u1EBFp theo.</p>
+
+          <div class="promptActionGrid">
+            <button class="aiCopyBtn" type="button" onclick="window.__copyUserAIPrompt()" id="btnCopyPrompt">\u{1F4CB} Sao ch\xE9p prompt</button>
+            <button class="aiViewPromptBtn" type="button" onclick="window.__openUserAIPromptModal()" id="btnViewPrompt">\u{1F441} Xem prompt</button>
+          </div>
+
+          <div class="promptMiniGuide">
+            <div class="guideRow"><div class="guideNum">1</div><div><b>Copy prompt</b><span>Prompt \u0111\xE3 c\xF3 s\u1EB5n format JSON \u0111\xFAng cho h\u1EC7 th\u1ED1ng.</span></div></div>
+            <div class="guideRow"><div class="guideNum">2</div><div><b>D\xE1n v\xE0o AI + g\u1EEDi t\xE0i li\u1EC7u</b><span>G\u1EEDi PDF, Word, slide ho\u1EB7c n\u1ED9i dung m\xF4n h\u1ECDc cho AI.</span></div></div>
+            <div class="guideRow"><div class="guideNum">3</div><div><b>T\u1EA3i file .md / .txt</b><span>Sau khi AI t\u1EA1o xong, qua b\u01B0\u1EDBc Import \u0111\u1EC3 l\u01B0u m\xF4n h\u1ECDc.</span></div></div>
+          </div>
+        </section>
+
+        <aside class="promptSideCard">
+          <div class="promptToolTitle">Ch\u1ECDn c\xF4ng c\u1EE5 AI</div>
+          <div class="promptToolGrid">
+            <a href="https://gemini.google.com" target="_blank" class="aiToolBtn gemini">\u2726 Gemini</a>
+            <a href="https://chatgpt.com" target="_blank" class="aiToolBtn chatgpt">\u25C9 ChatGPT</a>
+            <a href="https://claude.ai" target="_blank" class="aiToolBtn claude">\u25C8 Claude</a>
+          </div>
+          <div class="promptNoteBox">M\u1EB9o: n\u1EBFu t\xE0i li\u1EC7u d\xE0i, h\xE3y y\xEAu c\u1EA7u AI t\u1EA1o t\u1EEBng ph\u1EA7n r\u1ED3i g\u1ED9p l\u1EA1i th\xE0nh m\u1ED9t file JSON.</div>
+        </aside>
+      </div>
+
+      <div class="step-actions">
+        <button class="btn" type="button" onclick="window.__switchStep(1)">\u2B05 Quay l\u1EA1i</button>
+        <button class="primary" type="button" onclick="window.__switchStep(3)">\u0110\xE3 c\xF3 file, ti\u1EBFp t\u1EE5c \u2794</button>
+      </div>
+    `;
+      }
+      const oldSwitch = window.__switchStep;
+      window.__switchStep = function(step) {
+        if (typeof oldSwitch === "function") oldSwitch.apply(this, arguments);
+        setTimeout(() => {
+          if (Number(step) === 2) enhancePromptStep();
+        }, 0);
+      };
+      document.addEventListener(
+        "click",
+        function(e) {
+          const btn = e.target.closest?.('[onclick*="__switchStep(2)"]');
+          if (btn) setTimeout(enhancePromptStep, 0);
+        },
+        true
+      );
+      document.addEventListener("DOMContentLoaded", () => setTimeout(enhancePromptStep, 800));
+    })();
+    (function() {
+      function cleanStrayPromptButtons() {
+        document.querySelectorAll(
+          ".subjectGate .polishedSubjectPanel > .aiCopyBtn, .subjectGate .polishedSubjectPanel > #btnCopyPrompt, .subjectGate > .aiCopyBtn, .subjectGate > #btnCopyPrompt"
+        ).forEach((btn) => {
+          if (!btn.closest("#addStep2")) btn.remove();
+        });
+      }
+      document.addEventListener("DOMContentLoaded", () => {
+        cleanStrayPromptButtons();
+        setTimeout(cleanStrayPromptButtons, 300);
+        setTimeout(cleanStrayPromptButtons, 1e3);
+      });
+      document.addEventListener("click", () => setTimeout(cleanStrayPromptButtons, 0), true);
+    })();
+    (function() {
+      function removePromptGuideRows() {
+        document.querySelectorAll("#addStep2 .promptMiniGuide").forEach((el) => el.remove());
+      }
+      document.addEventListener("DOMContentLoaded", () => {
+        removePromptGuideRows();
+        setTimeout(removePromptGuideRows, 300);
+        setTimeout(removePromptGuideRows, 1e3);
+      });
+      document.addEventListener("click", () => setTimeout(removePromptGuideRows, 0), true);
+    })();
+    (function() {
+      function cleanPromptTip() {
+        document.querySelectorAll("#addStep2 .promptNoteBox, .promptNoteBox").forEach((el) => el.remove());
+      }
+      function patchPromptModal() {
+        const modal = document.getElementById("userPromptModal");
+        if (!modal) return;
+        modal.classList.remove("modal");
+        modal.classList.add("userPromptModal");
+        const box = modal.querySelector(".userPromptModalBox");
+        if (box) box.classList.remove("box");
+      }
+      const oldOpen = window.__openUserAIPromptModal;
+      window.__openUserAIPromptModal = function() {
+        if (typeof oldOpen === "function") oldOpen.apply(this, arguments);
+        setTimeout(() => {
+          patchPromptModal();
+          cleanPromptTip();
+        }, 0);
+      };
+      document.addEventListener("DOMContentLoaded", () => {
+        cleanPromptTip();
+        patchPromptModal();
+        setTimeout(() => {
+          cleanPromptTip();
+          patchPromptModal();
+        }, 300);
+        setTimeout(() => {
+          cleanPromptTip();
+          patchPromptModal();
+        }, 1e3);
+      });
+      document.addEventListener(
+        "click",
+        () => setTimeout(() => {
+          cleanPromptTip();
+          patchPromptModal();
+        }, 0),
+        true
+      );
+    })();
+    (function() {
+      function escHtml(s) {
+        return String(s ?? "").replace(
+          /[&<>"']/g,
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+        );
+      }
+      function getPreviewData(data) {
+        const arr = data || window.__previewImportData || [];
+        window.__previewImportData = arr;
+        return arr;
+      }
+      function opt(q, k) {
+        return q?.options?.[k] || "";
+      }
+      window.__previewQualityFilter = "all";
+      function autoDetectQuality(q) {
+        const hasImg = !!(q.has_image || q.images && q.images.length > 0);
+        let risk = q.error_risk || "";
+        let reason = q.error_risk_reason || "";
+        if (!risk) {
+          if (hasImg && (!q.images || !q.images.length || q.images.some((im) => {
+            const src = typeof im === "string" ? im : im.src || im.url || "";
+            return !src || src.includes("URL_") || src.includes("M\xD4_T\u1EA2");
+          }))) {
+            risk = "high";
+            reason = reason || "C\xE2u c\u1EA7n h\xECnh \u1EA3nh nh\u01B0ng ch\u01B0a c\xF3 \u1EA3nh th\u1EF1c t\u1EBF";
+          } else if (String(q.answer || "").length > 1) {
+            risk = "medium";
+            reason = reason || "C\xE2u c\xF3 nhi\u1EC1u \u0111\xE1p \xE1n \u0111\xFAng, c\u1EA7n ki\u1EC3m tra k\u1EF9";
+          } else {
+            risk = "low";
+          }
+        }
+        q.has_image = hasImg;
+        q.error_risk = risk;
+        q.error_risk_reason = reason;
+      }
+      function riskLabel(r) {
+        return { low: "Th\u1EA5p", medium: "Trung b\xECnh", high: "Cao" }[r] || r;
+      }
+      function riskColor(r) {
+        return { low: "#27ae60", medium: "#f39c12", high: "#e74c3c" }[r] || "#999";
+      }
+      function renderQualityStats(data) {
+        var stats = document.getElementById("importPreviewStats");
+        if (!stats) return;
+        var imgCount = data.filter(function(q) {
+          return q.has_image;
+        }).length;
+        var highCount = data.filter(function(q) {
+          return q.error_risk === "high";
+        }).length;
+        var medCount = data.filter(function(q) {
+          return q.error_risk === "medium";
+        }).length;
+        var lowCount = data.filter(function(q) {
+          return q.error_risk === "low";
+        }).length;
+        var f = window.__previewQualityFilter;
+        stats.textContent = "";
+        var statRow = document.createElement("div");
+        statRow.className = "previewStatRow";
+        var statItems = [
+          { text: data.length + " c\xE2u", color: "" },
+          { text: imgCount + " c\xF3 \u1EA3nh", color: "#3498db" },
+          { text: highCount + " r\u1EE7i ro cao", color: "#e74c3c" },
+          { text: medCount + " trung b\xECnh", color: "#f39c12" },
+          { text: lowCount + " th\u1EA5p", color: "#27ae60" }
+        ];
+        statItems.forEach(function(item) {
+          var span = document.createElement("span");
+          span.className = "previewStatItem";
+          span.textContent = item.text;
+          if (item.color) span.style.color = item.color;
+          statRow.appendChild(span);
+        });
+        var filterRow = document.createElement("div");
+        filterRow.className = "previewFilterRow";
+        var filters = [
+          { key: "all", label: "Th\u01B0 vi\u1EC7n", border: "" },
+          { key: "has_image", label: "\u{1F4F7} C\xF3 \u1EA3nh", border: "" },
+          { key: "high", label: "R\u1EE7i ro cao", border: "#e74c3c" },
+          { key: "medium", label: "Trung b\xECnh", border: "#f39c12" },
+          { key: "low", label: "Th\u1EA5p", border: "#27ae60" }
+        ];
+        filters.forEach(function(fl) {
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "previewFilterBtn" + (f === fl.key ? " active" : "");
+          btn.textContent = fl.label;
+          if (fl.border) btn.style.borderColor = fl.border;
+          btn.addEventListener("click", function() {
+            window.__setQualityFilter(fl.key);
+          });
+          filterRow.appendChild(btn);
+        });
+        stats.appendChild(statRow);
+        stats.appendChild(filterRow);
+      }
+      window.__setQualityFilter = function(f) {
+        window.__previewQualityFilter = f;
+        const data = getPreviewData();
+        renderQualityStats(data);
+        renderQualityList(data);
+      };
+      window.__toggleQualityImage = function(i, val) {
+        const data = getPreviewData();
+        if (data[i]) {
+          data[i].has_image = val;
+          renderQualityStats(data);
+        }
+      };
+      window.__setQualityRisk = function(i, val) {
+        const data = getPreviewData();
+        if (data[i]) {
+          data[i].error_risk = val;
+          renderQualityStats(data);
+          const card = document.querySelector(`[data-pcard="${i}"]`);
+          if (card) {
+            card.style.borderLeftColor = riskColor(val);
+            card.style.background = { low: "rgba(39,174,96,0.08)", medium: "rgba(243,156,18,0.08)", high: "rgba(231,76,60,0.08)" }[val] || "";
+            const badge = card.querySelector(".riskBadge");
+            if (badge) {
+              badge.style.background = riskColor(val);
+              badge.textContent = riskLabel(val);
+            }
+          }
+        }
+      };
+      function renderQualityList(data) {
+        var list = document.getElementById("importPreviewList");
+        if (!list) return;
+        var f = window.__previewQualityFilter;
+        var filtered = data.filter(function(q) {
+          if (f === "all") return true;
+          if (f === "has_image") return q.has_image;
+          return q.error_risk === f;
+        });
+        list.textContent = "";
+        if (!filtered.length) {
+          var empty = document.createElement("div");
+          empty.style.cssText = "text-align:center;padding:30px;opacity:.6";
+          empty.textContent = "Kh\xF4ng c\xF3 c\xE2u h\u1ECFi n\xE0o ph\xF9 h\u1EE3p b\u1ED9 l\u1ECDc.";
+          list.appendChild(empty);
+          return;
+        }
+        filtered.forEach(function(q) {
+          var i = data.indexOf(q);
+          list.appendChild(buildCard(q, i));
+        });
+      }
+      function renderPreviewInline(data) {
+        data = getPreviewData(data);
+        data.forEach(autoDetectQuality);
+        window.__previewQualityFilter = "all";
+        let modal = document.getElementById("importPreviewModal");
+        if (modal) {
+          modal.remove();
+          modal = null;
+        }
+        modal = document.createElement("div");
+        modal.id = "importPreviewModal";
+        modal.className = "modal importPreviewModal";
+        var box = document.createElement("div");
+        box.className = "box importPreviewModalBox";
+        var closeBtn = document.createElement("button");
+        closeBtn.className = "modalX";
+        closeBtn.type = "button";
+        closeBtn.textContent = "\xD7";
+        closeBtn.onclick = function() {
+          window.__closeImportPreviewModal();
+        };
+        var head = document.createElement("div");
+        head.className = "importPreviewHead";
+        var headLeft = document.createElement("div");
+        var label = document.createElement("span");
+        label.className = "importPreviewLabel";
+        label.textContent = "XEM TR\u01AF\u1EDAC IMPORT";
+        var h2 = document.createElement("h2");
+        h2.textContent = "Ki\u1EC3m tra c\xE2u h\u1ECFi";
+        var desc = document.createElement("p");
+        desc.textContent = "\u0110\xE1p \xE1n \u0111\xFAng \u0111\xE3 hi\u1EC3n th\u1ECB s\u1EB5n. \u0110\xE1nh d\u1EA5u c\xE2u c\xF3 \u1EA3nh v\xE0 m\u1EE9c r\u1EE7i ro, b\u1EA5m \u201CS\u1EEDa\u201D \u0111\u1EC3 ch\u1EC9nh n\u1ED9i dung.";
+        headLeft.appendChild(label);
+        headLeft.appendChild(h2);
+        headLeft.appendChild(desc);
+        var saveBtn = document.createElement("button");
+        saveBtn.className = "primary importPreviewSaveTop";
+        saveBtn.type = "button";
+        saveBtn.textContent = "L\u01B0u M\xF4n H\u1ECDc";
+        saveBtn.onclick = function() {
+          window.__closeImportPreviewModal();
+          window.__submitSubjectRequest();
+        };
+        head.appendChild(headLeft);
+        head.appendChild(saveBtn);
+        var stats = document.createElement("div");
+        stats.id = "importPreviewStats";
+        stats.className = "importPreviewStats";
+        var list = document.createElement("div");
+        list.id = "importPreviewList";
+        list.className = "importPreviewList";
+        box.appendChild(closeBtn);
+        box.appendChild(head);
+        box.appendChild(stats);
+        box.appendChild(list);
+        modal.appendChild(box);
+        modal.addEventListener("mousedown", function(e) {
+          if (e.target === modal) window.__closeImportPreviewModal();
+        });
+        document.body.appendChild(modal);
+        renderQualityStats(data);
+        renderQualityList(data);
+        modal.classList.remove("hidden");
+      }
+      function buildCard(q, i) {
+        var answer = String(q.answer || "").toUpperCase();
+        var risk = q.error_risk || "low";
+        var riskBg = { low: "rgba(39,174,96,0.08)", medium: "rgba(243,156,18,0.08)", high: "rgba(231,76,60,0.08)" }[risk] || "";
+        var card = document.createElement("article");
+        card.className = "previewQuestionCard";
+        card.dataset.pcard = i;
+        card.style.borderLeft = "4px solid " + riskColor(risk);
+        card.style.background = riskBg;
+        var top = document.createElement("div");
+        top.className = "previewQuestionTop";
+        var numB = document.createElement("b");
+        numB.textContent = "C\xE2u " + (q.num || i + 1);
+        var actions = document.createElement("div");
+        actions.className = "previewTopActions";
+        if (q.has_image) {
+          var imgBadge = document.createElement("span");
+          imgBadge.className = "previewBadge imgBadge";
+          imgBadge.textContent = "\u{1F4F7} C\xF3 \u1EA3nh";
+          actions.appendChild(imgBadge);
+        }
+        var rBadge = document.createElement("span");
+        rBadge.className = "previewBadge riskBadge";
+        rBadge.style.background = riskColor(risk);
+        rBadge.style.color = "#fff";
+        rBadge.textContent = riskLabel(risk);
+        actions.appendChild(rBadge);
+        var ansBadge = document.createElement("span");
+        ansBadge.className = "previewAnswerBadge";
+        ansBadge.textContent = "\u0110\xE1p \xE1n: " + (answer || "?");
+        actions.appendChild(ansBadge);
+        var editBtn = document.createElement("button");
+        editBtn.className = "previewEditBtn";
+        editBtn.type = "button";
+        editBtn.textContent = "S\u1EEDa";
+        editBtn.addEventListener("click", function() {
+          window.__editImportPreviewQuestion(i);
+        });
+        actions.appendChild(editBtn);
+        top.appendChild(numB);
+        top.appendChild(actions);
+        card.appendChild(top);
+        if (q.error_risk_reason) {
+          var reasonDiv = document.createElement("div");
+          reasonDiv.className = "previewRiskReason";
+          reasonDiv.textContent = "\u26A0 " + q.error_risk_reason;
+          card.appendChild(reasonDiv);
+        }
+        var qText = document.createElement("div");
+        qText.className = "previewQuestionText";
+        qText.textContent = q.question || "";
+        card.appendChild(qText);
+        var imgArea = document.createElement("div");
+        imgArea.className = "previewImgArea";
+        imgArea.dataset.imgIdx = i;
+        function renderImgThumbs() {
+          imgArea.textContent = "";
+          var imgs = q.images || [];
+          if (imgs.length) {
+            var thumbRow = document.createElement("div");
+            thumbRow.className = "previewQuestionImages";
+            imgs.forEach(function(im, idx) {
+              var src = typeof im === "string" ? im : im.src || im.url || "";
+              if (!src) return;
+              var wrap = document.createElement("div");
+              wrap.className = "previewImgThumb";
+              var img = document.createElement("img");
+              img.src = src;
+              img.alt = "\u1EA2nh " + (idx + 1);
+              img.loading = "lazy";
+              var rmBtn = document.createElement("button");
+              rmBtn.className = "previewImgRm";
+              rmBtn.type = "button";
+              rmBtn.textContent = "\xD7";
+              rmBtn.addEventListener("click", function() {
+                q.images.splice(idx, 1);
+                renderImgThumbs();
+                renderQualityStats(getPreviewData());
+              });
+              wrap.appendChild(rmBtn);
+              wrap.appendChild(img);
+              thumbRow.appendChild(wrap);
+            });
+            imgArea.appendChild(thumbRow);
+          }
+          var uploadRow = document.createElement("div");
+          uploadRow.className = "previewImgUploadRow";
+          var fileInput = document.createElement("input");
+          fileInput.type = "file";
+          fileInput.accept = "image/*";
+          fileInput.multiple = true;
+          fileInput.className = "previewImgFileInput";
+          fileInput.addEventListener("change", function(e) {
+            var files = e.target.files || [];
+            Array.prototype.forEach.call(files, function(file) {
+              var fr = new FileReader();
+              fr.onload = function() {
+                if (!q.images) q.images = [];
+                q.images.push({
+                  id: "prev_" + Date.now() + "_" + Math.random().toString(16).slice(2),
+                  src: fr.result,
+                  source: "user-upload",
+                  name: file.name
+                });
+                if (!q.has_image) {
+                  q.has_image = true;
+                }
+                renderImgThumbs();
+                renderQualityStats(getPreviewData());
+              };
+              fr.readAsDataURL(file);
+            });
+            e.target.value = "";
+          });
+          var uploadBtn = document.createElement("button");
+          uploadBtn.className = "previewImgUploadBtn";
+          uploadBtn.type = "button";
+          uploadBtn.textContent = "\u{1F4F7} Th\xEAm \u1EA3nh";
+          uploadBtn.addEventListener("click", function() {
+            fileInput.click();
+          });
+          uploadRow.appendChild(fileInput);
+          uploadRow.appendChild(uploadBtn);
+          if (q.images && q.images.length) {
+            var countSpan = document.createElement("span");
+            countSpan.className = "previewImgCount";
+            countSpan.textContent = q.images.length + " \u1EA3nh";
+            uploadRow.appendChild(countSpan);
+          }
+          imgArea.appendChild(uploadRow);
+        }
+        renderImgThumbs();
+        card.appendChild(imgArea);
+        var grid = document.createElement("div");
+        grid.className = "previewAnswerGrid";
+        Object.entries(q.options || {}).forEach(function(entry) {
+          var k = entry[0], v = entry[1];
+          var key = String(k).toUpperCase();
+          var isCorrect = answer.includes(key);
+          var optDiv = document.createElement("div");
+          optDiv.className = "previewAnswerOption" + (isCorrect ? " correct" : "");
+          optDiv.dataset.pi = i;
+          optDiv.dataset.k = key;
+          var b = document.createElement("b");
+          b.textContent = key;
+          var s = document.createElement("span");
+          s.textContent = v;
+          optDiv.appendChild(b);
+          optDiv.appendChild(s);
+          grid.appendChild(optDiv);
+        });
+        card.appendChild(grid);
+        var controls = document.createElement("div");
+        controls.className = "previewQualityControls";
+        var toggleLabel = document.createElement("label");
+        toggleLabel.className = "previewToggle";
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = !!q.has_image;
+        cb.addEventListener("change", function() {
+          window.__toggleQualityImage(i, this.checked);
+        });
+        var cbText = document.createElement("span");
+        cbText.textContent = "C\xF3 \u1EA3nh";
+        toggleLabel.appendChild(cb);
+        toggleLabel.appendChild(cbText);
+        var riskDiv = document.createElement("div");
+        riskDiv.className = "previewRiskSelect";
+        var riskSpan = document.createElement("span");
+        riskSpan.textContent = "R\u1EE7i ro:";
+        var sel = document.createElement("select");
+        ["low", "medium", "high"].forEach(function(val) {
+          var opt2 = document.createElement("option");
+          opt2.value = val;
+          opt2.textContent = { low: "Th\u1EA5p", medium: "Trung b\xECnh", high: "Cao" }[val];
+          if (risk === val) opt2.selected = true;
+          sel.appendChild(opt2);
+        });
+        sel.addEventListener("change", function() {
+          window.__setQualityRisk(i, this.value);
+        });
+        riskDiv.appendChild(riskSpan);
+        riskDiv.appendChild(sel);
+        controls.appendChild(toggleLabel);
+        controls.appendChild(riskDiv);
+        card.appendChild(controls);
+        return card;
+      }
+      window.__openImportPreviewModal = renderPreviewInline;
+    })();
+    (function() {
+      const LETTERS = ["A", "B", "C", "D", "E", "F", "G"];
+      function escHtml(s) {
+        return String(s ?? "").replace(
+          /[&<>"']/g,
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+        );
+      }
+      function getData() {
+        return window.__previewImportData || [];
+      }
+      function optionKeys(q) {
+        const keys = Object.keys(q?.options || {}).map((k) => String(k).toUpperCase());
+        return LETTERS.filter((k) => keys.includes(k));
+      }
+      function nextKey(keys) {
+        return LETTERS.find((k) => !keys.includes(k));
+      }
+      function markCorrect(card, answer) {
+        card.querySelectorAll(".previewAnswerOption").forEach((opt) => {
+          const k = String(opt.dataset.k || "").toUpperCase();
+          opt.classList.toggle("correct", answer.includes(k));
+        });
+      }
+      function refreshCardOnly(i) {
+        const q = getData()[i];
+        if (!q) return;
+        const open = window.__openImportPreviewModal;
+        if (typeof open === "function") {
+          open(getData());
+        }
+      }
+      window.__editImportPreviewQuestion = function(i) {
+        const data = getData();
+        const q = data[i];
+        const card = document.querySelector(`[data-pcard="${i}"]`);
+        if (!q || !card) return;
+        if (card.classList.contains("inlineEditing")) return;
+        card.dataset.backupHtml = card.innerHTML;
+        card.classList.add("inlineEditing");
+        const questionEl = card.querySelector(".previewQuestionText");
+        if (questionEl) {
+          questionEl.setAttribute("contenteditable", "true");
+          questionEl.dataset.field = "question";
+        }
+        card.querySelectorAll(".previewAnswerOption").forEach((opt) => {
+          const span = opt.querySelector("span");
+          if (span) {
+            span.setAttribute("contenteditable", "true");
+            span.dataset.optText = opt.dataset.k || "";
+          }
+        });
+        const badge = card.querySelector(".previewAnswerBadge");
+        if (badge) {
+          badge.innerHTML = `\u0110\xE1p \xE1n \u0111\xFAng: <input class="inlineCorrectInput" value="${escHtml(String(q.answer || "").toUpperCase())}" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z]/g,'')">`;
+          const input = badge.querySelector("input");
+          input?.addEventListener("input", () => markCorrect(card, String(input.value || "").toUpperCase()));
+        }
+        const grid = card.querySelector(".previewAnswerGrid");
+        if (grid && !card.querySelector(".inlineAddOptionMini")) {
+          grid.insertAdjacentHTML(
+            "afterend",
+            `<button class="inlineAddOptionMini" type="button" title="Th\xEAm \u0111\xE1p \xE1n" onclick="window.__inlineAddPreviewOption(${i})">+</button>`
+          );
+        }
+        if (!card.querySelector(".inlineEditActionsMini")) {
+          card.insertAdjacentHTML(
+            "beforeend",
+            `<div class="inlineEditActionsMini"><button class="btn" type="button" onclick="window.__cancelInlineKeepEdit(${i})">H\u1EE7y</button><button class="primary" type="button" onclick="window.__saveInlineKeepEdit(${i})">L\u01B0u s\u1EEDa</button></div>`
+          );
+        }
+        questionEl?.focus();
+      };
+      window.__inlineAddPreviewOption = function(i) {
+        const card = document.querySelector(`[data-pcard="${i}"]`);
+        const grid = card?.querySelector(".previewAnswerGrid");
+        if (!card || !grid) return;
+        const keys = Array.from(grid.querySelectorAll(".previewAnswerOption")).map(
+          (x) => String(x.dataset.k || "").toUpperCase()
+        );
+        const k = nextKey(keys);
+        if (!k) return alert("\u0110\xE3 \u0111\u1EE7 s\u1ED1 l\u1EF1a ch\u1ECDn.");
+        grid.insertAdjacentHTML(
+          "beforeend",
+          `<div class="previewAnswerOption" data-pi="${i}" data-k="${k}"><b>${k}</b><span contenteditable="true" data-opt-text="${k}"></span></div>`
+        );
+        grid.querySelector(`[data-k="${k}"] span`)?.focus();
+      };
+      window.__cancelInlineKeepEdit = function(i) {
+        const card = document.querySelector(`[data-pcard="${i}"]`);
+        if (!card) return;
+        card.innerHTML = card.dataset.backupHtml || card.innerHTML;
+        card.classList.remove("inlineEditing");
+        delete card.dataset.backupHtml;
+      };
+      window.__saveInlineKeepEdit = function(i) {
+        const data = getData();
+        const q = data[i];
+        const card = document.querySelector(`[data-pcard="${i}"]`);
+        if (!q || !card) return;
+        const question = (card.querySelector(".previewQuestionText")?.textContent || "").trim();
+        const answer = (card.querySelector(".inlineCorrectInput")?.value || "").trim().toUpperCase();
+        if (!question) return alert("C\xE2u h\u1ECFi kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
+        if (!answer) return alert("\u0110\xE1p \xE1n \u0111\xFAng kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
+        const options = {};
+        card.querySelectorAll(".previewAnswerOption").forEach((opt) => {
+          const k = String(opt.dataset.k || "").toUpperCase();
+          const v = (opt.querySelector("span")?.textContent || "").trim();
+          if (k && v) options[k] = v;
+        });
+        if (!Object.keys(options).length) return alert("C\u1EA7n c\xF3 \xEDt nh\u1EA5t m\u1ED9t \u0111\xE1p \xE1n l\u1EF1a ch\u1ECDn.");
+        q.question = question;
+        q.options = options;
+        q.answer = answer;
+        refreshCardOnly(i);
+        if (typeof notify === "function") notify("\u0110\xE3 c\u1EADp nh\u1EADt c\xE2u h\u1ECFi");
+      };
+    })();
+    (function() {
+      function ensureDeleteButtons(card) {
+        if (!card) return;
+        card.querySelectorAll(".previewAnswerOption").forEach((opt) => {
+          if (opt.querySelector(".inlineDeleteOptionBtn")) return;
+          const k = opt.dataset.k || "";
+          opt.insertAdjacentHTML(
+            "beforeend",
+            `<button class="inlineDeleteOptionBtn" type="button" title="X\xF3a \u0111\xE1p \xE1n ${k}" onclick="window.__deleteInlinePreviewOption(this)">\xD7</button>`
+          );
+        });
+      }
+      window.__deleteInlinePreviewOption = function(btn) {
+        const opt = btn?.closest?.(".previewAnswerOption");
+        const card = btn?.closest?.(".previewQuestionCard");
+        if (!opt || !card) return;
+        const count = card.querySelectorAll(".previewAnswerOption").length;
+        if (count <= 1) return alert("Ph\u1EA3i c\xF2n \xEDt nh\u1EA5t 1 \u0111\xE1p \xE1n.");
+        const k = String(opt.dataset.k || "").toUpperCase();
+        const input = card.querySelector(".inlineCorrectInput");
+        if (input && k) {
+          input.value = String(input.value || "").toUpperCase().replaceAll(k, "");
+          card.querySelectorAll(".previewAnswerOption").forEach((o) => {
+            const ok = String(input.value || "").includes(String(o.dataset.k || "").toUpperCase());
+            o.classList.toggle("correct", ok);
+          });
+        }
+        opt.remove();
+      };
+      const oldEdit = window.__editImportPreviewQuestion;
+      window.__editImportPreviewQuestion = function(i) {
+        if (typeof oldEdit === "function") oldEdit.apply(this, arguments);
+        setTimeout(() => ensureDeleteButtons(document.querySelector(`[data-pcard="${i}"]`)), 0);
+      };
+      const oldAdd = window.__inlineAddPreviewOption;
+      window.__inlineAddPreviewOption = function(i) {
+        if (typeof oldAdd === "function") oldAdd.apply(this, arguments);
+        setTimeout(() => ensureDeleteButtons(document.querySelector(`[data-pcard="${i}"]`)), 0);
+      };
+    })();
+    (function() {
+      const STORE2 = "learninghub_import_preview_compact_v1";
+      function applyCompact(modal, compact) {
+        if (!modal) return;
+        modal.classList.toggle("compactMode", !!compact);
+        const btn = modal.querySelector(".previewCompactToggle");
+        if (btn) {
+          btn.classList.toggle("active", !!compact);
+          btn.textContent = compact ? "Chi ti\u1EBFt" : "Danh s\xE1ch nhanh";
+          btn.title = compact ? "B\u1EA5m \u0111\u1EC3 xem \u0111\u1EA7y \u0111\u1EE7 \u0111\xE1p \xE1n v\xE0 c\xF4ng c\u1EE5" : "B\u1EA5m \u0111\u1EC3 xem nhi\u1EC1u c\xE2u h\u01A1n";
+        }
+      }
+      function enhanceImportPreview() {
+        const modal = document.getElementById("importPreviewModal");
+        if (!modal || modal.dataset.compactEnhanced === "1") return;
+        const save = modal.querySelector(".importPreviewSaveTop");
+        if (!save || !save.parentNode) return;
+        modal.dataset.compactEnhanced = "1";
+        let compact = localStorage.getItem(STORE2);
+        compact = compact === null ? true : compact === "1";
+        const actions = document.createElement("div");
+        actions.className = "importPreviewHeadActions";
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "previewCompactToggle";
+        toggle.addEventListener("click", function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          compact = !modal.classList.contains("compactMode");
+          localStorage.setItem(STORE2, compact ? "1" : "0");
+          applyCompact(modal, compact);
+        });
+        save.parentNode.insertBefore(actions, save);
+        actions.appendChild(toggle);
+        actions.appendChild(save);
+        applyCompact(modal, compact);
+      }
+      function start() {
+        enhanceImportPreview();
+        if (window.MutationObserver && document.body) {
+          new MutationObserver(enhanceImportPreview).observe(document.body, { childList: true, subtree: true });
+        }
+        setInterval(enhanceImportPreview, 700);
+      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
+      else start();
+    })();
+    (function() {
+      const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+      function esc3(s) {
+        return String(s ?? "").replace(
+          /[&<>"']/g,
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+        );
+      }
+      function getData(data) {
+        const arr = data || window.__previewImportData || [];
+        window.__previewImportData = arr;
+        return arr;
+      }
+      function normAns(q) {
+        return String(q?.answer || "").toUpperCase().replace(/[^A-Z]/g, "");
+      }
+      function correctText(q) {
+        const ans = normAns(q);
+        if (!ans) return "Ch\u01B0a c\xF3 \u0111\xE1p \xE1n";
+        return ans.split("").map((k) => k + ". " + (q.options?.[k] || "")).join(" | ");
+      }
+      function nextKey(opts) {
+        const used = new Set(Object.keys(opts || {}).map((k) => String(k).toUpperCase()));
+        return LETTERS.find((k) => !used.has(k));
+      }
+      function renderCard3(q, i) {
+        const ans = normAns(q) || "?";
+        return `<article class="simplePreviewCard" data-simple-card="${i}"><div class="simplePreviewRow"><div class="simplePreviewNum">C\xE2u ${esc3(q.num || i + 1)}</div><div class="simplePreviewMain"><div class="simplePreviewQuestion">${esc3(q.question || "")}</div><div class="simplePreviewCorrect"><b>\u0110\xE1p \xE1n: ${esc3(ans)}</b><span>${esc3(correctText(q))}</span></div></div><button class="simplePreviewEditBtn" type="button" data-simple-edit="${i}">S\u1EEDa</button></div></article>`;
+      }
+      function renderEditCard(q, i) {
+        const opts = q.options || {};
+        const optionRows = Object.keys(opts).sort().map(
+          (k) => `<div class="simpleEditOption" data-opt-row="${esc3(k)}"><div class="simpleEditKey">${esc3(k)}</div><input value="${esc3(opts[k] || "")}" data-edit-opt="${esc3(k)}"><button class="simpleEditDel" type="button" data-del-opt="${esc3(k)}">\xD7</button></div>`
+        ).join("");
+        return `<article class="simplePreviewCard simpleEditCard" data-simple-card="${i}"><div class="simpleEditHead"><div class="simpleEditTitle">S\u1EEDa to\xE0n b\u1ED9 C\xE2u ${esc3(q.num || i + 1)}</div></div><div class="simpleEditGrid"><div class="simpleEditField"><label>C\xE2u h\u1ECFi</label><textarea data-edit-question>${esc3(q.question || "")}</textarea></div><div class="simpleEditField"><label>\u0110\xE1p \xE1n \u0111\xFAng</label><input data-edit-answer value="${esc3(normAns(q))}" placeholder="VD: A ho\u1EB7c AC"></div></div><div class="simpleEditField" style="margin-top:10px"><label>C\xE1c \u0111\xE1p \xE1n</label><div class="simpleEditOptions">${optionRows}</div></div><div class="simpleEditBottom"><button class="btn" type="button" data-add-opt="${i}">+ Th\xEAm \u0111\xE1p \xE1n</button><div class="simpleEditMiniActions"><button class="btn" type="button" data-cancel-simple="${i}">H\u1EE7y</button><button class="primary" type="button" data-save-simple="${i}">L\u01B0u s\u1EEDa</button></div></div></article>`;
+      }
+      function renderList(data) {
+        const list = document.getElementById("simplePreviewList");
+        if (list) list.innerHTML = data.map(renderCard3).join("");
+      }
+      function openSimplePreview(data) {
+        data = getData(data);
+        let modal = document.getElementById("importPreviewModal");
+        if (modal) modal.remove();
+        modal = document.createElement("div");
+        modal.id = "importPreviewModal";
+        modal.className = "modal simpleImportPreviewModal";
+        modal.innerHTML = `<div class="box simpleImportPreviewBox"><button class="modalX" type="button" data-simple-close>\xD7</button><div class="simplePreviewHead"><div><span class="simplePreviewLabel">XEM TR\u01AF\u1EDAC IMPORT</span><h2>Ki\u1EC3m tra c\xE2u h\u1ECFi</h2><p class="simplePreviewHint">Ch\u1EC9 hi\u1EC7n c\xE2u h\u1ECFi v\xE0 \u0111\xE1p \xE1n \u0111\xFAng. B\u1EA5m \u201CS\u1EEDa\u201D \u0111\u1EC3 ch\u1EC9nh to\xE0n b\u1ED9 c\xE2u v\xE0 c\xE1c \u0111\xE1p \xE1n.</p></div><div class="simplePreviewActions"><button class="primary simplePreviewSave" type="button" data-simple-save>L\u01B0u M\xF4n H\u1ECDc</button></div></div><div class="simplePreviewCount">${data.length} c\xE2u h\u1ECFi</div><div id="simplePreviewList" class="simplePreviewList"></div></div>`;
+        document.body.appendChild(modal);
+        renderList(data);
+      }
+      function saveEdit(i) {
+        const data = getData();
+        const q = data[i];
+        const card = document.querySelector(`[data-simple-card="${i}"]`);
+        if (!q || !card) return;
+        const question = (card.querySelector("[data-edit-question]")?.value || "").trim();
+        const answer = (card.querySelector("[data-edit-answer]")?.value || "").trim().toUpperCase().replace(/[^A-Z]/g, "");
+        if (!question) return alert("C\xE2u h\u1ECFi kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
+        if (!answer) return alert("\u0110\xE1p \xE1n \u0111\xFAng kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
+        const options = {};
+        card.querySelectorAll("[data-edit-opt]").forEach((inp) => {
+          const k = String(inp.dataset.editOpt || "").toUpperCase();
+          const v = (inp.value || "").trim();
+          if (k && v) options[k] = v;
+        });
+        if (!Object.keys(options).length) return alert("C\u1EA7n \xEDt nh\u1EA5t 1 \u0111\xE1p \xE1n.");
+        for (const k of answer.split("")) {
+          if (!options[k]) return alert("\u0110\xE1p \xE1n \u0111\xFAng " + k + " ch\u01B0a c\xF3 n\u1ED9i dung.");
+        }
+        q.question = question;
+        q.answer = answer;
+        q.options = options;
+        q.answer_text = answer.split("").map((k) => k + ". " + (options[k] || "")).join("; ");
+        renderList(data);
+        if (typeof notify === "function") notify("\u0110\xE3 l\u01B0u s\u1EEDa c\xE2u " + (q.num || i + 1));
+      }
+      document.addEventListener("click", function(e) {
+        if (e.target.closest("[data-simple-close]")) {
+          document.getElementById("importPreviewModal")?.classList.add("hidden");
+          return;
+        }
+        if (e.target.closest("[data-simple-save]")) {
+          document.getElementById("importPreviewModal")?.classList.add("hidden");
+          window.__submitSubjectRequest?.();
+          return;
+        }
+        const edit = e.target.closest("[data-simple-edit]");
+        if (edit) {
+          const i = +edit.dataset.simpleEdit;
+          const data = getData();
+          const card = document.querySelector(`[data-simple-card="${i}"]`);
+          if (card && data[i]) {
+            card.outerHTML = renderEditCard(data[i], i);
+            document.querySelector(`[data-simple-card="${i}"] textarea`)?.focus();
+          }
+          return;
+        }
+        const cancel = e.target.closest("[data-cancel-simple]");
+        if (cancel) {
+          renderList(getData());
+          return;
+        }
+        const save = e.target.closest("[data-save-simple]");
+        if (save) {
+          saveEdit(+save.dataset.saveSimple);
+          return;
+        }
+        const add = e.target.closest("[data-add-opt]");
+        if (add) {
+          const i = +add.dataset.addOpt;
+          const data = getData();
+          const q = data[i];
+          const k = nextKey(q.options || {});
+          if (!k) return alert("\u0110\xE3 \u0111\u1EE7 s\u1ED1 \u0111\xE1p \xE1n.");
+          q.options = q.options || {};
+          q.options[k] = "";
+          const card = document.querySelector(`[data-simple-card="${i}"]`);
+          if (card) {
+            card.outerHTML = renderEditCard(q, i);
+            document.querySelector(`[data-simple-card="${i}"] [data-edit-opt="${k}"]`)?.focus();
+          }
+          return;
+        }
+        const del = e.target.closest("[data-del-opt]");
+        if (del) {
+          const card = del.closest("[data-simple-card]");
+          const i = +(card?.dataset.simpleCard || 0);
+          const q = getData()[i];
+          const k = del.dataset.delOpt;
+          if (q?.options && k) {
+            delete q.options[k];
+            card.outerHTML = renderEditCard(q, i);
+          }
+          return;
+        }
+      });
+      window.__openImportPreviewModal = openSimplePreview;
+      window.__editImportPreviewQuestion = function(i) {
+        const data = getData();
+        const card = document.querySelector(`[data-simple-card="${i}"]`);
+        if (card && data[i]) card.outerHTML = renderEditCard(data[i], i);
+      };
+    })();
+    (function() {
+      const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+      let currentFilter = "all";
+      function esc3(s) {
+        return String(s ?? "").replace(
+          /[&<>"']/g,
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+        );
+      }
+      function getData(data) {
+        const arr = data || window.__previewImportData || [];
+        window.__previewImportData = arr;
+        arr.forEach(detect);
+        return arr;
+      }
+      function normAns(q) {
+        return String(q?.answer || "").toUpperCase().replace(/[^A-Z]/g, "");
+      }
+      function detect(q) {
+        q.has_image = !!(q.has_image || q.images && q.images.length);
+        if (!q.error_risk) q.error_risk = normAns(q).length > 1 ? "medium" : "low";
+        return q;
+      }
+      function correctText(q) {
+        const ans = normAns(q);
+        if (!ans) return "Ch\u01B0a c\xF3 \u0111\xE1p \xE1n";
+        return ans.split("").map((k) => k + ". " + (q.options?.[k] || "")).join(" | ");
+      }
+      function riskColor(r) {
+        return { high: "#e74c3c", medium: "#f39c12", low: "#27ae60" }[r] || "#999";
+      }
+      function riskLabel(r) {
+        return { high: "Cao", medium: "Trung b\xECnh", low: "Th\u1EA5p" }[r] || r;
+      }
+      function nextKey(opts) {
+        const used = new Set(Object.keys(opts || {}).map((k) => String(k).toUpperCase()));
+        return LETTERS.find((k) => !used.has(k));
+      }
+      function pass(q) {
+        if (currentFilter === "all") return true;
+        if (currentFilter === "has_image") return !!q.has_image;
+        return q.error_risk === currentFilter;
+      }
+      function stat(data) {
+        return {
+          total: data.length,
+          img: data.filter((q) => q.has_image).length,
+          high: data.filter((q) => q.error_risk === "high").length,
+          medium: data.filter((q) => q.error_risk === "medium").length,
+          low: data.filter((q) => q.error_risk === "low").length
+        };
+      }
+      function renderStats(data) {
+        const s = stat(data);
+        const box = document.getElementById("simplePreviewStats");
+        if (!box) return;
+        const filters = [
+          ["all", "Th\u01B0 vi\u1EC7n"],
+          ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"],
+          ["high", "R\u1EE7i ro cao"],
+          ["medium", "Trung b\xECnh"],
+          ["low", "Th\u1EA5p"]
+        ];
+        box.innerHTML = `<div class="simplePreviewStatLine"><span class="simplePreviewStatItem">${s.total} c\xE2u</span><span class="simplePreviewStatItem" style="color:#3498db">${s.img} c\xF3 \u1EA3nh</span><span class="simplePreviewStatItem" style="color:#e74c3c">${s.high} r\u1EE7i ro cao</span><span class="simplePreviewStatItem" style="color:#f39c12">${s.medium} trung b\xECnh</span><span class="simplePreviewStatItem" style="color:#27ae60">${s.low} th\u1EA5p</span></div><div class="simplePreviewFilterLine">${filters.map((f) => `<button type="button" class="simpleFilterBtn ${currentFilter === f[0] ? "active" : ""}" data-filter="${f[0]}">${f[1]}</button>`).join("")}</div>`;
+      }
+      function renderCard3(q, i) {
+        const ans = normAns(q) || "?";
+        return `<article class="simplePreviewCard" data-simple-card="${i}" style="border-left-color:${riskColor(q.error_risk)}!important"><div class="simplePreviewRow"><div class="simplePreviewNum">C\xE2u ${esc3(q.num || i + 1)}</div><div class="simplePreviewMain"><div class="simplePreviewQuestion">${esc3(q.question || "")}</div><div class="simplePreviewCorrect"><b>\u0110\xE1p \xE1n: ${esc3(ans)}</b><span>${esc3(correctText(q))}</span></div></div><div class="simplePreviewMetaMini"><span class="simplePreviewRiskDot" style="background:${riskColor(q.error_risk)}" title="R\u1EE7i ro: ${esc3(riskLabel(q.error_risk))}"></span>${q.has_image ? '<span class="simplePreviewImgMark">\u{1F4F7}</span>' : ""}<button class="simplePreviewEditBtn" type="button" data-simple-edit="${i}">S\u1EEDa</button></div></div></article>`;
+      }
+      function renderEditCard(q, i) {
+        const opts = q.options || {};
+        const optionRows = Object.keys(opts).sort().map(
+          (k) => `<div class="simpleEditOption" data-opt-row="${esc3(k)}"><div class="simpleEditKey">${esc3(k)}</div><input value="${esc3(opts[k] || "")}" data-edit-opt="${esc3(k)}"><button class="simpleEditDel" type="button" data-del-opt="${esc3(k)}">\xD7</button></div>`
+        ).join("");
+        return `<article class="simplePreviewCard simpleEditCard" data-simple-card="${i}"><div class="simpleEditHead"><div class="simpleEditTitle">S\u1EEDa to\xE0n b\u1ED9 C\xE2u ${esc3(q.num || i + 1)}</div></div><div class="simpleEditGrid"><div class="simpleEditField"><label>C\xE2u h\u1ECFi</label><textarea data-edit-question>${esc3(q.question || "")}</textarea></div><div class="simpleEditField"><label>\u0110\xE1p \xE1n \u0111\xFAng</label><input data-edit-answer value="${esc3(normAns(q))}" placeholder="VD: A ho\u1EB7c AC"></div></div><div class="simpleEditField" style="margin-top:10px"><label>C\xE1c \u0111\xE1p \xE1n</label><div class="simpleEditOptions">${optionRows}</div></div><div class="simpleEditBottom"><button class="btn" type="button" data-add-opt="${i}">+ Th\xEAm \u0111\xE1p \xE1n</button><div class="simpleEditMiniActions"><button class="btn" type="button" data-cancel-simple="${i}">H\u1EE7y</button><button class="primary" type="button" data-save-simple="${i}">L\u01B0u s\u1EEDa</button></div></div></article>`;
+      }
+      function renderList(data) {
+        const list = document.getElementById("simplePreviewList");
+        if (!list) return;
+        const filtered = data.map((q, i) => ({ q, i })).filter((x) => pass(x.q));
+        list.innerHTML = filtered.length ? filtered.map((x) => renderCard3(x.q, x.i)).join("") : '<div class="simplePreviewEmpty">Kh\xF4ng c\xF3 c\xE2u n\xE0o ph\xF9 h\u1EE3p b\u1ED9 l\u1ECDc.</div>';
+        renderStats(data);
+      }
+      function openSimplePreview(data) {
+        data = getData(data);
+        let modal = document.getElementById("importPreviewModal");
+        if (modal) modal.remove();
+        modal = document.createElement("div");
+        modal.id = "importPreviewModal";
+        modal.className = "modal simpleImportPreviewModal";
+        modal.innerHTML = `<div class="box simpleImportPreviewBox"><button class="modalX" type="button" data-simple-close>\xD7</button><div class="simplePreviewHead"><div><span class="simplePreviewLabel">XEM TR\u01AF\u1EDAC IMPORT</span><h2>Ki\u1EC3m tra c\xE2u h\u1ECFi</h2><p class="simplePreviewHint">Ch\u1EC9 hi\u1EC7n c\xE2u h\u1ECFi v\xE0 \u0111\xE1p \xE1n \u0111\xFAng. D\xF9ng b\u1ED9 l\u1ECDc \u0111\u1EC3 xem c\xE2u c\xF3 \u1EA3nh ho\u1EB7c c\xE2u d\u1EC5 sai.</p></div><div class="simplePreviewActions"><button class="primary simplePreviewSave" type="button" data-simple-save>L\u01B0u M\xF4n H\u1ECDc</button></div></div><div id="simplePreviewStats" class="simplePreviewStats"></div><div id="simplePreviewList" class="simplePreviewList"></div></div>`;
+        document.body.appendChild(modal);
+        renderList(data);
+      }
+      function saveEdit(i) {
+        const data = getData();
+        const q = data[i];
+        const card = document.querySelector(`[data-simple-card="${i}"]`);
+        if (!q || !card) return;
+        const question = (card.querySelector("[data-edit-question]")?.value || "").trim();
+        const answer = (card.querySelector("[data-edit-answer]")?.value || "").trim().toUpperCase().replace(/[^A-Z]/g, "");
+        if (!question) return alert("C\xE2u h\u1ECFi kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
+        if (!answer) return alert("\u0110\xE1p \xE1n \u0111\xFAng kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
+        const options = {};
+        card.querySelectorAll("[data-edit-opt]").forEach((inp) => {
+          const k = String(inp.dataset.editOpt || "").toUpperCase();
+          const v = (inp.value || "").trim();
+          if (k && v) options[k] = v;
+        });
+        if (!Object.keys(options).length) return alert("C\u1EA7n \xEDt nh\u1EA5t 1 \u0111\xE1p \xE1n.");
+        for (const k of answer.split("")) {
+          if (!options[k]) return alert("\u0110\xE1p \xE1n \u0111\xFAng " + k + " ch\u01B0a c\xF3 n\u1ED9i dung.");
+        }
+        q.question = question;
+        q.answer = answer;
+        q.options = options;
+        q.answer_text = answer.split("").map((k) => k + ". " + (options[k] || "")).join("; ");
+        renderList(data);
+        if (typeof notify === "function") notify("\u0110\xE3 l\u01B0u s\u1EEDa c\xE2u " + (q.num || i + 1));
+      }
+      document.addEventListener("click", function(e) {
+        const filter = e.target.closest(".simpleFilterBtn");
+        if (filter) {
+          currentFilter = filter.dataset.filter || "all";
+          renderList(getData());
+          return;
+        }
+        if (e.target.closest("[data-simple-close]")) {
+          document.getElementById("importPreviewModal")?.classList.add("hidden");
+          return;
+        }
+        if (e.target.closest("[data-simple-save]")) {
+          document.getElementById("importPreviewModal")?.classList.add("hidden");
+          window.__submitSubjectRequest?.();
+          return;
+        }
+        const edit = e.target.closest("[data-simple-edit]");
+        if (edit) {
+          const i = +edit.dataset.simpleEdit;
+          const data = getData();
+          const card = document.querySelector(`[data-simple-card="${i}"]`);
+          if (card && data[i]) {
+            card.outerHTML = renderEditCard(data[i], i);
+            document.querySelector(`[data-simple-card="${i}"] textarea`)?.focus();
+          }
+          return;
+        }
+        const cancel = e.target.closest("[data-cancel-simple]");
+        if (cancel) {
+          renderList(getData());
+          return;
+        }
+        const save = e.target.closest("[data-save-simple]");
+        if (save) {
+          saveEdit(+save.dataset.saveSimple);
+          return;
+        }
+        const add = e.target.closest("[data-add-opt]");
+        if (add) {
+          const i = +add.dataset.addOpt;
+          const data = getData();
+          const q = data[i];
+          const k = nextKey(q.options || {});
+          if (!k) return alert("\u0110\xE3 \u0111\u1EE7 s\u1ED1 \u0111\xE1p \xE1n.");
+          q.options = q.options || {};
+          q.options[k] = "";
+          const card = document.querySelector(`[data-simple-card="${i}"]`);
+          if (card) {
+            card.outerHTML = renderEditCard(q, i);
+            document.querySelector(`[data-simple-card="${i}"] [data-edit-opt="${k}"]`)?.focus();
+          }
+          return;
+        }
+        const del = e.target.closest("[data-del-opt]");
+        if (del) {
+          const card = del.closest("[data-simple-card]");
+          const i = +(card?.dataset.simpleCard || 0);
+          const q = getData()[i];
+          const k = del.dataset.delOpt;
+          if (q?.options && k) {
+            delete q.options[k];
+            card.outerHTML = renderEditCard(q, i);
+          }
+          return;
+        }
+      });
+      window.__openImportPreviewModal = openSimplePreview;
+      window.__editImportPreviewQuestion = function(i) {
+        const data = getData();
+        const card = document.querySelector(`[data-simple-card="${i}"]`);
+        if (card && data[i]) card.outerHTML = renderEditCard(data[i], i);
+      };
+    })();
+    (function() {
+      const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+      let currentFilter = "all";
+      function esc3(s) {
+        return String(s ?? "").replace(
+          /[&<>"']/g,
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+        );
+      }
+      function getData(data) {
+        const arr = data || window.__previewImportData || [];
+        window.__previewImportData = arr;
+        arr.forEach(detect);
+        return arr;
+      }
+      function normAns(q) {
+        return String(q?.answer || "").toUpperCase().replace(/[^A-Z]/g, "");
+      }
+      function detect(q) {
+        q.images = q.images || [];
+        q.has_image = !!(q.has_image || q.images && q.images.length);
+        if (!q.error_risk) q.error_risk = normAns(q).length > 1 ? "medium" : "low";
+        return q;
+      }
+      function correctText(q) {
+        const ans = normAns(q);
+        if (!ans) return "Ch\u01B0a c\xF3 \u0111\xE1p \xE1n";
+        return ans.split("").map((k) => k + ". " + (q.options?.[k] || "")).join(" | ");
+      }
+      function riskColor(r) {
+        return { high: "#e74c3c", medium: "#f39c12", low: "#27ae60" }[r] || "#999";
+      }
+      function riskLabel(r) {
+        return { high: "Cao", medium: "Trung b\xECnh", low: "Th\u1EA5p" }[r] || r;
+      }
+      function nextKey(opts) {
+        const used = new Set(Object.keys(opts || {}).map((k) => String(k).toUpperCase()));
+        return LETTERS.find((k) => !used.has(k));
+      }
+      function imgSrc(im) {
+        return typeof im === "string" ? im : im?.src || im?.url || "";
+      }
+      function pass(q) {
+        if (currentFilter === "all") return true;
+        if (currentFilter === "has_image") return !!q.has_image;
+        return q.error_risk === currentFilter;
+      }
+      function stat(data) {
+        return {
+          total: data.length,
+          img: data.filter((q) => q.has_image).length,
+          high: data.filter((q) => q.error_risk === "high").length,
+          medium: data.filter((q) => q.error_risk === "medium").length,
+          low: data.filter((q) => q.error_risk === "low").length
+        };
+      }
+      function renderStats(data) {
+        const s = stat(data), box = document.getElementById("simplePreviewStats");
+        if (!box) return;
+        const filters = [
+          ["all", "Th\u01B0 vi\u1EC7n"],
+          ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"],
+          ["high", "R\u1EE7i ro cao"],
+          ["medium", "Trung b\xECnh"],
+          ["low", "Th\u1EA5p"]
+        ];
+        box.innerHTML = `<div class="simplePreviewStatLine"><span class="simplePreviewStatItem">${s.total} c\xE2u</span><span class="simplePreviewStatItem" style="color:#3498db">${s.img} c\xF3 \u1EA3nh</span><span class="simplePreviewStatItem" style="color:#e74c3c">${s.high} r\u1EE7i ro cao</span><span class="simplePreviewStatItem" style="color:#f39c12">${s.medium} trung b\xECnh</span><span class="simplePreviewStatItem" style="color:#27ae60">${s.low} th\u1EA5p</span></div><div class="simplePreviewFilterLine">${filters.map((f) => `<button type="button" class="imagePreviewFilterBtn ${currentFilter === f[0] ? "active" : ""}" data-imgui-filter="${f[0]}">${f[1]}</button>`).join("")}</div>`;
+      }
+      function miniImages(q) {
+        const imgs = (q.images || []).map(imgSrc).filter(Boolean);
+        if (!imgs.length) return '<div class="imageMiniPreview"></div>';
+        return `<div class="imageMiniPreview"><img src="${esc3(imgs[0])}" alt="\u1EA2nh preview" loading="lazy" decoding="async">${imgs.length > 1 ? `<span class="imageMiniCount">+${imgs.length - 1}</span>` : ""}</div>`;
+      }
+      function renderCard3(q, i) {
+        const ans = normAns(q) || "?";
+        return `<article class="simplePreviewCard" data-imgui-card="${i}" style="border-left-color:${riskColor(q.error_risk)}!important"><div class="imagePreviewListRow"><div class="simplePreviewNum">C\xE2u ${esc3(q.num || i + 1)}</div><div class="simplePreviewMain"><div class="simplePreviewQuestion">${esc3(q.question || "")}</div><div class="simplePreviewCorrect"><b>\u0110\xE1p \xE1n: ${esc3(ans)}</b><span>${esc3(correctText(q))}</span></div></div>${miniImages(q)}<div class="simplePreviewMetaMini"><span class="simplePreviewRiskDot" style="background:${riskColor(q.error_risk)}" title="R\u1EE7i ro: ${esc3(riskLabel(q.error_risk))}"></span><button class="simplePreviewEditBtn" type="button" data-imgui-edit="${i}">S\u1EEDa</button></div></div></article>`;
+      }
+      function renderImages(q, i) {
+        const imgs = q.images || [];
+        return `<div class="simpleEditImages"><div class="simpleEditImagesHead"><span>\u1EA2nh c\u1EE7a c\xE2u h\u1ECFi</span><button class="simpleImageUploadBtn" type="button" data-imgui-pick-img="${i}">+ Th\xEAm \u1EA3nh</button><input class="simpleImgHiddenInput" type="file" accept="image/*" multiple data-imgui-input="${i}"></div><div class="simpleImageThumbs">${imgs.length ? imgs.map((im, idx) => `<div class="simpleImageThumb"><button class="simpleImageRemove" type="button" data-imgui-rm-img="${idx}">\xD7</button><img src="${esc3(imgSrc(im))}" alt="\u1EA2nh ${idx + 1}" loading="lazy" decoding="async"></div>`).join("") : '<div class="simpleNoImage">Ch\u01B0a c\xF3 \u1EA3nh. B\u1EA5m \u201C+ Th\xEAm \u1EA3nh\u201D n\u1EBFu c\xE2u n\xE0y c\u1EA7n h\xECnh.</div>'}</div></div>`;
+      }
+      function renderEditCard(q, i) {
+        const opts = q.options || {};
+        const optionRows = Object.keys(opts).sort().map(
+          (k) => `<div class="simpleEditOption" data-opt-row="${esc3(k)}"><div class="simpleEditKey">${esc3(k)}</div><input value="${esc3(opts[k] || "")}" data-imgui-opt="${esc3(k)}"><button class="simpleEditDel" type="button" data-imgui-del-opt="${esc3(k)}">\xD7</button></div>`
+        ).join("");
+        return `<article class="simplePreviewCard simpleEditCard" data-imgui-card="${i}"><div class="simpleEditHead imageEditHeadTop"><div class="simpleEditTitle">S\u1EEDa to\xE0n b\u1ED9 C\xE2u ${esc3(q.num || i + 1)}</div><div class="imageEditHeadActions"><button class="btn" type="button" data-imgui-cancel="${i}">H\u1EE7y</button><button class="primary" type="button" data-imgui-save="${i}">L\u01B0u s\u1EEDa</button></div></div><div class="simpleEditGrid"><div class="simpleEditField"><label>C\xE2u h\u1ECFi</label><textarea data-imgui-question>${esc3(q.question || "")}</textarea></div><div class="simpleEditField"><label>\u0110\xE1p \xE1n \u0111\xFAng</label><input data-imgui-answer value="${esc3(normAns(q))}" placeholder="VD: A ho\u1EB7c AC"></div></div><div class="simpleEditField" style="margin-top:10px"><label>C\xE1c \u0111\xE1p \xE1n</label><div class="simpleEditOptions">${optionRows}</div></div>${renderImages(q, i)}<div class="simpleEditBottom imageEditBottomOnlyAdd"><button class="btn" type="button" data-imgui-add-opt="${i}">+ Th\xEAm \u0111\xE1p \xE1n</button></div></article>`;
+      }
+      function renderList(data) {
+        const list = document.getElementById("simplePreviewList");
+        if (!list) return;
+        const filtered = data.map((q, i) => ({ q, i })).filter((x) => pass(x.q));
+        list.innerHTML = filtered.length ? filtered.map((x) => renderCard3(x.q, x.i)).join("") : '<div class="simplePreviewEmpty">Kh\xF4ng c\xF3 c\xE2u n\xE0o ph\xF9 h\u1EE3p b\u1ED9 l\u1ECDc.</div>';
+        renderStats(data);
+      }
+      function openPreview(data) {
+        data = getData(data);
+        let modal = document.getElementById("importPreviewModal");
+        if (modal) modal.remove();
+        modal = document.createElement("div");
+        modal.id = "importPreviewModal";
+        modal.className = "modal simpleImportPreviewModal";
+        modal.innerHTML = `<div class="box simpleImportPreviewBox"><button class="modalX" type="button" data-imgui-close>\xD7</button><div class="simplePreviewHead"><div><span class="simplePreviewLabel">XEM TR\u01AF\u1EDAC IMPORT</span><h2>Ki\u1EC3m tra c\xE2u h\u1ECFi</h2><p class="simplePreviewHint">Ch\u1EC9 hi\u1EC7n c\xE2u h\u1ECFi v\xE0 \u0111\xE1p \xE1n \u0111\xFAng. C\xE2u c\xF3 \u1EA3nh s\u1EBD hi\u1EC7n preview nh\u1ECF.</p></div><div class="simplePreviewActions"><button class="primary simplePreviewSave" type="button" data-imgui-submit>L\u01B0u M\xF4n H\u1ECDc</button></div></div><div id="simplePreviewStats" class="simplePreviewStats"></div><div id="simplePreviewList" class="simplePreviewList"></div></div>`;
+        document.body.appendChild(modal);
+        renderList(data);
+      }
+      function saveEdit(i) {
+        const data = getData();
+        const q = data[i];
+        const card = document.querySelector(`[data-imgui-card="${i}"]`);
+        if (!q || !card) return;
+        const question = (card.querySelector("[data-imgui-question]")?.value || "").trim();
+        const answer = (card.querySelector("[data-imgui-answer]")?.value || "").trim().toUpperCase().replace(/[^A-Z]/g, "");
+        if (!question) return alert("C\xE2u h\u1ECFi kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
+        if (!answer) return alert("\u0110\xE1p \xE1n \u0111\xFAng kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
+        const options = {};
+        card.querySelectorAll("[data-imgui-opt]").forEach((inp) => {
+          const k = String(inp.dataset.imguiOpt || "").toUpperCase();
+          const v = (inp.value || "").trim();
+          if (k && v) options[k] = v;
+        });
+        if (!Object.keys(options).length) return alert("C\u1EA7n \xEDt nh\u1EA5t 1 \u0111\xE1p \xE1n.");
+        for (const k of answer.split("")) {
+          if (!options[k]) return alert("\u0110\xE1p \xE1n \u0111\xFAng " + k + " ch\u01B0a c\xF3 n\u1ED9i dung.");
+        }
+        q.question = question;
+        q.answer = answer;
+        q.options = options;
+        q.answer_text = answer.split("").map((k) => k + ". " + (options[k] || "")).join("; ");
+        q.has_image = !!(q.images && q.images.length);
+        renderList(data);
+        if (typeof notify === "function") notify("\u0110\xE3 l\u01B0u s\u1EEDa c\xE2u " + (q.num || i + 1));
+      }
+      document.addEventListener("click", function(e) {
+        const filter = e.target.closest("[data-imgui-filter]");
+        if (filter) {
+          currentFilter = filter.dataset.imguiFilter || "all";
+          renderList(getData());
+          return;
+        }
+        if (e.target.closest("[data-imgui-close]")) {
+          document.getElementById("importPreviewModal")?.classList.add("hidden");
+          return;
+        }
+        if (e.target.closest("[data-imgui-submit]")) {
+          document.getElementById("importPreviewModal")?.classList.add("hidden");
+          window.__submitSubjectRequest?.();
+          return;
+        }
+        const edit = e.target.closest("[data-imgui-edit]");
+        if (edit) {
+          const i = +edit.dataset.imguiEdit;
+          const data = getData();
+          const card = document.querySelector(`[data-imgui-card="${i}"]`);
+          if (card && data[i]) {
+            card.outerHTML = renderEditCard(data[i], i);
+            document.querySelector(`[data-imgui-card="${i}"] textarea`)?.focus();
+          }
+          return;
+        }
+        const cancel = e.target.closest("[data-imgui-cancel]");
+        if (cancel) {
+          renderList(getData());
+          return;
+        }
+        const save = e.target.closest("[data-imgui-save]");
+        if (save) {
+          saveEdit(+save.dataset.imguiSave);
+          return;
+        }
+        const pick = e.target.closest("[data-imgui-pick-img]");
+        if (pick) {
+          document.querySelector(`[data-imgui-input="${pick.dataset.imguiPickImg}"]`)?.click();
+          return;
+        }
+        const rm = e.target.closest("[data-imgui-rm-img]");
+        if (rm) {
+          const card = rm.closest("[data-imgui-card]");
+          const i = +(card?.dataset.imguiCard || 0);
+          const q = getData()[i];
+          if (q?.images) {
+            q.images.splice(+rm.dataset.imguiRmImg, 1);
+            q.has_image = !!q.images.length;
+            card.outerHTML = renderEditCard(q, i);
+          }
+          return;
+        }
+        const add = e.target.closest("[data-imgui-add-opt]");
+        if (add) {
+          const i = +add.dataset.imguiAddOpt;
+          const data = getData();
+          const q = data[i];
+          const k = nextKey(q.options || {});
+          if (!k) return alert("\u0110\xE3 \u0111\u1EE7 s\u1ED1 \u0111\xE1p \xE1n.");
+          q.options = q.options || {};
+          q.options[k] = "";
+          const card = document.querySelector(`[data-imgui-card="${i}"]`);
+          if (card) {
+            card.outerHTML = renderEditCard(q, i);
+            document.querySelector(`[data-imgui-card="${i}"] [data-imgui-opt="${k}"]`)?.focus();
+          }
+          return;
+        }
+        const del = e.target.closest("[data-imgui-del-opt]");
+        if (del) {
+          const card = del.closest("[data-imgui-card]");
+          const i = +(card?.dataset.imguiCard || 0);
+          const q = getData()[i];
+          const k = del.dataset.imguiDelOpt;
+          if (q?.options && k) {
+            delete q.options[k];
+            card.outerHTML = renderEditCard(q, i);
+          }
+          return;
+        }
+      });
+      document.addEventListener("change", async function(e) {
+        const inp = e.target.closest("[data-imgui-input]");
+        if (!inp) return;
+        const i = +inp.dataset.imguiInput;
+        const q = getData()[i];
+        if (!q) return;
+        q.images = q.images || [];
+        const files = Array.from(inp.files || []);
+        if (!files.length) return;
+        inp.disabled = true;
+        if (typeof notify === "function") notify("\u0110ang upload \u1EA3nh...");
+        try {
+          for (const file of files) {
+            if (window.__LHUploadCloudinary) {
+              const uploaded = await window.__LHUploadCloudinary(file);
+              if (uploaded) q.images.push(uploaded);
+            } else {
+              const fr = new FileReader();
+              const p = new Promise((resolve) => {
+                fr.onload = function() {
+                  q.images.push({
+                    id: "import_" + Date.now() + "_" + Math.random().toString(16).slice(2),
+                    src: fr.result,
+                    source: "user-upload",
+                    name: file.name
+                  });
+                  resolve();
+                };
+                fr.readAsDataURL(file);
+              });
+              await p;
+            }
+          }
+          q.has_image = true;
+          const card = document.querySelector(`[data-imgui-card="${i}"]`);
+          if (card) card.outerHTML = renderEditCard(q, i);
+          if (typeof notify === "function") notify("\u0110\xE3 upload \u1EA3nh th\xE0nh URL");
+        } catch (err) {
+          alert(err.message || err);
+        } finally {
+          inp.disabled = false;
+          inp.value = "";
+        }
+      });
+      window.__openImportPreviewModal = openPreview;
+      window.__editImportPreviewQuestion = function(i) {
+        const data = getData();
+        const card = document.querySelector(`[data-imgui-card="${i}"]`);
+        if (card && data[i]) card.outerHTML = renderEditCard(data[i], i);
+      };
+    })();
+    (function() {
+      const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+      let currentFilter = "all";
+      function esc3(s) {
+        return String(s ?? "").replace(
+          /[&<>"']/g,
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+        );
+      }
+      function getData(data) {
+        const arr = data || window.__previewImportData || [];
+        window.__previewImportData = arr;
+        arr.forEach(detect);
+        return arr;
+      }
+      function normAns(q) {
+        return String(q?.answer || "").toUpperCase().replace(/[^A-Z]/g, "");
+      }
+      function detect(q) {
+        q.images = q.images || [];
+        q.has_image = !!(q.has_image || q.images && q.images.length);
+        if (!q.error_risk) q.error_risk = normAns(q).length > 1 ? "medium" : "low";
+        return q;
+      }
+      function correctText(q) {
+        const ans = normAns(q);
+        if (!ans) return "Ch\u01B0a c\xF3 \u0111\xE1p \xE1n";
+        return ans.split("").map((k) => k + ". " + (q.options?.[k] || "")).join(" | ");
+      }
+      function riskColor(r) {
+        return { high: "#e74c3c", medium: "#f39c12", low: "#27ae60" }[r] || "#999";
+      }
+      function riskLabel(r) {
+        return { high: "Cao", medium: "Trung b\xECnh", low: "Th\u1EA5p" }[r] || r;
+      }
+      function nextKey(opts) {
+        const used = new Set(Object.keys(opts || {}).map((k) => String(k).toUpperCase()));
+        return LETTERS.find((k) => !used.has(k));
+      }
+      function imgSrc(im) {
+        return typeof im === "string" ? im : im?.src || im?.url || "";
+      }
+      function pass(q) {
+        if (currentFilter === "all") return true;
+        if (currentFilter === "has_image") return !!q.has_image;
+        return q.error_risk === currentFilter;
+      }
+      function stats(data) {
+        return {
+          total: data.length,
+          img: data.filter((q) => q.has_image).length,
+          high: data.filter((q) => q.error_risk === "high").length,
+          medium: data.filter((q) => q.error_risk === "medium").length,
+          low: data.filter((q) => q.error_risk === "low").length
+        };
+      }
+      function renderStats(data) {
+        const s = stats(data), box = document.getElementById("v7Stats");
+        if (!box) return;
+        const filters = [
+          ["all", "Th\u01B0 vi\u1EC7n"],
+          ["has_image", "\u{1F4F7} C\xF3 \u1EA3nh"],
+          ["high", "R\u1EE7i ro cao"],
+          ["medium", "Trung b\xECnh"],
+          ["low", "Th\u1EA5p"]
+        ];
+        box.innerHTML = `<div class="v7StatLine"><span class="v7StatItem">${s.total} c\xE2u</span><span class="v7StatItem" style="color:#3498db">${s.img} c\xF3 \u1EA3nh</span><span class="v7StatItem" style="color:#e74c3c">${s.high} r\u1EE7i ro cao</span><span class="v7StatItem" style="color:#f39c12">${s.medium} trung b\xECnh</span><span class="v7StatItem" style="color:#27ae60">${s.low} th\u1EA5p</span></div><div class="v7FilterLine">${filters.map((f) => `<button type="button" class="v7FilterBtn ${currentFilter === f[0] ? "active" : ""}" data-v7-filter="${f[0]}">${f[1]}</button>`).join("")}</div>`;
+      }
+      function miniImages(q) {
+        const imgs = (q.images || []).map(imgSrc).filter(Boolean);
+        if (!imgs.length) return '<div class="v7MiniImgs"></div>';
+        return `<div class="v7MiniImgs"><img src="${esc3(imgs[0])}" alt="\u1EA2nh preview" loading="lazy" decoding="async">${imgs.length > 1 ? `<span class="v7ImgCount">+${imgs.length - 1}</span>` : ""}</div>`;
+      }
+      function renderCard3(q, i) {
+        const ans = normAns(q) || "?";
+        return `<article class="v7Card" data-v7-card="${i}" style="border-left-color:${riskColor(q.error_risk)}!important"><div class="v7Row"><div class="v7Num">C\xE2u ${esc3(q.num || i + 1)}</div><div class="v7Main"><div class="v7Question">${esc3(q.question || "")}</div><div class="v7Answer"><b>\u0110\xE1p \xE1n: ${esc3(ans)}</b><span>${esc3(correctText(q))}</span></div></div>${miniImages(q)}<div class="v7Meta"><span class="v7RiskDot" style="background:${riskColor(q.error_risk)}" title="R\u1EE7i ro: ${esc3(riskLabel(q.error_risk))}"></span><button class="v7EditBtn" type="button" data-v7-edit="${i}">S\u1EEDa</button></div></div></article>`;
+      }
+      function renderImages(q, i) {
+        const imgs = q.images || [];
+        return `<div class="v7Images"><div class="v7ImagesHead"><span>\u1EA2nh c\u1EE7a c\xE2u h\u1ECFi</span><button class="v7UploadBtn" type="button" data-v7-pick-img="${i}">+ Th\xEAm \u1EA3nh</button><input class="v7HiddenInput" type="file" accept="image/*" multiple data-v7-input="${i}"></div><div class="v7Thumbs">${imgs.length ? imgs.map((im, idx) => `<div class="v7Thumb"><button class="v7RemoveImg" type="button" data-v7-rm-img="${idx}">\xD7</button><img src="${esc3(imgSrc(im))}" alt="\u1EA2nh ${idx + 1}" loading="lazy" decoding="async"></div>`).join("") : '<div class="v7NoImage">Ch\u01B0a c\xF3 \u1EA3nh. B\u1EA5m \u201C+ Th\xEAm \u1EA3nh\u201D n\u1EBFu c\xE2u n\xE0y c\u1EA7n h\xECnh.</div>'}</div></div>`;
+      }
+      function renderEditCard(q, i) {
+        const opts = q.options || {};
+        const optionRows = Object.keys(opts).sort().map(
+          (k) => `<div class="v7OptRow"><div class="v7Key">${esc3(k)}</div><input value="${esc3(opts[k] || "")}" data-v7-opt="${esc3(k)}"><button class="v7DelOpt" type="button" data-v7-del-opt="${esc3(k)}">\xD7</button></div>`
+        ).join("");
+        return `<article class="v7Card" data-v7-card="${i}"><div class="v7EditHead"><div class="v7EditTitle">S\u1EEDa to\xE0n b\u1ED9 C\xE2u ${esc3(q.num || i + 1)}</div><div class="v7EditHeadActions"><button class="btn" type="button" data-v7-cancel="${i}">H\u1EE7y</button><button class="primary" type="button" data-v7-save="${i}">L\u01B0u s\u1EEDa</button></div></div><div class="v7EditGrid"><div class="v7Field"><label>C\xE2u h\u1ECFi</label><textarea data-v7-question>${esc3(q.question || "")}</textarea></div><div class="v7Field"><label>\u0110\xE1p \xE1n \u0111\xFAng</label><input data-v7-answer value="${esc3(normAns(q))}" placeholder="VD: A ho\u1EB7c AC"></div></div><div class="v7Field" style="margin-top:10px"><label>C\xE1c \u0111\xE1p \xE1n</label><div class="v7Options">${optionRows}</div></div>${renderImages(q, i)}<div class="v7Bottom"><button class="btn" type="button" data-v7-add-opt="${i}">+ Th\xEAm \u0111\xE1p \xE1n</button></div></article>`;
+      }
+      function renderList(data) {
+        const list = document.getElementById("v7List");
+        if (!list) return;
+        const filtered = data.map((q, i) => ({ q, i })).filter((x) => pass(x.q));
+        list.innerHTML = filtered.length ? filtered.map((x) => renderCard3(x.q, x.i)).join("") : '<div class="v7Empty">Kh\xF4ng c\xF3 c\xE2u n\xE0o ph\xF9 h\u1EE3p b\u1ED9 l\u1ECDc.</div>';
+        renderStats(data);
+      }
+      function openPreview(data) {
+        data = getData(data);
+        let modal = document.getElementById("importPreviewModal");
+        if (modal) modal.remove();
+        modal = document.createElement("div");
+        modal.id = "importPreviewModal";
+        modal.className = "modal v7ImportModal";
+        modal.innerHTML = `<div class="box v7ImportBox"><button class="modalX" type="button" data-v7-close>\xD7</button><div class="v7Head"><div><span class="v7Label">XEM TR\u01AF\u1EDAC IMPORT</span><h2>Ki\u1EC3m tra c\xE2u h\u1ECFi</h2><p class="v7Hint">Ch\u1EC9 hi\u1EC7n c\xE2u h\u1ECFi v\xE0 \u0111\xE1p \xE1n \u0111\xFAng. C\xE2u c\xF3 \u1EA3nh s\u1EBD hi\u1EC7n preview nh\u1ECF.</p></div><div class="v7TopActions"><button class="primary v7SaveTop" type="button" data-v7-submit>L\u01B0u M\xF4n H\u1ECDc</button></div></div><div id="v7Stats" class="v7Stats"></div><div id="v7List" class="v7List"></div></div>`;
+        document.body.appendChild(modal);
+        renderList(data);
+      }
+      function saveEdit(i) {
+        const data = getData();
+        const q = data[i];
+        const card = document.querySelector(`[data-v7-card="${i}"]`);
+        if (!q || !card) return;
+        const question = (card.querySelector("[data-v7-question]")?.value || "").trim();
+        const answer = (card.querySelector("[data-v7-answer]")?.value || "").trim().toUpperCase().replace(/[^A-Z]/g, "");
+        if (!question) return alert("C\xE2u h\u1ECFi kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
+        if (!answer) return alert("\u0110\xE1p \xE1n \u0111\xFAng kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
+        const options = {};
+        card.querySelectorAll("[data-v7-opt]").forEach((inp) => {
+          const k = String(inp.dataset.v7Opt || "").toUpperCase();
+          const v = (inp.value || "").trim();
+          if (k && v) options[k] = v;
+        });
+        if (!Object.keys(options).length) return alert("C\u1EA7n \xEDt nh\u1EA5t 1 \u0111\xE1p \xE1n.");
+        for (const k of answer.split("")) {
+          if (!options[k]) return alert("\u0110\xE1p \xE1n \u0111\xFAng " + k + " ch\u01B0a c\xF3 n\u1ED9i dung.");
+        }
+        q.question = question;
+        q.answer = answer;
+        q.options = options;
+        q.answer_text = answer.split("").map((k) => k + ". " + (options[k] || "")).join("; ");
+        q.has_image = !!(q.images && q.images.length);
+        renderList(data);
+        if (typeof notify === "function") notify("\u0110\xE3 l\u01B0u s\u1EEDa c\xE2u " + (q.num || i + 1));
+      }
+      document.addEventListener("click", function(e) {
+        const filter = e.target.closest("[data-v7-filter]");
+        if (filter) {
+          currentFilter = filter.dataset.v7Filter || "all";
+          renderList(getData());
+          return;
+        }
+        if (e.target.closest("[data-v7-close]")) {
+          document.getElementById("importPreviewModal")?.classList.add("hidden");
+          return;
+        }
+        if (e.target.closest("[data-v7-submit]")) {
+          document.getElementById("importPreviewModal")?.classList.add("hidden");
+          window.__submitSubjectRequest?.();
+          return;
+        }
+        const edit = e.target.closest("[data-v7-edit]");
+        if (edit) {
+          const i = +edit.dataset.v7Edit;
+          const data = getData();
+          const card = document.querySelector(`[data-v7-card="${i}"]`);
+          if (card && data[i]) {
+            card.outerHTML = renderEditCard(data[i], i);
+            document.querySelector(`[data-v7-card="${i}"] textarea`)?.focus();
+          }
+          return;
+        }
+        const cancel = e.target.closest("[data-v7-cancel]");
+        if (cancel) {
+          renderList(getData());
+          return;
+        }
+        const save = e.target.closest("[data-v7-save]");
+        if (save) {
+          saveEdit(+save.dataset.v7Save);
+          return;
+        }
+        const pick = e.target.closest("[data-v7-pick-img]");
+        if (pick) {
+          document.querySelector(`[data-v7-input="${pick.dataset.v7PickImg}"]`)?.click();
+          return;
+        }
+        const rm = e.target.closest("[data-v7-rm-img]");
+        if (rm) {
+          const card = rm.closest("[data-v7-card]");
+          const i = +(card?.dataset.v7Card || 0);
+          const q = getData()[i];
+          if (q?.images) {
+            q.images.splice(+rm.dataset.v7RmImg, 1);
+            q.has_image = !!q.images.length;
+            card.outerHTML = renderEditCard(q, i);
+          }
+          return;
+        }
+        const add = e.target.closest("[data-v7-add-opt]");
+        if (add) {
+          const i = +add.dataset.v7AddOpt;
+          const data = getData();
+          const q = data[i];
+          const k = nextKey(q.options || {});
+          if (!k) return alert("\u0110\xE3 \u0111\u1EE7 s\u1ED1 \u0111\xE1p \xE1n.");
+          q.options = q.options || {};
+          q.options[k] = "";
+          const card = document.querySelector(`[data-v7-card="${i}"]`);
+          if (card) {
+            card.outerHTML = renderEditCard(q, i);
+            document.querySelector(`[data-v7-card="${i}"] [data-v7-opt="${k}"]`)?.focus();
+          }
+          return;
+        }
+        const del = e.target.closest("[data-v7-del-opt]");
+        if (del) {
+          const card = del.closest("[data-v7-card]");
+          const i = +(card?.dataset.v7Card || 0);
+          const q = getData()[i];
+          const k = del.dataset.v7DelOpt;
+          if (q?.options && k) {
+            delete q.options[k];
+            card.outerHTML = renderEditCard(q, i);
+          }
+          return;
+        }
+      });
+      document.addEventListener("change", async function(e) {
+        const inp = e.target.closest("[data-v7-input]");
+        if (!inp) return;
+        const i = +inp.dataset.v7Input;
+        const q = getData()[i];
+        if (!q) return;
+        q.images = q.images || [];
+        const files = Array.from(inp.files || []);
+        if (!files.length) return;
+        inp.disabled = true;
+        if (typeof notify === "function") notify("\u0110ang upload \u1EA3nh...");
+        try {
+          for (const file of files) {
+            if (window.__LHUploadCloudinary) {
+              const uploaded = await window.__LHUploadCloudinary(file);
+              if (uploaded) q.images.push(uploaded);
+            } else {
+              const fr = new FileReader();
+              const p = new Promise((resolve) => {
+                fr.onload = function() {
+                  q.images.push({
+                    id: "import_" + Date.now() + "_" + Math.random().toString(16).slice(2),
+                    src: fr.result,
+                    source: "user-upload",
+                    name: file.name
+                  });
+                  resolve();
+                };
+                fr.readAsDataURL(file);
+              });
+              await p;
+            }
+          }
+          q.has_image = true;
+          const card = document.querySelector(`[data-v7-card="${i}"]`);
+          if (card) card.outerHTML = renderEditCard(q, i);
+          if (typeof notify === "function") notify("\u0110\xE3 upload \u1EA3nh th\xE0nh URL");
+        } catch (err) {
+          alert(err.message || err);
+        } finally {
+          inp.disabled = false;
+          inp.value = "";
+        }
+      });
+      window.__openImportPreviewModal = openPreview;
+      window.__editImportPreviewQuestion = function(i) {
+        const data = getData();
+        const card = document.querySelector(`[data-v7-card="${i}"]`);
+        if (card && data[i]) card.outerHTML = renderEditCard(data[i], i);
+      };
+    })();
+    (function() {
+      function ensureLightbox() {
+        let lb = document.getElementById("v7ImageLightbox");
+        if (lb) return lb;
+        lb = document.createElement("div");
+        lb.id = "v7ImageLightbox";
+        lb.className = "v7Lightbox hidden";
+        lb.innerHTML = '<div class="v7LightboxInner"><button class="v7LightboxClose" type="button" aria-label="\u0110\xF3ng">\xD7</button><img class="v7LightboxImg" alt="\u1EA2nh ph\xF3ng to" loading="lazy" decoding="async"></div>';
+        document.body.appendChild(lb);
+        return lb;
+      }
+      function openImg(src) {
+        if (!src) return;
+        const lb = ensureLightbox();
+        const img = lb.querySelector(".v7LightboxImg");
+        if (img) img.src = src;
+        lb.classList.remove("hidden");
+      }
+      function closeImg() {
+        const lb = document.getElementById("v7ImageLightbox");
+        if (!lb) return;
+        lb.classList.add("hidden");
+        const img = lb.querySelector(".v7LightboxImg");
+        if (img) img.removeAttribute("src");
+      }
+      document.addEventListener(
+        "click",
+        function(e) {
+          const thumb = e.target.closest(".v7MiniImgs img, .v7Thumb img");
+          if (thumb) {
+            e.preventDefault();
+            e.stopPropagation();
+            openImg(thumb.currentSrc || thumb.src);
+            return;
+          }
+          if (e.target.closest(".v7LightboxClose") || e.target.id === "v7ImageLightbox") {
+            closeImg();
+          }
+        },
+        true
+      );
+      document.addEventListener("keydown", function(e) {
+        if (e.key === "Escape") closeImg();
+      });
+    })();
+    (function() {
+      window.__APP_UI_CLEAN_FINAL__ = "20260627";
+      function cleanupOldUI() {
+        [
+          "#hodLoginScreen",
+          "#hodRoleBar",
+          "#hodUserDock",
+          "#hodFinalRoleBar",
+          "#hodFinalLogin",
+          ".hodAuthLanding",
+          ".hodFloatingAuth",
+          ".legacyLogin",
+          ".legacyAuth",
+          ".oldLanding"
+        ].forEach(function(s) {
+          document.querySelectorAll(s).forEach(function(el) {
+            el.remove();
+          });
+        });
+        ["#hodTopAvatar", "#subjectTopChip", "#hodAccountMenu"].forEach(function(s) {
+          var arr = Array.from(document.querySelectorAll(s));
+          arr.slice(0, Math.max(0, arr.length - 1)).forEach(function(el) {
+            el.remove();
+          });
+        });
+        if (!window.HODSupabase?.canOpenDashboard?.()) {
+          document.querySelectorAll("#adminOpenBtn,#hodFloatAdmin").forEach(function(el) {
+            el.remove();
+          });
+          document.getElementById("adminModal")?.classList.add("hidden");
+        }
+        document.querySelectorAll("#shuffle,#stShuffle").forEach(function(el) {
+          el.style.display = "none";
+          el.disabled = true;
+        });
+      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", cleanupOldUI);
+      else cleanupOldUI();
+      setTimeout(cleanupOldUI, 300);
+      setTimeout(cleanupOldUI, 1200);
+    })();
+  }
+  function installFastParallelUpload() {
+    (function() {
+      if (window.__FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701) return;
+      window.__FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701 = true;
+      const $3 = (id) => document.getElementById(id);
+      const LARGE_LIMIT = 80;
+      const CONCURRENCY = 8;
+      function user() {
+        return window.HODSupabase?.getUser?.() || null;
+      }
+      function profile() {
+        return window.HODSupabase?.getProfile?.() || null;
+      }
+      function canManage() {
+        const role = String(profile()?.role || "").toLowerCase();
+        return !!user() && (window.HODSupabase?.isAdmin?.() || role === "admin" || role === "editor");
+      }
+      function toast(msg) {
+        try {
+          if (typeof notify === "function") notify(msg);
+        } catch (e) {
+          lhWarn2("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
+        }
+      }
+      function prog(title, current, total, detail) {
+        try {
+          if (typeof showProgress === "function") showProgress(title, current, total, detail || "");
+        } catch (e) {
+          lhWarn2("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
+        }
+      }
+      function hideProg() {
+        try {
+          if (typeof hideProgress === "function") hideProgress();
+        } catch (e) {
+          lhWarn2("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
+        }
+      }
+      function cleanQuestions(arr) {
+        return (Array.isArray(arr) ? arr : []).map((q, i) => {
+          const opts = q && typeof q.options === "object" && !Array.isArray(q.options) ? q.options : {};
+          const answer = String(q?.answer || "").toUpperCase().replace(/[^A-Z]/g, "");
+          const images = Array.isArray(q?.images) ? q.images : [];
+          return {
+            num: Number(q?.num) || i + 1,
+            question: String(q?.question || "").trim(),
+            options: opts,
+            answer,
+            answer_text: q?.answer_text || answer.split("").map((k) => k + ". " + (opts[k] || "")).join("; "),
+            images,
+            has_image: !!(q?.has_image || images.length),
+            error_risk: q?.error_risk || "low",
+            error_risk_reason: q?.error_risk_reason || null
+          };
+        }).filter((q) => q.question && q.answer && q.options);
+      }
+      function readQuestions() {
+        let arr = window.__previewImportData || window.__LH_LAST_PREVIEW_IMPORT_DATA || [];
+        if (!Array.isArray(arr) || !arr.length) {
+          try {
+            let s = String(
+              $3("userImportData")?.value || localStorage.getItem("learninghub_add_subject_file_data_v1") || ""
+            ).trim();
+            const m = s.match(/```json\s*([\s\S]*?)```/i) || s.match(/```\s*([\s\S]*?)```/);
+            if (m) s = m[1].trim();
+            const j = JSON.parse(s);
+            arr = Array.isArray(j) ? j : Array.isArray(j?.questions) ? j.questions : [];
+          } catch (e) {
+            arr = [];
+          }
+        }
+        return cleanQuestions(arr);
+      }
+      async function postAction(action, payload) {
+        const res = await fetch("/api/admin-action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({ user_id: user()?.id, action, payload })
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok || out.error) throw new Error(out.error || "HTTP " + res.status);
+        return out;
+      }
+      function cacheCount(code, count) {
+        try {
+          const key = "learninghub_subject_counts_cache_v3";
+          const store = JSON.parse(localStorage.getItem(key) || "{}") || {};
+          store.counts = store.counts || {};
+          store.confirmed = store.confirmed || {};
+          store.counts[code] = count;
+          store.confirmed[code] = true;
+          store.updated_at = (/* @__PURE__ */ new Date()).toISOString();
+          localStorage.setItem(key, JSON.stringify(store));
+          localStorage.setItem("learninghub_subjects_dirty_v3", String(Date.now()));
+          localStorage.removeItem("learninghub_subjects_cache_v1");
+          sessionStorage.removeItem("learninghub_subject_counts_cache_v1");
+          window.clearLearningHubSupabaseCache?.("subjects");
+          window.clearLearningHubSupabaseCache?.("questions");
+          window.clearLearningHubQuestionCache?.();
+        } catch (e) {
+          lhWarn2("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
+        }
+      }
+      function clearState() {
+        try {
+          window.__previewImportData = [];
+          window.__LH_LAST_PREVIEW_IMPORT_DATA = [];
+          $3("importPreviewModal")?.classList.add("hidden");
+          [
+            "learninghub_add_subject_file_name_v1",
+            "learninghub_add_subject_file_size_v1",
+            "learninghub_add_subject_file_data_v1",
+            "learninghub_add_subject_file_previewed_v1"
+          ].forEach((k) => localStorage.removeItem(k));
+        } catch (e) {
+          lhWarn2("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
+        }
+      }
+      async function uploadOne(finalCode, q, i) {
+        await postAction("add_question", {
+          question_data: {
+            subject_code: finalCode,
+            num: Number(q.num) || i + 1,
+            question: q.question,
+            options: q.options || {},
+            answer: q.answer,
+            answer_text: q.answer_text || "",
+            images: q.images || [],
+            has_image: !!q.has_image,
+            error_risk: q.error_risk || "low",
+            error_risk_reason: q.error_risk_reason || null,
+            updated_at: (/* @__PURE__ */ new Date()).toISOString()
+          }
+        });
+      }
+      async function uploadParallel(finalCode, questions) {
+        let done = 0;
+        let next3 = 0;
+        const total = questions.length;
+        const errors = [];
+        prog("\u0110ang upload c\xE2u h\u1ECFi...", 0, total, "Upload nhanh: g\u1EEDi " + CONCURRENCY + " c\xE2u c\xF9ng l\xFAc");
+        async function worker() {
+          while (next3 < total && !errors.length) {
+            const i = next3++;
+            try {
+              await uploadOne(finalCode, questions[i], i);
+            } catch (e) {
+              errors.push("C\xE2u " + (questions[i].num || i + 1) + ": " + (e?.message || e));
+              break;
+            }
+            done++;
+            prog("\u0110ang upload c\xE2u h\u1ECFi...", done, total, "\u0110\xE3 g\u1EEDi " + done + "/" + total + " c\xE2u");
+          }
+        }
+        const workers = Array.from({ length: Math.min(CONCURRENCY, total) }, () => worker());
+        await Promise.all(workers);
+        if (errors.length) throw new Error(errors[0]);
+        return done;
+      }
+      async function createLarge(code, name, desc, questions) {
+        prog("\u0110ang t\u1EA1o m\xF4n h\u1ECDc...", 0, questions.length, "T\u1EA1o m\xF4n tr\u01B0\u1EDBc, r\u1ED3i upload nhi\u1EC1u c\xE2u song song...");
+        const created = await postAction("add_subject", {
+          code,
+          name: name || code,
+          description: desc || "",
+          questions: []
+        });
+        const finalCode = created.code || created.subject_code || code;
+        const success = await uploadParallel(finalCode, questions);
+        cacheCount(finalCode, success);
+        return { finalCode, success };
+      }
+      async function createSmall(code, name, desc, questions) {
+        prog("\u0110ang l\u01B0u m\xF4n h\u1ECDc...", 0, 100, "\u0110ang t\u1EA1o m\xF4n v\xE0 nh\u1EADp c\xE2u h\u1ECFi...");
+        const out = await postAction("add_subject", { code, name: name || code, description: desc || "", questions });
+        const finalCode = out.code || out.subject_code || code;
+        cacheCount(finalCode, questions.length);
+        prog("\u0110ang l\u01B0u m\xF4n h\u1ECDc...", 100, 100, "Ho\xE0n t\u1EA5t");
+        return { finalCode, success: questions.length };
+      }
+      window.__submitSubjectRequest = async function() {
+        const code = ($3("addSubjectCode")?.value || "").trim().toUpperCase();
+        const name = ($3("addSubjectName")?.value || "").trim();
+        const desc = ($3("addSubjectDesc")?.value || "").trim();
+        const questions = readQuestions();
+        if (!code) {
+          alert("Vui l\xF2ng nh\u1EADp m\xE3 m\xF4n");
+          $3("addSubjectCode")?.focus();
+          return;
+        }
+        if (!/^[A-Z0-9_]{2,20}$/.test(code)) {
+          alert("M\xE3 m\xF4n ch\u1EC9 g\u1ED3m ch\u1EEF, s\u1ED1, g\u1EA1ch d\u01B0\u1EDBi (2-20 k\xFD t\u1EF1)");
+          $3("addSubjectCode")?.focus();
+          return;
+        }
+        if (!name) {
+          alert("Vui l\xF2ng nh\u1EADp t\xEAn m\xF4n");
+          $3("addSubjectName")?.focus();
+          return;
+        }
+        if (!questions.length) {
+          alert("B\u1EA1n c\u1EA7n ch\u1ECDn file v\xE0 b\u1EA5m Xem tr\u01B0\u1EDBc tr\u01B0\u1EDBc khi l\u01B0u m\xF4n h\u1ECDc.");
+          return;
+        }
+        if (!user()) {
+          alert("B\u1EA1n c\u1EA7n \u0111\u0103ng nh\u1EADp tr\u01B0\u1EDBc khi l\u01B0u m\xF4n h\u1ECDc.");
+          return;
+        }
+        const btn = $3("userImportBtn");
+        const old = btn ? btn.textContent : "";
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "\u0110ang l\u01B0u...";
+        }
+        try {
+          if (window.LHSubjectImport?.prepareZipQuestionsBeforeSave) {
+            await window.LHSubjectImport.prepareZipQuestionsBeforeSave(questions, (done, total, text) => {
+              prog("\u0110ang upload \u1EA3nh Cloudinary...", done, total, text);
+            });
+          }
+          if (canManage()) {
+            const rs = questions.length > LARGE_LIMIT ? await createLarge(code, name, desc, questions) : await createSmall(code, name, desc, questions);
+            const ok = "\u0110\xE3 th\xEAm m\xF4n " + rs.finalCode + " v\u1EDBi " + rs.success + " c\xE2u h\u1ECFi";
+            prog("Ho\xE0n t\u1EA5t upload", rs.success, rs.success, ok);
+            alert(ok);
+            toast(ok);
+            clearState();
+            window.__switchSubjectGateTab?.("list");
+            try {
+              $3("subjectRefresh")?.click();
+              setTimeout(() => $3("subjectRefresh")?.click(), 5600);
+              setTimeout(() => window.refreshSubjectCountsOnce?.(), 6500);
+            } catch (e) {
+              lhWarn2("FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701", e);
+            }
+          } else {
+            prog("\u0110ang g\u1EEDi y\xEAu c\u1EA7u t\u1EA1o m\xF4n h\u1ECDc...", 0, 100, "\u0110ang t\u1EA3i d\u1EEF li\u1EC7u c\xE2u h\u1ECFi...");
+            await postAction("add_subject_request", { code, name, description: desc || "", questions_data: questions });
+            prog("Ho\xE0n t\u1EA5t", 100, 100, "\u0110\xE3 g\u1EEDi y\xEAu c\u1EA7u");
+            const ok = "\u0110\xE3 g\u1EEDi y\xEAu c\u1EA7u th\xEAm m\xF4n " + code + ". Vui l\xF2ng ch\u1EDD admin duy\u1EC7t.";
+            alert(ok);
+            toast(ok);
+            clearState();
+            window.__switchSubjectGateTab?.("list");
+          }
+        } catch (e) {
+          console.warn("Fast add subject upload error:", e);
+          alert("L\u1ED7i t\u1EA1o m\xF4n: " + (e?.message || e));
+          toast("L\u1ED7i t\u1EA1o m\xF4n");
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = old || "L\u01B0u M\xF4n H\u1ECDc";
+          }
+          setTimeout(hideProg, 450);
+        }
+      };
+    })();
+  }
+
+  // src/student/bookmarks.js
+  var bookmarks_exports = {};
+  __export(bookmarks_exports, {
+    installBookmarks: () => installBookmarks,
+    installHeaderBell: () => installHeaderBell
+  });
+  function installBookmarks() {
+    const BOOKMARK_PREFIX = "lh_starred_v1_";
+    const SVG_UNSAVED = `<svg class="bmIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
+    const SVG_SAVED = `<svg class="bmIcon" width="18" height="18" viewBox="0 0 24 24" fill="#f5c518" stroke="#f5c518" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
+    const SVG_LIB_UNSAVED = `<svg class="bmLibIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
+    const SVG_LIB_SAVED = `<svg class="bmLibIcon" width="14" height="14" viewBox="0 0 24 24" fill="#f5c518" stroke="#f5c518" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
+    function getSubjectCode2() {
+      if (typeof LHState2.RAW !== "undefined" && Array.isArray(LHState2.RAW) && LHState2.RAW[0] && LHState2.RAW[0].subject_code) {
+        return String(LHState2.RAW[0].subject_code).trim();
+      }
+      return localStorage.getItem("learninghub_subject_code_merged_v1") || "default_subject";
+    }
+    function bookmarkKey() {
+      return BOOKMARK_PREFIX + getSubjectCode2();
+    }
+    function getQKey(q) {
+      if (!q) return null;
+      if (typeof q === "string" || typeof q === "number") return "num_" + String(q);
+      if (q.num !== void 0 && q.num !== null && q.num !== "") return "num_" + String(q.num);
+      if (q.id !== void 0 && q.id !== null && q.id !== "") return "id_" + String(q.id);
+      if (q.question) return "q_" + String(q.question).trim().slice(0, 50);
+      return null;
+    }
+    function loadBookmarks() {
+      try {
+        const primaryKey = bookmarkKey();
+        const primaryArr = JSON.parse(localStorage.getItem(primaryKey) || "[]");
+        const backupArr = JSON.parse(localStorage.getItem("lh_starred_v1_backup_all") || "[]");
+        const merged = new Set(
+          [...Array.isArray(primaryArr) ? primaryArr : [], ...Array.isArray(backupArr) ? backupArr : []].map(
+            (x) => String(x)
+          )
+        );
+        return merged;
+      } catch (e) {
+        return /* @__PURE__ */ new Set();
+      }
+    }
+    function saveBookmarks(set) {
+      try {
+        const arr = [...set].map((x) => String(x));
+        localStorage.setItem(bookmarkKey(), JSON.stringify(arr));
+        localStorage.setItem("lh_starred_v1_backup_all", JSON.stringify(arr));
+      } catch (e) {
+        lhWarn2("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
+      }
+    }
+    function isBookmarked(qOrKey) {
+      if (!qOrKey) return false;
+      const key = typeof qOrKey === "object" ? getQKey(qOrKey) : String(qOrKey);
+      if (!key) return false;
+      return loadBookmarks().has(key);
+    }
+    function toggleBookmarkFn(qOrKey) {
+      if (!qOrKey) return false;
+      const key = typeof qOrKey === "object" ? getQKey(qOrKey) : String(qOrKey);
+      if (!key) return false;
+      const s = loadBookmarks();
+      let added;
+      if (s.has(key)) {
+        s.delete(key);
+        added = false;
+      } else {
+        s.add(key);
+        added = true;
+      }
+      saveBookmarks(s);
+      return added;
+    }
+    function countBookmarks() {
+      return loadBookmarks().size;
+    }
+    window.__isBookmarked = isBookmarked;
+    window.__countBookmarks = countBookmarks;
+    window.__getBookmarkBtnHTML = function(q) {
+      const key = getQKey(q);
+      if (!key) return "";
+      const bookmarked = isBookmarked(key);
+      const esc22 = (s) => String(s ?? "").replace(
+        /[&<>"']/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+      );
+      return `<button type="button" class="libBookmarkBtn${bookmarked ? " bookmarked" : ""}" data-lib-bookmark="${esc22(key)}" title="${bookmarked ? "B\u1ECF l\u01B0u c\xE2u n\xE0y" : "L\u01B0u c\xE2u h\u1ECFi n\xE0y"}">${bookmarked ? SVG_LIB_SAVED : SVG_LIB_UNSAVED}</button>`;
+    };
+    (function injectBookmarkCSS() {
+      if (document.getElementById("__bookmarkQCSS")) return;
+      const s = document.createElement("style");
+      s.id = "__bookmarkQCSS";
+      s.textContent = `
+      #bookmarkBtn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 4px 6px;
+        border-radius: 8px;
+        color: rgba(232,212,168,.65);
+        transition: color .18s, transform .15s, filter .18s;
+        user-select: none;
+        display: flex; align-items: center; justify-content: center;
+      }
+      #bookmarkBtn .bmIcon { transition: stroke .18s, fill .18s, transform .15s; }
+      #bookmarkBtn.bookmarked {
+        color: #f5c518;
+        filter: drop-shadow(0 0 7px rgba(245,197,24,.65));
+      }
+      #bookmarkBtn:hover { transform: scale(1.18); color: #f5c518; }
+      #bookmarkBtn:active { transform: scale(.9); }
+      @keyframes bookmarkPop {
+        0%   { transform: scale(1); }
+        40%  { transform: scale(1.42); }
+        70%  { transform: scale(.88); }
+        100% { transform: scale(1); }
+      }
+      #bookmarkBtn.pop { animation: bookmarkPop .32s ease; }
+
+      .libBookmarkBtn {
+        background: rgba(255,255,255,.03);
+        border: 1px solid rgba(200,169,110,.25);
+        border-radius: 7px;
+        cursor: pointer;
+        font-size: .82rem;
+        padding: 4px 9px;
+        color: rgba(232,212,168,.75);
+        display: inline-flex; align-items: center; gap: 4px;
+        transition: color .15s, border-color .15s, background .15s, transform .12s;
+        line-height: 1;
+        white-space: nowrap;
+      }
+      .libBookmarkBtn.bookmarked {
+        color: #f5c518;
+        border-color: rgba(245,197,24,.55);
+        background: rgba(245,197,24,.09);
+      }
+      .libBookmarkBtn:hover { transform: scale(1.06); color: #f5c518; border-color: rgba(245,197,24,.5); }
+
+      .v7FilterBtn[data-library-filter="starred"] .bookmarkCount {
+        font-size: .75em;
+        opacity: .88;
+        margin-left: 4px;
+      }
+    `;
+      document.head.appendChild(s);
+    })();
+    function getCurrentCard() {
+      try {
+        const arr = typeof LHState2.pool !== "undefined" && Array.isArray(LHState2.pool) && LHState2.pool.length ? LHState2.pool : typeof LHState2.RAW !== "undefined" ? LHState2.RAW : [];
+        if (!arr.length) return null;
+        const index2 = Math.max(0, Math.min(typeof LHState2.ci === "number" ? LHState2.ci : 0, arr.length - 1));
+        return arr[index2] || null;
+      } catch (e) {
+        return null;
+      }
+    }
+    function updateBookmarkBtn() {
+      const btn = document.getElementById("bookmarkBtn");
+      if (!btn) return;
+      const card = getCurrentCard();
+      if (!card) return;
+      const key = getQKey(card);
+      if (!key) return;
+      const bookmarked = isBookmarked(key);
+      btn.classList.toggle("bookmarked", bookmarked);
+      btn.innerHTML = bookmarked ? SVG_SAVED : SVG_UNSAVED;
+      btn.title = bookmarked ? "B\u1ECF l\u01B0u c\xE2u n\xE0y" : "L\u01B0u c\xE2u h\u1ECFi n\xE0y";
+    }
+    window.updateBookmarkBtn = updateBookmarkBtn;
+    function addBookmarkButtonToCard() {
+      if (document.getElementById("bookmarkBtn")) {
+        updateBookmarkBtn();
+        return;
+      }
+      const cardTools = document.getElementById("cardTools");
+      if (!cardTools) return;
+      const btn = document.createElement("button");
+      btn.id = "bookmarkBtn";
+      btn.type = "button";
+      btn.className = "cardToolBtn";
+      btn.innerHTML = SVG_UNSAVED;
+      btn.title = "L\u01B0u c\xE2u h\u1ECFi n\xE0y";
+      btn.setAttribute("aria-label", "L\u01B0u c\xE2u h\u1ECFi y\xEAu th\xEDch");
+      btn.addEventListener("click", function(e) {
+        e.stopPropagation();
+        const card = getCurrentCard();
+        if (!card) return;
+        const key = getQKey(card);
+        if (!key) return;
+        const added = toggleBookmarkFn(key);
+        btn.classList.toggle("bookmarked", added);
+        btn.innerHTML = added ? SVG_SAVED : SVG_UNSAVED;
+        btn.title = added ? "B\u1ECF l\u01B0u c\xE2u n\xE0y" : "L\u01B0u c\xE2u h\u1ECFi n\xE0y";
+        btn.classList.remove("pop");
+        void btn.offsetWidth;
+        btn.classList.add("pop");
+        btn.addEventListener("animationend", () => btn.classList.remove("pop"), { once: true });
+        const displayNum = card.num || (typeof LHState2.ci === "number" ? LHState2.ci : 0) + 1;
+        try {
+          if (typeof window.notify === "function") {
+            window.notify(added ? `\u{1F516} \u0110\xE3 l\u01B0u c\xE2u ${displayNum}` : `\u0110\xE3 b\u1ECF l\u01B0u c\xE2u ${displayNum}`);
+          }
+        } catch (err) {
+          lhWarn2("BOOKMARK_QUESTIONS_FEATURE_20260726", err);
+        }
+        if (typeof window.renderStudy === "function") window.renderStudy();
+      });
+      cardTools.appendChild(btn);
+      updateBookmarkBtn();
+    }
+    const _origUpdateCardTools = typeof window.updateCardTools === "function" ? window.updateCardTools : null;
+    window.updateCardTools = function() {
+      if (_origUpdateCardTools) _origUpdateCardTools.apply(this, arguments);
+      updateBookmarkBtn();
+    };
+    function bindLibraryClickEvents() {
+      document.addEventListener(
+        "click",
+        function(e) {
+          const btn = e.target.closest("[data-lib-bookmark]");
+          if (!btn) return;
+          e.stopPropagation();
+          const key = btn.dataset.libBookmark;
+          if (!key) return;
+          const added = toggleBookmarkFn(key);
+          btn.classList.toggle("bookmarked", added);
+          btn.innerHTML = added ? SVG_LIB_SAVED : SVG_LIB_UNSAVED;
+          btn.title = added ? "B\u1ECF l\u01B0u" : "L\u01B0u c\xE2u n\xE0y";
+          btn.classList.remove("pop");
+          void btn.offsetWidth;
+          btn.classList.add("pop");
+          btn.addEventListener("animationend", () => btn.classList.remove("pop"), { once: true });
+          try {
+            if (typeof window.notify === "function") {
+              window.notify(added ? `\u{1F516} \u0110\xE3 l\u01B0u c\xE2u h\u1ECFi` : `\u0110\xE3 b\u1ECF l\u01B0u c\xE2u h\u1ECFi`);
+            }
+          } catch (ex) {
+            lhWarn2("BOOKMARK_QUESTIONS_FEATURE_20260726", ex);
+          }
+          if (typeof window.renderStudy === "function") window.renderStudy();
+          updateBookmarkBtn();
+        },
+        false
+      );
+    }
+    function init2() {
+      addBookmarkButtonToCard();
+      bindLibraryClickEvents();
+      if (typeof window.renderUnified === "function") {
+        try {
+          window.renderUnified();
+        } catch (e) {
+          lhWarn2("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
+        }
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", () => setTimeout(init2, 100));
+    } else {
+      setTimeout(init2, 100);
+    }
+    window.addEventListener("lh:subject-changed", () => {
+      setTimeout(updateBookmarkBtn, 100);
+      if (typeof window.renderUnified === "function") {
+        try {
+          window.renderUnified();
+        } catch (e) {
+          lhWarn2("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
+        }
+      } else if (typeof window.renderStudy === "function") {
+        try {
+          window.renderStudy();
+        } catch (e) {
+          lhWarn2("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
+        }
+      }
+    });
+  }
+  function installHeaderBell() {
+    const SEEN_KEY = "lh_edit_request_seen_v1";
+    const POLL_MS = 6e4;
+    const MIN_GAP_MS = 15e3;
+    const $3 = (id) => document.getElementById(id);
+    const esc3 = (s) => String(s ?? "").replace(
+      /[&<>"']/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+    );
+    const user = () => window.HODSupabase?.getUser?.() || null;
+    let bell = null;
+    let items = [];
+    let staffPendingItems = [];
+    let loading = false;
+    let inflight = null;
+    let lastFetch = 0;
+    let loadedOk = false;
+    let watchedUser = null;
+    function isStaff() {
+      const role = String(window.HODSupabase?.getProfile?.()?.role || "").toLowerCase();
+      return !!user() && (window.HODSupabase?.isAdmin?.() || role === "admin" || role === "editor");
+    }
+    function actionsBar() {
+      return document.querySelector(".globalTop .actions") || document.querySelector("#fc .actions") || document.querySelector(".actions");
+    }
+    function readSeen() {
+      try {
+        return JSON.parse(localStorage.getItem(SEEN_KEY) || "{}") || {};
+      } catch (e) {
+        return {};
+      }
+    }
+    function writeSeen(map) {
+      try {
+        localStorage.setItem(SEEN_KEY, JSON.stringify(map));
+      } catch (e) {
+        lhWarn2("HEADER_EDIT_REQUEST_BELL_20260726", e);
+      }
+    }
+    function stampOf(r) {
+      return String(r.status || "") + "|" + String(r.reviewed_at || r.created_at || "");
+    }
+    function isFresh(r, seen) {
+      if (String(r.status || "pending") === "pending") return false;
+      return seen[String(r.id)] !== stampOf(r);
+    }
+    function statusText(s) {
+      return { pending: "\u0110ang ch\u1EDD", approved: "\u0110\xE3 duy\u1EC7t", rejected: "T\u1EEB ch\u1ED1i" }[s] || s || "Kh\xF4ng r\xF5";
+    }
+    function statusClass(s) {
+      return s === "approved" ? "approved" : s === "rejected" ? "rejected" : "pending";
+    }
+    function timeText(v) {
+      if (!v) return "";
+      const d = new Date(v);
+      return isNaN(d.getTime()) ? String(v) : d.toLocaleString("vi-VN");
+    }
+    function mount() {
+      if (!bell) bell = $3("hodEditRequestBell");
+      if (!bell) return;
+      if (!user()) {
+        if (bell.isConnected) bell.remove();
+        return;
+      }
+      const actions = actionsBar();
+      if (!actions) return;
+      const anchor = $3("subjectTopChip") || $3("openSettings");
+      if (anchor && anchor.parentNode === actions) {
+        if (anchor.previousElementSibling !== bell) actions.insertBefore(bell, anchor);
+      } else if (bell.parentNode !== actions) {
+        actions.prepend(bell);
+      }
+    }
+    function paint() {
+      if (!bell || !bell.isConnected) return;
+      const seen = readSeen();
+      const myFreshCount = items.filter((r) => isFresh(r, seen)).length;
+      const staffPendingCount = isStaff() ? staffPendingItems.length : 0;
+      const totalNew = myFreshCount + staffPendingCount;
+      const badge = $3("hodEditRequestBadge");
+      if (badge) {
+        badge.textContent = totalNew > 9 ? "9+" : String(totalNew);
+        badge.classList.toggle("hidden", totalNew === 0);
+      }
+      bell.classList.toggle("hasNewRequest", totalNew > 0);
+      let titleText = "Th\xF4ng b\xE1o y\xEAu c\u1EA7u s\u1EEDa c\xE2u h\u1ECFi";
+      if (staffPendingCount > 0 && myFreshCount > 0) {
+        titleText = `${staffPendingCount} y\xEAu c\u1EA7u h\u1ECDc sinh ch\u1EDD duy\u1EC7t & ${myFreshCount} ph\u1EA3n h\u1ED3i m\u1EDBi`;
+      } else if (staffPendingCount > 0) {
+        titleText = `${staffPendingCount} y\xEAu c\u1EA7u s\u1EEDa t\u1EEB h\u1ECDc sinh \u0111ang ch\u1EDD duy\u1EC7t`;
+      } else if (myFreshCount > 0) {
+        titleText = `${myFreshCount} y\xEAu c\u1EA7u s\u1EEDa v\u1EEBa c\xF3 ph\u1EA3n h\u1ED3i`;
+      }
+      bell.title = titleText;
+    }
+    function isModalOpen() {
+      return !!$3("hodEditRequestModal") && !$3("hodEditRequestModal").classList.contains("hidden");
+    }
+    function fetchNow() {
+      loading = true;
+      return (async () => {
+        try {
+          const promises = [
+            fetch("/api/my-edit-requests?ts=" + Date.now(), { cache: "no-store" }).then((res) => res.ok ? res.json() : {}).catch(() => ({}))
+          ];
+          if (isStaff()) {
+            promises.push(
+              fetch("/api/staff-edit-requests?ts=" + Date.now(), { cache: "no-store" }).then((res) => res.ok ? res.json() : {}).catch(() => ({}))
+            );
+          }
+          const [myOut, staffOut] = await Promise.all(promises);
+          if (Array.isArray(myOut?.data)) {
+            items = myOut.data;
+            loadedOk = true;
+          }
+          if (staffOut && Array.isArray(staffOut?.data)) {
+            staffPendingItems = staffOut.data;
+          } else if (!isStaff()) {
+            staffPendingItems = [];
+          }
+        } catch (e) {
+          console.warn("[bell] kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c y\xEAu c\u1EA7u s\u1EEDa:", e);
+        } finally {
+          loading = false;
+          inflight = null;
+          paint();
+          if (isModalOpen()) renderList();
+        }
+      })();
+    }
+    function load(force) {
+      if (!user()) {
+        items = [];
+        staffPendingItems = [];
+        return Promise.resolve();
+      }
+      if (inflight) return inflight;
+      if (!force && Date.now() - lastFetch < MIN_GAP_MS) return Promise.resolve();
+      lastFetch = Date.now();
+      inflight = fetchNow();
+      return inflight;
+    }
+    window.jumpToQuestionInLibrary = function(num, subjectCode) {
+      closeModal();
+      try {
+        localStorage.setItem("learninghub_library_filter_v1", "all");
+      } catch (e) {
+        lhWarn2("HEADER_EDIT_REQUEST_BELL_20260726", e);
+      }
+      const targetSubject = String(subjectCode || "").trim();
+      const currentSubject = (localStorage.getItem("learninghub_subject_code_merged_v1") || "").trim();
+      let needReloadSubject = false;
+      if (targetSubject && targetSubject !== currentSubject) {
+        try {
+          localStorage.setItem("learninghub_subject_code_merged_v1", targetSubject);
+          needReloadSubject = true;
+          if ($3("subjectInlineText")) $3("subjectInlineText").textContent = targetSubject;
+          if ($3("hodAccountSubjectText")) $3("hodAccountSubjectText").textContent = targetSubject;
+        } catch (e) {
+          lhWarn2("HEADER_EDIT_REQUEST_BELL_20260726", e);
+        }
+      }
+      const tabBtn = document.querySelector('.tab[data-tab="study"]');
+      if (typeof window.switchTab === "function") {
+        window.switchTab("study", tabBtn);
+      } else if (tabBtn) {
+        tabBtn.click();
+      }
+      if (needReloadSubject) {
+        if (typeof window.loadCurrentSubjectOnly === "function") {
+          window.loadCurrentSubjectOnly(true);
+        } else if (typeof window.loadSubjectLight === "function") {
+          window.loadSubjectLight(true);
+        }
+      }
+      const searchInput = document.getElementById("search") || document.getElementById("studySearch");
+      if (searchInput) {
+        searchInput.value = "#" + num;
+        try {
+          localStorage.setItem("learninghub_library_search_v1", "#" + num);
+        } catch (e) {
+          lhWarn2("OPEN_QUESTION_LOCALLY_LOCALSTORAGE_SAVE", e);
+        }
+        searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+        searchInput.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      if (typeof window.renderStudy === "function") {
+        try {
+          window.renderStudy();
+        } catch (e) {
+          lhWarn2("HEADER_EDIT_REQUEST_BELL_20260726", e);
+        }
+      }
+      setTimeout(() => {
+        const list = document.getElementById("studyList") || document.getElementById("study");
+        if (list) list.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 150);
+    };
+    function renderList() {
+      const box = $3("hodEditRequestList");
+      if (!box) return;
+      if (!user()) {
+        box.innerHTML = '<div class="hodReportEmpty">\u0110\u0103ng nh\u1EADp \u0111\u1EC3 xem th\xF4ng b\xE1o.</div>';
+        return;
+      }
+      let staffHtml = "";
+      if (isStaff()) {
+        if (staffPendingItems.length > 0) {
+          staffHtml = `
+        <div class="hodStaffPendingBlock" style="margin-bottom: 14px; padding: 12px 14px; background: rgba(200, 169, 110, 0.08); border: 1px solid rgba(200, 169, 110, 0.35); border-radius: 14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <strong style="color:var(--gold2, #e8d4a8); font-size:13px; display:flex; align-items:center; gap:6px; font-weight:700;">
+              <span>\u{1F4CC}</span> C\xF3 ${staffPendingItems.length} y\xEAu c\u1EA7u t\u1EEB h\u1ECDc sinh ch\u1EDD duy\u1EC7t
+            </strong>
+            <a href="admin.html?tab=requests" target="_blank" style="font-size:12px; font-weight:700; color:#111111; text-decoration:none; background:linear-gradient(135deg, #c8a96e, #e8d4a8); padding:5px 12px; border-radius:8px; border:none; display:inline-flex; align-items:center; gap:3px; box-shadow:0 2px 8px rgba(200, 169, 110, 0.3);">
+              Duy\u1EC7t ngay \u2197
+            </a>
+          </div>
+          ${staffPendingItems.slice(0, 3).map((r) => {
+            const n = r.question_num || r.new_data?.num || "?";
+            const sc = r.subject_code || r.new_data?.subject_code || "";
+            return `
+            <div style="font-size:12px; color:#e2d8c3; margin-top:6px; padding-top:6px; border-top:1px dashed rgba(200, 169, 110, 0.2); line-height:1.45; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+              <div>
+                <b style="color:#ffffff;">C\xE2u ${esc3(n)}</b> (${esc3(sc)}) - <span style="color:var(--gold2, #e8d4a8); font-weight:500;">${esc3(r.user_email || "H\u1ECDc sinh")}</span>: <span style="color:#c8bba6; font-style:italic;">"${esc3(r.reason || "\u0110\u1EC1 xu\u1EA5t s\u1EEDa c\xE2u h\u1ECFi")}"</span>
+              </div>
+              ${n !== "?" ? `<button type="button" onclick="window.jumpToQuestionInLibrary('${esc3(n)}', '${esc3(sc)}')" style="font-size:11px; font-weight:600; padding:2px 8px; border-radius:6px; background:rgba(200, 169, 110, 0.15); border:1px solid rgba(200, 169, 110, 0.3); color:var(--gold2, #e8d4a8); cursor:pointer; white-space:nowrap;">Tra c\xE2u \u2197</button>` : ""}
+            </div>`;
+          }).join("")}
+          ${staffPendingItems.length > 3 ? `<div style="font-size:11px; color:#c8bba6; margin-top:6px; font-style:italic;">...v\xE0 ${staffPendingItems.length - 3} y\xEAu c\u1EA7u kh\xE1c</div>` : ""}
+        </div>`;
+        } else {
+          staffHtml = `
+        <div class="hodStaffPendingBlock" style="margin-bottom: 12px; padding: 10px 14px; background: rgba(114, 197, 140, 0.08); border: 1px solid rgba(114, 197, 140, 0.25); border-radius: 12px; font-size:12px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="color:#9ee5b2; font-weight:600; display:flex; align-items:center; gap:6px;">\u2713 Kh\xF4ng c\xF3 y\xEAu c\u1EA7u h\u1ECDc sinh n\xE0o \u0111ang ch\u1EDD duy\u1EC7t</span>
+          <a href="admin.html?tab=requests" target="_blank" style="color:var(--gold2, #e8d4a8); font-weight:700; text-decoration:none;">Trang Admin \u2197</a>
+        </div>`;
+        }
+      }
+      if (!items.length) {
+        const emptyMsg = loading ? '<div class="hodReportEmpty">\u0110ang t\u1EA3i...</div>' : loadedOk ? '<div class="hodReportEmpty">B\u1EA1n ch\u01B0a g\u1EEDi y\xEAu c\u1EA7u s\u1EEDa n\xE0o.</div>' : '<div class="hodReportEmpty">Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c th\xF4ng b\xE1o. Th\u1EED l\u1EA1i sau.</div>';
+        box.innerHTML = staffHtml + emptyMsg;
+        return;
+      }
+      const seen = readSeen();
+      const myItemsHtml = items.map((r) => {
+        const fresh = isFresh(r, seen);
+        const num = r.question_num || r.new_data?.num || "?";
+        const code = r.subject_code || r.new_data?.subject_code || "";
+        return `
+      <div class="hodEditRequestItem${fresh ? " is-new" : ""}">
+        <div class="hodEditRequestHead">
+          <b>C\xE2u ${esc3(num)}${code ? " \xB7 " + esc3(code) : ""}</b>
+          <span class="hodEditRequestStatus ${statusClass(r.status)}">${esc3(statusText(r.status))}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; gap:8px;">
+          <p class="hodEditRequestMeta" style="margin:0;">G\u1EEDi: ${esc3(timeText(r.created_at))}${r.reviewed_at ? " \xB7 Ph\u1EA3n h\u1ED3i: " + esc3(timeText(r.reviewed_at)) : ""}</p>
+          ${num !== "?" ? `
+          <button type="button" class="hodJumpStudyBtn" data-num="${esc3(num)}" data-subject="${esc3(code)}" style="font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: rgba(200, 169, 110, 0.15); border: 1px solid rgba(200, 169, 110, 0.35); color: var(--gold2, #e8d4a8); cursor: pointer; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; flex-shrink: 0;">
+            \u{1F50D} Tra c\xE2u \u2197
+          </button>` : ""}
+        </div>
+        ${r.admin_note ? `<p class="hodEditRequestNote" style="margin-top:4px;">Ghi ch\xFA admin: ${esc3(r.admin_note)}</p>` : ""}
+        ${fresh ? '<span class="hodEditRequestNew">M\u1EDBi</span>' : ""}
+      </div>`;
+      }).join("");
+      box.innerHTML = staffHtml + myItemsHtml;
+    }
+    function markAllSeen() {
+      const seen = readSeen();
+      items.forEach((r) => {
+        if (String(r.status || "pending") !== "pending") seen[String(r.id)] = stampOf(r);
+      });
+      writeSeen(seen);
+    }
+    function closeModal() {
+      $3("hodEditRequestModal")?.classList.add("hidden");
+    }
+    async function openModal() {
+      const modal = $3("hodEditRequestModal");
+      if (!modal) return;
+      $3("hodAccountMenu")?.classList.add("hidden");
+      modal.classList.remove("hidden");
+      renderList();
+      await load(true);
+      renderList();
+      markAllSeen();
+      paint();
+    }
+    function bind() {
+      if (!bell) bell = $3("hodEditRequestBell");
+      if (bell && !bell.__lhBellBound) {
+        bell.__lhBellBound = true;
+        bell.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openModal();
+        });
+      }
+      const closeBtn = $3("hodEditRequestClose");
+      if (closeBtn && !closeBtn.__lhBellBound) {
+        closeBtn.__lhBellBound = true;
+        closeBtn.addEventListener("click", closeModal);
+      }
+      const modal = $3("hodEditRequestModal");
+      if (modal && !modal.__lhBellBound) {
+        modal.__lhBellBound = true;
+        modal.addEventListener("mousedown", (e) => {
+          if (e.target === modal) closeModal();
+        });
+      }
+      const listEl = $3("hodEditRequestList");
+      if (listEl && !listEl.__lhJumpBound) {
+        listEl.__lhJumpBound = true;
+        listEl.addEventListener("click", (e) => {
+          const btn = e.target.closest(".hodJumpStudyBtn");
+          if (btn) {
+            const num = btn.dataset.num;
+            const subject = btn.dataset.subject || "";
+            if (num && num !== "?") window.jumpToQuestionInLibrary(num, subject);
+          }
+        });
+      }
+    }
+    function tick() {
+      mount();
+      bind();
+      const uid = user()?.id || null;
+      if (uid !== watchedUser) {
+        watchedUser = uid;
+        items = [];
+        loadedOk = false;
+        lastFetch = 0;
+        if (uid) load(true);
+      }
+      paint();
+    }
+    function boot() {
+      tick();
+      [300, 1200, 3e3].forEach((ms) => setTimeout(tick, ms));
+      setInterval(tick, 700);
+      setInterval(() => load(false), POLL_MS);
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) tick();
+      });
+      window.addEventListener("focus", () => {
+        tick();
+        load(false);
+      });
+    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+    else boot();
+  }
 
   // src/student/main.js
   var mocking = installMock();
@@ -16739,6 +19219,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
   if (!mocking) initVersionChecker();
   window.lhShowReloadNotice = showAdminReloadNotice;
   window.LHSubjectImport = subjectImport_exports;
+  window.LHBookmarks = bookmarks_exports;
+  window.LHFlashcards = flashcards_exports;
+  window.LHAuth = auth_exports;
+  window.LHSearch = search_exports;
   window.getDeviceTypeString = getDeviceTypeString2;
   window.getSubjectCode = getSubjectCode;
   window.setSubjectHelper = setSubject;

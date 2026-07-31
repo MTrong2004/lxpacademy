@@ -26,6 +26,12 @@ const FILES = [
   { file: 'src/student/images.js', label: 'images.js (ảnh + upload Cloudinary, tách khỏi appCore)' },
   { file: 'src/student/library.js', label: 'library.js (tab Thư viện, tách khỏi appCore)' },
   { file: 'src/student/subjectGate.js', label: 'subjectGate.js (cổng chọn môn + số câu, tách khỏi appCore)' },
+  { file: 'src/student/bookmarks.js', label: 'bookmarks.js (Bookmark & Edit Request Bell, tách khỏi appCore)' },
+  { file: 'src/student/subjectImport.js', label: 'subjectImport.js (Import & Thêm môn, tách khỏi appCore)' },
+  { file: 'src/student/flashcards.js', label: 'flashcards.js (Flashcards & Mobile Nav, tách khỏi appCore)' },
+  { file: 'src/student/auth.js', label: 'auth.js (Supabase Auth & Interceptor, tách khỏi appCore)' },
+  { file: 'src/student/search.js', label: 'search.js (Smart Search & Add Question Display, tách khỏi appCore)' },
+  { file: 'src/student/subjects.js', label: 'subjects.js (Subject Selection & Data Loading, tách khỏi appCore)' },
   { file: 'src/admin/adminCore.js', label: 'adminCore.js (bundle -> admin.js)' },
 ];
 
