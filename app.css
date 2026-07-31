@@ -2325,7 +2325,30 @@ body:not(.hod-is-admin) #adminModal:not(.hidden) {
   display: grid;
   place-items: center;
   font: 950 1.4rem var(--serif);
-  margin-bottom: 18px
+  margin-bottom: 18px;
+  overflow: hidden;
+}
+
+.hodLogoClean img,
+.hodLogoImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
+}
+
+.brandSubjectBox {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brandLogoImg {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  border-radius: 6px;
 }
 
 .hodLoginGatePanel h1 {
@@ -11567,7 +11590,8 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
   display: flex !important;
   flex-direction: column !important;
   gap: 12px !important;
-  background: #0f121a !important; /* Nền tối đặc solid, không dùng kính mờ */
+  background: #0f121a !important;
+  /* Nền tối đặc solid, không dùng kính mờ */
   border: 1px solid rgba(255, 255, 255, 0.16) !important;
   box-shadow: 0 25px 65px rgba(0, 0, 0, 0.95) !important
 }
@@ -11630,7 +11654,8 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
   padding: 10px 14px !important;
   border-radius: 14px !important;
   border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  background: #171b28 !important; /* Nền tối đặc */
+  background: #171b28 !important;
+  /* Nền tối đặc */
   color: var(--gold2, #f3e5c8) !important;
   font-weight: 900 !important;
   display: grid !important;
@@ -11655,7 +11680,8 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
   padding: 0 14px !important;
   border-radius: 999px !important;
   border: 1px solid rgba(255, 255, 255, 0.18) !important;
-  background: #202637 !important; /* Nền đặc */
+  background: #202637 !important;
+  /* Nền đặc */
   color: #e2e8f0 !important;
   font-weight: 900 !important
 }
@@ -11701,7 +11727,8 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
   border: 1px solid rgba(255, 255, 255, 0.14) !important;
   border-left: 4px solid rgba(232, 212, 168, .75) !important;
   border-radius: 14px !important;
-  background: #181d2a !important; /* Nền card tối đặc tương phản rõ nét */
+  background: #181d2a !important;
+  /* Nền card tối đặc tương phản rõ nét */
   padding: 12px 14px !important;
   box-shadow: 0 4px 16px rgba(0, 0, 0, .4) !important
 }
@@ -11726,7 +11753,8 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
 }
 
 .v7Question {
-  color: #ffffff !important; /* Chữ trắng sáng nổi bật */
+  color: #ffffff !important;
+  /* Chữ trắng sáng nổi bật */
   font-size: .98rem !important;
   line-height: 1.45 !important;
   font-weight: 700 !important;
@@ -11738,7 +11766,8 @@ body.lh-in-subject-folder .polishedSubjectPanel>#subjectList.inFolder {
   align-items: center !important;
   gap: 8px !important;
   min-width: 0 !important;
-  color: #cbd5e1 !important; /* Chữ phụ ghi xám sáng rõ ràng */
+  color: #cbd5e1 !important;
+  /* Chữ phụ ghi xám sáng rõ ràng */
   font-size: .9rem !important;
   line-height: 1.35 !important;
   word-break: break-word !important
@@ -20288,7 +20317,7 @@ body .subjectFolderCard .subjectNewBadge {
   height: 32px !important;
 }
 
-.subjectMeta > span:first-child {
+.subjectMeta>span:first-child {
   font-size: 0.78rem !important;
   font-weight: 700 !important;
   color: rgba(245, 240, 232, 0.75) !important;
@@ -20414,7 +20443,8 @@ body .subjectFolderCard .subjectNewBadge {
     max-height: 50vh !important;
   }
 
-  .subjectCard, .subjectFolderCard {
+  .subjectCard,
+  .subjectFolderCard {
     min-height: 135px !important;
     padding: 12px 14px !important;
   }
@@ -20434,8 +20464,13 @@ body .subjectFolderCard .subjectNewBadge {
 
 /* ===== SKELETON_LOADING_AND_CARD_ANIMATIONS_20260731 ===== */
 @keyframes lhShimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 @keyframes lhCardFadeInUp {
@@ -20443,6 +20478,7 @@ body .subjectFolderCard .subjectNewBadge {
     opacity: 0;
     transform: translateY(12px) scale(0.98);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -20505,11 +20541,13 @@ body .subjectFolderCard .subjectNewBadge {
     animation: none !important;
     background: rgba(200, 169, 110, 0.15) !important;
   }
+
   .libraryQuestionCard {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
   }
+
   .pane.active {
     animation: none !important;
     opacity: 1 !important;
@@ -20523,6 +20561,7 @@ body .subjectFolderCard .subjectNewBadge {
     opacity: 0;
     transform: translateY(10px) scale(0.99);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -20536,12 +20575,14 @@ body .subjectFolderCard .subjectNewBadge {
 
 /* ===== MOBILE_FLASHCARD_BOTTOM_OVERLAP_FIX_20260731 ===== */
 @media (max-width: 760px) {
+
   #fc .face.front,
   #fc .face.back {
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
     padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)) !important;
   }
+
   #fc .opts {
     padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
   }
@@ -20674,6 +20715,7 @@ body .subjectFolderCard .subjectNewBadge {
 }
 
 @media (max-width: 760px) {
+
   /* Sticky Frosted Toolbar on Mobile */
   #libraryStableToolbar {
     position: sticky !important;
@@ -20883,34 +20925,91 @@ body .subjectFolderCard .subjectNewBadge {
 
 /* ---------- Keyframes ---------- */
 @keyframes examFadeSlideIn {
-  0%   { opacity: 0; transform: translateY(14px); filter: blur(4px); }
-  100% { opacity: 1; transform: translateY(0);    filter: blur(0);   }
+  0% {
+    opacity: 0;
+    transform: translateY(14px);
+    filter: blur(4px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
 }
+
 @keyframes examOptionPop {
-  0%   { transform: scale(0.97); }
-  50%  { transform: scale(1.025); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(0.97);
+  }
+
+  50% {
+    transform: scale(1.025);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }
+
 @keyframes examPulseGold {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(232,212,168,0); }
-  50%       { box-shadow: 0 0 0 6px rgba(232,212,168,0.18); }
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(232, 212, 168, 0);
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px rgba(232, 212, 168, 0.18);
+  }
 }
+
 @keyframes examProgressShimmer {
-  0%   { background-position: -200% center; }
-  100% { background-position:  200% center; }
+  0% {
+    background-position: -200% center;
+  }
+
+  100% {
+    background-position: 200% center;
+  }
 }
+
 @keyframes examScorePop {
-  0%   { transform: scale(0.6) rotate(-8deg); opacity: 0; }
-  65%  { transform: scale(1.12) rotate(2deg); opacity: 1; }
-  100% { transform: scale(1) rotate(0deg); }
+  0% {
+    transform: scale(0.6) rotate(-8deg);
+    opacity: 0;
+  }
+
+  65% {
+    transform: scale(1.12) rotate(2deg);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
 }
+
 @keyframes examResultFade {
-  0%   { opacity: 0; transform: translateY(24px); }
-  100% { opacity: 1; transform: translateY(0); }
+  0% {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
+
 @keyframes examLayoutCardHover {
-  0%   { transform: translateY(0); }
-  100% { transform: translateY(-4px); }
+  0% {
+    transform: translateY(0);
+  }
+
+  100% {
+    transform: translateY(-4px);
+  }
 }
 
 /* ========================================================
@@ -20920,38 +21019,42 @@ body .subjectFolderCard .subjectNewBadge {
 
   /* === Card môn đang học: nâng cấp visual === */
   #quiz .examActiveSubjectCard {
-    background: linear-gradient(145deg, rgba(200,169,110,0.10), rgba(255,255,255,0.03)) !important;
-    border: 1px solid rgba(200,169,110,0.28) !important;
+    background: linear-gradient(145deg, rgba(200, 169, 110, 0.10), rgba(255, 255, 255, 0.03)) !important;
+    border: 1px solid rgba(200, 169, 110, 0.28) !important;
     border-radius: 18px !important;
     padding: 14px 16px !important;
     backdrop-filter: blur(14px) !important;
     -webkit-backdrop-filter: blur(14px) !important;
     box-shadow:
-      0 8px 28px rgba(0,0,0,0.30),
-      inset 0 1px 0 rgba(255,255,255,0.06) !important;
-    animation: examFadeSlideIn 0.45s cubic-bezier(0.22,1,0.36,1) both !important;
+      0 8px 28px rgba(0, 0, 0, 0.30),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+    animation: examFadeSlideIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both !important;
   }
+
   #quiz .examActiveSubjectCode {
     font-size: 0.9rem !important;
     letter-spacing: 0.06em !important;
     font-weight: 900 !important;
     color: var(--gold2) !important;
-    background: rgba(200,169,110,0.12) !important;
-    border: 1px solid rgba(200,169,110,0.3) !important;
+    background: rgba(200, 169, 110, 0.12) !important;
+    border: 1px solid rgba(200, 169, 110, 0.3) !important;
     border-radius: 8px !important;
     padding: 2px 8px !important;
   }
+
   #quiz .examActiveSubjectName {
     font-size: 0.95rem !important;
     font-weight: 700 !important;
-    color: rgba(245,240,232,0.9) !important;
+    color: rgba(245, 240, 232, 0.9) !important;
   }
+
   #quiz .examActiveSubjectDesc {
     font-size: 0.82rem !important;
     line-height: 1.4 !important;
-    color: rgba(245,240,232,0.52) !important;
+    color: rgba(245, 240, 232, 0.52) !important;
     margin-top: 4px !important;
   }
+
   #quiz .examActiveSubjectMeta {
     font-size: 0.78rem !important;
     color: var(--gold2) !important;
@@ -20965,27 +21068,29 @@ body .subjectFolderCard .subjectNewBadge {
     border-radius: 14px !important;
     font-size: 0.92rem !important;
     font-weight: 800 !important;
-    border: 1px solid rgba(200,169,110,0.18) !important;
-    background: rgba(255,255,255,0.03) !important;
-    color: rgba(245,240,232,0.75) !important;
+    border: 1px solid rgba(200, 169, 110, 0.18) !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    color: rgba(245, 240, 232, 0.75) !important;
     transition:
       background 0.18s ease,
       border-color 0.18s ease,
-      transform 0.15s cubic-bezier(0.34,1.56,0.64,1),
+      transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
       color 0.18s ease !important;
     touch-action: manipulation !important;
   }
+
   #quiz .examOnlyCountGrid .cnt:active {
     transform: scale(0.93) !important;
   }
+
   #quiz .examOnlyCountGrid .cnt.sel {
-    background: linear-gradient(135deg, rgba(200,169,110,0.28), rgba(232,212,168,0.12)) !important;
-    border-color: rgba(232,212,168,0.65) !important;
+    background: linear-gradient(135deg, rgba(200, 169, 110, 0.28), rgba(232, 212, 168, 0.12)) !important;
+    border-color: rgba(232, 212, 168, 0.65) !important;
     color: #ffffff !important;
     font-weight: 950 !important;
     box-shadow:
-      0 0 16px rgba(232,212,168,0.18),
-      inset 0 1px 0 rgba(255,255,255,0.12) !important;
+      0 0 16px rgba(232, 212, 168, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
     animation: examPulseGold 1.4s ease-in-out 1 !important;
   }
 
@@ -20999,16 +21104,17 @@ body .subjectFolderCard .subjectNewBadge {
     color: #0c0a06 !important;
     letter-spacing: 0.03em !important;
     box-shadow:
-      0 6px 22px rgba(200,169,110,0.35),
-      0 2px 8px rgba(0,0,0,0.25) !important;
+      0 6px 22px rgba(200, 169, 110, 0.35),
+      0 2px 8px rgba(0, 0, 0, 0.25) !important;
     transition:
-      transform 0.18s cubic-bezier(0.34,1.56,0.64,1),
+      transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
       box-shadow 0.22s ease !important;
     touch-action: manipulation !important;
   }
+
   #quiz #start.start:active {
     transform: scale(0.97) !important;
-    box-shadow: 0 2px 10px rgba(200,169,110,0.25) !important;
+    box-shadow: 0 2px 10px rgba(200, 169, 110, 0.25) !important;
   }
 
   /* === Layout Picker Modal: cải thiện mobile === */
@@ -21018,62 +21124,72 @@ body .subjectFolderCard .subjectNewBadge {
     padding: 20px 16px 24px !important;
     width: 100% !important;
     max-width: 100% !important;
-    background: linear-gradient(160deg, rgba(28,22,18,0.97), rgba(18,14,12,0.99)) !important;
-    border: 1px solid rgba(200,169,110,0.22) !important;
+    background: linear-gradient(160deg, rgba(28, 22, 18, 0.97), rgba(18, 14, 12, 0.99)) !important;
+    border: 1px solid rgba(200, 169, 110, 0.22) !important;
     box-shadow:
-      0 -20px 60px rgba(0,0,0,0.5),
-      inset 0 1px 0 rgba(255,255,255,0.05) !important;
-    animation: examFadeSlideIn 0.32s cubic-bezier(0.22,1,0.36,1) both !important;
+      0 -20px 60px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+    animation: examFadeSlideIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both !important;
   }
+
   .examLayoutPickerTitle {
     font-size: 1.05rem !important;
     margin: 0 0 4px !important;
     font-weight: 900 !important;
     color: #ffffff !important;
   }
+
   .examLayoutPickerSub {
     font-size: 0.83rem !important;
-    color: rgba(245,240,232,0.5) !important;
+    color: rgba(245, 240, 232, 0.5) !important;
     margin: 0 0 16px !important;
   }
+
   .examLayoutPickerGrid {
     grid-template-columns: 1fr 1fr !important;
     gap: 10px !important;
   }
+
   .examLayoutPickerCard {
     padding: 14px 12px !important;
     border-radius: 16px !important;
-    background: rgba(255,255,255,0.03) !important;
-    border: 1.5px solid rgba(200,169,110,0.18) !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1.5px solid rgba(200, 169, 110, 0.18) !important;
     transition:
       border-color 0.18s ease,
       background 0.18s ease,
-      transform 0.22s cubic-bezier(0.34,1.56,0.64,1) !important;
+      transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
     touch-action: manipulation !important;
   }
+
   .examLayoutPickerCard:active {
     transform: scale(0.95) !important;
   }
+
   .examLayoutPickerCard.active {
-    border-color: rgba(232,212,168,0.7) !important;
-    background: linear-gradient(135deg, rgba(200,169,110,0.18), rgba(232,212,168,0.06)) !important;
-    box-shadow: 0 0 18px rgba(232,212,168,0.15), inset 0 1px 0 rgba(255,255,255,0.08) !important;
+    border-color: rgba(232, 212, 168, 0.7) !important;
+    background: linear-gradient(135deg, rgba(200, 169, 110, 0.18), rgba(232, 212, 168, 0.06)) !important;
+    box-shadow: 0 0 18px rgba(232, 212, 168, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
   }
+
   .examLayoutPickerIcon {
     font-size: 1.8rem !important;
     margin-bottom: 6px !important;
   }
+
   .examLayoutPickerName {
     font-size: 0.86rem !important;
     font-weight: 800 !important;
-    color: rgba(245,240,232,0.9) !important;
+    color: rgba(245, 240, 232, 0.9) !important;
     margin-bottom: 4px !important;
   }
+
   .examLayoutPickerDesc {
     font-size: 0.74rem !important;
     line-height: 1.35 !important;
-    color: rgba(245,240,232,0.45) !important;
+    color: rgba(245, 240, 232, 0.45) !important;
   }
+
   .examLayoutPickerConfirmBtn {
     min-height: 50px !important;
     border-radius: 14px !important;
@@ -21081,10 +21197,11 @@ body .subjectFolderCard .subjectNewBadge {
     font-weight: 950 !important;
     background: linear-gradient(135deg, var(--gold2) 0%, var(--gold) 100%) !important;
     color: #0c0a06 !important;
-    box-shadow: 0 4px 18px rgba(200,169,110,0.35) !important;
+    box-shadow: 0 4px 18px rgba(200, 169, 110, 0.35) !important;
     touch-action: manipulation !important;
-    transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1) !important;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
   }
+
   .examLayoutPickerConfirmBtn:active {
     transform: scale(0.96) !important;
   }
@@ -21097,13 +21214,13 @@ body .subjectFolderCard .subjectNewBadge {
 
   /* Card thi: glassmorphism layer sâu hơn */
   #quiz .examOnlyCard {
-    background: linear-gradient(160deg, rgba(26,20,16,0.82), rgba(18,14,12,0.90)) !important;
-    border: 1px solid rgba(200,169,110,0.15) !important;
+    background: linear-gradient(160deg, rgba(26, 20, 16, 0.82), rgba(18, 14, 12, 0.90)) !important;
+    border: 1px solid rgba(200, 169, 110, 0.15) !important;
     backdrop-filter: blur(18px) saturate(140%) !important;
     -webkit-backdrop-filter: blur(18px) saturate(140%) !important;
     box-shadow:
-      0 20px 50px rgba(0,0,0,0.45),
-      inset 0 1px 0 rgba(255,255,255,0.05) !important;
+      0 20px 50px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
     border-radius: 22px !important;
     padding: 16px !important;
     /* Không dùng animation ở đây — draw() set innerHTML mỗi khi chuyển câu nên card sẽ flash liên tục */
@@ -21116,9 +21233,10 @@ body .subjectFolderCard .subjectNewBadge {
     align-items: center !important;
     gap: 10px !important;
     padding-bottom: 10px !important;
-    border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
     margin-bottom: 12px !important;
   }
+
   #quiz .examOnlyQuestionNo {
     font-size: 1.05rem !important;
     font-weight: 950 !important;
@@ -21126,12 +21244,14 @@ body .subjectFolderCard .subjectNewBadge {
     /* Gradient text bỏ: -webkit-text-fill-color:transparent không safe trên mobile Safari */
     line-height: 1.2 !important;
   }
+
   #quiz .examOnlyMeta {
     font-size: 0.76rem !important;
-    color: rgba(245,240,232,0.48) !important;
+    color: rgba(245, 240, 232, 0.48) !important;
     margin-top: 2px !important;
     line-height: 1.3 !important;
   }
+
   #quiz .examOnlyExit {
     min-width: 0 !important;
     width: auto !important;
@@ -21143,14 +21263,15 @@ body .subjectFolderCard .subjectNewBadge {
     border-radius: 999px !important;
     white-space: nowrap !important;
     flex-shrink: 0 !important;
-    border: 1px solid rgba(233,135,123,0.28) !important;
-    background: rgba(233,135,123,0.08) !important;
+    border: 1px solid rgba(233, 135, 123, 0.28) !important;
+    background: rgba(233, 135, 123, 0.08) !important;
     color: #ffd0ca !important;
     transition: all 0.16s ease !important;
     touch-action: manipulation !important;
   }
+
   #quiz .examOnlyExit:active {
-    background: rgba(233,135,123,0.20) !important;
+    background: rgba(233, 135, 123, 0.20) !important;
     transform: scale(0.95) !important;
   }
 
@@ -21158,26 +21279,25 @@ body .subjectFolderCard .subjectNewBadge {
   #quiz .examOnlyProgress {
     height: 5px !important;
     border-radius: 999px !important;
-    background: rgba(255,255,255,0.06) !important;
+    background: rgba(255, 255, 255, 0.06) !important;
     overflow: hidden !important;
     margin: 0 0 14px !important;
     position: relative !important;
   }
-  #quiz .examOnlyProgress > div {
+
+  #quiz .examOnlyProgress>div {
     height: 100% !important;
     border-radius: 999px !important;
-    background: linear-gradient(
-      90deg,
-      var(--gold) 0%,
-      var(--gold2) 40%,
-      rgba(255,255,255,0.8) 50%,
-      var(--gold2) 60%,
-      var(--gold) 100%
-    ) !important;
+    background: linear-gradient(90deg,
+        var(--gold) 0%,
+        var(--gold2) 40%,
+        rgba(255, 255, 255, 0.8) 50%,
+        var(--gold2) 60%,
+        var(--gold) 100%) !important;
     background-size: 200% auto !important;
     animation: examProgressShimmer 2.5s linear infinite !important;
-    box-shadow: 0 0 8px rgba(232,212,168,0.5) !important;
-    transition: width 0.4s cubic-bezier(0.4,0,0.2,1) !important;
+    box-shadow: 0 0 8px rgba(232, 212, 168, 0.5) !important;
+    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
   }
 
   /* Câu hỏi text: cải thiện readability */
@@ -21186,8 +21306,8 @@ body .subjectFolderCard .subjectNewBadge {
     font-size: 1.02rem !important;
     line-height: 1.5 !important;
     font-weight: 650 !important;
-    color: rgba(248,244,238,0.92) !important;
-    -webkit-text-fill-color: rgba(248,244,238,0.92) !important;
+    color: rgba(248, 244, 238, 0.92) !important;
+    -webkit-text-fill-color: rgba(248, 244, 238, 0.92) !important;
     margin-bottom: 12px !important;
     overflow-wrap: anywhere !important;
   }
@@ -21199,30 +21319,33 @@ body .subjectFolderCard .subjectNewBadge {
     border-radius: 15px !important;
     gap: 12px !important;
     align-items: center !important;
-    border: 1px solid rgba(245,240,232,0.08) !important;
-    background: rgba(255,255,255,0.025) !important;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.025) !important;
+    border: 1px solid rgba(245, 240, 232, 0.08) !important;
+    background: rgba(255, 255, 255, 0.025) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025) !important;
     transition:
       background 0.18s ease,
       border-color 0.18s ease,
-      transform 0.15s cubic-bezier(0.34,1.56,0.64,1),
+      transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
       box-shadow 0.18s ease !important;
     touch-action: manipulation !important;
     cursor: pointer !important;
     -webkit-tap-highlight-color: transparent !important;
   }
+
   #quiz .examOnlyOption:active {
     transform: scale(0.975) !important;
-    background: rgba(255,255,255,0.055) !important;
+    background: rgba(255, 255, 255, 0.055) !important;
   }
+
   #quiz .examOnlyOption.sel {
-    border-color: rgba(232,212,168,0.78) !important;
-    background: linear-gradient(135deg, rgba(200,169,110,0.18) 0%, rgba(232,212,168,0.07) 100%) !important;
+    border-color: rgba(232, 212, 168, 0.78) !important;
+    background: linear-gradient(135deg, rgba(200, 169, 110, 0.18) 0%, rgba(232, 212, 168, 0.07) 100%) !important;
     box-shadow:
-      0 0 20px rgba(232,212,168,0.14),
-      inset 0 1px 0 rgba(255,255,255,0.10) !important;
-    animation: examOptionPop 0.22s cubic-bezier(0.34,1.56,0.64,1) both !important;
+      0 0 20px rgba(232, 212, 168, 0.14),
+      inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
+    animation: examOptionPop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
   }
+
   #quiz .examOnlyOption .qkey {
     width: 30px !important;
     height: 30px !important;
@@ -21231,8 +21354,8 @@ body .subjectFolderCard .subjectNewBadge {
     border-radius: 9px !important;
     font-size: 0.82rem !important;
     font-weight: 800 !important;
-    border: 1px solid rgba(200,169,110,0.28) !important;
-    background: rgba(200,169,110,0.08) !important;
+    border: 1px solid rgba(200, 169, 110, 0.28) !important;
+    background: rgba(200, 169, 110, 0.08) !important;
     color: var(--gold2) !important;
     display: flex !important;
     align-items: center !important;
@@ -21240,35 +21363,39 @@ body .subjectFolderCard .subjectNewBadge {
     transition: all 0.18s ease !important;
     flex-shrink: 0 !important;
   }
+
   #quiz .examOnlyOption.sel .qkey {
     background: linear-gradient(135deg, var(--gold2), var(--gold)) !important;
     border-color: var(--gold) !important;
     color: #0c0a06 !important;
     font-weight: 950 !important;
-    box-shadow: 0 2px 8px rgba(232,212,168,0.35) !important;
+    box-shadow: 0 2px 8px rgba(232, 212, 168, 0.35) !important;
   }
+
   #quiz .examOnlyOption .qtxt {
     font-size: 0.91rem !important;
     line-height: 1.42 !important;
     font-weight: 500 !important;
-    color: rgba(245,240,232,0.72) !important;
+    color: rgba(245, 240, 232, 0.72) !important;
     flex: 1 !important;
     min-width: 0 !important;
     overflow-wrap: anywhere !important;
   }
+
   #quiz .examOnlyOption.sel .qtxt {
-    color: rgba(248,244,238,0.92) !important;
+    color: rgba(248, 244, 238, 0.92) !important;
     font-weight: 600 !important;
   }
 
   /* Review states */
   #quiz .examOnlyOption.review-correct {
-    border-color: rgba(114,197,140,0.65) !important;
-    background: rgba(114,197,140,0.10) !important;
+    border-color: rgba(114, 197, 140, 0.65) !important;
+    background: rgba(114, 197, 140, 0.10) !important;
   }
+
   #quiz .examOnlyOption.review-incorrect {
-    border-color: rgba(233,135,123,0.65) !important;
-    background: rgba(233,135,123,0.10) !important;
+    border-color: rgba(233, 135, 123, 0.65) !important;
+    background: rgba(233, 135, 123, 0.10) !important;
   }
 
   /* Footer: navigation */
@@ -21278,8 +21405,9 @@ body .subjectFolderCard .subjectNewBadge {
     gap: 10px !important;
     padding-top: 14px !important;
     margin-top: 14px !important;
-    border-top: 1px solid rgba(255,255,255,0.05) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
   }
+
   #quiz .examOnlyNav {
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
@@ -21287,25 +21415,28 @@ body .subjectFolderCard .subjectNewBadge {
     width: 100% !important;
     margin: 0 !important;
   }
+
   #quiz .examOnlyNav .btn {
     min-height: 48px !important;
     height: 48px !important;
     border-radius: 14px !important;
     font-size: 0.88rem !important;
     font-weight: 800 !important;
-    border: 1px solid rgba(200,169,110,0.22) !important;
-    background: rgba(255,255,255,0.025) !important;
+    border: 1px solid rgba(200, 169, 110, 0.22) !important;
+    background: rgba(255, 255, 255, 0.025) !important;
     color: var(--gold2) !important;
     transition:
       background 0.18s ease,
       border-color 0.18s ease,
-      transform 0.15s cubic-bezier(0.34,1.56,0.64,1) !important;
+      transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
     touch-action: manipulation !important;
   }
+
   #quiz .examOnlyNav .btn:active:not(:disabled) {
     transform: scale(0.95) !important;
-    background: rgba(200,169,110,0.10) !important;
+    background: rgba(200, 169, 110, 0.10) !important;
   }
+
   #quiz .examOnlyNav .btn:disabled {
     opacity: 0.35 !important;
     cursor: not-allowed !important;
@@ -21323,32 +21454,34 @@ body .subjectFolderCard .subjectNewBadge {
     background: linear-gradient(135deg, var(--gold2) 0%, var(--gold) 100%) !important;
     color: #0c0a06 !important;
     box-shadow:
-      0 6px 22px rgba(200,169,110,0.38),
-      0 2px 8px rgba(0,0,0,0.3) !important;
+      0 6px 22px rgba(200, 169, 110, 0.38),
+      0 2px 8px rgba(0, 0, 0, 0.3) !important;
     position: sticky !important;
     bottom: env(safe-area-inset-bottom, 10px) !important;
     z-index: 25 !important;
     margin-top: 0 !important;
     transition:
-      transform 0.15s cubic-bezier(0.34,1.56,0.64,1),
+      transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
       box-shadow 0.18s ease !important;
     touch-action: manipulation !important;
   }
+
   #quiz #examSubmit:active {
     transform: scale(0.96) !important;
-    box-shadow: 0 3px 12px rgba(200,169,110,0.25) !important;
+    box-shadow: 0 3px 12px rgba(200, 169, 110, 0.25) !important;
   }
 
   /* Sidebar (question map): cải thiện cho mobile */
   #quiz .examOnlySidebar {
     border-radius: 18px !important;
     padding: 14px !important;
-    background: linear-gradient(160deg, rgba(26,20,16,0.78), rgba(18,14,12,0.86)) !important;
-    border: 1px solid rgba(200,169,110,0.14) !important;
+    background: linear-gradient(160deg, rgba(26, 20, 16, 0.78), rgba(18, 14, 12, 0.86)) !important;
+    border: 1px solid rgba(200, 169, 110, 0.14) !important;
     backdrop-filter: blur(14px) !important;
     -webkit-backdrop-filter: blur(14px) !important;
-    box-shadow: 0 12px 36px rgba(0,0,0,0.35) !important;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35) !important;
   }
+
   #quiz .examSidebarHead h4 {
     font-size: 0.82rem !important;
     color: var(--gold2) !important;
@@ -21357,56 +21490,63 @@ body .subjectFolderCard .subjectNewBadge {
     text-transform: uppercase !important;
     margin-bottom: 10px !important;
     padding-bottom: 8px !important;
-    border-bottom: 1px solid rgba(200,169,110,0.14) !important;
+    border-bottom: 1px solid rgba(200, 169, 110, 0.14) !important;
   }
+
   #quiz .examSidebarGrid {
     display: grid !important;
     grid-template-columns: repeat(6, 1fr) !important;
     gap: 6px !important;
   }
+
   #quiz .examGridItem {
     height: 36px !important;
     border-radius: 10px !important;
     font-size: 0.78rem !important;
     font-weight: 700 !important;
-    border: 1px solid rgba(200,169,110,0.14) !important;
-    background: rgba(255,255,255,0.02) !important;
-    color: rgba(245,240,232,0.55) !important;
+    border: 1px solid rgba(200, 169, 110, 0.14) !important;
+    background: rgba(255, 255, 255, 0.02) !important;
+    color: rgba(245, 240, 232, 0.55) !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     transition:
       background 0.15s ease,
       border-color 0.15s ease,
-      transform 0.14s cubic-bezier(0.34,1.56,0.64,1) !important;
+      transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
     touch-action: manipulation !important;
   }
+
   #quiz .examGridItem:active {
     transform: scale(0.90) !important;
   }
+
   #quiz .examGridItem.answered {
-    background: rgba(200,169,110,0.22) !important;
-    border-color: rgba(232,212,168,0.55) !important;
+    background: rgba(200, 169, 110, 0.22) !important;
+    border-color: rgba(232, 212, 168, 0.55) !important;
     color: #ffffff !important;
     font-weight: 800 !important;
   }
+
   #quiz .examGridItem.active {
     background: linear-gradient(135deg, var(--gold2), var(--gold)) !important;
     border-color: var(--gold) !important;
     color: #0c0a06 !important;
     font-weight: 950 !important;
-    box-shadow: 0 0 12px rgba(232,212,168,0.32) !important;
+    box-shadow: 0 0 12px rgba(232, 212, 168, 0.32) !important;
   }
+
   #quiz .examGridItem.review-ok,
   #quiz .examGridItem.review-grid-correct {
-    background: rgba(114,197,140,0.22) !important;
-    border-color: rgba(114,197,140,0.55) !important;
+    background: rgba(114, 197, 140, 0.22) !important;
+    border-color: rgba(114, 197, 140, 0.55) !important;
     color: #72c58c !important;
   }
+
   #quiz .examGridItem.review-bad,
   #quiz .examGridItem.review-grid-incorrect {
-    background: rgba(233,135,123,0.22) !important;
-    border-color: rgba(233,135,123,0.55) !important;
+    background: rgba(233, 135, 123, 0.22) !important;
+    border-color: rgba(233, 135, 123, 0.55) !important;
     color: #e9877b !important;
   }
 }
@@ -21417,29 +21557,29 @@ body .subjectFolderCard .subjectNewBadge {
 @media (max-width: 760px) {
 
   #quiz .examOnlyResult {
-    animation: examResultFade 0.5s cubic-bezier(0.22,1,0.36,1) both !important;
-    background: linear-gradient(160deg, rgba(26,20,16,0.82), rgba(18,14,12,0.90)) !important;
-    border: 1px solid rgba(200,169,110,0.18) !important;
+    animation: examResultFade 0.5s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+    background: linear-gradient(160deg, rgba(26, 20, 16, 0.82), rgba(18, 14, 12, 0.90)) !important;
+    border: 1px solid rgba(200, 169, 110, 0.18) !important;
     backdrop-filter: blur(18px) !important;
     -webkit-backdrop-filter: blur(18px) !important;
     box-shadow:
-      0 20px 60px rgba(0,0,0,0.45),
-      inset 0 1px 0 rgba(255,255,255,0.05) !important;
+      0 20px 60px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
     border-radius: 22px !important;
     padding: 22px 16px 20px !important;
     gap: 14px !important;
   }
 
   #quiz .examOnlyScore {
-    animation: examScorePop 0.6s cubic-bezier(0.34,1.56,0.64,1) 0.2s both !important;
+    animation: examScorePop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s both !important;
     width: 110px !important;
     height: 110px !important;
     font-size: 1.75rem !important;
     background: linear-gradient(135deg, var(--gold2) 0%, var(--gold) 100%) !important;
     box-shadow:
-      0 0 30px rgba(232,212,168,0.35),
-      inset 0 2px 8px rgba(255,255,255,0.3),
-      0 10px 30px rgba(0,0,0,0.4) !important;
+      0 0 30px rgba(232, 212, 168, 0.35),
+      inset 0 2px 8px rgba(255, 255, 255, 0.3),
+      0 10px 30px rgba(0, 0, 0, 0.4) !important;
   }
 
   #quiz .examOnlyResult h2 {
@@ -21448,9 +21588,10 @@ body .subjectFolderCard .subjectNewBadge {
     color: #ffffff !important;
     animation: examFadeSlideIn 0.5s 0.3s both !important;
   }
+
   #quiz .examOnlyResult p {
     font-size: 0.92rem !important;
-    color: rgba(245,240,232,0.65) !important;
+    color: rgba(245, 240, 232, 0.65) !important;
     animation: examFadeSlideIn 0.5s 0.4s both !important;
   }
 
@@ -21461,18 +21602,21 @@ body .subjectFolderCard .subjectNewBadge {
     width: 100% !important;
     animation: examFadeSlideIn 0.5s 0.45s both !important;
   }
+
   #quiz .examOnlyStats span {
     text-align: center !important;
     padding: 10px 8px !important;
     font-size: 0.83rem !important;
-    background: rgba(255,255,255,0.03) !important;
-    border: 1px solid rgba(200,169,110,0.16) !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid rgba(200, 169, 110, 0.16) !important;
     border-radius: 12px !important;
-    color: rgba(245,240,232,0.65) !important;
+    color: rgba(245, 240, 232, 0.65) !important;
   }
+
   #quiz .examOnlyStats span:last-child {
     grid-column: 1 / -1 !important;
   }
+
   #quiz .examOnlyStats b {
     color: #ffffff !important;
     font-weight: 800 !important;
@@ -21487,6 +21631,7 @@ body .subjectFolderCard .subjectNewBadge {
     width: 100% !important;
     animation: examFadeSlideIn 0.5s 0.5s both !important;
   }
+
   #quiz .examOnlyActions .primary {
     min-height: 50px !important;
     border-radius: 14px !important;
@@ -21494,27 +21639,30 @@ body .subjectFolderCard .subjectNewBadge {
     font-weight: 900 !important;
     background: linear-gradient(135deg, var(--gold2) 0%, var(--gold) 100%) !important;
     color: #0c0a06 !important;
-    box-shadow: 0 4px 18px rgba(200,169,110,0.32) !important;
-    transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1) !important;
+    box-shadow: 0 4px 18px rgba(200, 169, 110, 0.32) !important;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
     touch-action: manipulation !important;
   }
+
   #quiz .examOnlyActions .primary:active {
     transform: scale(0.96) !important;
   }
+
   #quiz .examOnlyActions .btn {
     min-height: 46px !important;
     border-radius: 14px !important;
     font-size: 0.88rem !important;
     font-weight: 800 !important;
-    border: 1px solid rgba(200,169,110,0.22) !important;
-    background: rgba(255,255,255,0.025) !important;
+    border: 1px solid rgba(200, 169, 110, 0.22) !important;
+    background: rgba(255, 255, 255, 0.025) !important;
     color: var(--gold2) !important;
     transition: all 0.16s ease !important;
     touch-action: manipulation !important;
   }
+
   #quiz .examOnlyActions .btn:active {
     transform: scale(0.95) !important;
-    background: rgba(200,169,110,0.10) !important;
+    background: rgba(200, 169, 110, 0.10) !important;
   }
 }
 
@@ -21525,55 +21673,63 @@ body .subjectFolderCard .subjectNewBadge {
   .kizspyCheckOverlay {
     padding: 12px !important;
     align-items: flex-end !important;
-    background: rgba(0,0,0,0.75) !important;
+    background: rgba(0, 0, 0, 0.75) !important;
     backdrop-filter: blur(8px) !important;
     -webkit-backdrop-filter: blur(8px) !important;
   }
+
   .kizspyCheckBox {
     border-radius: 22px 22px 18px 18px !important;
     padding: 18px 16px 20px !important;
-    background: linear-gradient(160deg, rgba(28,22,18,0.97), rgba(18,14,12,0.99)) !important;
-    border: 1px solid rgba(200,169,110,0.2) !important;
+    background: linear-gradient(160deg, rgba(28, 22, 18, 0.97), rgba(18, 14, 12, 0.99)) !important;
+    border: 1px solid rgba(200, 169, 110, 0.2) !important;
     box-shadow:
-      0 -16px 50px rgba(0,0,0,0.5),
-      inset 0 1px 0 rgba(255,255,255,0.05) !important;
+      0 -16px 50px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
     width: 100% !important;
     max-width: 100% !important;
-    animation: examFadeSlideIn 0.3s cubic-bezier(0.22,1,0.36,1) both !important;
+    animation: examFadeSlideIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) both !important;
   }
+
   .kizspyCheckBox.correct {
-    border-top: 3px solid rgba(114,197,140,0.7) !important;
+    border-top: 3px solid rgba(114, 197, 140, 0.7) !important;
   }
+
   .kizspyCheckBox.incorrect {
-    border-top: 3px solid rgba(233,135,123,0.7) !important;
+    border-top: 3px solid rgba(233, 135, 123, 0.7) !important;
   }
+
   .kizspyCheckBox.warning {
-    border-top: 3px solid rgba(232,212,168,0.5) !important;
+    border-top: 3px solid rgba(232, 212, 168, 0.5) !important;
   }
+
   .kizspyCheckHeader {
     display: flex !important;
     justify-content: space-between !important;
     align-items: center !important;
     margin-bottom: 12px !important;
   }
+
   .kizspyCheckTitle {
     font-size: 0.95rem !important;
     font-weight: 900 !important;
     color: #ffffff !important;
   }
+
   .kizspyCheckClose {
     width: 32px !important;
     height: 32px !important;
     border-radius: 50% !important;
-    background: rgba(255,255,255,0.06) !important;
-    border: 1px solid rgba(255,255,255,0.10) !important;
-    color: rgba(245,240,232,0.7) !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid rgba(255, 255, 255, 0.10) !important;
+    color: rgba(245, 240, 232, 0.7) !important;
     font-size: 1.1rem !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     touch-action: manipulation !important;
   }
+
   .kizspyCheckOkBtn {
     width: 100% !important;
     min-height: 48px !important;
@@ -21582,37 +21738,42 @@ body .subjectFolderCard .subjectNewBadge {
     font-size: 0.92rem !important;
     background: linear-gradient(135deg, var(--gold2), var(--gold)) !important;
     color: #0c0a06 !important;
-    box-shadow: 0 4px 16px rgba(200,169,110,0.3) !important;
+    box-shadow: 0 4px 16px rgba(200, 169, 110, 0.3) !important;
     touch-action: manipulation !important;
     transition: transform 0.14s ease !important;
   }
+
   .kizspyCheckOkBtn:active {
     transform: scale(0.96) !important;
   }
+
   .kizspyCheckVal {
     font-size: 0.88rem !important;
     line-height: 1.4 !important;
-    color: rgba(245,240,232,0.78) !important;
+    color: rgba(245, 240, 232, 0.78) !important;
     margin: 4px 0 !important;
     overflow-wrap: anywhere !important;
   }
+
   .kizspyCheckLabel {
     font-size: 0.76rem !important;
     font-weight: 700 !important;
     letter-spacing: 0.04em !important;
-    color: rgba(245,240,232,0.5) !important;
+    color: rgba(245, 240, 232, 0.5) !important;
   }
+
   .kizspyCheckBadge.ok {
-    background: rgba(114,197,140,0.2) !important;
-    border: 1px solid rgba(114,197,140,0.5) !important;
+    background: rgba(114, 197, 140, 0.2) !important;
+    border: 1px solid rgba(114, 197, 140, 0.5) !important;
     color: #72c58c !important;
     border-radius: 8px !important;
     padding: 2px 8px !important;
     font-weight: 800 !important;
   }
+
   .kizspyCheckBadge.bad {
-    background: rgba(233,135,123,0.2) !important;
-    border: 1px solid rgba(233,135,123,0.5) !important;
+    background: rgba(233, 135, 123, 0.2) !important;
+    border: 1px solid rgba(233, 135, 123, 0.5) !important;
     color: #e9877b !important;
     border-radius: 8px !important;
     padding: 2px 8px !important;
@@ -21628,16 +21789,18 @@ body .subjectFolderCard .subjectNewBadge {
     /* Không dùng animation — tất cả items render cùng lúc → animation storm */
     border-radius: 16px !important;
     padding: 14px 13px !important;
-    background: rgba(22,17,14,0.75) !important;
-    border: 1px solid rgba(200,169,110,0.10) !important;
+    background: rgba(22, 17, 14, 0.75) !important;
+    border: 1px solid rgba(200, 169, 110, 0.10) !important;
     backdrop-filter: blur(12px) !important;
     -webkit-backdrop-filter: blur(12px) !important;
   }
+
   #quiz .examOnlyReviewItem.item-correct {
-    border-left: 3px solid rgba(114,197,140,0.7) !important;
+    border-left: 3px solid rgba(114, 197, 140, 0.7) !important;
   }
+
   #quiz .examOnlyReviewItem.item-incorrect {
-    border-left: 3px solid rgba(233,135,123,0.7) !important;
+    border-left: 3px solid rgba(233, 135, 123, 0.7) !important;
   }
 }
 
@@ -21648,21 +21811,23 @@ body .subjectFolderCard .subjectNewBadge {
   #quiz .examSubjectChip {
     border-radius: 14px !important;
     padding: 10px 12px !important;
-    border: 1.5px solid rgba(200,169,110,0.18) !important;
-    background: rgba(255,255,255,0.025) !important;
+    border: 1.5px solid rgba(200, 169, 110, 0.18) !important;
+    background: rgba(255, 255, 255, 0.025) !important;
     transition:
       border-color 0.18s ease,
       background 0.18s ease,
-      transform 0.14s cubic-bezier(0.34,1.56,0.64,1) !important;
+      transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
     touch-action: manipulation !important;
   }
+
   #quiz .examSubjectChip:active {
     transform: scale(0.97) !important;
   }
+
   #quiz .examSubjectChip.checked {
-    border-color: rgba(232,212,168,0.65) !important;
-    background: linear-gradient(135deg, rgba(200,169,110,0.16), rgba(232,212,168,0.06)) !important;
-    box-shadow: 0 0 14px rgba(232,212,168,0.12) !important;
+    border-color: rgba(232, 212, 168, 0.65) !important;
+    background: linear-gradient(135deg, rgba(200, 169, 110, 0.16), rgba(232, 212, 168, 0.06)) !important;
+    box-shadow: 0 0 14px rgba(232, 212, 168, 0.12) !important;
   }
 }
 

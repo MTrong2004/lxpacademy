@@ -363,7 +363,21 @@ function optionsHTML(c) {
 function imgsHTML(c) {
   const liveImgsHTML = window.imgsHTML;
   if (typeof liveImgsHTML === 'function' && liveImgsHTML !== imgsHTML) return liveImgsHTML(c);
-  return (c.images || []).map(im => `<img src="${esc(im.src)}" alt="" loading="lazy" decoding="async">`).join('');
+  let raw = c?.images || [];
+  if (typeof raw === 'string') {
+    const s = raw.trim();
+    if ((s.startsWith('[') && s.endsWith(']')) || (s.startsWith('{') && s.endsWith('}'))) {
+      try { raw = JSON.parse(s); } catch (e) { raw = [s]; }
+    } else if (s) raw = [s];
+    else raw = [];
+  }
+  if (!Array.isArray(raw)) raw = [raw];
+  return raw.map(im => {
+    if (!im) return '';
+    const src = typeof im === 'string' ? im : im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '';
+    if (!src || String(src).startsWith('data:image/')) return '';
+    return `<img src="${esc(src)}" alt="" loading="lazy" decoding="async">`;
+  }).join('');
 }
 function setv(k, v) {
   document.documentElement.style.setProperty(k, v);
@@ -374,8 +388,10 @@ function fit(c) {
   setv('--qlh', '1.32');
   setv('--olh', '1.36');
   setv('--afs', '1rem');
-  setv('--imgmax', c.images && c.images.length ? '380px' : '0px');
-  setv('--imgcol', c.images && c.images.length ? '620px' : '0px');
+  const imgHtml = imgsHTML(c);
+  const hasImg = !!(imgHtml && imgHtml.trim().length > 0);
+  setv('--imgmax', hasImg ? '380px' : '0px');
+  setv('--imgcol', hasImg ? '620px' : '0px');
   setv('--frontpad', '14px 18px');
   setv('--optgap', '6px');
   setv('--optpad', '7px 10px');
@@ -395,7 +411,7 @@ function fitVisible() {
 // Gọi 3 render ĐỘC LẬP nhau. Trước đây các luồng tải câu hỏi đều viết
 //   try { renderCard(); renderQuiz(); renderStudy(); } catch (e) { lhWarn('FIX_LIBRARY_STALE_AFTER_SUBJECT_CHANGE_20260727', e) }
 // nên chỉ cần renderCard ném lỗi là renderStudy() không bao giờ chạy -> đổi môn
-// xong thư viện vẫn hiện câu của MÔN CŨ (phải bấm lại tab hoặc F5 mới thấy môn mới).
+// xong thư viện vẫn hiện câu của MÔN CÚ (phải bấm lại tab hoặc F5 mới thấy môn mới).
 // Lỗi hay gặp: đang ở tab Thư viện/Kiểm tra thì fixCounter (FINAL_HEADER_SUBJECT_DYNAMIC_FIX)
 // ghi lại .counter thành "<b id=subjectTotalCount>N</b> câu" -> #idx/#total bị xóa khỏi DOM
 // -> renderCard chạm $('idx').textContent trên null. Xem thêm guard trong renderCard.
@@ -434,19 +450,13 @@ function renderCard() {
   const __qEl = $('question');
   if (__qEl) __qEl.textContent = c.question;
   const __imgEl = $('images');
-  const __imgKey = JSON.stringify(
-    (c.images || []).map(im =>
-      String(
-        (im && typeof im === 'object' ? im.src || im.url || im.secure_url || im.publicUrl || im.public_url : im) || '',
-      ),
-    ),
-  );
-  if (__imgEl.dataset.imgKey !== __imgKey) {
-    __imgEl.innerHTML = imgsHTML(c);
-    __imgEl.dataset.imgKey = __imgKey;
+  if (__imgEl) {
+    const __imgHtml = imgsHTML(c);
+    const __hasImg = !!(__imgHtml.trim());
+    __imgEl.innerHTML = __imgHtml;
+    __imgEl.style.display = __hasImg ? 'flex' : 'none';
+    document.querySelector('#fc .front')?.classList.toggle('hasImg', __hasImg);
   }
-  __imgEl.style.display = c.images && c.images.length ? 'flex' : 'none';
-  document.querySelector('#fc .front')?.classList.toggle('hasImg', !!(c.images && c.images.length));
   $('options').innerHTML = optionsHTML(c);
   $('options').classList.remove('hide');
   LHState.hideOptions = false;
@@ -1848,8 +1858,8 @@ Bắt đầu ngay từ câu 1.`;
       var answer = ams.length
         ? Array.from(new Set(ams)).join('')
         : String(def || '')
-            .toUpperCase()
-            .replace(/[^A-F]/g, '');
+          .toUpperCase()
+          .replace(/[^A-F]/g, '');
       answer = Array.from(answer)
         .filter(function (a) {
           return options[a];
@@ -1923,8 +1933,8 @@ Bắt đầu ngay từ câu 1.`;
         if (res.needSelectJson) {
           const selected = prompt(
             'File ZIP chứa nhiều file JSON câu hỏi:\n\n' +
-              res.jsonCandidates.join('\n') +
-              '\n\nVui lòng nhập đúng tên file JSON bạn muốn dùng:',
+            res.jsonCandidates.join('\n') +
+            '\n\nVui lòng nhập đúng tên file JSON bạn muốn dùng:',
             res.jsonCandidates[0],
           );
           if (!selected) return;
@@ -3225,7 +3235,7 @@ if (typeof finalAnswerText !== 'function') {
       document.querySelector('.brand');
     if (!brand) return;
     const code = currentCode();
-    const html = `<div class="brandSubjectBox"><span class="brandCodeTitle">${escStr(code)}</span></div>`;
+    const html = `<div class="brandSubjectBox"><img src="Logo.png" alt="Logo" class="brandLogoImg"><span class="brandCodeTitle">${escStr(code)}</span></div>`;
     if (_lastBrandHTML !== html) {
       brand.innerHTML = html;
       _lastBrandHTML = html;
@@ -5310,13 +5320,12 @@ installUnifiedFetchAndAccess();
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; gap:8px;">
           <p class="hodEditRequestMeta" style="margin:0;">Gửi: ${esc(timeText(r.created_at))}${r.reviewed_at ? ' · Phản hồi: ' + esc(timeText(r.reviewed_at)) : ''}</p>
-          ${
-            num !== '?'
-              ? `
+          ${num !== '?'
+            ? `
           <button type="button" class="hodJumpStudyBtn" data-num="${esc(num)}" data-subject="${esc(code)}" style="font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: rgba(200, 169, 110, 0.15); border: 1px solid rgba(200, 169, 110, 0.35); color: var(--gold2, #e8d4a8); cursor: pointer; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; flex-shrink: 0;">
             🔍 Tra câu ↗
           </button>`
-              : ''
+            : ''
           }
         </div>
         ${r.admin_note ? `<p class="hodEditRequestNote" style="margin-top:4px;">Ghi chú admin: ${esc(r.admin_note)}</p>` : ''}

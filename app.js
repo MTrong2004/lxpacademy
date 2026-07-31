@@ -4769,7 +4769,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "e71a77b" : null;
+  var currentVersion = true ? "32ac14b" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -8745,11 +8745,11 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     }
     function boot() {
       bindEditUploadFinal();
-      window.__LHTestCloudinaryConfig();
     }
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
     else boot();
     setTimeout(boot, 500);
+    if (typeof window.__LHTestCloudinaryConfig === "function") window.__LHTestCloudinaryConfig();
   }
   function installUploadLock() {
     const STORE2 = "learninghub_subject_code_merged_v1";
@@ -9235,19 +9235,30 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     };
   }
   function installImgsHTML() {
-    if (window.__COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630) return;
-    window.__COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630 = true;
-    try {
-      window.imgsHTML = function(c) {
-        return (c?.images || []).map((im) => {
-          const src = typeof im === "string" ? im : im.src || im.url || im.secure_url || im.publicUrl || im.public_url || "";
-          if (!src || String(src).startsWith("data:image/")) return "";
-          return '<img src="' + esc2(src) + '" alt="" loading="lazy" decoding="async">';
-        }).join("");
-      };
-    } catch (e) {
-      lhWarn2("COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630", e);
-    }
+    window.imgsHTML = function(c) {
+      let raw = c?.images || [];
+      if (typeof raw === "string") {
+        const s = raw.trim();
+        if (s.startsWith("[") && s.endsWith("]") || s.startsWith("{") && s.endsWith("}")) {
+          try {
+            raw = JSON.parse(s);
+          } catch (e) {
+            raw = [s];
+          }
+        } else if (s) {
+          raw = [s];
+        } else {
+          raw = [];
+        }
+      }
+      if (!Array.isArray(raw)) raw = [raw];
+      return raw.map((im) => {
+        if (!im) return "";
+        const src = typeof im === "string" ? im : im.src || im.url || im.secure_url || im.publicUrl || im.public_url || im.image_url || im.imageUrl || "";
+        if (!src || String(src).startsWith("data:image/")) return "";
+        return '<img src="' + esc2(src) + '" alt="" loading="lazy" decoding="async">';
+      }).join("");
+    };
   }
 
   // src/student/library.js
@@ -10988,7 +10999,25 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
   function imgsHTML2(c) {
     const liveImgsHTML = window.imgsHTML;
     if (typeof liveImgsHTML === "function" && liveImgsHTML !== imgsHTML2) return liveImgsHTML(c);
-    return (c.images || []).map((im) => `<img src="${esc2(im.src)}" alt="" loading="lazy" decoding="async">`).join("");
+    let raw = c?.images || [];
+    if (typeof raw === "string") {
+      const s = raw.trim();
+      if (s.startsWith("[") && s.endsWith("]") || s.startsWith("{") && s.endsWith("}")) {
+        try {
+          raw = JSON.parse(s);
+        } catch (e) {
+          raw = [s];
+        }
+      } else if (s) raw = [s];
+      else raw = [];
+    }
+    if (!Array.isArray(raw)) raw = [raw];
+    return raw.map((im) => {
+      if (!im) return "";
+      const src = typeof im === "string" ? im : im.src || im.url || im.secure_url || im.publicUrl || im.public_url || "";
+      if (!src || String(src).startsWith("data:image/")) return "";
+      return `<img src="${esc2(src)}" alt="" loading="lazy" decoding="async">`;
+    }).join("");
   }
   function setv(k, v) {
     document.documentElement.style.setProperty(k, v);
@@ -10999,8 +11028,10 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     setv("--qlh", "1.32");
     setv("--olh", "1.36");
     setv("--afs", "1rem");
-    setv("--imgmax", c.images && c.images.length ? "380px" : "0px");
-    setv("--imgcol", c.images && c.images.length ? "620px" : "0px");
+    const imgHtml = imgsHTML2(c);
+    const hasImg = !!(imgHtml && imgHtml.trim().length > 0);
+    setv("--imgmax", hasImg ? "380px" : "0px");
+    setv("--imgcol", hasImg ? "620px" : "0px");
     setv("--frontpad", "14px 18px");
     setv("--optgap", "6px");
     setv("--optpad", "7px 10px");
@@ -11047,19 +11078,13 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
     const __qEl = $2("question");
     if (__qEl) __qEl.textContent = c.question;
     const __imgEl = $2("images");
-    const __imgKey = JSON.stringify(
-      (c.images || []).map(
-        (im) => String(
-          (im && typeof im === "object" ? im.src || im.url || im.secure_url || im.publicUrl || im.public_url : im) || ""
-        )
-      )
-    );
-    if (__imgEl.dataset.imgKey !== __imgKey) {
-      __imgEl.innerHTML = imgsHTML2(c);
-      __imgEl.dataset.imgKey = __imgKey;
+    if (__imgEl) {
+      const __imgHtml = imgsHTML2(c);
+      const __hasImg = !!__imgHtml.trim();
+      __imgEl.innerHTML = __imgHtml;
+      __imgEl.style.display = __hasImg ? "flex" : "none";
+      document.querySelector("#fc .front")?.classList.toggle("hasImg", __hasImg);
     }
-    __imgEl.style.display = c.images && c.images.length ? "flex" : "none";
-    document.querySelector("#fc .front")?.classList.toggle("hasImg", !!(c.images && c.images.length));
     $2("options").innerHTML = optionsHTML(c);
     $2("options").classList.remove("hide");
     LHState2.hideOptions = false;

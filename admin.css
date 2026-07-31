@@ -1836,6 +1836,16 @@ body {
   font-weight: 900;
   min-width: 50px !important;
   font-size: 1rem !important;
+  overflow: hidden;
+}
+
+.seal img,
+.sealImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
 }
 
 .adminSideGroup {
@@ -5037,8 +5047,13 @@ body.role-editor-limited [data-page="deletedQuestions"] {
 }
 
 @keyframes adminPromptFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .adminPromptBox {
@@ -5056,8 +5071,15 @@ body.role-editor-limited [data-page="deletedQuestions"] {
 }
 
 @keyframes adminPromptSlideUp {
-  from { opacity: 0; transform: translateY(24px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .adminPromptHeader {
@@ -5226,14 +5248,17 @@ body.role-editor-limited [data-page="deletedQuestions"] {
     max-height: 92vh !important;
     border-radius: 16px !important;
   }
+
   .adminPromptHeader {
     flex-wrap: wrap !important;
     gap: 10px !important;
     padding: 14px 16px !important;
   }
+
   .adminPromptBody {
     padding: 12px 14px 16px !important;
   }
+
   .adminPromptTextarea {
     min-height: 280px !important;
     font-size: 0.78rem !important;
@@ -5336,8 +5361,17 @@ body.role-editor-limited [data-page="deletedQuestions"] {
 }
 
 @keyframes sreqDotPulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.55; transform: scale(0.75); }
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.55;
+    transform: scale(0.75);
+  }
 }
 
 .sreqStatLabel {
@@ -5401,17 +5435,41 @@ body.role-editor-limited [data-page="deletedQuestions"] {
 }
 
 @keyframes sreqCardIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Stagger animation for cards */
-.subjectRequestItem:nth-child(1) { animation-delay: 0.04s !important; }
-.subjectRequestItem:nth-child(2) { animation-delay: 0.08s !important; }
-.subjectRequestItem:nth-child(3) { animation-delay: 0.12s !important; }
-.subjectRequestItem:nth-child(4) { animation-delay: 0.16s !important; }
-.subjectRequestItem:nth-child(5) { animation-delay: 0.20s !important; }
-.subjectRequestItem:nth-child(n+6) { animation-delay: 0.24s !important; }
+.subjectRequestItem:nth-child(1) {
+  animation-delay: 0.04s !important;
+}
+
+.subjectRequestItem:nth-child(2) {
+  animation-delay: 0.08s !important;
+}
+
+.subjectRequestItem:nth-child(3) {
+  animation-delay: 0.12s !important;
+}
+
+.subjectRequestItem:nth-child(4) {
+  animation-delay: 0.16s !important;
+}
+
+.subjectRequestItem:nth-child(5) {
+  animation-delay: 0.20s !important;
+}
+
+.subjectRequestItem:nth-child(n+6) {
+  animation-delay: 0.24s !important;
+}
 
 /* Top row */
 .sreqTopRow {

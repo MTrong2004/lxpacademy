@@ -142,11 +142,12 @@ export function installUploadDiagnostics() {
   // gọi __LHUploadCloudinary lúc chọn file).
   function boot() {
     bindEditUploadFinal();
-    window.__LHTestCloudinaryConfig();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
   setTimeout(boot, 500);
+  // Chỉ log config 1 lần khi module khởi tạo xong
+  if (typeof window.__LHTestCloudinaryConfig === 'function') window.__LHTestCloudinaryConfig();
 }
 // ===== END COPILOT_FINAL_UPLOAD_DIAGNOSTIC_LOCK_20260628 =====
 
@@ -710,21 +711,34 @@ export function installEditImagesRender() {
 
 // ===== COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630 =====
 export function installImgsHTML() {
-  if (window.__COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630) return;
-  window.__COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630 = true;
-  try {
-    window.imgsHTML = function (c) {
-      return (c?.images || [])
-        .map(im => {
-          const src =
-            typeof im === 'string' ? im : im.src || im.url || im.secure_url || im.publicUrl || im.public_url || '';
-          if (!src || String(src).startsWith('data:image/')) return '';
-          return '<img src="' + esc(src) + '" alt="" loading="lazy" decoding="async">';
-        })
-        .join('');
-    };
-  } catch (e) {
-    lhWarn('COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630', e);
-  }
+  window.imgsHTML = function (c) {
+    let raw = c?.images || [];
+    if (typeof raw === 'string') {
+      const s = raw.trim();
+      if ((s.startsWith('[') && s.endsWith(']')) || (s.startsWith('{') && s.endsWith('}'))) {
+        try {
+          raw = JSON.parse(s);
+        } catch (e) {
+          raw = [s];
+        }
+      } else if (s) {
+        raw = [s];
+      } else {
+        raw = [];
+      }
+    }
+    if (!Array.isArray(raw)) raw = [raw];
+    return raw
+      .map(im => {
+        if (!im) return '';
+        const src =
+          typeof im === 'string'
+            ? im
+            : im.src || im.url || im.secure_url || im.publicUrl || im.public_url || im.image_url || im.imageUrl || '';
+        if (!src || String(src).startsWith('data:image/')) return '';
+        return '<img src="' + esc(src) + '" alt="" loading="lazy" decoding="async">';
+      })
+      .join('');
+  };
 }
 // ===== END COPILOT_FIX_IMAGE_RESET_LOSS_FINAL_20260630 =====
