@@ -1,8 +1,8 @@
 {
-  "version": "84634ff",
-  "timestamp": 1785513965234,
+  "version": "44c5c1c",
+  "timestamp": 1785521346260,
   "recent_commits": [
-    "✨ Tính năng mới: Implement Supabase auth integration with strict role-based access control",
-    "✨ Cập nhật: Approval workflows"
+    "⚡ Tối ưu hệ thống: Cải tiến giao diện và cấu trúc ứng dụng",
+    "✨ Cập nhật: Implement Cloudinary-based image handling for subjects"
   ]
 }

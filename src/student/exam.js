@@ -35,6 +35,43 @@ function sample(a, n) {
   return n ? a.slice(0, n) : a;
 }
 
+/** Trộn ngẫu nhiên các lựa chọn (A, B, C, D...) trong một câu hỏi và cập nhật lại đáp án đúng tương ứng. */
+function shuffleQuestionOptions(q) {
+  if (!q || !q.options || typeof q.options !== 'object') return q;
+  const keys = Object.keys(q.options);
+  if (keys.length < 2) return q;
+
+  const entries = keys.map(k => ({ origKey: k, text: q.options[k] }));
+
+  for (let i = entries.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [entries[i], entries[j]] = [entries[j], entries[i]];
+  }
+
+  const newOptions = {};
+  const oldToNewMap = {};
+  entries.forEach((item, idx) => {
+    const newKey = keys[idx] || String.fromCharCode(65 + idx);
+    newOptions[newKey] = item.text;
+    oldToNewMap[item.origKey] = newKey;
+  });
+
+  let newAnswer = q.answer || '';
+  if (typeof newAnswer === 'string' && newAnswer.trim()) {
+    newAnswer = newAnswer
+      .split('')
+      .map(k => oldToNewMap[k] || k)
+      .sort()
+      .join('');
+  }
+
+  return {
+    ...q,
+    options: newOptions,
+    answer: newAnswer,
+  };
+}
+
 // ===== FINAL_EXAM_ONLY_QUIZ_UI_20260627 =====
 export function installExam() {
   let examOnlyIndex = 0;
@@ -175,6 +212,7 @@ export function installExam() {
           subject: examSubject(),
           nums: (LHState.qSet || []).map(c => c.num),
           ids: (LHState.qSet || []).map(c => c.id || ''),
+          qSet: LHState.qSet || [],
           qSel: LHState.qSel || {},
           submitted: !!LHState.examSubmitted,
           index: examOnlyIndex || 0,
@@ -208,11 +246,13 @@ export function installExam() {
       const curSub = examSubject() || '';
       const stSub = st.subject || '';
       if (!stSub || !curSub || stSub !== curSub) return false;
-      const restored = st.nums
-        .map((n, i) =>
-          LHState.RAW.find(c => String(c.id || '') === String(st.ids?.[i] || '') || Number(c.num) === Number(n)),
-        )
-        .filter(Boolean);
+      const restored = Array.isArray(st.qSet) && st.qSet.length
+        ? st.qSet
+        : st.nums
+            .map((n, i) =>
+              LHState.RAW.find(c => String(c.id || '') === String(st.ids?.[i] || '') || Number(c.num) === Number(n)),
+            )
+            .filter(Boolean);
       if (!restored.length) return false;
       LHState.qSet = restored;
       LHState.qSel = st.qSel || {};
@@ -675,7 +715,7 @@ export function installExam() {
       alert('Chưa có câu hỏi để kiểm tra.');
       return;
     }
-    LHState.qSet = sample(mergedPool, LHState.qCnt || 0);
+    LHState.qSet = sample(mergedPool, LHState.qCnt || 0).map(shuffleQuestionOptions);
     LHState.qDone = {};
     LHState.qSel = {};
     clearExam();

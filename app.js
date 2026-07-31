@@ -3312,7 +3312,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "84634ff" : null;
+  var currentVersion = true ? "44c5c1c" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -10946,6 +10946,32 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
     }
     return n ? a.slice(0, n) : a;
   }
+  function shuffleQuestionOptions(q) {
+    if (!q || !q.options || typeof q.options !== "object") return q;
+    const keys = Object.keys(q.options);
+    if (keys.length < 2) return q;
+    const entries = keys.map((k) => ({ origKey: k, text: q.options[k] }));
+    for (let i = entries.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [entries[i], entries[j]] = [entries[j], entries[i]];
+    }
+    const newOptions = {};
+    const oldToNewMap = {};
+    entries.forEach((item, idx) => {
+      const newKey = keys[idx] || String.fromCharCode(65 + idx);
+      newOptions[newKey] = item.text;
+      oldToNewMap[item.origKey] = newKey;
+    });
+    let newAnswer = q.answer || "";
+    if (typeof newAnswer === "string" && newAnswer.trim()) {
+      newAnswer = newAnswer.split("").map((k) => oldToNewMap[k] || k).sort().join("");
+    }
+    return {
+      ...q,
+      options: newOptions,
+      answer: newAnswer
+    };
+  }
   function installExam() {
     let examOnlyIndex = 0;
     let examOnlyReview = false;
@@ -11058,6 +11084,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             subject: examSubject(),
             nums: (LHState2.qSet || []).map((c) => c.num),
             ids: (LHState2.qSet || []).map((c) => c.id || ""),
+            qSet: LHState2.qSet || [],
             qSel: LHState2.qSel || {},
             submitted: !!LHState2.examSubmitted,
             index: examOnlyIndex || 0,
@@ -11091,7 +11118,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         const curSub = examSubject() || "";
         const stSub = st.subject || "";
         if (!stSub || !curSub || stSub !== curSub) return false;
-        const restored = st.nums.map(
+        const restored = Array.isArray(st.qSet) && st.qSet.length ? st.qSet : st.nums.map(
           (n, i) => LHState2.RAW.find((c) => String(c.id || "") === String(st.ids?.[i] || "") || Number(c.num) === Number(n))
         ).filter(Boolean);
         if (!restored.length) return false;
@@ -11511,7 +11538,7 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         alert("Ch\u01B0a c\xF3 c\xE2u h\u1ECFi \u0111\u1EC3 ki\u1EC3m tra.");
         return;
       }
-      LHState2.qSet = sample(mergedPool, LHState2.qCnt || 0);
+      LHState2.qSet = sample(mergedPool, LHState2.qCnt || 0).map(shuffleQuestionOptions);
       LHState2.qDone = {};
       LHState2.qSel = {};
       clearExam();
