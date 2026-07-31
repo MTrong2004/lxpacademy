@@ -21,9 +21,31 @@ function getRealDb() {
   return realDb;
 }
 
+async function withRetry(fn, maxRetries = 3) {
+  let delay = 150;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = String(err?.message || err || '');
+      const isTransient = /502|503|504|SERVER_ERROR|FETCH_ERROR|network|timeout|econnreset|socket/i.test(msg);
+      if (isTransient && attempt < maxRetries) {
+        console.warn(`[db retry] Transient DB error (attempt ${attempt + 1}/${maxRetries}): ${msg}. Retrying in ${delay}ms...`);
+        await new Promise((res) => setTimeout(res, delay));
+        delay *= 2;
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 export const db = {
   execute(...args) {
-    return getRealDb().execute(...args);
+    return withRetry(() => getRealDb().execute(...args));
+  },
+  batch(...args) {
+    return withRetry(() => getRealDb().batch(...args));
   }
 };
 
