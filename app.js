@@ -4769,7 +4769,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "c8f883a" : null;
+  var currentVersion = true ? "6544dd8" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -5590,7 +5590,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
           question: q.question,
           options: q.options || {},
           answer: q.answer,
-          answer_text: finalAnswerText(q),
+          answer_text: finalAnswerText2(q),
           images: imgs,
           has_image: !!(q.has_image || imgs.length),
           error_risk: q.error_risk || "low",

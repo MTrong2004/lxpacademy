@@ -2,7 +2,7 @@
  * Student Auth & Supabase Bridge Module
  */
 import { lhWarn } from '../core/log.js';
-import { esc } from './format.js';
+import { esc, finalAnswerText } from './format.js';
 
 export function installHODSupabaseAndAvatar() {
 window.HODSupabase = (() => {
