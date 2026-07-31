@@ -121,6 +121,7 @@ async function main() {
   }
   try {
     await copyFile(path.join(root, 'public', 'background.webp'), path.join(dist, 'background.webp'));
+    await copyFile(path.join(root, 'public', 'Logo.png'), path.join(dist, 'Logo.png'));
   } catch (e) {}
 
   for (const f of CSS_FILES) {

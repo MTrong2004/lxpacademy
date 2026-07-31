@@ -3235,7 +3235,7 @@ if (typeof finalAnswerText !== 'function') {
       document.querySelector('.brand');
     if (!brand) return;
     const code = currentCode();
-    const html = `<div class="brandSubjectBox"><img src="Logo.png" alt="Logo" class="brandLogoImg"><span class="brandCodeTitle">${escStr(code)}</span></div>`;
+    const html = `<div class="brandSubjectBox"><span class="brandCodeTitle">${escStr(code)}</span></div>`;
     if (_lastBrandHTML !== html) {
       brand.innerHTML = html;
       _lastBrandHTML = html;
