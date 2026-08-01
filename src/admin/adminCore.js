@@ -683,16 +683,20 @@ async function init() {
 }
 
 function bind() {
-  $('googleBtn').onclick = () =>
-    client.auth
+  $('googleBtn').onclick = () => {
+    const redirectUrl =
+      (window.APP_CONFIG && window.APP_CONFIG.REDIRECT_URL) ||
+      (window.location.origin + window.location.pathname + window.location.search);
+    return client.auth
       .signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: location.href.split('#')[0] },
+        options: { redirectTo: redirectUrl },
       })
       .catch(e => {
         console.warn('OAuth error:', e);
         alert('Đăng nhập thất bại: ' + (e.message || e));
       });
+  };
   $('logoutBtn').onclick = logout;
   $('denyLogout').onclick = logout;
   $('openStudy').onclick = () => open('index.html', '_blank');

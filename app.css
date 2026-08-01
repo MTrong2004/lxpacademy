@@ -20580,6 +20580,7 @@ body .subjectFolderCard .subjectNewBadge {
   #fc .face.back {
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
+    padding-top: 38px !important;
     padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
@@ -20621,7 +20622,7 @@ body .subjectFolderCard .subjectNewBadge {
     background: rgba(14, 12, 10, 0.94) !important;
     backdrop-filter: blur(16px) saturate(140%) !important;
     -webkit-backdrop-filter: blur(16px) saturate(140%) !important;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35) !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18) !important;
     display: grid !important;
     grid-template-columns: repeat(3, 1fr) !important;
     gap: 6px !important;

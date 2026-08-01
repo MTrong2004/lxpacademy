@@ -3312,7 +3312,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "44c5c1c" : null;
+  var currentVersion = true ? "71df222" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -5431,9 +5431,10 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       async function signInGoogle() {
         if (!window.supabase) return alert("Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c Supabase. Ki\u1EC3m tra m\u1EA1ng ho\u1EB7c CDN.");
         if (!client) return alert("Supabase ch\u01B0a s\u1EB5n s\xE0ng.");
+        const redirectUrl = window.APP_CONFIG && window.APP_CONFIG.REDIRECT_URL || window.location.origin + window.location.pathname + window.location.search;
         const { error } = await client.auth.signInWithOAuth({
           provider: "google",
-          options: { redirectTo: window.location.href.split("#")[0] }
+          options: { redirectTo: redirectUrl }
         });
         if (error) alert(error.message);
       }

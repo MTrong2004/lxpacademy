@@ -8,6 +8,13 @@ window.APP_CONFIG = {
     return (this.SUPABASE_URL || '').replace(/\/+$/, '') + '/functions/v1/login-notify';
   },
 
+  get REDIRECT_URL() {
+    if (typeof window !== 'undefined' && window.location) {
+      return window.location.origin + window.location.pathname + window.location.search;
+    }
+    return '';
+  },
+
   // Discord webhook: KHÔNG đặt ở đây nữa (client-side thì ai cũng xem được).
   // Đã chuyển sang biến môi trường DISCORD_WEBHOOK_URL, xử lý trong api/index.js (path /api/notify).
 

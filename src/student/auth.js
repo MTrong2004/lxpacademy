@@ -679,9 +679,12 @@ export function installHODSupabaseAndAvatar() {
     async function signInGoogle() {
       if (!window.supabase) return alert('Không tải được Supabase. Kiểm tra mạng hoặc CDN.');
       if (!client) return alert('Supabase chưa sẵn sàng.');
+      const redirectUrl =
+        (window.APP_CONFIG && window.APP_CONFIG.REDIRECT_URL) ||
+        (window.location.origin + window.location.pathname + window.location.search);
       const { error } = await client.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: window.location.href.split('#')[0] },
+        options: { redirectTo: redirectUrl },
       });
       if (error) alert(error.message);
     }

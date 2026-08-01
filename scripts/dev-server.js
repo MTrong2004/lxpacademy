@@ -1,6 +1,7 @@
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
 import esbuild from 'esbuild';
 const __filename = fileURLToPath(import.meta.url);
@@ -208,9 +209,32 @@ const server = http.createServer(async (req, res) => {
   fs.createReadStream(filePath).pipe(res);
 });
 
-// PORT để chạy được hai dev server song song (phiên Claude khác đang giữ 3000).
+function getLanIpv4Addresses() {
+  const nets = os.networkInterfaces();
+  const addresses = [];
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if ((net.family === 'IPv4' || net.family === 4) && !net.internal) {
+        addresses.push({ name, ip: net.address });
+      }
+    }
+  }
+  return addresses;
+}
+
+const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT) || 3000;
-server.listen(PORT, () => {
-  console.log(`\n🚀 LOCAL DEV SERVER RUNNING AT: http://localhost:${PORT}`);
+
+server.listen(PORT, HOST, () => {
+  console.log(`\n🚀 LOCAL DEV SERVER RUNNING AT:`);
+  console.log(`   - Local:   http://localhost:${PORT}`);
+  const lanAddresses = getLanIpv4Addresses();
+  if (lanAddresses.length > 0) {
+    lanAddresses.forEach(net => {
+      console.log(`   - Network: http://${net.ip}:${PORT} (${net.name})`);
+    });
+  } else {
+    console.log(`   - Network: http://<your-lan-ip>:${PORT}`);
+  }
   console.log(`Database connected: ${process.env.TURSO_DATABASE_URL}\n`);
 });

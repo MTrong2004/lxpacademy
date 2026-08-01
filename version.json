@@ -1,8 +1,8 @@
 {
-  "version": "44c5c1c",
-  "timestamp": 1785521346260,
+  "version": "71df222",
+  "timestamp": 1785582323252,
   "recent_commits": [
-    "⚡ Tối ưu hệ thống: Cải tiến giao diện và cấu trúc ứng dụng",
-    "✨ Cập nhật: Implement Cloudinary-based image handling for subjects"
+    "⚡ Tối ưu hệ thống: Implement question option shuffling",
+    "✨ Cập nhật: Extract exam UI logic into new module"
   ]
 }

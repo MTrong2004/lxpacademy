@@ -184,7 +184,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "44c5c1c" : null;
+  var currentVersion = true ? "71df222" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -1488,13 +1488,16 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
     }
   }
   function bind() {
-    $("googleBtn").onclick = () => client.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: location.href.split("#")[0] }
-    }).catch((e) => {
-      console.warn("OAuth error:", e);
-      alert("\u0110\u0103ng nh\u1EADp th\u1EA5t b\u1EA1i: " + (e.message || e));
-    });
+    $("googleBtn").onclick = () => {
+      const redirectUrl = window.APP_CONFIG && window.APP_CONFIG.REDIRECT_URL || window.location.origin + window.location.pathname + window.location.search;
+      return client.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: redirectUrl }
+      }).catch((e) => {
+        console.warn("OAuth error:", e);
+        alert("\u0110\u0103ng nh\u1EADp th\u1EA5t b\u1EA1i: " + (e.message || e));
+      });
+    };
     $("logoutBtn").onclick = logout;
     $("denyLogout").onclick = logout;
     $("openStudy").onclick = () => open("index.html", "_blank");
