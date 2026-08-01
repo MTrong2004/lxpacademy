@@ -1,8 +1,9 @@
 {
-  "version": "0c56504",
-  "timestamp": 1785582770439,
+  "version": "743c65c",
+  "timestamp": 1785610042944,
   "recent_commits": [
-    "⚡ Tối ưu hệ thống: Implement robust local dev server with file-based API bundling",
-    "✨ Cập nhật: Standardize OAuth redirect handling"
+    "✨ Tính năng mới: Update version to 0c56504",
+    "✨ Cập nhật: Refine mobile glass header",
+    "✨ Cập nhật: Card styling"
   ]
 }

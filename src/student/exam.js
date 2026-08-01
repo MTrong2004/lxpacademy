@@ -246,13 +246,14 @@ export function installExam() {
       const curSub = examSubject() || '';
       const stSub = st.subject || '';
       if (!stSub || !curSub || stSub !== curSub) return false;
-      const restored = Array.isArray(st.qSet) && st.qSet.length
-        ? st.qSet
-        : st.nums
-            .map((n, i) =>
-              LHState.RAW.find(c => String(c.id || '') === String(st.ids?.[i] || '') || Number(c.num) === Number(n)),
-            )
-            .filter(Boolean);
+      const restored =
+        Array.isArray(st.qSet) && st.qSet.length
+          ? st.qSet
+          : st.nums
+              .map((n, i) =>
+                LHState.RAW.find(c => String(c.id || '') === String(st.ids?.[i] || '') || Number(c.num) === Number(n)),
+              )
+              .filter(Boolean);
       if (!restored.length) return false;
       LHState.qSet = restored;
       LHState.qSel = st.qSel || {};

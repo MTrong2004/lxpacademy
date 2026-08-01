@@ -686,7 +686,7 @@ function bind() {
   $('googleBtn').onclick = () => {
     const redirectUrl =
       (window.APP_CONFIG && window.APP_CONFIG.REDIRECT_URL) ||
-      (window.location.origin + window.location.pathname + window.location.search);
+      window.location.origin + window.location.pathname + window.location.search;
     return client.auth
       .signInWithOAuth({
         provider: 'google',
