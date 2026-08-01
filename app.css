@@ -20582,10 +20582,21 @@ body .subjectFolderCard .subjectNewBadge {
     -webkit-overflow-scrolling: touch !important;
     padding-top: 38px !important;
     padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)) !important;
+    background: linear-gradient(180deg, rgba(24, 19, 16, 0.96), rgba(18, 14, 12, 0.98)) !important;
+    border: 1px solid rgba(200, 169, 110, 0.18) !important;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4) !important;
+  }
+
+  #fc #cardSlideWrap.lhDragging .card .face {
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4) !important;
   }
 
   #fc .opts {
     padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  #fc .zone {
+    padding: 12px 10px 10px !important;
   }
 }
 
@@ -20618,11 +20629,11 @@ body .subjectFolderCard .subjectNewBadge {
     border-radius: 0 !important;
     border: none !important;
     border-top: 1px solid rgba(200, 169, 110, 0.08) !important;
-    border-bottom: 1px solid rgba(200, 169, 110, 0.2) !important;
-    background: rgba(14, 12, 10, 0.94) !important;
+    border-bottom: none !important;
+    background: rgba(14, 12, 10, 0.96) !important;
     backdrop-filter: blur(16px) saturate(140%) !important;
     -webkit-backdrop-filter: blur(16px) saturate(140%) !important;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18) !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
     display: grid !important;
     grid-template-columns: repeat(3, 1fr) !important;
     gap: 6px !important;

@@ -1,8 +1,8 @@
 {
-  "version": "71df222",
-  "timestamp": 1785582323252,
+  "version": "0c56504",
+  "timestamp": 1785582770439,
   "recent_commits": [
-    "⚡ Tối ưu hệ thống: Implement question option shuffling",
-    "✨ Cập nhật: Extract exam UI logic into new module"
+    "⚡ Tối ưu hệ thống: Implement robust local dev server with file-based API bundling",
+    "✨ Cập nhật: Standardize OAuth redirect handling"
   ]
 }
