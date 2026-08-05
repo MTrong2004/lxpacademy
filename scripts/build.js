@@ -117,7 +117,13 @@ async function main() {
   console.log(`📌 Generated version.json (${buildVersion}) with ${recentCommits.length} commit notes`);
 
   for (const f of HTML_FILES) {
-    await copyFile(path.join(root, f), path.join(dist, f));
+    let content = await readFile(path.join(root, f), 'utf8');
+    content = content
+      .replace(/app\.js\?v=[^"']+/g, `app.js?v=${buildVersion}`)
+      .replace(/admin\.js\?v=[^"']+/g, `admin.js?v=${buildVersion}`)
+      .replace(/app\.css\?v=[^"']+/g, `app.css?v=${buildVersion}`)
+      .replace(/admin\.css\?v=[^"']+/g, `admin.css?v=${buildVersion}`);
+    await writeFile(path.join(dist, f), content);
   }
   try {
     await copyFile(path.join(root, 'public', 'background.webp'), path.join(dist, 'background.webp'));
