@@ -1,6 +1,6 @@
-import { db, json } from '../lib/db.js';
-import { checkUserAccess } from '../lib/auth.js';
-import { getFolderNewBadges } from '../lib/folderBadges.js';
+import { db, json } from '../_lib/db.js';
+import { checkUserAccess } from '../_lib/auth.js';
+import { getFolderNewBadges } from '../_lib/folderBadges.js';
 
 // OPTIM_TURSO_READS_20260726: Cache subjects query server-side.
 // Query này JOIN questions (full table scan) nên rất tốn reads.

@@ -1,5 +1,5 @@
-import { db, json } from '../lib/db.js';
-import { checkUserAccess } from '../lib/auth.js';
+import { db, json } from '../_lib/db.js';
+import { checkUserAccess } from '../_lib/auth.js';
 
 function parseJson(v, fallback) {
   if (v === null || v === undefined || v === '') return fallback;

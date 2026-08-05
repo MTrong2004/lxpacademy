@@ -1,7 +1,7 @@
-import { db, json } from '../lib/db.js';
-import { checkUserAccess, loadProfileRow, roleColor, getAdminEmail } from '../lib/auth.js';
+import { db, json } from '../_lib/db.js';
+import { checkUserAccess, loadProfileRow, roleColor, getAdminEmail } from '../_lib/auth.js';
 // DISCORD_NOTIFICATION_TOGGLES_20260729: bản chung, tự kiểm tra loại 'edit_request' có bật.
-import { postDiscordEmbed } from '../lib/discord.js';
+import { postDiscordEmbed } from '../_lib/discord.js';
 
 function parseJson(v, fallback) {
   if (v === null || v === undefined || v === '') return fallback;

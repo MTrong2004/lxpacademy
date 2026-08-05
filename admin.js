@@ -184,7 +184,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "3ab616e" : null;
+  var currentVersion = true ? "ad25015" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;

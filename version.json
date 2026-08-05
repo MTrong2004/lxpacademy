@@ -1,7 +1,8 @@
 {
-  "version": "3ab616e",
-  "timestamp": 1785940127172,
+  "version": "ad25015",
+  "timestamp": 1785940294309,
   "recent_commits": [
-    "✨ Cập nhật: Trigger redeploy on vercel"
+    "✨ Cập nhật: Build: auto cache-bust bundle files in build.js",
+    "✨ Cập nhật: Update app bundle"
   ]
 }

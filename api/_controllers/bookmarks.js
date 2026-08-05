@@ -15,8 +15,8 @@
   giới của tính năng, đừng gộp theo mã gốc.
 */
 
-import { db, json } from '../lib/db.js';
-import { checkUserAccess } from '../lib/auth.js';
+import { db, json } from '../_lib/db.js';
+import { checkUserAccess } from '../_lib/auth.js';
 
 // Chặn payload rác: đủ rộng cho `q_<40 ký tự đầu của đề bài>` mà không cho ghi cả bài văn.
 const MAX_KEY_LEN = 120;

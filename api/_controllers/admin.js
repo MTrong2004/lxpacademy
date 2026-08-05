@@ -1,10 +1,10 @@
-import { db, json } from '../lib/db.js';
-import { checkUserAccess, getAdminEmail, roleColor, clearProfileCache, broadcastRealtimeUserStatus, broadcastRealtimeGlobal, isRootAdmin, isSystemAdmin, getSystemAdminEmails } from '../lib/auth.js';
+import { db, json } from '../_lib/db.js';
+import { checkUserAccess, getAdminEmail, roleColor, clearProfileCache, broadcastRealtimeUserStatus, broadcastRealtimeGlobal, isRootAdmin, isSystemAdmin, getSystemAdminEmails } from '../_lib/auth.js';
 import { clearQuestionsCache } from './questions.js';
 import { clearSubjectsCache } from './subjects.js';
-import { getDiscordSettings, saveDiscordSettings, postDiscordEmbed, DISCORD_NOTIFICATION_KINDS, SETTINGS_KEY } from '../lib/discord.js';
-import { getFolderNewBadges, setFolderNewBadge, FOLDER_NEW_BADGE_KEY } from '../lib/folderBadges.js';
-import { resolveImportNums } from '../lib/questionNums.js';
+import { getDiscordSettings, saveDiscordSettings, postDiscordEmbed, DISCORD_NOTIFICATION_KINDS, SETTINGS_KEY } from '../_lib/discord.js';
+import { getFolderNewBadges, setFolderNewBadge, FOLDER_NEW_BADGE_KEY } from '../_lib/folderBadges.js';
+import { resolveImportNums } from '../_lib/questionNums.js';
 
 /*
   QUESTION_EDIT_DISCORD_20260729

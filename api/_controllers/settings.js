@@ -1,4 +1,4 @@
-import { db, json } from '../lib/db.js';
+import { db, json } from '../_lib/db.js';
 
 export async function handleSettings(req) {
   if (req.method !== 'GET') return json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, 405);

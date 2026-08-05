@@ -7,18 +7,18 @@
 
 export const config = { runtime: 'edge' };
 
-import { json } from './lib/db.js';
-import { verifyUserDetailed } from './lib/auth.js';
-import { handleSubjects } from './controllers/subjects.js';
-import { handleQuestions } from './controllers/questions.js';
-import { handleProfile } from './controllers/profile.js';
-import { handleEditRequests, handleMyEditRequests, handleStaffEditRequests } from './controllers/editRequests.js';
-import { handleSettings } from './controllers/settings.js';
-import { handleNotify } from './controllers/notify.js';
-import { handleAdminDashboard, handleAdminAction } from './controllers/admin.js';
+import { json } from './_lib/db.js';
+import { verifyUserDetailed } from './_lib/auth.js';
+import { handleSubjects } from './_controllers/subjects.js';
+import { handleQuestions } from './_controllers/questions.js';
+import { handleProfile } from './_controllers/profile.js';
+import { handleEditRequests, handleMyEditRequests, handleStaffEditRequests } from './_controllers/editRequests.js';
+import { handleSettings } from './_controllers/settings.js';
+import { handleNotify } from './_controllers/notify.js';
+import { handleAdminDashboard, handleAdminAction } from './_controllers/admin.js';
 // BOOKMARK_SYNC_PER_PART_20260806: "Lưu câu 🔖" đồng bộ giữa các thiết bị.
-import { handleBookmarks } from './controllers/bookmarks.js';
-import { postServerErrorEmbed } from './lib/discord.js';
+import { handleBookmarks } from './_controllers/bookmarks.js';
+import { postServerErrorEmbed } from './_lib/discord.js';
 
 export default async function handler(req) {
   const parsedUrl = new URL(req.url);

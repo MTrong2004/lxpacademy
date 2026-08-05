@@ -1,8 +1,8 @@
-import { db, json } from '../lib/db.js';
-import { getAdminEmail, clearProfileCache, loadProfileRow, isTruthyFlag, isRootAdmin } from '../lib/auth.js';
-import { postDiscordEmbed, postServerErrorEmbed } from '../lib/discord.js';
+import { db, json } from '../_lib/db.js';
+import { getAdminEmail, clearProfileCache, loadProfileRow, isTruthyFlag, isRootAdmin } from '../_lib/auth.js';
+import { postDiscordEmbed, postServerErrorEmbed } from '../_lib/discord.js';
 // DEVICE_ID_AND_SUBJECT_PER_DEVICE_20260731 — hình dạng bản ghi + lý do, xem file đó.
-import { safeDeviceId, touchDeviceHistory } from '../lib/deviceHistory.js';
+import { safeDeviceId, touchDeviceHistory } from '../_lib/deviceHistory.js';
 
 function detectDeviceInfo(req, bodyDevice) {
   if (bodyDevice && typeof bodyDevice === 'string' && bodyDevice.trim()) {

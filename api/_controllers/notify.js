@@ -1,8 +1,8 @@
-import { json } from '../lib/db.js';
-import { roleColor, getAdminEmail, checkUserAccess } from '../lib/auth.js';
-// DISCORD_NOTIFICATION_TOGGLES_20260729: dùng bản chung ở api/lib/discord.js — nó tự kiểm
+import { json } from '../_lib/db.js';
+import { roleColor, getAdminEmail, checkUserAccess } from '../_lib/auth.js';
+// DISCORD_NOTIFICATION_TOGGLES_20260729: dùng bản chung ở api/_lib/discord.js — nó tự kiểm
 // tra loại thông báo có đang bật hay không. Đừng gọi webhook trực tiếp ở đây nữa.
-import { postDiscordEmbed } from '../lib/discord.js';
+import { postDiscordEmbed } from '../_lib/discord.js';
 
 export async function handleNotify(req, authUser) {
   if (req.method !== 'POST') return json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, 405);
