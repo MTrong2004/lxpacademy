@@ -300,6 +300,39 @@ export function installSubjectGate() {
       return { ...s, question_count: n };
     });
   }
+  /*
+  LH_OFFLINE_GRACE_20260806 — DANH SÁCH MÔN CŨNG PHẢI SỐNG ĐƯỢC KHI RỚT MẠNG.
+
+  Trước đây `/api/subjects` lỗi là rơi về `fallbackSubjects()` = HAI MÔN VIẾT CỨNG
+  (HOD102, MLN111) mà tài khoản có thể không hề học. Người rớt mạng thấy cổng chọn môn
+  toàn môn lạ, 0 câu, còn môn đang học thì biến mất — trong khi câu hỏi của họ vẫn nằm
+  trong localStorage. Nay lưu lại danh sách thật của lần tải được gần nhất (kèm cờ NEW
+  của thư mục) và dùng đúng nó khi không gọi được server.
+*/
+  const SUBJECTS_CACHE_KEY = 'learninghub_subjects_cache_v1';
+  function writeSubjectsCache(rows, json) {
+    try {
+      localStorage.setItem(
+        SUBJECTS_CACHE_KEY,
+        JSON.stringify({
+          savedAt: Date.now(),
+          rows: rows || [],
+          folder_new_badges: Array.isArray(json?.folder_new_badges) ? json.folder_new_badges : [],
+        }),
+      );
+    } catch (e) {
+      lhWarn('LH_OFFLINE_GRACE_20260806', e);
+    }
+  }
+  function readSubjectsCache() {
+    try {
+      const obj = JSON.parse(localStorage.getItem(SUBJECTS_CACHE_KEY) || 'null');
+      if (!obj || !Array.isArray(obj.rows) || !obj.rows.length) return null;
+      return obj;
+    } catch (e) {
+      return null;
+    }
+  }
   async function getSubjects() {
     if (!logged()) return fallbackSubjects();
     try {
@@ -314,9 +347,16 @@ export function installSubjectGate() {
           (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) ||
           String(a.code || '').localeCompare(String(b.code || '')),
       );
+      writeSubjectsCache(rows, json);
       return await addQuestionCounts(rows);
     } catch (e) {
       console.warn('[Turso subjects]', e);
+      const cached = readSubjectsCache();
+      if (cached) {
+        rememberFolderNewBadges(cached);
+        showErr('Mất kết nối — đang dùng danh sách môn đã lưu trên máy.');
+        return await addQuestionCounts(cached.rows);
+      }
       showErr('Không tải được danh sách môn học từ Turso. Đang dùng môn mặc định.');
       return fallbackSubjects();
     }
@@ -413,11 +453,13 @@ export function installSubjectGate() {
     const names = esc2(g.items.map(s => displayCode(s.code)).join(' · '));
     // `&#10;` phải là thực thể THÔ (xuống dòng trong tooltip) — ghép sau khi đã esc2 từng phần,
     // esc2 cả chuỗi thì dấu & bị đổi thành &amp; và tooltip hiện đúng chữ "&#10;".
-    const title = `${esc2(g.base)} — ${g.items.length} môn · ${total} câu&#10;${names}`;
+    // SUBJECT_FOLDER_PART_WORDING_20260806: cùng một mã gốc = MỘT môn chia làm nhiều PHẦN.
+    // Gọi mỗi mục con là "môn" thì người học tưởng MLN122 và MLN122_2 là hai môn khác nhau.
+    const title = `${esc2(g.base)} — ${g.items.length} phần · ${total} câu&#10;${names}`;
     return `<button class="subjectFolderCard${isNew ? ' hasNewBadge' : ''}${holdsPicked ? ' holdsPicked' : ''}" type="button" data-folder="${esc2(g.base)}" title="${title}">
       ${isNew ? '<span class="subjectNewBadge">NEW</span>' : ''}
       <span class="subjectCardCode"><span class="subjectFolderIcon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></span><span>${esc2(g.base)}</span></span>
-      <span class="subjectFolderTag"><span class="subjectFolderBadgeText">THƯ MỤC</span> · ${g.items.length} môn</span>
+      <span class="subjectFolderTag"><span class="subjectFolderBadgeText">THƯ MỤC</span> · ${g.items.length} phần</span>
       <span class="subjectFolderNames">${names}</span>
       <span class="subjectMeta">
         <span>${total.toLocaleString('vi-VN')} câu</span>
@@ -437,51 +479,78 @@ export function installSubjectGate() {
     return `<div class="subjectFolderBar">
       <button class="subjectFolderBack" type="button" data-folder-back="1">← Tất cả môn</button>
       <span class="subjectFolderBarCode">${esc2(g.base)}</span>
-      <span class="subjectFolderBarMeta">${g.items.length} môn · ${groupTotal(g).toLocaleString('vi-VN')} câu</span>
+      <span class="subjectFolderBarMeta">${g.items.length} phần · ${groupTotal(g).toLocaleString('vi-VN')} câu</span>
     </div>`;
   }
   function tabsBar() {
     return document.getElementById('subjectGateTabsBar');
   }
-  function folderCrumbHost() {
+  /**
+   * SUBJECT_FOLDER_CRUMB_OWN_ROW_20260806 (thay chỗ đặt của SUBJECT_FOLDER_BAR_IN_TABS_20260729):
+   * thanh thư mục XUỐNG MỘT BẬC — hàng riêng ngay dưới hàng tab, không còn nằm chung
+   * `.subjectGateTabsLeft` với hai tab. Nằm cùng hàng tab thì "Tất cả môn" trông NGANG CẤP với
+   * "Danh sách môn học" / "Thêm môn mới", nhìn không ra là mình đang đứng sâu một bậc bên trong
+   * một thư mục. Hàng riêng (thụt trái + gạch nối `└`) tốn thêm ~40px nhưng đọc ra ngay phân cấp:
+   *   tab  →  Tất cả môn ▸ MÃ GỐC  →  lưới các phần.
+   * Hàng vẫn dựng LAZY vì `ensureSubjectGateTabs()` (subjectImport.js) có thể chưa chạy ở lần
+   * render đầu; `folderBarHTML` trong lưới vẫn là bản dự phòng cho đúng quãng đó.
+   */
+  function folderCrumbRow() {
     const bar = tabsBar();
     if (!bar) return null;
+    let row = $('subjectFolderCrumbRow');
+    if (!row) {
+      row = document.createElement('div');
+      row.id = 'subjectFolderCrumbRow';
+      row.className = 'subjectFolderCrumbRow hidden';
+      bar.insertAdjacentElement('afterend', row);
+    }
+    return row;
+  }
+  function folderCrumbHost() {
+    const row = folderCrumbRow();
+    if (!row) return null;
     let host = $('subjectFolderCrumb');
     if (!host) {
       host = document.createElement('div');
       host.id = 'subjectFolderCrumb';
-      host.className = 'subjectFolderCrumb hidden';
-      (bar.querySelector('.subjectGateTabsLeft') || bar).appendChild(host);
+      host.className = 'subjectFolderCrumb';
     }
+    // Bản cũ (hoặc DOM còn sót của phiên trước) nằm trong hàng tab thì kéo xuống hàng riêng.
+    if (host.parentElement !== row) row.appendChild(host);
     return host;
   }
   function folderMetaHost() {
-    const bar = tabsBar();
-    if (!bar) return null;
+    const row = folderCrumbRow();
+    if (!row) return null;
     let host = $('subjectFolderCrumbMeta');
     if (!host) {
       host = document.createElement('span');
       host.id = 'subjectFolderCrumbMeta';
-      host.className = 'subjectFolderCrumbMeta hidden';
-      bar.appendChild(host);
+      host.className = 'subjectFolderCrumbMeta';
     }
+    if (host.parentElement !== row) row.appendChild(host);
     return host;
   }
-  /** Vẽ thanh thư mục vào hàng tab. Trả về true nếu đã vẽ được (khỏi vẽ bản trong lưới). */
+  /** Vẽ thanh thư mục vào hàng riêng dưới hàng tab. Trả về true nếu vẽ được (khỏi vẽ bản trong lưới). */
   function syncFolderCrumb(g) {
+    const row = folderCrumbRow();
     const crumb = folderCrumbHost();
     const meta = folderMetaHost();
-    if (!crumb || !meta) return false;
-    crumb.classList.toggle('hidden', !g);
-    meta.classList.toggle('hidden', !g);
+    if (!row || !crumb || !meta) return false;
+    // Ẩn/hiện ở HÀNG, không ở từng ô con — ẩn ô con mà để hàng lại thì còn một dải trống.
+    row.classList.toggle('hidden', !g);
     if (!g) {
       crumb.innerHTML = '';
       meta.textContent = '';
       return true;
     }
-    crumb.innerHTML = `<button class="subjectFolderBack" type="button" data-folder-back="1">← Tất cả môn</button>
+    crumb.innerHTML = `<span class="subjectFolderCrumbTree" aria-hidden="true">└</span>
+      <button class="subjectFolderBack" type="button" data-folder-back="1">← Tất cả môn</button>
+      <span class="subjectFolderCrumbSep" aria-hidden="true">▸</span>
       <span class="subjectFolderBarCode">${esc2(g.base)}</span>`;
-    meta.textContent = `${g.items.length} môn · ${groupTotal(g).toLocaleString('vi-VN')} câu`;
+    // SUBJECT_FOLDER_PART_WORDING_20260806: môn con của một thư mục là "phần" của cùng một môn.
+    meta.textContent = `${g.items.length} phần · ${groupTotal(g).toLocaleString('vi-VN')} câu`;
     return true;
   }
   function renderSubjects() {

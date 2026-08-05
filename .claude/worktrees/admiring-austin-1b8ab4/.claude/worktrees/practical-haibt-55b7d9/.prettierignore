@@ -1,9 +1,0 @@
-# Build output — sinh bởi npm run build, đừng format
-app.js
-admin.js
-dist/
-.dev-cache/
-node_modules/
-
-# Docs sinh tự động
-docs/BLOCK_MAP.md

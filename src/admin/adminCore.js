@@ -86,6 +86,7 @@ AI_ADMIN_JS_MAP_END */
 // LH_ERROR_SURFACING_20260727: mọi catch trong file này dùng lhWarn('<TÊN_BLOCK>', e)
 // thay cho catch rỗng. Xem lỗi đã bị catch: mở Console gõ  lhErrors()
 import { lhWarn } from '../core/log.js';
+import { importJsonFileName, questionsToImportJson } from '../core/importSchema.js';
 
 const CONFIG = {
   SUPABASE_URL: window.APP_CONFIG?.SUPABASE_URL || 'https://kxyukiwhhorvxgxxxmfq.supabase.co',
@@ -793,7 +794,10 @@ window.handleAccessRevoked = function (reason, code) {
   if (code === 'BLOCKED') {
     __lhSetDenyMessage('Tài khoản bị khóa', 'Tài khoản của bạn đã bị quản trị viên khóa. Bạn đã được đăng xuất.');
   } else if (code === 'UNAUTHORIZED') {
-    __lhSetDenyMessage('Phiên đăng nhập đã hết hạn', 'Vui lòng đăng nhập lại.');
+    __lhSetDenyMessage(
+      'Phiên đăng nhập đã hết hạn',
+      'Tải lại trang (F5) để nối lại phiên. Nếu vẫn không được thì đăng nhập lại.',
+    );
   } else if (code === 'PENDING_APPROVAL') {
     __lhSetDenyMessage('Chờ phê duyệt', 'Tài khoản của bạn chưa được phê duyệt hoặc vừa bị thu hồi quyền.');
   } else {
@@ -802,7 +806,13 @@ window.handleAccessRevoked = function (reason, code) {
 
   show('deny');
 
-  if (code === 'BLOCKED' || code === 'UNAUTHORIZED') {
+  /*
+    LH_OFFLINE_GRACE_20260806: CHỈ BLOCKED còn tự đăng xuất. UNAUTHORIZED trước đây cũng
+    signOut() — mất phiên Supabase là mất luôn refresh_token còn sống hàng chục ngày, nên
+    admin phải chọn lại mail Google chỉ vì một nhịp mạng/Supabase chớp. Nay giữ phiên: F5
+    là lớp làm mới token (LH_ADMIN_SESSION_REFRESH_20260805) tự nối lại.
+  */
+  if (code === 'BLOCKED') {
     try {
       sessionStorage.removeItem('is_logged_in');
     } catch (e) {
@@ -867,8 +877,17 @@ async function loadProfile() {
     });
     const out = await res.json().catch(() => ({}));
     if (!res.ok) {
-      if (res.status === 401 || res.status === 403) {
-        window.handleAccessRevoked(out.error, out.code || (res.status === 401 ? 'UNAUTHORIZED' : 'PENDING_APPROVAL'));
+      /*
+        AUTH_VERIFY_INCONCLUSIVE_20260805 + LH_OFFLINE_GRACE_20260806: 401 KHÔNG CÓ code
+        không phải kết luận của app (proxy công ty / CDN / cổng wifi trả lời thay), và 401
+        lúc không làm mới được token vì mất mạng cũng vậy. Bản cũ đoán 'UNAUTHORIZED' cho
+        cả hai ca -> đá admin ra màn hình đăng nhập. Web học đã sửa, trang này thì chưa.
+      */
+      const inconclusive401 =
+        res.status === 401 &&
+        (!out.code || window.__lhLastRefreshOutcome === 'unreachable' || navigator.onLine === false);
+      if ((res.status === 401 || res.status === 403) && !inconclusive401) {
+        window.handleAccessRevoked(out.error, out.code || 'PENDING_APPROVAL');
       } else {
         // 500 / lỗi mạng: KHÔNG kết luận là mất quyền, chỉ báo không kiểm tra được.
         window.__lhShowAccessError('Không thể kiểm tra quyền, vui lòng thử lại.');
@@ -1246,61 +1265,215 @@ async function setRole(id, role) {
   await loadAll();
 }
 
-function exportAll() {
-  const subjects = Array.from(
-    new Set((cache.questions || []).map(q => q.subject_code || 'HOD102').filter(Boolean)),
-  ).sort();
-  const subjectOptions = ['all', ...subjects]
-    .map(code => `<option value="${esc(code)}">${code === 'all' ? 'Tất cả môn' : esc(code)}</option>`)
+/*
+  EXPORT_PICK_SUBJECTS_20260806
+  Ô "Xuất dữ liệu" trước đây là một <select> một-lựa-chọn dựng từ `cache.questions`, nên:
+  · chỉ chọn được ĐÚNG MỘT môn hoặc "Tất cả" — muốn 3 môn thì phải mở modal 3 lần;
+  · môn chưa có câu nào KHÔNG hiện trong danh sách (nó lấy mã từ bảng câu hỏi, không từ
+    `cache.subjects`), và danh sách chỉ có mã trơ, không có tên môn, không có số câu;
+  · các môn cùng mã gốc (MLN122, MLN122_2…) nằm rời rạc giữa 19 dòng.
+  Nay là một danh sách tick gọn, gom theo THƯ MỤC (mã gốc) đúng như trang "Quản lý môn học",
+  có ô tìm kiếm + "Tất cả" / "Bỏ chọn", và in kèm tên môn + số câu.
+
+  Đi cùng là định dạng xuất: JSON câu hỏi nay ra ĐÚNG schema của tab "Thêm môn mới"
+  (`src/core/importSchema.js`) thay vì dòng DB thô, nên vòng xuất → sửa → nhập lại chạy được
+  mà không phải sửa tay trường nào. Bản thô vẫn còn ở "Sao lưu đầy đủ".
+*/
+const expSelected = new Set();
+
+function exportBaseOf(code) {
+  return String(code || '')
+    .split(/[_\-\s]/)[0]
+    .toUpperCase();
+}
+
+/** Số câu mỗi mã môn, đếm từ `cache.questions` (dashboard đã nạp sẵn — không gọi thêm request). */
+function expCountByCode() {
+  const map = new Map();
+  (cache.questions || []).forEach(q => {
+    const c = String(q.subject_code || '').toUpperCase();
+    if (!c) return;
+    map.set(c, (map.get(c) || 0) + 1);
+  });
+  return map;
+}
+
+/** Danh sách môn để tick: `cache.subjects` là nguồn (kể cả môn 0 câu), gom theo mã gốc. */
+function expSubjectGroups() {
+  const counts = expCountByCode();
+  const rows = (cache.subjects || [])
+    .map(s => {
+      const code = String(s.code || '').toUpperCase();
+      return { code, name: String(s.name || ''), count: counts.get(code) || 0 };
+    })
+    .filter(s => s.code);
+  // Môn chỉ có câu mà không có dòng trong `subjects` (dữ liệu cũ) vẫn phải xuất được.
+  counts.forEach((count, code) => {
+    if (!rows.some(r => r.code === code)) rows.push({ code, name: '(không có trong danh sách môn)', count });
+  });
+
+  const byBase = new Map();
+  const order = [];
+  rows.forEach(r => {
+    const base = exportBaseOf(r.code);
+    if (!byBase.has(base)) {
+      byBase.set(base, []);
+      order.push(base);
+    }
+    byBase.get(base).push(r);
+  });
+  return order.map(base => ({ base, items: byBase.get(base) }));
+}
+
+function expSubjectListHTML() {
+  const groups = expSubjectGroups();
+  if (!groups.length) return '<div class="expEmpty">Chưa có môn nào.</div>';
+
+  const rowHTML = r =>
+    `<label class="expRow" data-exp-search="${esc((r.code + ' ' + r.name).toLowerCase())}">
+       <input type="checkbox" data-exp-code="${esc(r.code)}">
+       <span class="expCode">${esc(r.code)}</span>
+       <span class="expName">${esc(r.name)}</span>
+       <span class="expCount">${r.count} câu</span>
+     </label>`;
+
+  return groups
+    .map(g => {
+      if (g.items.length < 2)
+        return `<div class="expGroup" data-exp-group="${esc(g.base)}">${rowHTML(g.items[0])}</div>`;
+      const total = g.items.reduce((s, r) => s + r.count, 0);
+      return `<div class="expGroup" data-exp-group="${esc(g.base)}">
+          <label class="expRow expFolder" data-exp-search="${esc(g.base.toLowerCase())}">
+            <input type="checkbox" data-exp-base="${esc(g.base)}">
+            <span class="expCode">📁 ${esc(g.base)}</span>
+            <span class="expName">${g.items.length} phần</span>
+            <span class="expCount">${total} câu</span>
+          </label>
+          ${g.items.map(rowHTML).join('')}
+        </div>`;
+    })
     .join('');
+}
+
+function exportAll() {
+  expSelected.clear();
   openModal(
     'Xuất dữ liệu (Turso)',
     `
-    <div style="padding:10px 0;display:grid;gap:14px;">
-      <p style="color:rgba(245,240,232,.72);margin:0 0 4px;font-size:0.9rem;line-height:1.4;">
-        Dữ liệu xuất lấy trực tiếp từ Turso (database hiện tại). Phần câu hỏi có thể tải hết 1 lần hoặc chọn đúng môn.
-      </p>
-
-      <div style="border:1px solid rgba(200,169,110,.22);border-radius:16px;padding:14px;background:rgba(255,255,255,.025);display:grid;gap:10px;">
-        <b style="color:var(--gold2);">Câu hỏi</b>
-        <select id="exportQuestionSubject" style="width:100%;background:rgba(255,255,255,.045);border:1px solid var(--bd);border-radius:12px;color:var(--fog);padding:10px 12px;">
-          ${subjectOptions}
-        </select>
-        <button class="act ok" id="exportQuestionsJsonBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
-          📄 Tải câu hỏi JSON (import lại được)
-        </button>
-        <button class="act" id="exportQuestionsCsvBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
-          📊 Tải câu hỏi CSV (mở Excel)
-        </button>
+    <div class="expWrap">
+      <div class="expBox">
+        <div class="expBoxHead">
+          <b>Câu hỏi</b>
+          <span class="expSum" id="expSubjectSum">Chưa chọn môn nào</span>
+        </div>
+        <div class="expPickHead">
+          <input id="expSubjectSearch" class="expSearch" type="search" placeholder="Tìm mã hoặc tên môn…" autocomplete="off">
+          <button class="expMini" type="button" id="expPickAll">Tất cả</button>
+          <button class="expMini" type="button" id="expPickNone">Bỏ chọn</button>
+        </div>
+        <div class="expList" id="expSubjectList">${expSubjectListHTML()}</div>
+        <div class="expBtnRow">
+          <button class="act ok" id="exportQuestionsJsonBtn">📄 JSON dạng import</button>
+          <button class="act" id="exportQuestionsCsvBtn">📊 CSV (mở Excel)</button>
+        </div>
+        <div class="expHint">
+          JSON ra đúng schema của tab <b>“Thêm môn mới”</b> — sửa xong nhập lại được ngay, mỗi môn một file.
+          CSV gộp tất cả môn đã chọn vào một file.
+        </div>
       </div>
 
-      <div style="border:1px solid rgba(200,169,110,.22);border-radius:16px;padding:14px;background:rgba(255,255,255,.025);display:grid;gap:10px;">
-        <b style="color:var(--gold2);">Hồ sơ người dùng</b>
-        <button class="act" id="exportProfilesJsonBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
-          👤 Tải profiles JSON
-        </button>
-        <button class="act" id="exportProfilesCsvBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
-          📊 Tải profiles CSV
-        </button>
+      <div class="expBox">
+        <div class="expBoxHead"><b>Hồ sơ người dùng</b></div>
+        <div class="expBtnRow">
+          <button class="act" id="exportProfilesJsonBtn">👤 JSON</button>
+          <button class="act" id="exportProfilesCsvBtn">📊 CSV</button>
+        </div>
       </div>
 
-      <div style="border:1px solid rgba(200,169,110,.14);border-radius:16px;padding:14px;background:rgba(255,255,255,.015);display:grid;gap:10px;">
-        <b style="color:var(--mist);">Sao lưu đầy đủ</b>
-        <button class="act" id="exportBtnFull" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
-          💾 Tải full_backup JSON (câu hỏi + môn + user + lịch sử)
-        </button>
+      <div class="expBox expBoxQuiet">
+        <div class="expBoxHead"><b>Sao lưu đầy đủ</b></div>
+        <div class="expBtnRow">
+          <button class="act" id="exportBtnFull">💾 full_backup JSON (câu hỏi thô + môn + user + lịch sử)</button>
+        </div>
       </div>
     </div>
   `,
   );
 
-  $('exportQuestionsJsonBtn').onclick = () =>
-    downloadExportFile('questions_json', $('exportQuestionSubject')?.value || 'all');
-  $('exportQuestionsCsvBtn').onclick = () =>
-    downloadExportFile('questions_csv', $('exportQuestionSubject')?.value || 'all');
+  const list = $('expSubjectList');
+  const sum = $('expSubjectSum');
+  const counts = expCountByCode();
+
+  function syncSum() {
+    const n = expSelected.size;
+    const q = Array.from(expSelected).reduce((s, c) => s + (counts.get(c) || 0), 0);
+    if (sum) sum.textContent = n ? `Đã chọn ${n} môn · ${q} câu` : 'Chưa chọn môn nào';
+    const off = n === 0;
+    [$('exportQuestionsJsonBtn'), $('exportQuestionsCsvBtn')].forEach(b => {
+      if (!b) return;
+      b.disabled = off;
+      b.title = off ? 'Hãy tick ít nhất một môn.' : '';
+    });
+    // Ô tick của thư mục theo trạng thái các phần bên trong (tick hết / tick một phần).
+    list?.querySelectorAll('[data-exp-base]').forEach(box => {
+      const kids = Array.from(box.closest('.expGroup')?.querySelectorAll('[data-exp-code]') || []);
+      const on = kids.filter(k => k.checked).length;
+      box.checked = on > 0 && on === kids.length;
+      box.indeterminate = on > 0 && on < kids.length;
+    });
+  }
+
+  function setCode(box, on) {
+    box.checked = on;
+    const code = String(box.getAttribute('data-exp-code') || '').toUpperCase();
+    if (on) expSelected.add(code);
+    else expSelected.delete(code);
+  }
+
+  list?.addEventListener('change', e => {
+    const box = e.target;
+    if (box.matches('[data-exp-code]')) setCode(box, box.checked);
+    else if (box.matches('[data-exp-base]'))
+      box
+        .closest('.expGroup')
+        ?.querySelectorAll('[data-exp-code]')
+        .forEach(k => setCode(k, box.checked));
+    else return;
+    syncSum();
+  });
+
+  $('expPickAll').onclick = () => {
+    list?.querySelectorAll('[data-exp-code]').forEach(k => setCode(k, true));
+    syncSum();
+  };
+  $('expPickNone').onclick = () => {
+    list?.querySelectorAll('[data-exp-code]').forEach(k => setCode(k, false));
+    syncSum();
+  };
+  $('expSubjectSearch').oninput = e => {
+    const q = String(e.target.value || '')
+      .trim()
+      .toLowerCase();
+    list?.querySelectorAll('.expGroup').forEach(g => {
+      let shown = 0;
+      g.querySelectorAll('.expRow:not(.expFolder)').forEach(r => {
+        const hit = !q || (r.getAttribute('data-exp-search') || '').includes(q);
+        r.classList.toggle('hidden', !hit);
+        if (hit) shown++;
+      });
+      // Hàng thư mục chỉ có nghĩa khi còn ≥2 phần hiện: đang tìm kiếm thì trải phẳng như web học.
+      const folder = g.querySelector('.expFolder');
+      if (folder) folder.classList.toggle('hidden', !!q);
+      g.classList.toggle('hidden', shown === 0);
+    });
+  };
+
+  $('exportQuestionsJsonBtn').onclick = () => downloadExportFile('questions_json', Array.from(expSelected));
+  $('exportQuestionsCsvBtn').onclick = () => downloadExportFile('questions_csv', Array.from(expSelected));
   $('exportProfilesJsonBtn').onclick = () => downloadExportFile('profiles_json');
   $('exportProfilesCsvBtn').onclick = () => downloadExportFile('profiles_csv');
   $('exportBtnFull').onclick = () => downloadExportFile('full');
+  syncSum();
 }
 
 function downloadBlobFile(content, filename, type = 'application/json') {
@@ -1336,6 +1509,25 @@ async function fetchQuestionsForExport(subjectCode) {
       (Number(a.num) || 0) - (Number(b.num) || 0),
   );
   return rows;
+}
+
+/**
+ * EXPORT_PICK_SUBJECTS_20260806 — nhiều môn thì gọi từng môn (mỗi lần là một GET nhẹ theo mã),
+ * KHÔNG gọi `all` rồi lọc: `/api/questions` không mã môn là đọc cả 4.832 câu / ~1,5 MB
+ * (xem mục "Mức tiêu thụ Turso" trong CLAUDE.md). Chọn cả danh sách thì mới đáng gọi một lượt.
+ */
+async function fetchQuestionsForCodes(codes) {
+  const list = Array.isArray(codes) ? codes.filter(Boolean) : [];
+  if (!list.length) return [];
+  const total = (cache.subjects || []).length;
+  if (total && list.length >= total) {
+    const all = await fetchQuestionsForExport('all');
+    const want = new Set(list.map(c => String(c).toUpperCase()));
+    return all.filter(q => want.has(String(q.subject_code || '').toUpperCase()));
+  }
+  const out = [];
+  for (const code of list) out.push(...(await fetchQuestionsForExport(code)));
+  return out;
 }
 
 async function fetchProfilesForExport() {
@@ -1412,26 +1604,37 @@ function toCsv(rows) {
 }
 
 async function downloadExportFile(type, subjectCode = 'all') {
+  // `subjectCode` nay là MẢNG mã môn đã tick (bản cũ là một chuỗi hoặc 'all').
+  const codes = Array.isArray(subjectCode) ? subjectCode : subjectCode && subjectCode !== 'all' ? [subjectCode] : [];
+  const codeLabel = codes.length === 1 ? codes[0] : codes.length ? codes.length + '_mon' : 'all';
   try {
+    if ((type === 'questions_json' || type === 'questions_csv') && !codes.length) {
+      alert('Hãy tick ít nhất một môn.');
+      return;
+    }
     setBusy(true, 'Đang xuất...');
     if (type === 'questions_json') {
-      const rows = await fetchQuestionsForExport(subjectCode);
-      downloadBlobFile(
-        JSON.stringify(rows, null, 2),
-        `questions_${safeFilePart(subjectCode)}.json`,
-        'application/json;charset=utf-8',
-      );
+      // Mỗi môn MỘT file, đúng schema import — trộn nhiều môn vào một file thì tab "Thêm môn mới"
+      // không nhập lại được (một lần nhập là một mã môn).
+      let count = 0;
+      for (const code of codes) {
+        const rows = await fetchQuestionsForExport(code);
+        count += rows.length;
+        downloadBlobFile(questionsToImportJson(rows), importJsonFileName(code), 'application/json;charset=utf-8');
+        // Nhiều file liền nhau: chờ một nhịp để trình duyệt không bỏ rơi lượt tải sau.
+        if (codes.length > 1) await new Promise(r => setTimeout(r, 350));
+      }
       try {
-        await logAction('export_questions_json', 'questions', subjectCode, { count: rows.length });
+        await logAction('export_questions_json', 'questions', codes.join(','), { count, subjects: codes.length });
       } catch (e) {
         lhWarn('ADMIN_LOGIN_NOTIFY_NOT_F5', e);
       }
-      toast('Đã tải câu hỏi JSON');
+      toast(codes.length > 1 ? `Đã tải ${codes.length} file JSON (${count} câu)` : `Đã tải JSON (${count} câu)`);
     } else if (type === 'questions_csv') {
-      const rows = await fetchQuestionsForExport(subjectCode);
-      downloadBlobFile(questionsToCsv(rows), `questions_${safeFilePart(subjectCode)}.csv`, 'text/csv;charset=utf-8');
+      const rows = await fetchQuestionsForCodes(codes);
+      downloadBlobFile(questionsToCsv(rows), `questions_${safeFilePart(codeLabel)}.csv`, 'text/csv;charset=utf-8');
       try {
-        await logAction('export_questions_csv', 'questions', subjectCode, { count: rows.length });
+        await logAction('export_questions_csv', 'questions', codes.join(','), { count: rows.length });
       } catch (e) {
         lhWarn('ADMIN_LOGIN_NOTIFY_NOT_F5', e);
       }
@@ -4090,7 +4293,7 @@ ${E(val)}</pre>`;
           <b>${idx + 1}. Thư mục ${esc(g.base)}</b>
           <p>${esc(codes)}</p>
           <div class="subjectFolderChips">
-            <span class="subjectFolderChip">${g.items.length} môn</span>
+            <span class="subjectFolderChip">${g.items.length} phần</span>
             <span class="subjectQuestionCount">Tổng số câu: <b>${countQuestions(g.items)}</b> câu</span>
           </div>
         </div>
@@ -4110,14 +4313,17 @@ ${E(val)}</pre>`;
           ? `Thư mục <b>${esc(openBase)}</b>`
           : `<b>${folders}</b> thư mục · <b>${groups.length - folders}</b> môn lẻ`;
     const hint = mode === 'search' ? 'Xóa ô tìm kiếm để quay lại dạng thư mục.' : 'Kéo dấu ☰ để đổi vị trí.';
-    return `<p class="subjectOrderHint">${where} — <b>${flatCount}</b> môn · <b>${total}</b> câu. ${hint}</p>`;
+    // SUBJECT_FOLDER_PART_WORDING_20260806: đang đứng TRONG một thư mục thì các mục con là
+    // "phần" của cùng một môn, không phải nhiều môn khác nhau. Ngoài cùng vẫn đếm theo "môn".
+    const unit = mode === 'folder' ? 'phần' : 'môn';
+    return `<p class="subjectOrderHint">${where} — <b>${flatCount}</b> ${unit} · <b>${total}</b> câu. ${hint}</p>`;
   }
 
   function folderBackHTML(g) {
     return `<div class="subjectAdminBackBar">
       <button class="act subjectAdminBack" type="button" onclick="openSubjectFolderAdmin('')">← Tất cả môn</button>
       <span class="subjectAdminCode subjectFolderCode">${esc(g.base)}</span>
-      <span class="subjectAdminBackMeta">${g.items.length} môn · ${countQuestions(g.items)} câu</span>
+      <span class="subjectAdminBackMeta">${g.items.length} phần · ${countQuestions(g.items)} câu</span>
     </div>`;
   }
 
@@ -5735,43 +5941,180 @@ ${E(val)}</pre>`;
 
     var nativeFetch = window.fetch.bind(window);
 
+    function validToken(t) {
+      return typeof t === 'string' && t.trim().length > 0 && !/[\r\n]/.test(t);
+    }
+
+    /*
+      LH_ADMIN_SESSION_REFRESH_20260805 — TRANG ADMIN CŨNG PHẢI LÀM MỚI TOKEN.
+
+      Web học sinh đã có lớp này từ LH_SESSION_REFRESH_20260729, trang admin thì KHÔNG:
+      lhToken() cũ đọc access_token trong localStorage mà không xem `expires_at`, gắn
+      luôn vào header. access_token của Supabase sống 1 giờ, nên mở dashboard rồi để
+      máy sleep / tab chạy nền quá 1 tiếng (timer tự làm mới của supabase-js bị throttle
+      không kịp chạy) là request đầu tiên gửi token HẾT HẠN -> server 401 UNAUTHORIZED ->
+      handleAccessRevoked() gọi client.auth.signOut(): admin bị đá ra màn hình đăng nhập
+      dù refresh_token còn sống hàng chục ngày.
+
+      Nay giống hệt web học: token hết hạn thì KHÔNG gắn, làm mới TRƯỚC khi gọi; gặp 401
+      thì làm mới rồi thử lại ĐÚNG MỘT LẦN. Chỉ khi làm mới cũng thất bại (refresh_token
+      hết hạn / bị thu hồi) mới để 401 đi tới luồng thu hồi quyền. Nhiều request 401 cùng
+      lúc dùng chung một lần làm mới (refreshInFlight).
+    */
+    function tokenFromRaw(raw) {
+      if (!raw) return '';
+      var v;
+      try {
+        v = JSON.parse(raw);
+      } catch (e) {
+        return '';
+      }
+      var s = v && v.currentSession ? v.currentSession : v;
+      var tok = (s && s.access_token) || (Array.isArray(v) && v[0]) || '';
+      var exp = s && s.expires_at;
+      if (!validToken(tok)) return '';
+      // Hết hạn (hoặc còn dưới 10s): trả '' để phía dưới làm mới, đừng gắn header rác.
+      if (exp && Date.now() / 1000 > exp - 10) return '';
+      return tok.trim();
+    }
+
+    function authTokenKeys() {
+      var keys = [];
+      try {
+        var url = window.APP_CONFIG?.SUPABASE_URL || '';
+        var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
+        if (m) keys.push('sb-' + m[1] + '-auth-token');
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i);
+          if (k && k.slice(0, 3) === 'sb-' && k.slice(-11) === '-auth-token' && keys.indexOf(k) === -1) keys.push(k);
+        }
+      } catch (e) {
+        lhWarn('LH_ADMIN_SESSION_REFRESH_20260805', e);
+      }
+      return keys;
+    }
+
+    function storedSession() {
+      var keys = authTokenKeys();
+      for (var j = 0; j < keys.length; j++) {
+        try {
+          var raw = localStorage.getItem(keys[j]);
+          if (!raw) continue;
+          var v = JSON.parse(raw);
+          var s = v && v.currentSession ? v.currentSession : v;
+          if (s && (s.access_token || s.refresh_token)) return s;
+        } catch (e) {
+          lhWarn('LH_ADMIN_SESSION_REFRESH_20260805', e);
+        }
+      }
+      return null;
+    }
+
+    function hasRefreshToken() {
+      var s = storedSession();
+      return !!(s && typeof s.refresh_token === 'string' && s.refresh_token.length > 0);
+    }
+
+    // Client Supabase của trang admin (biến `client` của module, đặt trong init()).
+    // Bản bọc createTursoClientMock vẫn phơi nguyên `.auth`, nên dùng được cả hai.
+    function authClient() {
+      try {
+        return client && client.auth ? client : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function freshTokenOf(session) {
+      if (!session) return '';
+      var tok = session.access_token;
+      if (!validToken(tok)) return '';
+      if (session.expires_at && Date.now() / 1000 > session.expires_at - 10) return '';
+      return tok.trim();
+    }
+
+    /*
+      LH_OFFLINE_GRACE_20260806: ghi LÝ DO làm mới thất bại, giống web học. 'unreachable'
+      (mất mạng / không gọi được Supabase auth) thì 401 sau đó KHÔNG kết luận được gì về
+      phiên — trước đây mọi thất bại đều thành '' nên admin bị đá ra đăng nhập lại chỉ vì
+      mạng chớp một nhịp.
+    */
+    function markRefreshOutcome(v) {
+      window.__lhLastRefreshOutcome = v;
+      return v;
+    }
+    markRefreshOutcome('none');
+    function refreshErrorKind(err) {
+      if (!err) return 'unreachable';
+      var st = err.status || err.code || 0;
+      if (st === 400 || st === 401 || st === 403) return 'dead';
+      var msg = String(err.message || err.name || '');
+      if (/invalid refresh token|refresh token not found|already used|revoked/i.test(msg)) return 'dead';
+      return 'unreachable';
+    }
+    var refreshInFlight = null;
+    function lhRefreshToken() {
+      if (refreshInFlight) return refreshInFlight;
+      var c = authClient();
+      // Chưa init xong, hoặc không có refresh_token: không có gì để làm mới.
+      if (!c || !hasRefreshToken()) {
+        markRefreshOutcome(navigator.onLine === false ? 'unreachable' : 'none');
+        return Promise.resolve('');
+      }
+      if (navigator.onLine === false) {
+        markRefreshOutcome('unreachable');
+        return Promise.resolve('');
+      }
+      refreshInFlight = Promise.resolve()
+        .then(function () {
+          // getSession() của supabase-js v2 tự làm mới khi access_token đã hết hạn.
+          return c.auth.getSession();
+        })
+        .then(function (r) {
+          var tok = freshTokenOf(r && r.data && r.data.session);
+          if (tok) {
+            markRefreshOutcome('ok');
+            return tok;
+          }
+          if (r && r.error) markRefreshOutcome(refreshErrorKind(r.error));
+          if (typeof c.auth.refreshSession !== 'function') return '';
+          return c.auth.refreshSession().then(function (r2) {
+            var t2 = freshTokenOf(r2 && r2.data && r2.data.session);
+            if (t2) {
+              markRefreshOutcome('ok');
+              return t2;
+            }
+            markRefreshOutcome(refreshErrorKind(r2 && r2.error));
+            return '';
+          });
+        })
+        .catch(function (e) {
+          lhWarn('LH_ADMIN_SESSION_REFRESH_20260805', e);
+          markRefreshOutcome(refreshErrorKind(e));
+          return '';
+        })
+        .then(function (tok) {
+          refreshInFlight = null;
+          return tok;
+        });
+      return refreshInFlight;
+    }
+    window.__lhRefreshAccessToken = lhRefreshToken;
+
     function lhToken() {
       try {
         if (window.HODSupabase && typeof window.HODSupabase.getAccessToken === 'function') {
           var t1 = window.HODSupabase.getAccessToken();
-          if (t1 && typeof t1 === 'string' && t1.trim().length > 0 && !/[\r\n]/.test(t1)) return t1.trim();
+          if (validToken(t1)) return t1.trim();
         }
         if (window.HODSupabase && typeof window.HODSupabase.getSession === 'function') {
           var s = window.HODSupabase.getSession();
-          if (s && s.access_token && typeof s.access_token === 'string' && !/[\r\n]/.test(s.access_token)) {
-            return s.access_token.trim();
-          }
+          if (s && validToken(s.access_token)) return s.access_token.trim();
         }
-        var url = window.APP_CONFIG?.SUPABASE_URL || '';
-        var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
-        var ref = m ? m[1] : '';
-        if (ref) {
-          var key = 'sb-' + ref + '-auth-token';
-          var raw = localStorage.getItem(key);
-          if (raw) {
-            var v = JSON.parse(raw);
-            var tok =
-              v &&
-              (v.access_token || (v.currentSession && v.currentSession.access_token) || (Array.isArray(v) && v[0]));
-            if (tok && typeof tok === 'string' && tok.trim().length > 0 && !/[\r\n]/.test(tok)) return tok.trim();
-          }
-        }
-        for (var i = 0; i < localStorage.length; i++) {
-          var k = localStorage.key(i);
-          if (k && k.slice(0, 3) === 'sb-' && k.slice(-11) === '-auth-token') {
-            var raw = localStorage.getItem(k);
-            if (!raw) continue;
-            var v = JSON.parse(raw);
-            var tok =
-              v &&
-              (v.access_token || (v.currentSession && v.currentSession.access_token) || (Array.isArray(v) && v[0]));
-            if (tok && typeof tok === 'string' && tok.trim().length > 0 && !/[\r\n]/.test(tok)) return tok.trim();
-          }
+        var keys = authTokenKeys();
+        for (var i = 0; i < keys.length; i++) {
+          var tok = tokenFromRaw(localStorage.getItem(keys[i]));
+          if (tok) return tok;
         }
       } catch (e) {
         lhWarn('LH_UNIFIED_SINGLE_FETCH_INTERCEPTOR_20260726', e);
@@ -5780,6 +6123,53 @@ ${E(val)}</pre>`;
     }
     window.lhToken = lhToken;
     window.__lhAccessToken = lhToken;
+
+    /*
+      Gắn Authorization vào một request /api/, trả [input, init] để gọi nativeFetch.
+      force = true dùng cho lần THỬ LẠI: header cũ chính là token vừa hết hạn nên phải
+      ghi đè, còn lần đầu thì không đụng Authorization do hàm gọi tự đặt.
+    */
+    function withAuth(input, init, tok, force) {
+      try {
+        if (!tok) return [input, init];
+        if (input instanceof Request) {
+          if (force || !input.headers.has('Authorization')) {
+            var h = new Headers(input.headers);
+            h.set('Authorization', 'Bearer ' + tok);
+            input = new Request(input, { headers: h });
+          }
+          return [input, init];
+        }
+        init = init ? Object.assign({}, init) : {};
+        var hh = new Headers(init.headers || {});
+        if (force || !hh.has('Authorization')) hh.set('Authorization', 'Bearer ' + tok);
+        init.headers = hh;
+        return [input, init];
+      } catch (e) {
+        console.warn('[LH Unified Fetch] Header injection warning:', e);
+        return [input, init];
+      }
+    }
+
+    function apiFetchWithRefresh(input, init) {
+      // Body của Request chỉ đọc được một lần -> phải clone TRƯỚC lần gọi đầu.
+      var retrySrc = input instanceof Request ? input.clone() : input;
+      var retryInit = init;
+      var tok = lhToken();
+      var pre = tok || !hasRefreshToken() ? Promise.resolve(tok) : lhRefreshToken();
+      return pre.then(function (token) {
+        var first = withAuth(input, init, token, false);
+        return nativeFetch(first[0], first[1]).then(function (res) {
+          if (res.status !== 401) return res;
+          return lhRefreshToken().then(function (fresh) {
+            // Không làm mới được, hoặc vẫn token cũ: để 401 đi tiếp cho luồng thu hồi quyền.
+            if (!fresh || fresh === token) return res;
+            var again = withAuth(retrySrc, retryInit, fresh, true);
+            return nativeFetch(again[0], again[1]);
+          });
+        });
+      });
+    }
 
     function lhIsApi(u) {
       try {
@@ -5807,29 +6197,12 @@ ${E(val)}</pre>`;
 
       var isApi = lhIsApi(urlStr);
 
-      if (isApi) {
-        var tok = lhToken();
-        if (tok) {
-          try {
-            if (input instanceof Request) {
-              if (!input.headers.has('Authorization')) {
-                var h = new Headers(input.headers);
-                h.set('Authorization', 'Bearer ' + tok);
-                input = new Request(input, { headers: h });
-              }
-            } else {
-              init = init ? Object.assign({}, init) : {};
-              var hh = new Headers(init.headers || {});
-              if (!hh.has('Authorization')) hh.set('Authorization', 'Bearer ' + tok);
-              init.headers = hh;
-            }
-          } catch (e) {
-            console.warn('[LH Unified Fetch] Header injection warning:', e);
-          }
-        }
-      }
-
-      var promise = nativeFetch(input, init);
+      /*
+        LH_ADMIN_SESSION_REFRESH_20260805: gắn token + làm mới + thử lại một lần nằm
+        trong apiFetchWithRefresh. Hai hook dưới đây bám vào promise CUỐI, nên lần thử
+        lại thành công không kích hoạt luồng thu hồi quyền.
+      */
+      var promise = isApi ? apiFetchWithRefresh(input, init) : nativeFetch(input, init);
 
       if (isApi && String(method).toUpperCase() === 'POST' && urlStr.indexOf('/api/admin-action') !== -1) {
         promise.then(
@@ -5855,6 +6228,15 @@ ${E(val)}</pre>`;
         promise
           .then(function (res) {
             if (res.status !== 401 && res.status !== 403) return;
+            /*
+            LH_OFFLINE_GRACE_20260806: 401 sau khi KHÔNG gọi được Supabase để làm mới token
+            thì không kết luận được gì — request đi ra không mang token nên server trả 401
+            đúng luật, nhưng phiên vẫn tốt. Bản cũ đưa thẳng vào handleAccessRevoked.
+          */
+            if (res.status === 401 && (window.__lhLastRefreshOutcome === 'unreachable' || navigator.onLine === false)) {
+              console.warn('[Admin] 401 khi mất kết nối — giữ phiên, không thu hồi quyền:', urlStr);
+              return;
+            }
             res
               .clone()
               .json()

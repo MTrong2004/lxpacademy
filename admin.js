@@ -184,7 +184,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "154e452" : null;
+  var currentVersion = true ? "70f0273" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -504,7 +504,7 @@
       pending: p.get("pending") === "1",
       blocked: p.get("blocked") === "1",
       fail: p.get("fail") || "",
-      // '500' | '401' | '403' | ''
+      // '500' | '401' | '503' | 'auth' | '401nocode' | 'offline' | ''
       subject: (p.get("subject") || "MOCK1").toUpperCase(),
       /*
         ADMIN_TWO_TIERS_20260729: vai admin trong mock mặc định là ADMIN HỆ THỐNG (đổi được
@@ -541,6 +541,7 @@
     ["MOCK1_C4", "Ch\u01B0\u01A1ng 4 t\xEAn r\u1EA5t d\xE0i \u0111\u1EC3 ki\u1EC3m tra tr\xE0n ch\u1EEF", 20]
   ];
   var mockFolderNewBadges = ["MOCK1"];
+  var mockBookmarks = { MOCK1_C1: ["num_2"] };
   function mockSubjects() {
     const make = (id, code, name, count) => ({
       id,
@@ -756,6 +757,10 @@
           localStorage.removeItem(k);
         }
       }
+      const grant = JSON.parse(localStorage.getItem("learninghub_access_grant_v1") || "null");
+      if (grant && String(grant.id || "").startsWith("mock-")) {
+        localStorage.removeItem("learninghub_access_grant_v1");
+      }
     } catch (e) {
       lhWarn("MOCK:cleanup", e);
     }
@@ -821,6 +826,18 @@
     if (opts.fail === "401") {
       return jsonResponse({ error: "Phi\xEAn \u0111\u0103ng nh\u1EADp kh\xF4ng h\u1EE3p l\u1EC7", code: "UNAUTHORIZED" }, 401);
     }
+    if (opts.fail === "503" || opts.fail === "auth") {
+      return jsonResponse(
+        { error: "Kh\xF4ng x\xE1c minh \u0111\u01B0\u1EE3c phi\xEAn \u0111\u0103ng nh\u1EADp, vui l\xF2ng th\u1EED l\u1EA1i.", code: "AUTH_CHECK_FAILED" },
+        503
+      );
+    }
+    if (opts.fail === "401nocode") {
+      return new Response("<html>407 Proxy Authentication Required</html>", {
+        status: 401,
+        headers: { "Content-Type": "text/html" }
+      });
+    }
     if (opts.blocked) {
       return jsonResponse({ error: "T\xE0i kho\u1EA3n \u0111\xE3 b\u1ECB kh\xF3a", code: "BLOCKED" }, 403);
     }
@@ -832,8 +849,12 @@
       case "subjects":
         return jsonResponse(mockSubjects());
       case "questions": {
-        const subject = query.get("subject_code") || opts.subject;
-        return jsonResponse(mockQuestions(subject));
+        const asked = query.get("subject_code");
+        if (!asked && !query.get("count_only")) {
+          const all = mockSubjects().data.flatMap((s) => mockQuestions(s.code).data);
+          return jsonResponse({ data: all });
+        }
+        return jsonResponse(mockQuestions(asked || opts.subject));
       }
       case "profile":
         return jsonResponse({ data: mockProfile(opts), reload_notice: !!opts.reloadNotice });
@@ -847,6 +868,35 @@
         return jsonResponse(mockAdminDashboard(opts));
       case "notify":
         return jsonResponse({ ok: true });
+      /*
+        BOOKMARK_SYNC_PER_PART_20260806 — server giả cho "Lưu câu 🔖".
+        Nhớ trong PHIÊN (biến module `mockBookmarks`) chứ không trả rỗng cứng: cái cần kiểm là
+        "lưu ở phần này thì phần kia KHÔNG hiện đã lưu", mà GET luôn rỗng thì mọi lần vẽ lại
+        đều xoá sạch bookmark vừa bấm và không thấy được gì.
+      */
+      case "bookmarks": {
+        if (body && (body.merge || body.q_key)) {
+          if (body.merge && typeof body.merge === "object") {
+            Object.entries(body.merge).forEach(([code, keys]) => {
+              const c2 = String(code).toUpperCase();
+              const set = new Set(mockBookmarks[c2] || []);
+              (Array.isArray(keys) ? keys : []).forEach((k2) => set.add(String(k2)));
+              mockBookmarks[c2] = [...set];
+            });
+            return jsonResponse({ ok: true, merged: true });
+          }
+          const c = String(body.subject_code || "").toUpperCase();
+          const k = String(body.q_key || "");
+          if (c && k) {
+            const set = new Set(mockBookmarks[c] || []);
+            if (body.on === false) set.delete(k);
+            else set.add(k);
+            mockBookmarks[c] = [...set];
+          }
+          return jsonResponse({ ok: true, on: body.on !== false });
+        }
+        return jsonResponse({ data: mockBookmarks });
+      }
       case "admin-action": {
         const action = String(body?.action || "");
         if (action === "set_discord_notifications") {
@@ -920,6 +970,10 @@
         lhWarn("MOCK:url", e);
       }
       if (!pathname.startsWith("/api")) return realFetch(input, init2);
+      if (opts.fail === "offline") {
+        console.log(`[MOCK] ${pathname} -> gi\u1EA3 l\u1EADp M\u1EA4T M\u1EA0NG (reject)`);
+        return Promise.reject(new TypeError("Failed to fetch (mock offline)"));
+      }
       const method = (init2?.method || "GET").toUpperCase();
       const label = query.get("subject_code") ? ` (${query.get("subject_code")})` : "";
       console.log(`[MOCK] ${method} ${pathname}${label} -> d\u1EEF li\u1EC7u gi\u1EA3`);
@@ -989,6 +1043,44 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       "background:#7c2d12;color:#fff;padding:2px 6px;border-radius:3px"
     );
     return true;
+  }
+
+  // src/core/importSchema.js
+  var RISKS = ["low", "medium", "high"];
+  function answerLabels(q) {
+    const raw = Array.isArray(q.answer) ? q.answer.join("") : String(q.answer ?? "");
+    const letters = (raw + String(q.answer_unknown ?? "")).toUpperCase().replace(/[^A-Z]/g, "");
+    const out = [];
+    for (const ch of letters) if (!out.includes(ch)) out.push(ch);
+    return out;
+  }
+  function toImportSchemaQuestion(q) {
+    const src = q && typeof q === "object" ? q : {};
+    const rawOptions = src.options && typeof src.options === "object" && !Array.isArray(src.options) ? src.options : {};
+    const options = {};
+    Object.keys(rawOptions).map((k) => String(k).trim().toUpperCase()).sort().forEach((k) => {
+      const v = rawOptions[k] ?? rawOptions[k.toLowerCase()];
+      options[k] = String(v ?? "").trim();
+    });
+    const images = Array.isArray(src.images) ? src.images.map((x) => String(x ?? "")).filter(Boolean) : [];
+    const risk = String(src.error_risk || "").toLowerCase();
+    const out = {};
+    if (src.num !== null && src.num !== void 0 && String(src.num).trim() !== "") out.num = src.num;
+    out.question = String(src.question ?? "").trim();
+    out.options = options;
+    out.answer = answerLabels(src);
+    out.images = images;
+    out.has_image = !!src.has_image || images.length > 0;
+    out.error_risk = RISKS.includes(risk) ? risk : "low";
+    return out;
+  }
+  function questionsToImportJson(list) {
+    const arr = Array.isArray(list) ? list : [];
+    return JSON.stringify(arr.map(toImportSchemaQuestion), null, 2);
+  }
+  function importJsonFileName(code) {
+    const safe2 = String(code || "").trim().replace(/[^a-z0-9_.-]+/gi, "_").replace(/^_+|_+$/g, "") || "questions";
+    return safe2 + "_questions.json";
   }
 
   // src/admin/adminCore.js
@@ -1574,14 +1666,17 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
     if (code === "BLOCKED") {
       __lhSetDenyMessage("T\xE0i kho\u1EA3n b\u1ECB kh\xF3a", "T\xE0i kho\u1EA3n c\u1EE7a b\u1EA1n \u0111\xE3 b\u1ECB qu\u1EA3n tr\u1ECB vi\xEAn kh\xF3a. B\u1EA1n \u0111\xE3 \u0111\u01B0\u1EE3c \u0111\u0103ng xu\u1EA5t.");
     } else if (code === "UNAUTHORIZED") {
-      __lhSetDenyMessage("Phi\xEAn \u0111\u0103ng nh\u1EADp \u0111\xE3 h\u1EBFt h\u1EA1n", "Vui l\xF2ng \u0111\u0103ng nh\u1EADp l\u1EA1i.");
+      __lhSetDenyMessage(
+        "Phi\xEAn \u0111\u0103ng nh\u1EADp \u0111\xE3 h\u1EBFt h\u1EA1n",
+        "T\u1EA3i l\u1EA1i trang (F5) \u0111\u1EC3 n\u1ED1i l\u1EA1i phi\xEAn. N\u1EBFu v\u1EABn kh\xF4ng \u0111\u01B0\u1EE3c th\xEC \u0111\u0103ng nh\u1EADp l\u1EA1i."
+      );
     } else if (code === "PENDING_APPROVAL") {
       __lhSetDenyMessage("Ch\u1EDD ph\xEA duy\u1EC7t", "T\xE0i kho\u1EA3n c\u1EE7a b\u1EA1n ch\u01B0a \u0111\u01B0\u1EE3c ph\xEA duy\u1EC7t ho\u1EB7c v\u1EEBa b\u1ECB thu h\u1ED3i quy\u1EC1n.");
     } else {
       __lhSetDenyMessage("Kh\xF4ng c\xF3 quy\u1EC1n", reason || "B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n truy c\u1EADp trang qu\u1EA3n tr\u1ECB.");
     }
     show("deny");
-    if (code === "BLOCKED" || code === "UNAUTHORIZED") {
+    if (code === "BLOCKED") {
       try {
         sessionStorage.removeItem("is_logged_in");
       } catch (e) {
@@ -1630,8 +1725,9 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       });
       const out = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) {
-          window.handleAccessRevoked(out.error, out.code || (res.status === 401 ? "UNAUTHORIZED" : "PENDING_APPROVAL"));
+        const inconclusive401 = res.status === 401 && (!out.code || window.__lhLastRefreshOutcome === "unreachable" || navigator.onLine === false);
+        if ((res.status === 401 || res.status === 403) && !inconclusive401) {
+          window.handleAccessRevoked(out.error, out.code || "PENDING_APPROVAL");
         } else {
           window.__lhShowAccessError("Kh\xF4ng th\u1EC3 ki\u1EC3m tra quy\u1EC1n, vui l\xF2ng th\u1EED l\u1EA1i.");
         }
@@ -1894,56 +1990,170 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
     render();
     await loadAll();
   }
+  var expSelected = /* @__PURE__ */ new Set();
+  function exportBaseOf(code) {
+    return String(code || "").split(/[_\-\s]/)[0].toUpperCase();
+  }
+  function expCountByCode() {
+    const map = /* @__PURE__ */ new Map();
+    (cache.questions || []).forEach((q) => {
+      const c = String(q.subject_code || "").toUpperCase();
+      if (!c) return;
+      map.set(c, (map.get(c) || 0) + 1);
+    });
+    return map;
+  }
+  function expSubjectGroups() {
+    const counts = expCountByCode();
+    const rows = (cache.subjects || []).map((s) => {
+      const code = String(s.code || "").toUpperCase();
+      return { code, name: String(s.name || ""), count: counts.get(code) || 0 };
+    }).filter((s) => s.code);
+    counts.forEach((count, code) => {
+      if (!rows.some((r) => r.code === code)) rows.push({ code, name: "(kh\xF4ng c\xF3 trong danh s\xE1ch m\xF4n)", count });
+    });
+    const byBase = /* @__PURE__ */ new Map();
+    const order = [];
+    rows.forEach((r) => {
+      const base = exportBaseOf(r.code);
+      if (!byBase.has(base)) {
+        byBase.set(base, []);
+        order.push(base);
+      }
+      byBase.get(base).push(r);
+    });
+    return order.map((base) => ({ base, items: byBase.get(base) }));
+  }
+  function expSubjectListHTML() {
+    const groups = expSubjectGroups();
+    if (!groups.length) return '<div class="expEmpty">Ch\u01B0a c\xF3 m\xF4n n\xE0o.</div>';
+    const rowHTML = (r) => `<label class="expRow" data-exp-search="${esc((r.code + " " + r.name).toLowerCase())}">
+       <input type="checkbox" data-exp-code="${esc(r.code)}">
+       <span class="expCode">${esc(r.code)}</span>
+       <span class="expName">${esc(r.name)}</span>
+       <span class="expCount">${r.count} c\xE2u</span>
+     </label>`;
+    return groups.map((g) => {
+      if (g.items.length < 2)
+        return `<div class="expGroup" data-exp-group="${esc(g.base)}">${rowHTML(g.items[0])}</div>`;
+      const total = g.items.reduce((s, r) => s + r.count, 0);
+      return `<div class="expGroup" data-exp-group="${esc(g.base)}">
+          <label class="expRow expFolder" data-exp-search="${esc(g.base.toLowerCase())}">
+            <input type="checkbox" data-exp-base="${esc(g.base)}">
+            <span class="expCode">\u{1F4C1} ${esc(g.base)}</span>
+            <span class="expName">${g.items.length} ph\u1EA7n</span>
+            <span class="expCount">${total} c\xE2u</span>
+          </label>
+          ${g.items.map(rowHTML).join("")}
+        </div>`;
+    }).join("");
+  }
   function exportAll() {
-    const subjects = Array.from(
-      new Set((cache.questions || []).map((q) => q.subject_code || "HOD102").filter(Boolean))
-    ).sort();
-    const subjectOptions = ["all", ...subjects].map((code) => `<option value="${esc(code)}">${code === "all" ? "T\u1EA5t c\u1EA3 m\xF4n" : esc(code)}</option>`).join("");
+    expSelected.clear();
     openModal(
       "Xu\u1EA5t d\u1EEF li\u1EC7u (Turso)",
       `
-    <div style="padding:10px 0;display:grid;gap:14px;">
-      <p style="color:rgba(245,240,232,.72);margin:0 0 4px;font-size:0.9rem;line-height:1.4;">
-        D\u1EEF li\u1EC7u xu\u1EA5t l\u1EA5y tr\u1EF1c ti\u1EBFp t\u1EEB Turso (database hi\u1EC7n t\u1EA1i). Ph\u1EA7n c\xE2u h\u1ECFi c\xF3 th\u1EC3 t\u1EA3i h\u1EBFt 1 l\u1EA7n ho\u1EB7c ch\u1ECDn \u0111\xFAng m\xF4n.
-      </p>
-
-      <div style="border:1px solid rgba(200,169,110,.22);border-radius:16px;padding:14px;background:rgba(255,255,255,.025);display:grid;gap:10px;">
-        <b style="color:var(--gold2);">C\xE2u h\u1ECFi</b>
-        <select id="exportQuestionSubject" style="width:100%;background:rgba(255,255,255,.045);border:1px solid var(--bd);border-radius:12px;color:var(--fog);padding:10px 12px;">
-          ${subjectOptions}
-        </select>
-        <button class="act ok" id="exportQuestionsJsonBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
-          \u{1F4C4} T\u1EA3i c\xE2u h\u1ECFi JSON (import l\u1EA1i \u0111\u01B0\u1EE3c)
-        </button>
-        <button class="act" id="exportQuestionsCsvBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
-          \u{1F4CA} T\u1EA3i c\xE2u h\u1ECFi CSV (m\u1EDF Excel)
-        </button>
+    <div class="expWrap">
+      <div class="expBox">
+        <div class="expBoxHead">
+          <b>C\xE2u h\u1ECFi</b>
+          <span class="expSum" id="expSubjectSum">Ch\u01B0a ch\u1ECDn m\xF4n n\xE0o</span>
+        </div>
+        <div class="expPickHead">
+          <input id="expSubjectSearch" class="expSearch" type="search" placeholder="T\xECm m\xE3 ho\u1EB7c t\xEAn m\xF4n\u2026" autocomplete="off">
+          <button class="expMini" type="button" id="expPickAll">T\u1EA5t c\u1EA3</button>
+          <button class="expMini" type="button" id="expPickNone">B\u1ECF ch\u1ECDn</button>
+        </div>
+        <div class="expList" id="expSubjectList">${expSubjectListHTML()}</div>
+        <div class="expBtnRow">
+          <button class="act ok" id="exportQuestionsJsonBtn">\u{1F4C4} JSON d\u1EA1ng import</button>
+          <button class="act" id="exportQuestionsCsvBtn">\u{1F4CA} CSV (m\u1EDF Excel)</button>
+        </div>
+        <div class="expHint">
+          JSON ra \u0111\xFAng schema c\u1EE7a tab <b>\u201CTh\xEAm m\xF4n m\u1EDBi\u201D</b> \u2014 s\u1EEDa xong nh\u1EADp l\u1EA1i \u0111\u01B0\u1EE3c ngay, m\u1ED7i m\xF4n m\u1ED9t file.
+          CSV g\u1ED9p t\u1EA5t c\u1EA3 m\xF4n \u0111\xE3 ch\u1ECDn v\xE0o m\u1ED9t file.
+        </div>
       </div>
 
-      <div style="border:1px solid rgba(200,169,110,.22);border-radius:16px;padding:14px;background:rgba(255,255,255,.025);display:grid;gap:10px;">
-        <b style="color:var(--gold2);">H\u1ED3 s\u01A1 ng\u01B0\u1EDDi d\xF9ng</b>
-        <button class="act" id="exportProfilesJsonBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
-          \u{1F464} T\u1EA3i profiles JSON
-        </button>
-        <button class="act" id="exportProfilesCsvBtn" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
-          \u{1F4CA} T\u1EA3i profiles CSV
-        </button>
+      <div class="expBox">
+        <div class="expBoxHead"><b>H\u1ED3 s\u01A1 ng\u01B0\u1EDDi d\xF9ng</b></div>
+        <div class="expBtnRow">
+          <button class="act" id="exportProfilesJsonBtn">\u{1F464} JSON</button>
+          <button class="act" id="exportProfilesCsvBtn">\u{1F4CA} CSV</button>
+        </div>
       </div>
 
-      <div style="border:1px solid rgba(200,169,110,.14);border-radius:16px;padding:14px;background:rgba(255,255,255,.015);display:grid;gap:10px;">
-        <b style="color:var(--mist);">Sao l\u01B0u \u0111\u1EA7y \u0111\u1EE7</b>
-        <button class="act" id="exportBtnFull" style="width:100%;padding:12px;border-radius:12px;font-weight:900;">
-          \u{1F4BE} T\u1EA3i full_backup JSON (c\xE2u h\u1ECFi + m\xF4n + user + l\u1ECBch s\u1EED)
-        </button>
+      <div class="expBox expBoxQuiet">
+        <div class="expBoxHead"><b>Sao l\u01B0u \u0111\u1EA7y \u0111\u1EE7</b></div>
+        <div class="expBtnRow">
+          <button class="act" id="exportBtnFull">\u{1F4BE} full_backup JSON (c\xE2u h\u1ECFi th\xF4 + m\xF4n + user + l\u1ECBch s\u1EED)</button>
+        </div>
       </div>
     </div>
   `
     );
-    $("exportQuestionsJsonBtn").onclick = () => downloadExportFile("questions_json", $("exportQuestionSubject")?.value || "all");
-    $("exportQuestionsCsvBtn").onclick = () => downloadExportFile("questions_csv", $("exportQuestionSubject")?.value || "all");
+    const list = $("expSubjectList");
+    const sum = $("expSubjectSum");
+    const counts = expCountByCode();
+    function syncSum() {
+      const n = expSelected.size;
+      const q = Array.from(expSelected).reduce((s, c) => s + (counts.get(c) || 0), 0);
+      if (sum) sum.textContent = n ? `\u0110\xE3 ch\u1ECDn ${n} m\xF4n \xB7 ${q} c\xE2u` : "Ch\u01B0a ch\u1ECDn m\xF4n n\xE0o";
+      const off = n === 0;
+      [$("exportQuestionsJsonBtn"), $("exportQuestionsCsvBtn")].forEach((b) => {
+        if (!b) return;
+        b.disabled = off;
+        b.title = off ? "H\xE3y tick \xEDt nh\u1EA5t m\u1ED9t m\xF4n." : "";
+      });
+      list?.querySelectorAll("[data-exp-base]").forEach((box) => {
+        const kids = Array.from(box.closest(".expGroup")?.querySelectorAll("[data-exp-code]") || []);
+        const on = kids.filter((k) => k.checked).length;
+        box.checked = on > 0 && on === kids.length;
+        box.indeterminate = on > 0 && on < kids.length;
+      });
+    }
+    function setCode(box, on) {
+      box.checked = on;
+      const code = String(box.getAttribute("data-exp-code") || "").toUpperCase();
+      if (on) expSelected.add(code);
+      else expSelected.delete(code);
+    }
+    list?.addEventListener("change", (e) => {
+      const box = e.target;
+      if (box.matches("[data-exp-code]")) setCode(box, box.checked);
+      else if (box.matches("[data-exp-base]"))
+        box.closest(".expGroup")?.querySelectorAll("[data-exp-code]").forEach((k) => setCode(k, box.checked));
+      else return;
+      syncSum();
+    });
+    $("expPickAll").onclick = () => {
+      list?.querySelectorAll("[data-exp-code]").forEach((k) => setCode(k, true));
+      syncSum();
+    };
+    $("expPickNone").onclick = () => {
+      list?.querySelectorAll("[data-exp-code]").forEach((k) => setCode(k, false));
+      syncSum();
+    };
+    $("expSubjectSearch").oninput = (e) => {
+      const q = String(e.target.value || "").trim().toLowerCase();
+      list?.querySelectorAll(".expGroup").forEach((g) => {
+        let shown = 0;
+        g.querySelectorAll(".expRow:not(.expFolder)").forEach((r) => {
+          const hit = !q || (r.getAttribute("data-exp-search") || "").includes(q);
+          r.classList.toggle("hidden", !hit);
+          if (hit) shown++;
+        });
+        const folder = g.querySelector(".expFolder");
+        if (folder) folder.classList.toggle("hidden", !!q);
+        g.classList.toggle("hidden", shown === 0);
+      });
+    };
+    $("exportQuestionsJsonBtn").onclick = () => downloadExportFile("questions_json", Array.from(expSelected));
+    $("exportQuestionsCsvBtn").onclick = () => downloadExportFile("questions_csv", Array.from(expSelected));
     $("exportProfilesJsonBtn").onclick = () => downloadExportFile("profiles_json");
     $("exportProfilesCsvBtn").onclick = () => downloadExportFile("profiles_csv");
     $("exportBtnFull").onclick = () => downloadExportFile("full");
+    syncSum();
   }
   function downloadBlobFile(content, filename, type = "application/json") {
     const blob = new Blob([content], { type });
@@ -1967,6 +2177,19 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       (a, b) => String(a.subject_code || "").localeCompare(String(b.subject_code || "")) || (Number(a.num) || 0) - (Number(b.num) || 0)
     );
     return rows;
+  }
+  async function fetchQuestionsForCodes(codes) {
+    const list = Array.isArray(codes) ? codes.filter(Boolean) : [];
+    if (!list.length) return [];
+    const total = (cache.subjects || []).length;
+    if (total && list.length >= total) {
+      const all = await fetchQuestionsForExport("all");
+      const want = new Set(list.map((c) => String(c).toUpperCase()));
+      return all.filter((q) => want.has(String(q.subject_code || "").toUpperCase()));
+    }
+    const out = [];
+    for (const code of list) out.push(...await fetchQuestionsForExport(code));
+    return out;
   }
   async function fetchProfilesForExport() {
     if (Array.isArray(cache.profiles) && cache.profiles.length) return cache.profiles;
@@ -2030,26 +2253,33 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
     return cols.join(",") + "\n" + rows.map((r) => cols.map((c) => escCsv(r[c])).join(",")).join("\n");
   }
   async function downloadExportFile(type, subjectCode = "all") {
+    const codes = Array.isArray(subjectCode) ? subjectCode : subjectCode && subjectCode !== "all" ? [subjectCode] : [];
+    const codeLabel = codes.length === 1 ? codes[0] : codes.length ? codes.length + "_mon" : "all";
     try {
+      if ((type === "questions_json" || type === "questions_csv") && !codes.length) {
+        alert("H\xE3y tick \xEDt nh\u1EA5t m\u1ED9t m\xF4n.");
+        return;
+      }
       setBusy(true, "\u0110ang xu\u1EA5t...");
       if (type === "questions_json") {
-        const rows = await fetchQuestionsForExport(subjectCode);
-        downloadBlobFile(
-          JSON.stringify(rows, null, 2),
-          `questions_${safeFilePart(subjectCode)}.json`,
-          "application/json;charset=utf-8"
-        );
+        let count = 0;
+        for (const code of codes) {
+          const rows = await fetchQuestionsForExport(code);
+          count += rows.length;
+          downloadBlobFile(questionsToImportJson(rows), importJsonFileName(code), "application/json;charset=utf-8");
+          if (codes.length > 1) await new Promise((r) => setTimeout(r, 350));
+        }
         try {
-          await logAction("export_questions_json", "questions", subjectCode, { count: rows.length });
+          await logAction("export_questions_json", "questions", codes.join(","), { count, subjects: codes.length });
         } catch (e) {
           lhWarn("ADMIN_LOGIN_NOTIFY_NOT_F5", e);
         }
-        toast("\u0110\xE3 t\u1EA3i c\xE2u h\u1ECFi JSON");
+        toast(codes.length > 1 ? `\u0110\xE3 t\u1EA3i ${codes.length} file JSON (${count} c\xE2u)` : `\u0110\xE3 t\u1EA3i JSON (${count} c\xE2u)`);
       } else if (type === "questions_csv") {
-        const rows = await fetchQuestionsForExport(subjectCode);
-        downloadBlobFile(questionsToCsv(rows), `questions_${safeFilePart(subjectCode)}.csv`, "text/csv;charset=utf-8");
+        const rows = await fetchQuestionsForCodes(codes);
+        downloadBlobFile(questionsToCsv(rows), `questions_${safeFilePart(codeLabel)}.csv`, "text/csv;charset=utf-8");
         try {
-          await logAction("export_questions_csv", "questions", subjectCode, { count: rows.length });
+          await logAction("export_questions_csv", "questions", codes.join(","), { count: rows.length });
         } catch (e) {
           lhWarn("ADMIN_LOGIN_NOTIFY_NOT_F5", e);
         }
@@ -4222,7 +4452,7 @@ ${E(val)}</pre>`;
           <b>${idx + 1}. Th\u01B0 m\u1EE5c ${esc(g.base)}</b>
           <p>${esc(codes)}</p>
           <div class="subjectFolderChips">
-            <span class="subjectFolderChip">${g.items.length} m\xF4n</span>
+            <span class="subjectFolderChip">${g.items.length} ph\u1EA7n</span>
             <span class="subjectQuestionCount">T\u1ED5ng s\u1ED1 c\xE2u: <b>${countQuestions(g.items)}</b> c\xE2u</span>
           </div>
         </div>
@@ -4236,13 +4466,14 @@ ${E(val)}</pre>`;
       const total = countQuestions(groups.flatMap((g) => g.items));
       const where = mode === "search" ? "K\u1EBFt qu\u1EA3 t\xECm ki\u1EBFm" : mode === "folder" ? `Th\u01B0 m\u1EE5c <b>${esc(openBase)}</b>` : `<b>${folders}</b> th\u01B0 m\u1EE5c \xB7 <b>${groups.length - folders}</b> m\xF4n l\u1EBB`;
       const hint = mode === "search" ? "X\xF3a \xF4 t\xECm ki\u1EBFm \u0111\u1EC3 quay l\u1EA1i d\u1EA1ng th\u01B0 m\u1EE5c." : "K\xE9o d\u1EA5u \u2630 \u0111\u1EC3 \u0111\u1ED5i v\u1ECB tr\xED.";
-      return `<p class="subjectOrderHint">${where} \u2014 <b>${flatCount}</b> m\xF4n \xB7 <b>${total}</b> c\xE2u. ${hint}</p>`;
+      const unit = mode === "folder" ? "ph\u1EA7n" : "m\xF4n";
+      return `<p class="subjectOrderHint">${where} \u2014 <b>${flatCount}</b> ${unit} \xB7 <b>${total}</b> c\xE2u. ${hint}</p>`;
     }
     function folderBackHTML(g) {
       return `<div class="subjectAdminBackBar">
       <button class="act subjectAdminBack" type="button" onclick="openSubjectFolderAdmin('')">\u2190 T\u1EA5t c\u1EA3 m\xF4n</button>
       <span class="subjectAdminCode subjectFolderCode">${esc(g.base)}</span>
-      <span class="subjectAdminBackMeta">${g.items.length} m\xF4n \xB7 ${countQuestions(g.items)} c\xE2u</span>
+      <span class="subjectAdminBackMeta">${g.items.length} ph\u1EA7n \xB7 ${countQuestions(g.items)} c\xE2u</span>
     </div>`;
     }
     window.openSubjectFolderAdmin = function(base) {
@@ -5620,39 +5851,141 @@ ${E(val)}</pre>`;
       if (window.__LH_UNIFIED_FETCH_INSTALLED) return;
       window.__LH_UNIFIED_FETCH_INSTALLED = true;
       var nativeFetch = window.fetch.bind(window);
+      function validToken(t) {
+        return typeof t === "string" && t.trim().length > 0 && !/[\r\n]/.test(t);
+      }
+      function tokenFromRaw(raw) {
+        if (!raw) return "";
+        var v;
+        try {
+          v = JSON.parse(raw);
+        } catch (e) {
+          return "";
+        }
+        var s = v && v.currentSession ? v.currentSession : v;
+        var tok = s && s.access_token || Array.isArray(v) && v[0] || "";
+        var exp = s && s.expires_at;
+        if (!validToken(tok)) return "";
+        if (exp && Date.now() / 1e3 > exp - 10) return "";
+        return tok.trim();
+      }
+      function authTokenKeys() {
+        var keys = [];
+        try {
+          var url = window.APP_CONFIG?.SUPABASE_URL || "";
+          var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
+          if (m) keys.push("sb-" + m[1] + "-auth-token");
+          for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            if (k && k.slice(0, 3) === "sb-" && k.slice(-11) === "-auth-token" && keys.indexOf(k) === -1) keys.push(k);
+          }
+        } catch (e) {
+          lhWarn("LH_ADMIN_SESSION_REFRESH_20260805", e);
+        }
+        return keys;
+      }
+      function storedSession() {
+        var keys = authTokenKeys();
+        for (var j = 0; j < keys.length; j++) {
+          try {
+            var raw = localStorage.getItem(keys[j]);
+            if (!raw) continue;
+            var v = JSON.parse(raw);
+            var s = v && v.currentSession ? v.currentSession : v;
+            if (s && (s.access_token || s.refresh_token)) return s;
+          } catch (e) {
+            lhWarn("LH_ADMIN_SESSION_REFRESH_20260805", e);
+          }
+        }
+        return null;
+      }
+      function hasRefreshToken() {
+        var s = storedSession();
+        return !!(s && typeof s.refresh_token === "string" && s.refresh_token.length > 0);
+      }
+      function authClient() {
+        try {
+          return client && client.auth ? client : null;
+        } catch (e) {
+          return null;
+        }
+      }
+      function freshTokenOf(session) {
+        if (!session) return "";
+        var tok = session.access_token;
+        if (!validToken(tok)) return "";
+        if (session.expires_at && Date.now() / 1e3 > session.expires_at - 10) return "";
+        return tok.trim();
+      }
+      function markRefreshOutcome(v) {
+        window.__lhLastRefreshOutcome = v;
+        return v;
+      }
+      markRefreshOutcome("none");
+      function refreshErrorKind(err2) {
+        if (!err2) return "unreachable";
+        var st = err2.status || err2.code || 0;
+        if (st === 400 || st === 401 || st === 403) return "dead";
+        var msg = String(err2.message || err2.name || "");
+        if (/invalid refresh token|refresh token not found|already used|revoked/i.test(msg)) return "dead";
+        return "unreachable";
+      }
+      var refreshInFlight = null;
+      function lhRefreshToken() {
+        if (refreshInFlight) return refreshInFlight;
+        var c = authClient();
+        if (!c || !hasRefreshToken()) {
+          markRefreshOutcome(navigator.onLine === false ? "unreachable" : "none");
+          return Promise.resolve("");
+        }
+        if (navigator.onLine === false) {
+          markRefreshOutcome("unreachable");
+          return Promise.resolve("");
+        }
+        refreshInFlight = Promise.resolve().then(function() {
+          return c.auth.getSession();
+        }).then(function(r) {
+          var tok = freshTokenOf(r && r.data && r.data.session);
+          if (tok) {
+            markRefreshOutcome("ok");
+            return tok;
+          }
+          if (r && r.error) markRefreshOutcome(refreshErrorKind(r.error));
+          if (typeof c.auth.refreshSession !== "function") return "";
+          return c.auth.refreshSession().then(function(r2) {
+            var t2 = freshTokenOf(r2 && r2.data && r2.data.session);
+            if (t2) {
+              markRefreshOutcome("ok");
+              return t2;
+            }
+            markRefreshOutcome(refreshErrorKind(r2 && r2.error));
+            return "";
+          });
+        }).catch(function(e) {
+          lhWarn("LH_ADMIN_SESSION_REFRESH_20260805", e);
+          markRefreshOutcome(refreshErrorKind(e));
+          return "";
+        }).then(function(tok) {
+          refreshInFlight = null;
+          return tok;
+        });
+        return refreshInFlight;
+      }
+      window.__lhRefreshAccessToken = lhRefreshToken;
       function lhToken() {
         try {
           if (window.HODSupabase && typeof window.HODSupabase.getAccessToken === "function") {
             var t1 = window.HODSupabase.getAccessToken();
-            if (t1 && typeof t1 === "string" && t1.trim().length > 0 && !/[\r\n]/.test(t1)) return t1.trim();
+            if (validToken(t1)) return t1.trim();
           }
           if (window.HODSupabase && typeof window.HODSupabase.getSession === "function") {
             var s = window.HODSupabase.getSession();
-            if (s && s.access_token && typeof s.access_token === "string" && !/[\r\n]/.test(s.access_token)) {
-              return s.access_token.trim();
-            }
+            if (s && validToken(s.access_token)) return s.access_token.trim();
           }
-          var url = window.APP_CONFIG?.SUPABASE_URL || "";
-          var m = /https:\/\/([a-z0-9]+)\.supabase\./i.exec(url);
-          var ref = m ? m[1] : "";
-          if (ref) {
-            var key2 = "sb-" + ref + "-auth-token";
-            var raw = localStorage.getItem(key2);
-            if (raw) {
-              var v = JSON.parse(raw);
-              var tok = v && (v.access_token || v.currentSession && v.currentSession.access_token || Array.isArray(v) && v[0]);
-              if (tok && typeof tok === "string" && tok.trim().length > 0 && !/[\r\n]/.test(tok)) return tok.trim();
-            }
-          }
-          for (var i = 0; i < localStorage.length; i++) {
-            var k = localStorage.key(i);
-            if (k && k.slice(0, 3) === "sb-" && k.slice(-11) === "-auth-token") {
-              var raw = localStorage.getItem(k);
-              if (!raw) continue;
-              var v = JSON.parse(raw);
-              var tok = v && (v.access_token || v.currentSession && v.currentSession.access_token || Array.isArray(v) && v[0]);
-              if (tok && typeof tok === "string" && tok.trim().length > 0 && !/[\r\n]/.test(tok)) return tok.trim();
-            }
+          var keys = authTokenKeys();
+          for (var i = 0; i < keys.length; i++) {
+            var tok = tokenFromRaw(localStorage.getItem(keys[i]));
+            if (tok) return tok;
           }
         } catch (e) {
           lhWarn("LH_UNIFIED_SINGLE_FETCH_INTERCEPTOR_20260726", e);
@@ -5661,6 +5994,44 @@ ${E(val)}</pre>`;
       }
       window.lhToken = lhToken;
       window.__lhAccessToken = lhToken;
+      function withAuth(input, init2, tok, force) {
+        try {
+          if (!tok) return [input, init2];
+          if (input instanceof Request) {
+            if (force || !input.headers.has("Authorization")) {
+              var h = new Headers(input.headers);
+              h.set("Authorization", "Bearer " + tok);
+              input = new Request(input, { headers: h });
+            }
+            return [input, init2];
+          }
+          init2 = init2 ? Object.assign({}, init2) : {};
+          var hh = new Headers(init2.headers || {});
+          if (force || !hh.has("Authorization")) hh.set("Authorization", "Bearer " + tok);
+          init2.headers = hh;
+          return [input, init2];
+        } catch (e) {
+          console.warn("[LH Unified Fetch] Header injection warning:", e);
+          return [input, init2];
+        }
+      }
+      function apiFetchWithRefresh(input, init2) {
+        var retrySrc = input instanceof Request ? input.clone() : input;
+        var retryInit = init2;
+        var tok = lhToken();
+        var pre = tok || !hasRefreshToken() ? Promise.resolve(tok) : lhRefreshToken();
+        return pre.then(function(token) {
+          var first = withAuth(input, init2, token, false);
+          return nativeFetch(first[0], first[1]).then(function(res) {
+            if (res.status !== 401) return res;
+            return lhRefreshToken().then(function(fresh) {
+              if (!fresh || fresh === token) return res;
+              var again = withAuth(retrySrc, retryInit, fresh, true);
+              return nativeFetch(again[0], again[1]);
+            });
+          });
+        });
+      }
       function lhIsApi(u) {
         try {
           var url = new URL(u, location.href);
@@ -5684,28 +6055,7 @@ ${E(val)}</pre>`;
           lhWarn("LH_UNIFIED_SINGLE_FETCH_INTERCEPTOR_20260726", e);
         }
         var isApi = lhIsApi(urlStr);
-        if (isApi) {
-          var tok = lhToken();
-          if (tok) {
-            try {
-              if (input instanceof Request) {
-                if (!input.headers.has("Authorization")) {
-                  var h = new Headers(input.headers);
-                  h.set("Authorization", "Bearer " + tok);
-                  input = new Request(input, { headers: h });
-                }
-              } else {
-                init2 = init2 ? Object.assign({}, init2) : {};
-                var hh = new Headers(init2.headers || {});
-                if (!hh.has("Authorization")) hh.set("Authorization", "Bearer " + tok);
-                init2.headers = hh;
-              }
-            } catch (e) {
-              console.warn("[LH Unified Fetch] Header injection warning:", e);
-            }
-          }
-        }
-        var promise = nativeFetch(input, init2);
+        var promise = isApi ? apiFetchWithRefresh(input, init2) : nativeFetch(input, init2);
         if (isApi && String(method).toUpperCase() === "POST" && urlStr.indexOf("/api/admin-action") !== -1) {
           promise.then(
             function() {
@@ -5720,6 +6070,10 @@ ${E(val)}</pre>`;
         if (isApi && urlStr.indexOf("/api/version.json") === -1) {
           promise.then(function(res) {
             if (res.status !== 401 && res.status !== 403) return;
+            if (res.status === 401 && (window.__lhLastRefreshOutcome === "unreachable" || navigator.onLine === false)) {
+              console.warn("[Admin] 401 khi m\u1EA5t k\u1EBFt n\u1ED1i \u2014 gi\u1EEF phi\xEAn, kh\xF4ng thu h\u1ED3i quy\u1EC1n:", urlStr);
+              return;
+            }
             res.clone().json().then(function(json) {
               var code = json && json.code;
               if (code === "BLOCKED" || code === "PENDING_APPROVAL" || code === "UNAUTHORIZED") {

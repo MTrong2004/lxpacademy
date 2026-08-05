@@ -5713,3 +5713,193 @@ body.role-editor-limited [data-page="deletedQuestions"] {
 .subjectReqFilter.active b {
   background: rgba(0, 0, 0, 0.25) !important;
 }
+
+/* ===== EXPORT_PICK_SUBJECTS_20260806 =====
+   Danh sách tick môn của modal "Xuất dữ liệu". Ba yêu cầu về hình:
+   · GỌN — 19 môn phải nhìn hết được trong một modal, nên mỗi hàng cao ~30px và vùng danh sách
+     tự cuộn (`max-height`), không đẩy nút xuất ra ngoài màn hình.
+   · Hàng thư mục (mã gốc) phải khác hàng phần con NGAY từ cái nhìn đầu — con thụt vào,
+     thư mục in đậm màu vàng.
+   · Bấm cả hàng là tick được: hàng là <label> bọc luôn ô checkbox. */
+.expWrap {
+  padding: 8px 0;
+  display: grid;
+  gap: 12px;
+}
+
+.expBox {
+  border: 1px solid rgba(200, 169, 110, .22);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, .025);
+  display: grid;
+  gap: 10px;
+}
+
+.expBox.expBoxQuiet {
+  border-color: rgba(200, 169, 110, .12);
+  background: rgba(255, 255, 255, .015);
+}
+
+.expBoxHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.expBoxHead b {
+  color: var(--gold2);
+}
+
+.expSum {
+  color: var(--mist);
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.expPickHead {
+  display: flex;
+  gap: 8px;
+}
+
+.expSearch {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, .045);
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  color: var(--fog);
+  padding: 7px 11px;
+  font-size: .86rem;
+}
+
+.expMini {
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .04);
+  color: var(--mist);
+  font-weight: 700;
+  font-size: .8rem;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.expMini:hover {
+  color: var(--fog);
+  border-color: rgba(200, 169, 110, .4);
+}
+
+.expList {
+  max-height: 292px;
+  overflow: auto;
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, .16);
+  padding: 4px;
+}
+
+.expEmpty {
+  color: var(--mist);
+  padding: 10px;
+  font-size: .86rem;
+}
+
+.expGroup + .expGroup {
+  border-top: 1px solid rgba(255, 255, 255, .05);
+  margin-top: 3px;
+  padding-top: 3px;
+}
+
+.expRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: .84rem;
+  line-height: 1.25;
+}
+
+.expRow:hover {
+  background: rgba(255, 255, 255, .05);
+}
+
+.expRow input {
+  flex: none;
+  accent-color: #e2b86b;
+  cursor: pointer;
+}
+
+.expRow .expCode {
+  flex: none;
+  color: var(--fog);
+  font-weight: 800;
+  letter-spacing: .01em;
+}
+
+.expRow .expName {
+  flex: 1;
+  min-width: 0;
+  color: var(--mist);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expRow .expCount {
+  flex: none;
+  color: var(--mist);
+  font-size: .78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.expRow.expFolder .expCode {
+  color: var(--gold2);
+  font-weight: 900;
+}
+
+/* Phần con của một thư mục thụt vào một bậc — cùng ngôn ngữ với trang "Quản lý môn học". */
+.expFolder ~ .expRow {
+  margin-left: 18px;
+}
+
+.expBtnRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.expBtnRow .act {
+  flex: 1;
+  min-width: 150px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  font-weight: 900;
+}
+
+.expBtnRow .act:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.expHint {
+  color: var(--mist);
+  font-size: .78rem;
+  line-height: 1.45;
+}
+
+.expHint b {
+  color: var(--gold2);
+}
+
+@media (max-width:600px) {
+  .expList {
+    max-height: 232px;
+  }
+
+  .expBtnRow .act {
+    min-width: 100%;
+  }
+}

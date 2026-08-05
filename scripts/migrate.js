@@ -50,8 +50,19 @@ async function runMigrations() {
     console.log(`  ⏳ Applying ${file}...`);
     const sqlContent = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
     
-    // Split SQL by semicolon safely
+    /*
+      Tách câu bằng dấu chấm phẩy — nhưng phải BỎ COMMENT `--` TRƯỚC KHI TÁCH.
+      Bẫy đã sập thật (004_bookmarks.sql): một comment tiếng Việt có dấu chấm phẩy
+      ("... theo user_id; PRIMARY KEY đã lo ...") làm khối bị cắt đôi, câu CREATE INDEX
+      ngay dưới nó KHÔNG chạy — mà migration vẫn được đánh dấu là đã áp dụng, nên lỗi
+      chỉ lộ ra khi đi soi sqlite_master. Chuỗi 'now' trong datetime('now') cũng bị cắt
+      thành literal không đóng nếu comment phía trên có dấu nháy.
+      Chỉ bỏ comment cả-dòng: comment nằm sau SQL cùng dòng thì phải tự tách khỏi câu.
+    */
     const statements = sqlContent
+      .split(/\r?\n/)
+      .filter(line => !line.trim().startsWith('--'))
+      .join('\n')
       .split(';')
       .map(s => s.trim())
       .filter(s => s.length > 0);

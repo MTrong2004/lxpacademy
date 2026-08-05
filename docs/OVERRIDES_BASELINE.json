@@ -31,7 +31,6 @@
     "__editImportPreviewQuestion": 6,
     "__openImportPreviewModal": 5,
     "__openUserAIPromptModal": 2,
-    "__submitSubjectRequest": 2,
     "__switchStep": 2
   },
   "src/student/subjects.js": {

@@ -203,13 +203,292 @@ export function installHODSupabaseAndAvatar() {
     window.showPendingApproval = showPendingApproval;
 
     // /api/profile lỗi server (5xx) hoặc mất mạng: không kết luận được quyền => chặn.
+    // LH_OFFLINE_GRACE_20260806: chỉ còn dùng cho người CHƯA TỪNG được xác nhận có quyền
+    // trên máy này. Người đang học mà rớt mạng đi vào enterDegradedMode() bên dưới.
     function showAccessCheckError() {
       showPendingApproval({
         title: 'Không thể kiểm tra quyền',
         message: 'Không thể kiểm tra quyền, vui lòng thử lại.',
       });
+      scheduleAccessRetry();
     }
     window.showAccessCheckError = showAccessCheckError;
+
+    /*
+    ===== LH_OFFLINE_GRACE_20260806 — RỚT MẠNG THÌ VẪN HỌC ĐƯỢC, VÀ KHÔNG BỊ ĐĂNG XUẤT =====
+
+    Hai bệnh cũ, cùng một gốc: mọi lỗi "không kết luận được quyền" đều bị xử như
+    "không có quyền".
+
+    1. Rớt mạng / server 500 / 503 AUTH_CHECK_FAILED lúc XÁC MINH LẠI (polling 90s,
+       quay lại tab, realtime kết nối lại) -> loadProfile thất bại -> showAccessCheckError()
+       -> showPendingApproval() đặt `__LH_GATE_LOCKED = true` + body.hod-locked:
+       người đang học bị màn hình "Không thể kiểm tra quyền" che kín, dù CÂU HỎI VẪN
+       NẰM TRONG localStorage (cache 12 giờ) và họ hoàn toàn có thể học tiếp offline.
+    2. `handleAccessRevoked('UNAUTHORIZED')` gọi `signOut()`. Còn ba đường vào ca này khi
+       phiên vẫn tốt: (a) token hết hạn + làm mới thất bại VÌ MẤT MẠNG -> request đi ra
+       không có Authorization -> server trả 401 UNAUTHORIZED đúng luật; (b) proxy/CDN trả
+       401 (đã chặn ở inspectDenial, nhưng /api/profile là đường riêng); (c) Supabase auth
+       trả 400/403 vì lý do hạ tầng. Người dùng phải chọn lại mail Google dù refresh_token
+       còn sống hàng chục ngày.
+
+    Cách sửa: tách hai khái niệm.
+      - KẾT LUẬN ĐƯỢC (403 BLOCKED / PENDING_APPROVAL, hoặc 401 khi phiên thật sự hỏng):
+        giữ nguyên hành vi cũ — vẫn chặn. BLOCKED vẫn signOut (quyết định sản phẩm).
+      - KHÔNG KẾT LUẬN ĐƯỢC (mất mạng, 500, 503, 401 lúc không hỏi được Supabase):
+        nếu máy này ĐÃ TỪNG được server xác nhận có quyền thì vào "chế độ tạm ngoại
+        tuyến": giữ giao diện, hiện một dải nhỏ không chặn, tự thử lại. Chưa từng được
+        xác nhận thì vẫn là màn "Không thể kiểm tra quyền" như cũ (fail-closed).
+
+    Vì sao dựa được vào dấu xác nhận cũ: cổng ở client chỉ là lớp HIỂN THỊ. Server vẫn
+    kiểm quyền ở MỌI request (checkUserAccess), nên chế độ ngoại tuyến không mở thêm
+    một cửa dữ liệu nào — nó chỉ cho phép đọc lại thứ đã tải về máy. Dấu xác nhận có
+    thời hạn (GRACE_MS) và bị XOÁ ngay khi server kết luận là mất quyền thật.
+
+    UNAUTHORIZED nay KHÔNG signOut và KHÔNG xoá cache: chỉ hiện gate "Phiên đăng nhập
+    đã hết hạn" + nút "Kiểm tra lại" (nút này làm mới token trước khi gọi). Phiên còn
+    cứu được thì một lần bấm là vào tiếp; hỏng thật thì bấm "Đăng xuất" để đăng nhập lại.
+  */
+    const ACCESS_GRANT_KEY = 'learninghub_access_grant_v1';
+    const GRACE_MS = 7 * 24 * 60 * 60 * 1000; // 7 ngày — dài hơn một kỳ nghỉ, ngắn hơn refresh_token
+    let sessionConfirmed = false; // server đã xác nhận có quyền trong phiên trang này
+    let revokedConclusively = false; // server đã kết luận MẤT quyền -> không được vào chế độ ngoại tuyến
+    let degraded = false;
+
+    /*
+    Người đang đăng nhập. Bình thường là `currentUser` của closure này; đọc thêm
+    `HODSupabase.getUser()` để chế độ `?mock=1` (thay cả window.HODSupabase bằng bản giả)
+    cũng đi được đúng luồng này — không có nó thì mọi nhánh dưới đây không thể tự kiểm.
+  */
+    function activeUser() {
+      if (currentUser) return currentUser;
+      try {
+        return window.HODSupabase?.getUser?.() || null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function rememberAccessGrant(p) {
+      try {
+        localStorage.setItem(
+          ACCESS_GRANT_KEY,
+          JSON.stringify({
+            id: p?.id || activeUser()?.id || '',
+            email: p?.email || activeUser()?.email || '',
+            role: p?.role || 'user',
+            at: Date.now(),
+          }),
+        );
+      } catch (e) {
+        lhWarn('LH_OFFLINE_GRACE_20260806', e);
+      }
+    }
+    function readAccessGrant() {
+      try {
+        const raw = localStorage.getItem(ACCESS_GRANT_KEY);
+        if (!raw) return null;
+        const g = JSON.parse(raw);
+        if (!g || !g.at || Date.now() - g.at > GRACE_MS) return null;
+        // Dấu xác nhận chỉ dùng cho ĐÚNG tài khoản đang đăng nhập.
+        const u = activeUser();
+        if (u?.id && g.id && String(g.id) !== String(u.id)) return null;
+        return g;
+      } catch (e) {
+        return null;
+      }
+    }
+    function clearAccessGrant() {
+      try {
+        localStorage.removeItem(ACCESS_GRANT_KEY);
+      } catch (e) {
+        lhWarn('LH_OFFLINE_GRACE_20260806', e);
+      }
+    }
+    function canWorkOffline() {
+      if (revokedConclusively) return false;
+      if (!activeUser()) return false;
+      return sessionConfirmed || !!readAccessGrant();
+    }
+
+    /*
+    Dải thông báo ngoại tuyến: KHÔNG chặn tương tác (không body.hod-locked, không modal).
+    Style nhúng bằng <style> như banner của versionChecker.js để không phải bump app.css.
+  */
+    function ensureOfflineBarStyle() {
+      if (document.getElementById('lhOfflineBarStyle')) return;
+      const st = document.createElement('style');
+      st.id = 'lhOfflineBarStyle';
+      st.textContent = `
+      #lhOfflineBar{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:2147483000;
+        display:flex;align-items:center;gap:10px;max-width:min(560px,calc(100vw - 24px));
+        padding:9px 14px;border-radius:999px;background:rgba(18,24,38,.96);color:#f8fafc;
+        border:1px solid rgba(200,169,110,.35);box-shadow:0 10px 30px rgba(0,0,0,.45);
+        font:500 13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+        backdrop-filter:blur(14px)}
+      #lhOfflineBar.hidden{display:none}
+      #lhOfflineBar .lhOfflineDot{width:8px;height:8px;border-radius:50%;background:#f59e0b;flex:0 0 auto;
+        animation:lhOfflinePulse 1.6s ease-in-out infinite}
+      @keyframes lhOfflinePulse{0%,100%{opacity:1}50%{opacity:.35}}
+      #lhOfflineBar .lhOfflineTxt{min-width:0}
+      #lhOfflineBar button{flex:0 0 auto;cursor:pointer;border-radius:999px;padding:5px 12px;
+        font:600 12px/1 inherit;color:#0f172a;background:#c8a96e;border:0}
+      #lhOfflineBar button:disabled{opacity:.6;cursor:default}
+      @media (max-width:520px){#lhOfflineBar{bottom:10px;font-size:12px;padding:8px 12px}}
+    `;
+      document.head.appendChild(st);
+    }
+    function showOfflineBar(on) {
+      if (!on) {
+        document.getElementById('lhOfflineBar')?.classList.add('hidden');
+        return;
+      }
+      ensureOfflineBarStyle();
+      let bar = document.getElementById('lhOfflineBar');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'lhOfflineBar';
+        bar.innerHTML =
+          '<span class="lhOfflineDot"></span>' +
+          '<span class="lhOfflineTxt">Mất kết nối — bạn vẫn học được với dữ liệu đã tải.</span>' +
+          '<button type="button">Thử lại</button>';
+        bar.querySelector('button').addEventListener('click', retryFromOfflineBar);
+        (document.body || document.documentElement).appendChild(bar);
+      }
+      bar.classList.remove('hidden');
+    }
+    async function retryFromOfflineBar() {
+      const btn = document.querySelector('#lhOfflineBar button');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Đang thử...';
+      }
+      try {
+        await loadProfile(true, true);
+      } catch (e) {
+        lhWarn('LH_OFFLINE_GRACE_20260806', e);
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Thử lại';
+      }
+    }
+
+    function enterDegradedMode(reason) {
+      if (!currentProfile) {
+        const g = readAccessGrant();
+        // Profile tối thiểu để hasFullAccess() đi qua và giao diện vẽ được. KHÔNG phải
+        // nguồn quyền: server vẫn chặn từng request nếu quyền đã bị thu hồi thật.
+        currentProfile = {
+          id: g?.id || activeUser()?.id || '',
+          email: g?.email || activeUser()?.email || '',
+          role: g?.role || 'user',
+          approved: 1,
+          blocked: 0,
+          __offline: true,
+        };
+      }
+      window.__LH_ACCESS_OK = true;
+      hidePendingApproval();
+      updateAuthUI();
+      cancelAccessRetry();
+      showOfflineBar(true);
+      if (!degraded) {
+        degraded = true;
+        window.__LH_OFFLINE_MODE = true;
+        console.warn('[LH access] chế độ tạm ngoại tuyến — giữ phiên, dùng dữ liệu đã tải. Lý do:', reason);
+        // Cho các module khác (bookmarks, realtime, thư viện) biết profile đã sẵn sàng.
+        window.dispatchEvent(new CustomEvent('lh:profile-ready'));
+      }
+      try {
+        if (typeof window.startFallbackPolling === 'function') window.startFallbackPolling();
+      } catch (e) {
+        lhWarn('LH_OFFLINE_GRACE_20260806', e);
+      }
+      return currentProfile;
+    }
+    function exitDegradedMode() {
+      showOfflineBar(false);
+      if (!degraded) return;
+      degraded = false;
+      window.__LH_OFFLINE_MODE = false;
+      console.log('[LH access] đã kết nối lại — thoát chế độ ngoại tuyến');
+    }
+    window.__lhIsOfflineMode = () => degraded;
+
+    /*
+    Một lỗi không kết luận được. Trả về profile (chế độ ngoại tuyến) hoặc null (vẫn chặn).
+  */
+    function handleInconclusiveAccess(reason) {
+      // Đang trong luồng thu hồi quyền thật (request bị abort sẽ rơi vào đây): không được
+      // mở lại giao diện.
+      if (window.__LH_REVOKING_ACCESS || revokedConclusively) return null;
+      if (canWorkOffline()) return enterDegradedMode(reason);
+      showAccessCheckError();
+      updateAuthUI();
+      return null;
+    }
+
+    /*
+    Phiên có thật sự hỏng không? 401 chỉ đáng tin khi ta CÓ hỏi được Supabase.
+    __lhLastRefreshOutcome do lớp fetch ghi: 'dead' = Supabase khẳng định refresh_token
+    không dùng được; 'unreachable' = không gọi được Supabase; 'ok' = vừa làm mới xong
+    mà server vẫn từ chối; 'none' = không có gì để làm mới.
+  */
+    function sessionLooksDead() {
+      if (navigator.onLine === false) return false;
+      return window.__lhLastRefreshOutcome !== 'unreachable';
+    }
+
+    // Tự thử lại khi đang ở màn "Không thể kiểm tra quyền" — đỡ phải bấm tay.
+    let accessRetryTimer = null;
+    let accessRetryDelay = 5000;
+    function cancelAccessRetry() {
+      if (accessRetryTimer) clearTimeout(accessRetryTimer);
+      accessRetryTimer = null;
+      accessRetryDelay = 5000;
+    }
+    function scheduleAccessRetry() {
+      if (accessRetryTimer) return;
+      accessRetryTimer = setTimeout(() => {
+        accessRetryTimer = null;
+        accessRetryDelay = Math.min(accessRetryDelay * 2, 60000);
+        /*
+        Điều kiện dừng đọc theo GATE ĐANG HIỆN, không theo `__LH_ACCESS_OK`: cờ đó bị
+        ?mock=1 ghim thành accessor luôn trả true (nên nhánh này không thể tự kiểm được),
+        còn `__LH_GATE_LOCKED` là do chính showPendingApproval/hidePendingApproval đặt.
+      */
+        if (revokedConclusively || window.__LH_GATE_LOCKED !== true) {
+          cancelAccessRetry();
+          return;
+        }
+        loadProfile(true, true).catch(e => lhWarn('LH_OFFLINE_GRACE_20260806', e));
+      }, accessRetryDelay);
+    }
+
+    window.addEventListener('offline', () => {
+      if (canWorkOffline()) enterDegradedMode('event:offline');
+    });
+    window.addEventListener('online', () => {
+      cancelAccessRetry();
+      accessRetryDelay = 5000;
+      Promise.resolve(loadProfile(true, true))
+        .then(() => {
+          if (degraded) return;
+          // Có mạng lại: lấy dữ liệu mới thay cho cache đã dùng lúc offline.
+          try {
+            window.loadCurrentSubjectOnly?.(true);
+          } catch (e) {
+            lhWarn('LH_OFFLINE_GRACE_20260806', e);
+          }
+          try {
+            window.refreshSubjectCountsOnce?.(true);
+          } catch (e) {
+            lhWarn('LH_OFFLINE_GRACE_20260806', e);
+          }
+        })
+        .catch(e => lhWarn('LH_OFFLINE_GRACE_20260806', e));
+    });
 
     function hidePendingApproval() {
       const el = $id('hodPendingApproval');
@@ -322,6 +601,17 @@ export function installHODSupabaseAndAvatar() {
   */
     function handleAccessRevoked(reason, code = null) {
       if (window.__LH_REVOKING_ACCESS) return;
+      /*
+      LH_OFFLINE_GRACE_20260806: mất mạng thì không có kết luận nào đáng tin về quyền.
+      BLOCKED là ngoại lệ duy nhất — nó chỉ tới từ một câu trả lời THẬT của server, tức
+      lúc đó vẫn còn mạng.
+    */
+      if (navigator.onLine === false && code !== 'BLOCKED') {
+        if (canWorkOffline()) {
+          enterDegradedMode('revoke-while-offline:' + code);
+          return;
+        }
+      }
       window.__LH_REVOKING_ACCESS = true;
       console.warn('[LH Auth] Thu hồi quyền:', reason, '| code:', code);
 
@@ -338,7 +628,23 @@ export function installHODSupabaseAndAvatar() {
       // 2. Xóa RAM, DOM, localStorage/sessionStorage/IndexedDB/Cache Storage.
       window.__LH_ACCESS_OK = false;
       currentProfile = null;
-      purgeOfflineQuestionCache();
+      degraded = false;
+      window.__LH_OFFLINE_MODE = false;
+      showOfflineBar(false);
+      cancelAccessRetry();
+      /*
+      LH_OFFLINE_GRACE_20260806: chỉ MẤT QUYỀN THẬT mới xoá dữ liệu + dấu xác nhận.
+      UNAUTHORIZED là chuyện của PHIÊN, không phải của quyền: xoá cache 12 giờ ở đây là
+      tự tay lấy mất khả năng học offline của người mà lát nữa đăng nhập lại là xong.
+    */
+      if (code === 'UNAUTHORIZED') {
+        sessionConfirmed = false;
+      } else {
+        revokedConclusively = true;
+        sessionConfirmed = false;
+        clearAccessGrant();
+        purgeOfflineQuestionCache();
+      }
 
       // 3. Dừng timer nền và subscription.
       try {
@@ -347,14 +653,22 @@ export function installHODSupabaseAndAvatar() {
         lhWarn('APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627', e);
       }
 
-      const mustSignOut = code === 'BLOCKED' || code === 'UNAUTHORIZED';
+      /*
+      LH_OFFLINE_GRACE_20260806: CHỈ BLOCKED còn tự đăng xuất (quyết định sản phẩm: tài
+      khoản bị khoá thì cắt phiên luôn). UNAUTHORIZED trước đây cũng signOut() — đó chính
+      là "web tự đăng xuất người dùng": mất phiên Supabase nghĩa là mất luôn refresh_token
+      còn sống hàng chục ngày, nên người dùng phải chọn lại mail Google. Nay chỉ hiện gate,
+      giữ phiên: bấm "Kiểm tra lại" (nút này làm mới token) là vào tiếp nếu còn cứu được.
+    */
+      const mustSignOut = code === 'BLOCKED';
 
       if (code === 'BLOCKED') {
         showPendingApproval({ title: BLOCKED_TITLE, message: BLOCKED_MESSAGE });
       } else if (code === 'UNAUTHORIZED') {
         showPendingApproval({
           title: 'Phiên đăng nhập đã hết hạn',
-          message: 'Vui lòng đăng nhập lại để tiếp tục.',
+          message:
+            'Bấm <b>Kiểm tra lại</b> để nối lại phiên.<br>Nếu vẫn không được, bấm <b>Đăng xuất</b> rồi đăng nhập lại.',
         });
       } else {
         showPendingApproval({ title: PENDING_DEFAULT_TITLE, message: PENDING_DEFAULT_MESSAGE });
@@ -527,7 +841,9 @@ export function installHODSupabaseAndAvatar() {
     let activeProfilePromise = null;
     async function loadProfile(force = false, checkOnly = false) {
       window.loadProfile = loadProfile;
-      if (!currentUser) {
+      // activeUser(): xem ghi chú ở LH_OFFLINE_GRACE_20260806 — cho ?mock=1 chạy đúng luồng này.
+      const me = activeUser();
+      if (!me) {
         currentProfile = null;
         updateAuthUI();
         return null;
@@ -539,10 +855,10 @@ export function installHODSupabaseAndAvatar() {
           const body = checkOnly
             ? { check_only: true }
             : {
-                id: currentUser.id,
-                email: currentUser.email || '',
-                full_name: currentUser.user_metadata?.full_name || '',
-                avatar_url: currentUser.user_metadata?.avatar_url || currentUser.user_metadata?.picture || '',
+                id: me.id,
+                email: me.email || '',
+                full_name: me.user_metadata?.full_name || '',
+                avatar_url: me.user_metadata?.avatar_url || me.user_metadata?.picture || '',
                 current_subject: activeSubjectCode,
                 device_info: typeof getDeviceTypeString === 'function' ? getDeviceTypeString() : undefined,
                 // DEVICE_ID_AND_SUBJECT_PER_DEVICE_20260731: khoá lịch sử thiết bị theo ID trình duyệt.
@@ -558,23 +874,35 @@ export function installHODSupabaseAndAvatar() {
           });
           const json = await res.json().catch(() => ({}));
           if (!res.ok || json.error) {
-            currentProfile = null;
-            window.__LH_ACCESS_OK = false;
             /*
             VIII: chỉ 401/403 mới là "mất quyền". 500 và lỗi mạng chỉ có nghĩa là
-            KHÔNG KẾT LUẬN ĐƯỢC -> hiện "Không thể kiểm tra quyền" kèm nút thử
-            lại, tuyệt đối không xóa dữ liệu và không đăng xuất user.
+            KHÔNG KẾT LUẬN ĐƯỢC -> tuyệt đối không xóa dữ liệu và không đăng xuất user.
           */
-            if (res.status === 401 || res.status === 403) {
-              handleAccessRevoked(
-                json.error || 'Tài khoản chưa được duyệt hoặc đã bị khóa.',
-                json.code || (res.status === 401 ? 'UNAUTHORIZED' : 'PENDING_APPROVAL'),
-              );
-            } else {
-              showAccessCheckError();
-              updateAuthUI();
+            /*
+            AUTH_VERIFY_INCONCLUSIVE_20260805: 503 AUTH_CHECK_FAILED và 401 KHÔNG CÓ code
+            đều là "không kết luận được": 401 của app luôn kèm code, thiếu code là câu trả
+            lời của proxy/CDN.
+            LH_OFFLINE_GRACE_20260806: thêm một ca không kết luận được nữa — 401 CÓ code
+            nhưng lúc đó ta KHÔNG hỏi được Supabase để làm mới token (mất mạng / Supabase
+            auth không tới được). Server trả 401 đúng luật vì request không mang token,
+            nhưng phiên của người dùng vẫn tốt nguyên.
+          */
+            const denyCode = json.code || (res.status === 403 ? 'PENDING_APPROVAL' : '');
+            const conclusive =
+              (res.status === 401 || res.status === 403) &&
+              !!denyCode &&
+              (denyCode !== 'UNAUTHORIZED' || sessionLooksDead());
+            if (conclusive) {
+              currentProfile = null;
+              window.__LH_ACCESS_OK = false;
+              handleAccessRevoked(json.error || 'Tài khoản chưa được duyệt hoặc đã bị khóa.', denyCode);
+              return null;
             }
-            throw new Error(json.error || `Không kiểm tra được quyền (HTTP ${res.status})`);
+            console.warn(
+              '[LH access] không kết luận được quyền — giữ phiên. HTTP ' + res.status,
+              json.code || '(không có code)',
+            );
+            return handleInconclusiveAccess('http:' + res.status + ':' + (json.code || 'nocode'));
           }
           currentProfile = json.data || json.profile || json;
           /*
@@ -596,22 +924,23 @@ export function installHODSupabaseAndAvatar() {
           }
           if (!checkOnly) await notifyLoginToDiscordOnce();
           window.__LH_ACCESS_OK = true;
+          /*
+          LH_OFFLINE_GRACE_20260806: ghi dấu "máy này đã được server xác nhận có quyền".
+          Đây là điều kiện DUY NHẤT để lát nữa rớt mạng được học tiếp bằng cache.
+        */
+          sessionConfirmed = true;
+          revokedConclusively = false;
+          rememberAccessGrant(currentProfile);
+          cancelAccessRetry();
+          exitDegradedMode();
           hidePendingApproval();
           updateAuthUI();
           window.dispatchEvent(new CustomEvent('lh:profile-ready'));
           return currentProfile;
         } catch (e) {
-          console.error('[Turso profile]', e);
-          currentProfile = null;
-          window.__LH_ACCESS_OK = false;
-          // Lỗi mạng / JSON hỏng: cũng không được vào web chính.
-          if (!document.getElementById('hodPendingApproval')?.classList.contains('hidden')) {
-            // gate đã hiển thị ở nhánh trên, giữ nguyên thông điệp
-          } else {
-            showAccessCheckError();
-          }
-          updateAuthUI();
-          return null;
+          // Lỗi mạng / JSON hỏng / request bị hủy: KHÔNG kết luận được quyền.
+          console.warn('[Turso profile] không gọi được /api/profile:', e?.message || e);
+          return handleInconclusiveAccess('exception:' + (e?.name || 'Error'));
         } finally {
           activeProfilePromise = null;
         }
@@ -758,6 +1087,13 @@ export function installHODSupabaseAndAvatar() {
       currentUser = null;
       currentProfile = null;
       window.__LH_ACCESS_OK = false;
+      // LH_OFFLINE_GRACE_20260806: tự bấm đăng xuất thì bỏ luôn dấu xác nhận ngoại tuyến.
+      sessionConfirmed = false;
+      degraded = false;
+      window.__LH_OFFLINE_MODE = false;
+      showOfflineBar(false);
+      cancelAccessRetry();
+      clearAccessGrant();
       updateAuthUI();
       notify2('Đã đăng xuất');
     }
@@ -942,6 +1278,16 @@ export function installHODSupabaseAndAvatar() {
         if (btn) {
           btn.disabled = true;
           btn.textContent = 'Đang kiểm tra...';
+        }
+        /*
+        LH_OFFLINE_GRACE_20260806: gate "Phiên đăng nhập đã hết hạn" nay KHÔNG đăng xuất nữa,
+        nên nút này phải làm mới token trước — nếu không nó gửi lại đúng token hết hạn và
+        người dùng bấm bao nhiêu lần cũng vẫn 401.
+      */
+        try {
+          if (typeof window.__lhRefreshAccessToken === 'function') await window.__lhRefreshAccessToken();
+        } catch (e) {
+          lhWarn('LH_OFFLINE_GRACE_20260806', e);
         }
         await loadProfile();
         if (hasFullAccess(currentProfile)) await loadQuestionsFromSupabase();
@@ -1395,12 +1741,45 @@ export function installUnifiedFetchAndAccess() {
       if (session.expires_at && Date.now() / 1000 > session.expires_at - 10) return '';
       return tok.trim();
     }
+    /*
+    LH_OFFLINE_GRACE_20260806 — LÀM MỚI THẤT BẠI VÌ SAO?
+
+    Bản cũ nuốt mọi lỗi thành `''`, nên phía sau không phân biệt được:
+      - refresh_token đã CHẾT (Supabase trả 400/401/403 "Invalid Refresh Token") -> phiên
+        hỏng thật, 401 của server là kết luận đúng;
+      - KHÔNG GỌI ĐƯỢC Supabase (mất mạng, DNS, Supabase 5xx/429) -> chưa biết gì cả, mà
+        request /api/ đi ra không có token nên server trả 401 UNAUTHORIZED ĐÚNG LUẬT ->
+        client cũ hiểu là "hết phiên" và đăng xuất người dùng đang có mạng nội bộ tốt.
+    Kết quả ghi vào window.__lhLastRefreshOutcome cho loadProfile/inspectDenial đọc:
+      'ok' | 'dead' | 'unreachable' | 'none'
+  */
+    function markRefreshOutcome(v) {
+      window.__lhLastRefreshOutcome = v;
+      return v;
+    }
+    markRefreshOutcome('none');
+    function refreshErrorKind(err) {
+      if (!err) return 'unreachable';
+      var st = err.status || err.code || 0;
+      if (st === 400 || st === 401 || st === 403) return 'dead';
+      var msg = String(err.message || err.name || '');
+      if (/invalid refresh token|refresh token not found|already used|revoked/i.test(msg)) return 'dead';
+      return 'unreachable';
+    }
     var refreshInFlight = null;
     function lhRefreshToken() {
       if (refreshInFlight) return refreshInFlight;
       var c = authClient();
       // Không có client (chưa init) hoặc không có refresh_token: không có gì để làm mới.
-      if (!c || !hasRefreshToken()) return Promise.resolve('');
+      if (!c || !hasRefreshToken()) {
+        markRefreshOutcome(navigator.onLine === false ? 'unreachable' : 'none');
+        return Promise.resolve('');
+      }
+      if (navigator.onLine === false) {
+        // Không cần thử: chắc chắn không tới được Supabase.
+        markRefreshOutcome('unreachable');
+        return Promise.resolve('');
+      }
       refreshInFlight = Promise.resolve()
         .then(function () {
           // getSession() của supabase-js v2 tự làm mới khi token đã hết hạn.
@@ -1408,13 +1787,24 @@ export function installUnifiedFetchAndAccess() {
         })
         .then(function (r) {
           var tok = freshTokenOf(r && r.data && r.data.session);
-          if (tok) return tok;
+          if (tok) {
+            markRefreshOutcome('ok');
+            return tok;
+          }
+          if (r && r.error) markRefreshOutcome(refreshErrorKind(r.error));
           return c.auth.refreshSession().then(function (r2) {
-            return freshTokenOf(r2 && r2.data && r2.data.session);
+            var t2 = freshTokenOf(r2 && r2.data && r2.data.session);
+            if (t2) {
+              markRefreshOutcome('ok');
+              return t2;
+            }
+            markRefreshOutcome(refreshErrorKind(r2 && r2.error));
+            return '';
           });
         })
         .catch(function (e) {
           lhWarn('LH_SESSION_REFRESH_20260729', e);
+          markRefreshOutcome(refreshErrorKind(e));
           return '';
         })
         .then(function (tok) {
@@ -1550,7 +1940,25 @@ export function installUnifiedFetchAndAccess() {
       }
     }
 
-    function inspectDenial(res) {
+    /*
+    AUTH_VERIFY_INCONCLUSIVE_20260805: 401 KHÔNG CÓ CODE thì đừng đăng xuất.
+    Mọi 401 do api/ của chính app sinh ra đều kèm `code: 'UNAUTHORIZED'`. Một 401 mà
+    body không đọc được / không có code nghĩa là NGƯỜI KHÁC trả lời: proxy công ty,
+    CDN, cổng wifi khách sạn, bản deploy lạ. Bản cũ đoán 'UNAUTHORIZED' cho ca này,
+    tức signOut() người dùng vì một trang HTML của proxy. Nay chỉ cảnh báo: nếu phiên
+    hỏng thật thì /api/profile (polling + lúc mở trang) sẽ trả 401 CÓ code và luồng
+    thu hồi quyền chạy đúng ở đó. 403 giữ nguyên hành vi cũ — nó không đăng xuất ai.
+  */
+    function unknownDenial(res, where) {
+      if (res.status === 401) {
+        console.warn('[LH fetch] 401 không có code (không phải từ /api của app) — KHÔNG đăng xuất:', where || res.url);
+        return;
+      }
+      dispatchDenial('PENDING_APPROVAL', null);
+    }
+
+    // `where` là pathname của request: Response tổng hợp (mock, lớp chặn sớm) có res.url rỗng.
+    function inspectDenial(res, where) {
       // Clone trước khi đọc: body gốc vẫn còn nguyên cho hàm gọi phía sau.
       res
         .clone()
@@ -1558,13 +1966,17 @@ export function installUnifiedFetchAndAccess() {
         .then(function (data) {
           var code = data && data.code;
           if (code && REVOKE_CODES[code]) dispatchDenial(code, data.error);
-          else if (!code) {
-            // 401/403 không có code: coi như phiên hỏng, nhưng không đoán BLOCKED.
-            dispatchDenial(res.status === 401 ? 'UNAUTHORIZED' : 'PENDING_APPROVAL', null);
-          }
+          else if (code) {
+            // AUTH_CHECK_FAILED / INTERNAL_ERROR…: không kết luận được quyền, không thu hồi.
+            console.warn(
+              '[LH fetch] ' + res.status + ' code=' + code + ' — không kết luận quyền:',
+              where || res.url,
+              data.error || '',
+            );
+          } else unknownDenial(res, where);
         })
         .catch(function () {
-          dispatchDenial(res.status === 401 ? 'UNAUTHORIZED' : 'PENDING_APPROVAL', null);
+          unknownDenial(res, where);
         });
     }
 
@@ -1641,17 +2053,27 @@ export function installUnifiedFetchAndAccess() {
               // 401 CÓ THỂ chỉ là token vừa hết hạn. Làm mới rồi thử lại đúng một lần.
               return lhRefreshToken().then(function (fresh) {
                 if (!fresh || fresh === token) {
-                  inspectDenial(res);
+                  /*
+                  LH_OFFLINE_GRACE_20260806: làm mới thất bại VÌ KHÔNG GỌI ĐƯỢC Supabase
+                  (mất mạng / Supabase auth chớp) thì 401 này không kết luận được gì về
+                  phiên — bản cũ vẫn đưa vào inspectDenial -> handleAccessRevoked
+                  ('UNAUTHORIZED') -> signOut(). Đây là đường "tự đăng xuất" cuối cùng.
+                */
+                  if (window.__lhLastRefreshOutcome === 'unreachable' || navigator.onLine === false) {
+                    console.warn('[LH fetch] 401 khi không xác minh được token (mất mạng) — giữ phiên:', url.pathname);
+                    return res;
+                  }
+                  inspectDenial(res, url.pathname);
                   return res;
                 }
                 var args = withAuth(retrySrc, retryInit, fresh, true);
                 return originalFetch.apply(null, args).then(function (res2) {
-                  if (res2.status === 401 || res2.status === 403) inspectDenial(res2);
+                  if (res2.status === 401 || res2.status === 403) inspectDenial(res2, url.pathname);
                   return res2;
                 });
               });
             }
-            if (res.status === 403) inspectDenial(res);
+            if (res.status === 403) inspectDenial(res, url.pathname);
             return res;
           });
         });

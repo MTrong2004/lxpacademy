@@ -54,26 +54,79 @@ export function isSystemAdmin(email) {
 const SUPABASE_URL = cleanStr(process.env.SUPABASE_URL) || 'https://kxyukiwhhorvxgxxxmfq.supabase.co';
 const SUPABASE_ANON_KEY = cleanStr(process.env.SUPABASE_ANON_KEY) || 'sb_publishable_yOIciG2SCPyu8mP5KWE5RQ_qIgCd4-f';
 
-export async function verifyUser(req) {
-  try {
-    const auth = req.headers.get('authorization') || req.headers.get('Authorization') || '';
-    const m = /^Bearer\s+(.+)$/i.exec(auth);
-    if (!m) return null;
-    const token = m[1].trim();
-    if (!token) return null;
+/*
+  AUTH_VERIFY_INCONCLUSIVE_20260805 — "KHÔNG XÁC MINH ĐƯỢC" KHÁC "HẾT PHIÊN".
 
-    const fetchUrl = SUPABASE_URL.replace(/\/+$/, '') + '/auth/v1/user';
-    const res = await fetch(fetchUrl, {
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + token }
+  Bản cũ trả `null` cho CẢ HAI ca:
+    (1) không có token, hoặc Supabase khẳng định token sai/hết hạn (401/403);
+    (2) KHÔNG HỎI ĐƯỢC Supabase: mất mạng, timeout, Supabase 5xx, 429 rate limit.
+  Router thấy `null` là trả `401 UNAUTHORIZED`, mà ở client `401 UNAUTHORIZED` có
+  nghĩa cố định là "phiên hỏng" -> `handleAccessRevoked()` GỌI `signOut()`. Nói cách
+  khác: Supabase auth chớp một nhịp (hoặc bị rate limit) là NGƯỜI DÙNG BỊ ĐĂNG XUẤT
+  dù phiên của họ còn tốt nguyên. Lớp làm mới token của client
+  (LH_SESSION_REFRESH_20260729) không cứu được ca này: token mới cũng không xác minh
+  được, `inspectDenial` vẫn kết luận UNAUTHORIZED.
+
+  Nay ca (2) trả code AUTH_CHECK_FAILED -> router trả 503, cùng ý nghĩa với
+  `500 INTERNAL_ERROR` của `checkUserAccess`: "không kết luận được quyền, client hiện
+  thử lại, KHÔNG được coi là bị thu hồi quyền". Vẫn fail-closed (không cấp quyền),
+  chỉ khác ở chỗ không xoá phiên đăng nhập của người dùng.
+
+  Ranh giới: 400/401/403 từ Supabase = token thật sự không dùng được (UNAUTHORIZED).
+  Mọi mã khác, mọi exception, và timeout = AUTH_CHECK_FAILED.
+*/
+const VERIFY_TIMEOUT_MS = 8000;
+
+export async function verifyUserDetailed(req) {
+  const auth = req.headers.get('authorization') || req.headers.get('Authorization') || '';
+  const m = /^Bearer\s+(.+)$/i.exec(auth);
+  if (!m) return { user: null, code: 'UNAUTHORIZED' };
+  const token = m[1].trim();
+  if (!token) return { user: null, code: 'UNAUTHORIZED' };
+
+  const fetchUrl = SUPABASE_URL.replace(/\/+$/, '') + '/auth/v1/user';
+  // Edge runtime không có AbortSignal.timeout ở mọi region -> tự hẹn giờ.
+  const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), VERIFY_TIMEOUT_MS) : null;
+  let res;
+  try {
+    res = await fetch(fetchUrl, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + token },
+      signal: ctl ? ctl.signal : undefined
     });
-    if (!res.ok) return null;
-    const u = await res.json().catch(() => null);
-    if (!u || !u.id) return null;
-    return { id: u.id, email: String(u.email || '').toLowerCase().trim() };
   } catch (e) {
-    console.warn('verifyUser exception failed:', e);
-    return null;
+    // Mất mạng / timeout: KHÔNG kết luận gì về phiên của người dùng.
+    console.warn('verifyUser: không gọi được Supabase /auth/v1/user:', e?.message || e);
+    return { user: null, code: 'AUTH_CHECK_FAILED', error: e };
+  } finally {
+    if (timer) clearTimeout(timer);
   }
+
+  if (res.status === 400 || res.status === 401 || res.status === 403) {
+    return { user: null, code: 'UNAUTHORIZED' };
+  }
+  if (!res.ok) {
+    // 429 rate limit, 5xx, 404 sai URL: lỗi hạ tầng, không phải lỗi phiên.
+    const err = new Error('Supabase /auth/v1/user trả HTTP ' + res.status);
+    console.warn('verifyUser:', err.message);
+    return { user: null, code: 'AUTH_CHECK_FAILED', error: err };
+  }
+  const u = await res.json().catch(() => null);
+  if (!u || !u.id) {
+    const err = new Error('Supabase /auth/v1/user trả 200 nhưng không có id');
+    console.warn('verifyUser:', err.message);
+    return { user: null, code: 'AUTH_CHECK_FAILED', error: err };
+  }
+  return { user: { id: u.id, email: String(u.email || '').toLowerCase().trim() } };
+}
+
+/*
+  Bản tương thích: chỉ trả user hoặc null (fail-closed như trước). Chỗ nào cần phân
+  biệt "không xác minh được" thì phải dùng verifyUserDetailed — hiện là api/index.js.
+*/
+export async function verifyUser(req) {
+  const r = await verifyUserDetailed(req);
+  return r.user;
 }
 
 /*

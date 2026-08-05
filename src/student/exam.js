@@ -372,7 +372,7 @@ export function installExam() {
       <div class="examOnlyStart">
         <div class="examOnlyLabel">Môn đang học</div>
         ${activeCard || '<span style="color:var(--mist)">Chưa chọn môn học</span>'}
-        ${extraChips ? `<div class="examOnlyLabel">Gộp thêm môn <span style="font-weight:400;color:var(--mist);font-size:.85rem">(chọn thêm môn cùng mã để gộp đề)</span></div><div class="examSubjectChips" id="examSubjectChipsExtra">${extraChips}</div>` : ''}
+        ${extraChips ? `<div class="examOnlyLabel">Gộp thêm phần <span style="font-weight:400;color:var(--mist);font-size:.85rem">(chọn thêm phần cùng mã môn để gộp đề)</span></div><div class="examSubjectChips" id="examSubjectChipsExtra">${extraChips}</div>` : ''}
         <div class="examOnlyLabel">Số câu kiểm tra <span style="font-weight:400;color:var(--mist);font-size:.85rem">(Thư viện hiện có: <span id="examTotalCountVal">${totalCount}</span> câu)</span></div>
         <div class="examOnlyCountGrid">
           <button class="cnt" data-exam-cnt="10">10</button>
@@ -416,7 +416,7 @@ export function installExam() {
       if (cb) cb.checked = examRangeOn;
       const note = $('examRangeNote');
       if (note) {
-        if (extra) note.textContent = 'Bỏ chọn môn gộp mới dùng được khoảng câu';
+        if (extra) note.textContent = 'Bỏ chọn phần gộp mới dùng được khoảng câu';
         else if (examRangeOn) note.textContent = `Còn ${applyRange(LHState.RAW || []).length} câu trong khoảng`;
         else note.textContent = `Môn này có câu ${bounds.min}–${bounds.max}`;
       }

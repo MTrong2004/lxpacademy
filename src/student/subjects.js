@@ -418,13 +418,19 @@ export function installSubjectDataLoader() {
     function cacheKey(code) {
       return 'learninghub_questions_cache_v2_' + code;
     }
-    function readQuestionCache(code) {
+    /*
+    LH_OFFLINE_GRACE_20260806: `allowStale` bỏ qua hạn 12 giờ. Chỉ dùng khi KHÔNG gọi được
+    server: cache quá hạn vẫn hơn hẳn một màn hình rỗng — dữ liệu cũ vài ngày còn học được,
+    còn "0 câu" thì không. Đường bình thường vẫn giữ đúng TTL để không ai đọc dữ liệu cũ
+    trong lúc mạng vẫn tốt.
+  */
+    function readQuestionCache(code, allowStale = false) {
       try {
         const raw = localStorage.getItem(cacheKey(code));
         if (!raw) return null;
         const obj = JSON.parse(raw);
         if (!obj || !obj.savedAt || !Array.isArray(obj.rows)) return null;
-        if (Date.now() - obj.savedAt > CACHE_TTL) return null;
+        if (!allowStale && Date.now() - obj.savedAt > CACHE_TTL) return null;
         return obj.rows;
       } catch (e) {
         return null;
@@ -541,6 +547,18 @@ export function installSubjectDataLoader() {
           return true;
         } catch (e) {
           console.warn('[loadSubjectLight]', e);
+          /*
+          LH_OFFLINE_GRACE_20260806: mất mạng / server lỗi thì rơi về cache, KỂ CẢ CACHE QUÁ HẠN.
+          Trước đây nhánh này chỉ `return false` nên rớt mạng là thư viện + flashcard trắng
+          trơn dù dữ liệu vẫn nằm trong localStorage — nhất là đường force=true
+          (loadCurrentSubjectOnly(true)) vốn không đọc cache ở đầu hàm.
+        */
+          const stale = readQuestionCache(code, true);
+          if (stale && stale.length) {
+            console.warn('[loadSubjectLight] dùng dữ liệu đã lưu trên máy cho', code, '—', stale.length, 'câu');
+            applyQuestionRows(stale, code);
+            return true;
+          }
           return false;
         } finally {
           delete activeLoadPromises[code];

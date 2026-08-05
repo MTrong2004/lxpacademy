@@ -9,7 +9,6 @@
 - [Giới thiệu](#-giới-thiệu)
 - [Công nghệ & Kiến trúc mã nguồn](#-công-nghệ--kiến-trúc-mã-nguồn)
 - [Tính năng nổi bật](#-tính-năng-nổi-bật)
-- [Các phương thức nhập & nạp ngân hàng câu hỏi](#-các-phương-thức-nhập--nạp-ngân-hàng-câu-hỏi)
 - [Chế độ Test Offline (Mock Mode) & Dev Tooling](#-chế-độ-test-offline-mock-mode--dev-tooling)
 - [Tối ưu tài nguyên & DB Reads](#-tối-ưu-tài-nguyên--db-reads)
 - [Cấu trúc dự án](#-cấu-trúc-dự-án)
@@ -95,56 +94,6 @@ src/admin/main.js    ──(esbuild)──>  admin.js (chủ yếu cho admin.htm
 
 ---
 
-## 📥 Các phương thức nhập & nạp ngân hàng câu hỏi
-
-Hệ thống hỗ trợ đa dạng phương thức nhập dữ liệu câu hỏi từ đóng góp cá nhân, nhận diện AI/Quizlet tự động đến đóng gói hàng loạt qua tệp ZIP:
-
-### 1. 📦 Import tệp ZIP (`.zip`) — Nạp môn học & Ngân hàng câu hỏi đính kèm ảnh
-- **Cấu trúc tệp ZIP tiêu chuẩn**:
-  ```text
-  mon_hoc_quiz.zip
-  ├── MonHoc_questions.json    # Tệp JSON câu hỏi chính (hoặc *_questions.json)
-  └── images/                  # Thư mục ảnh minh họa đính kèm
-      ├── q1_diagram.png
-      └── q5_chart.jpg
-  ```
-- **Mẫu cấu trúc dữ liệu câu hỏi trong tệp JSON (`*_questions.json`)**:
-  ```json
-  [
-    {
-      "id": 1,
-      "question": "Nội dung câu hỏi trắc nghiệm?",
-      "options": ["Đáp án A", "Đáp án B", "Đáp án C", "Đáp án D"],
-      "answer": 0,
-      "explanation": "Giải thích chi tiết vì sao đáp án A đúng",
-      "image": "images/q1_diagram.png",
-      "risk": "low"
-    }
-  ]
-  ```
-- **Cơ chế xử lý thông minh (`subjectImport.js`)**:
-  - Giải nén 100% Client-side (JSZip), bảo vệ chống mã độc (`zip-slip`, file thực thi `.exe`, `.js`...).
-  - Sinh Blob URL xem trước (Live Preview) tức thì và cho phép chỉnh sửa nội dung/đáp án trực tiếp trước khi nạp.
-  - Tự động tải ảnh đính kèm lên **Cloudinary** theo lô (song song tối đa 3 ảnh/lần) và tự động thay thế đường dẫn ảnh Blob bằng Cloudinary URL chính thức.
-
-### 2. 🤖 Import Dữ liệu Văn bản AI / Quizlet (AI & Text Parser)
-- **Cơ chế**: Nhận diện tự động cú pháp đề thi từ văn bản copy/paste (ChatGPT, Gemini, Claude hoặc Quizlet export).
-- **Tính năng**:
-  - Tự động bóc tách: Câu hỏi, các lựa chọn (A, B, C, D), đáp án đúng và phần giải thích.
-  - Giao diện **Preview & Inline Editor**: Kiểm tra danh sách câu hỏi đã parse, cho phép sửa nhanh nội dung hoặc đổi đáp án đúng ngay trên giao diện trước khi lưu.
-
-### 3. ✍️ Form đóng góp & chỉnh sửa trực tiếp (`editor.js`)
-- **Phù hợp cho**: Học viên gửi đề xuất sửa/báo cáo lỗi & Admin cập nhật nội dung câu hỏi.
-- **Tính năng**:
-  - Form UI trực quan: Nhập câu hỏi, phương án lựa chọn, chọn đáp án đúng, giải thích và mức độ rủi ro (`low`, `medium`, `high`).
-  - Hỗ trợ chọn tệp ảnh hoặc **dán ảnh trực tiếp từ bộ nhớ tạm (`Ctrl+V`)**.
-  - Admin duyệt thay đổi qua **Diff Viewer** trước khi bấm Phê duyệt.
-
-### 4. 🗄️ Script Nạp dữ liệu hàng loạt Backend (`scripts/migrate-seed.js`)
-- Dành cho Developer / Admin hệ thống nạp ngân hàng câu hỏi từ tệp JSON mẫu trực tiếp vào cơ sở dữ liệu Turso DB qua Node.js CLI.
-
----
-
 ## 🧪 Chế độ Test Offline (Mock Mode) & Dev Tooling
 
 ### Chế độ Mock Mode (`?mock=1`)
@@ -164,11 +113,8 @@ Hệ thống tích hợp công cụ giả lập dữ liệu (`src/core/mock.js`)
 | `npm run find <tên>` | Tra cứu vị trí định nghĩa/gán hàm và kiểm tra **bản nào đang SỐNG/chạy thực tế** |
 | `npm run check:overrides` | Chặn việc tự ý tạo thêm lớp ghi đè (override layer) cho các hàm đã có |
 | `npm run check:catch` | Chặn các khối `catch` rỗng không qua xử lý log |
-| `npm run check:globals` | Chặn các cầu nối `window` global đứt/thiếu liên kết giữa các file JS |
-| `npm run check:installs` | Chặn các hàm `install*()` nằm chết vì quên gọi trong `appCore`/`adminCore` |
 | `npm run map` | Cập nhật lại sơ đồ bản đồ block trong `docs/BLOCK_MAP.md` |
 | `npm run format` | Chạy Prettier định dạng chuẩn mã nguồn trong `src/` |
-| `npm run migrate` | Chạy script migration cơ sở dữ liệu Turso |
 
 ---
 
@@ -189,32 +135,22 @@ Hệ thống được thiết kế tối ưu nhằm giảm tối đa lượng tr
 ```text
 lxpacademy/
 ├── src/                      # MÃ NGUỒN CHÍNH (Tất cả chỉnh sửa code tại đây)
-│   ├── core/                 # Tiện ích hệ thống & dùng chung
-│   │   ├── device.js         # Nhận diện & định danh thiết bị trình duyệt/HĐH
-│   │   ├── log.js            # Hệ thống ghi log & cảnh báo (lhWarn/lhErrors)
+│   ├── core/                 # Tiện ích dùng chung
+│   │   ├── log.js            # Hệ thống ghi log & cảnh báo (lhWarn)
 │   │   ├── mock.js           # Engine giả lập dữ liệu (?mock=1)
 │   │   └── versionChecker.js # Kiểm tra phiên bản & hiện banner cập nhật
 │   ├── student/              # Giao diện & Logic Sinh viên
 │   │   ├── state.js          # Quản lý 18 biến state dùng chung (LHState)
-│   │   ├── auth.js           # Xác thực Supabase OAuth & phân quyền
-│   │   ├── bookmarks.js      # Quản lý câu hỏi lưu 🔖 & chuông thông báo
-│   │   ├── editor.js         # Form sửa câu hỏi, báo cáo lỗi & dán ảnh Ctrl+V
-│   │   ├── exam.js           # Logic tab Kiểm tra & Bảng kết quả đề thi
-│   │   ├── flashcards.js     # Thẻ ghi nhớ & điều hướng lật thẻ trên mobile
 │   │   ├── format.js         # Hàm format dữ liệu, escaped string
 │   │   ├── images.js         # Xử lý ảnh & Upload Cloudinary / Clipboard
-│   │   ├── library.js        # Thư viện câu hỏi, lọc & tìm kiếm
-│   │   ├── search.js         # Tìm kiếm thông minh smartBetter & thêm câu
-│   │   ├── subjectGate.js    # Cổng chọn môn, Folder Drilldown, cờ NEW, số câu môn
-│   │   ├── subjectImport.js  # Import đề thi AI, Zip file, Quizlet autodetect & preview
-│   │   ├── subjects.js       # Quản lý câu hỏi, nạp cache & số câu môn
-│   │   ├── appCore.js        # Hạt nhân chính cho ứng dụng sinh viên
+│   │   ├── subjectGate.js    # Cổng chọn môn, Folder Drilldown, cờ NEW
+│   │   ├── library.js        # Thư viện câu hỏi & Tìm kiếm
+│   │   ├── editor.js         # Form sửa câu hỏi & Báo cáo lỗi
+│   │   ├── exam.js           # Logic tab Kiểm tra & Bảng kết quả
+│   │   ├── appCore.js        # Core runner chính cho học viên
 │   │   └── main.js           # Entry point đóng gói ra app.js
 │   └── admin/                # Giao diện & Logic Admin Dashboard
 │       ├── adminCore.js      # Core runner trang Admin
-│       ├── questions.js      # Quản lý & chỉnh sửa câu hỏi admin
-│       ├── users.js          # Quản lý phân quyền & người dùng admin
-│       ├── index.js          # Khởi tạo module admin
 │       └── main.js           # Entry point đóng gói ra admin.js
 ├── api/                      # Serverless Edge API (chạy trên Vercel Edge)
 │   ├── index.js              # Router API chính
@@ -234,16 +170,10 @@ lxpacademy/
 │   └── SPLIT_PLAN.md         # Kế hoạch chi tiết tái cấu trúc & tách module
 ├── scripts/                  # Bộ script hỗ trợ phát triển & đóng gói
 │   ├── build.js              # Script build đóng gói sản phẩm ra app.js / admin.js / dist/
-│   ├── check-empty-catch.js  # Script kiểm tra catch rỗng (npm run check:catch)
-│   ├── check-globals.js      # Script kiểm tra window globals liên kết (npm run check:globals)
-│   ├── check-installs.js     # Script kiểm tra hàm install mồ côi (npm run check:installs)
-│   ├── check-overrides.js    # Script kiểm tra lớp ghi đè hàm (npm run check:overrides)
-│   ├── copy-question-images.mjs # Copy ảnh câu hỏi phục vụ migration
 │   ├── dev-server.js         # Local dev server giả lập Vercel Edge API
-│   ├── find-symbol.js        # Script tìm kiếm vị trí gán hàm đang SỐNG (npm run find)
 │   ├── inspect-db.js         # Kiểm tra cấu trúc & dữ liệu Turso DB
-│   ├── map.js                # Sinh lại bản đồ mã nguồn docs/BLOCK_MAP.md (npm run map)
-│   └── migrate.js            # Migration dữ liệu Turso
+│   ├── migrate-seed.js       # Nạp dữ liệu câu hỏi mẫu vào DB
+│   └── find-function.js      # Script tìm kiếm hàm đang SỐNG (npm run find)
 ├── index.html                # Trang chủ ứng dụng chính (Student Interface)
 ├── admin.html                # Trang quản trị (Admin Dashboard)
 ├── landing.html              # Landing page giới thiệu
@@ -387,4 +317,4 @@ Dự án được cấu hình tối ưu sẵn để triển khai lên **Vercel**
 
 ---
 
-📅 *Cập nhật lần cuối: Tháng 8/2026*
+📅 *Cập nhật lần cuối: Tháng 7/2026*

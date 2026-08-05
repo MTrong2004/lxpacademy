@@ -9,6 +9,17 @@ import JSZip from 'jszip';
 import { esc } from './format.js';
 import { LHState } from './state.js';
 import { lhWarn } from '../core/log.js';
+import {
+  analyzeImport,
+  buildAnswerText,
+  normalizeAnswer,
+  parseImportNum,
+  severityLabel,
+  QUALITY_THRESHOLDS,
+} from './importQuality.js';
+import { IMPORT_AI_PROMPT } from './importPrompt.js';
+import { directExtractKind, extractFromFile, SCAN_CHARS_PER_PAGE } from './docExtract.js';
+import { importJsonFileName, questionsToImportJson } from '../core/importSchema.js';
 
 // Các giới hạn & hằng số bảo mật ZIP
 const MAX_ZIP_SIZE = 30 * 1024 * 1024; // 30 MB
@@ -260,17 +271,17 @@ export async function processSelectedJsonFromZip(zip, jsonPath, imageEntries, zi
 
   // Giai đoạn Mapping & Validation chi tiết từng câu hỏi
   const validatedQuestions = [];
-  const usedNums = new Set();
-  let expectedNum = 1;
 
   for (let i = 0; i < rawQuestions.length; i++) {
     const item = rawQuestions[i];
-    const num = Number(item?.num) || i + 1;
+    // IMPORT_QUALITY_GATE_20260805: giữ NGUYÊN num của file. Trước đây `Number(item.num) || i+1`
+    // biến "1.1" thành float 1.1 (may là còn đúng) nhưng num rác/trống thì lặng lẽ thành i+1,
+    // che mất lỗi đánh số. Nay num sai để nguyên null cho cổng kiểm tra bắt.
+    const numInfo = parseImportNum(item?.num);
+    const num = numInfo.kind === 'invalid' ? null : numInfo.value;
     const questionText = String(item?.question || '').trim();
     const rawOptions =
       item?.options && typeof item.options === 'object' && !Array.isArray(item.options) ? item.options : {};
-    let answer = item?.answer !== undefined && item?.answer !== null ? String(item.answer).trim().toUpperCase() : null;
-    if (answer === '') answer = null;
 
     const rawImages = Array.isArray(item?.images) ? item.images : [];
     const errorRisk = String(item?.error_risk || 'low').toLowerCase();
@@ -311,20 +322,27 @@ export async function processSelectedJsonFromZip(zip, jsonPath, imageEntries, zi
       }
     }
 
-    // Format answer_text
-    let answerText = '';
-    if (answer && cleanedOptions[answer]) {
-      answerText = `${answer}. ${cleanedOptions[answer]}`;
-    }
+    // IMPORT_QUALITY_GATE_20260805: prompt trả `answer` là ARRAY (["A"], ["A","C"]).
+    // Bản cũ `String(item.answer)` biến ["A","C"] thành "A,C" nên tra `options["A,C"]`
+    // luôn trượt -> answer_text rỗng. normalizeAnswer bỏ dấu phẩy, khử trùng, loại nhãn
+    // không có trong options và giữ thứ tự xuất hiện.
+    const ansInfo = normalizeAnswer(item?.answer, cleanedOptions);
+    const answer = ansInfo.answer;
+    const answerText = buildAnswerText(ansInfo.labels, cleanedOptions);
 
     validatedQuestions.push({
       num,
       question: questionText,
       options: cleanedOptions,
       answer: answer || '',
+      // Giữ vết nhãn bị loại (xem normalizeImportedQuestions) để bộ chấm thấy "đáp án trỏ sai".
+      answer_unknown: ansInfo.unknown.join('') || undefined,
       answer_text: answerText,
       images: mappedImages,
-      has_image: mappedImages.length > 0,
+      // IMPORT_QUALITY_GATE_20260805: KHÔNG hạ has_image về false khi map ảnh thất bại.
+      // Bản cũ ghi `mappedImages.length > 0` nên câu "cần ảnh mà zip thiếu ảnh" tự đổi thành
+      // "câu không cần ảnh" — mất luôn dấu hiệu thiếu dữ liệu mà cổng kiểm tra phải bắt.
+      has_image: mappedImages.length > 0 || !!item?.has_image,
       error_risk: ['low', 'medium', 'high'].includes(errorRisk) ? errorRisk : 'low',
       error_risk_reason: item?.error_risk_reason || null,
     });
@@ -345,6 +363,45 @@ export async function processSelectedJsonFromZip(zip, jsonPath, imageEntries, zi
     suggestedCode,
     questions: validatedQuestions,
   };
+}
+
+/**
+ * IMPORT_QUALITY_GATE_20260805 — chuẩn hoá danh sách câu hỏi của file JSON/MD/TXT (nhánh KHÔNG
+ * phải .zip) về đúng hình dạng mà app dùng, giống hệt việc `processSelectedJsonFromZip` làm cho
+ * nhánh .zip. Trước đây nhánh này đẩy thẳng `JSON.parse` vào `parsedQuestions` nên `answer` còn
+ * là array và `num` còn là chuỗi thô — hai nhánh cho ra hai hình dạng khác nhau.
+ * Sửa TẠI CHỖ từng object (không tạo mảng mới) để trình sửa nội tuyến của bản xem trước vẫn
+ * trỏ đúng vào cùng object mà `parsedQuestions` đang giữ.
+ */
+export function normalizeImportedQuestions(list) {
+  (Array.isArray(list) ? list : []).forEach(q => {
+    if (!q || typeof q !== 'object') return;
+
+    const numInfo = parseImportNum(q.num);
+    q.num = numInfo.kind === 'invalid' ? null : numInfo.value;
+
+    const rawOptions = q.options && typeof q.options === 'object' && !Array.isArray(q.options) ? q.options : {};
+    const options = {};
+    for (const [k, v] of Object.entries(rawOptions)) options[String(k).trim().toUpperCase()] = String(v ?? '').trim();
+    q.options = options;
+
+    q.question = String(q.question || '').trim();
+
+    const ansInfo = normalizeAnswer(q.answer, options);
+    q.answer = ansInfo.answer;
+    q.answer_text = q.answer_text || buildAnswerText(ansInfo.labels, options);
+    // Giữ vết nhãn bị loại để bộ chấm phân biệt "đáp án trỏ sai" (chặn cứng) với "quên đáp án".
+    // Trường phụ này KHÔNG vào DB: câu lệnh insert của api liệt kê cột cụ thể.
+    if (ansInfo.unknown.length) q.answer_unknown = ansInfo.unknown.join('');
+    else delete q.answer_unknown;
+
+    if (!Array.isArray(q.images)) q.images = [];
+    q.has_image = q.images.length > 0 || !!q.has_image;
+    const risk = String(q.error_risk || '').toLowerCase();
+    q.error_risk = ['low', 'medium', 'high'].includes(risk) ? risk : 'low';
+    if (q.error_risk_reason === undefined) q.error_risk_reason = null;
+  });
+  return list;
 }
 
 /**
@@ -470,21 +527,11 @@ export async function prepareZipQuestionsBeforeSave(questions, onProgress) {
 export function installAddSubjectFeature() {
   // ===== ADD_SUBJECT_FEATURE_20260625 (UPGRADED TAB UX/UI) =====
   (function () {
-    const HUB_URL = window.APP_CONFIG?.SUPABASE_URL || '';
-    const HUB_KEY = window.APP_CONFIG?.SUPABASE_ANON_KEY || '';
+    // ADD_SUBJECT_ONE_SAVE_PATH_20260805: `client()` (một Supabase client RIÊNG của block này),
+    // HUB_URL/HUB_KEY và `esc2()` đã xoá cùng bản `__submitSubjectRequest` chết — chỉ nó dùng.
+    // Đừng dựng lại: mọi thao tác GHI của app đi qua `POST /api/admin-action`, và cần escape thì
+    // dùng `esc` import từ `format.js` ở đầu file.
     const $ = id => document.getElementById(id);
-    let supa = null;
-    function client() {
-      if (!window.supabase) return null;
-      if (!supa) supa = window.supabase.createClient(HUB_URL, HUB_KEY);
-      return supa;
-    }
-    function esc2(s) {
-      return String(s ?? '').replace(
-        /[&<>"']/g,
-        c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-      );
-    }
 
     function isLoggedIn() {
       return !!window.HODSupabase?.getUser?.();
@@ -683,10 +730,10 @@ export function installAddSubjectFeature() {
         document.querySelector('.subjectGateSubline'),
         document.querySelector('.subjectGateTools'),
         $('subjectGateSearchWrap'),
-        // SUBJECT_FOLDER_BAR_IN_TABS_20260729: thanh thư mục nay nằm TRONG hàng tab, nên phải
-        // nằm trong danh sách ẩn/hiện này — không thì "← Tất cả môn" còn nổi ở tab Thêm môn mới.
-        $('subjectFolderCrumb'),
-        $('subjectFolderCrumbMeta'),
+        // SUBJECT_FOLDER_CRUMB_OWN_ROW_20260806: thanh thư mục là một HÀNG RIÊNG dưới hàng tab
+        // (trước nằm trong hàng tab, phải ẩn hai ô con). Ẩn cả hàng — không thì
+        // "← Tất cả môn ▸ MÃ" còn nổi ở tab Thêm môn mới.
+        $('subjectFolderCrumbRow'),
         $('subjectList'),
         $('subjectLoading'),
         $('subjectError'),
@@ -704,7 +751,10 @@ export function installAddSubjectFeature() {
         form.classList.toggle('hidden', !isAdd);
         if (isAdd) {
           form.innerHTML = getAddSubjectHTML();
-          parsedQuestions = [];
+          // ADD_SUBJECT_ONE_STATE_20260805: KHÔNG xoá danh sách câu ở đây. Mở lại tab là dựng lại
+          // DOM chứ không phải bỏ file đang làm — `restoreAddSubjectState()` ngay dưới sẽ chấm lại
+          // từ đúng mảng đang có. Bản cũ xoá `parsedQuestions` nhưng để nguyên
+          // `window.__previewImportData`, nên nút Lưu và bảng chấm điểm nhìn hai mảng khác nhau.
           restoreAddSubjectState();
         }
       }
@@ -780,65 +830,86 @@ export function installAddSubjectFeature() {
       }
     }
 
-    const AI_PROMPT = `Bạn là trợ lý chuyển đổi ngân hàng câu hỏi trắc nghiệm sang JSON trong file Markdown.
-
-ĐỌC FILE và chuyển đổi NGUYÊN VẸN (KHÔNG tự biên thêm, KHÔNG bỏ bớt).
-
-QUY TẮC BATCH:
-
-- Sau mỗi batch DỪNG và nói: "Gõ 'tiếp' để xuất câu X-Y."
-- Khi nhận "tiếp", xuất batch tiếp theo, đánh số "num" liên tục.
-- Mỗi batch xuất 1 file .md hoàn chỉnh, tải được ngay.
-
-QUY TẮC CHUYỂN ĐỔI:
-- Đáp án: chỉ lấy ký tự chữ cái đầu tiên sau "**Đáp án:**" (bỏ mọi chú thích phía sau).
-- Nếu câu chỉ có A/B/C (không có D): bỏ key "D" khỏi object options.
-- Giữ NGUYÊN nội dung câu hỏi và lựa chọn, KHÔNG paraphrase.
-- "has_image": false (trừ khi câu đề cập hình ảnh/biểu đồ).
-- "error_risk": "low" (câu ngắn, rõ) | "medium" (câu trung bình) | "high" (câu dài, phức tạp, dễ nhầm).
-
-FORMAT FILE .MD OUTPUT:
----
-# [Tên môn] - Batch [N] (Câu [X]-[Y])
-> Xuất ngày: [ngày hôm nay] | Tổng: [số câu trong batch] câu
----
-
-\`\`\`json
-[
-  {
-    "num": 1,
-    "question": "…?",
-    "options": {
-      "A": "…",
-      "B": "…",
-      "C": "…",
-      "D": "…"
-    },
-    "answer": "B",
-    "images": [],
-    "has_image": false,
-    "error_risk": "low"
-  }
-]
-\`\`\`
----
-
-KHÔNG thêm bất kỳ text giải thích nào bên ngoài cấu trúc trên.
-Bắt đầu ngay từ câu 1.`;
+    // IMPORT_QUALITY_GATE_20260805: prompt thật nằm ở src/student/importPrompt.js (nguồn duy nhất).
+    // Bản cũ ở đây dạy AI schema KHÁC prompt người dùng đang dùng (answer là string "B", không có
+    // biến thể num "X.1", xuất theo batch .md) nên file do nó tạo ra sẽ bị cổng kiểm tra báo đỏ.
+    const AI_PROMPT = IMPORT_AI_PROMPT;
 
     window.__ADD_SUBJECT_AI_PROMPT = AI_PROMPT;
-    let parsedQuestions = [];
 
-    function clearAddSubjectLocalStorage() {
-      localStorage.removeItem('learninghub_add_subject_code_v1');
-      localStorage.removeItem('learninghub_add_subject_name_v1');
-      localStorage.removeItem('learninghub_add_subject_desc_v1');
-      localStorage.removeItem('learninghub_add_subject_step_v1');
-      localStorage.removeItem('learninghub_add_subject_file_name_v1');
-      localStorage.removeItem('learninghub_add_subject_file_size_v1');
-      localStorage.removeItem('learninghub_add_subject_file_data_v1');
-      localStorage.removeItem('learninghub_add_subject_file_previewed_v1');
+    /**
+     * ADD_SUBJECT_ONE_STATE_20260805 — danh sách câu đang import có ĐÚNG MỘT chỗ chứa:
+     * `window.__previewImportData`. Trước đây còn một biến `parsedQuestions` của riêng block này:
+     * hai cái thường trỏ cùng array nên trông vô hại, nhưng `__switchSubjectGateTab('add')` chỉ
+     * xoá `parsedQuestions`, còn bản xem trước + bản LƯU (`readQuestions()` của block upload) đọc
+     * `window.__previewImportData` — tức là cổng chấm điểm chấm một mảng mà nút Lưu gửi mảng khác.
+     */
+    function getParsed() {
+      return Array.isArray(window.__previewImportData) ? window.__previewImportData : [];
     }
+    function setParsed(list) {
+      window.__previewImportData = Array.isArray(list) ? list : [];
+    }
+
+    const ADD_SUBJECT_LS_KEYS = [
+      'learninghub_add_subject_code_v1',
+      'learninghub_add_subject_name_v1',
+      'learninghub_add_subject_desc_v1',
+      'learninghub_add_subject_step_v1',
+      'learninghub_add_subject_path_v1',
+      'learninghub_add_subject_file_name_v1',
+      'learninghub_add_subject_file_size_v1',
+      'learninghub_add_subject_file_data_v1',
+      'learninghub_add_subject_file_previewed_v1',
+    ];
+
+    /**
+     * ADD_SUBJECT_RESET_AFTER_SAVE_20260805 — dọn SẠCH form sau khi lưu/gửi yêu cầu xong.
+     *
+     * Trước đây việc này nằm trong `clearAddSubjectLocalStorage()` mà hàm đó chỉ được gọi từ bản
+     * `__submitSubjectRequest` ĐÃ CHẾT, nên bản sống (block upload song song ở cuối file) chỉ xoá 4
+     * khoá file. Đo được: lưu môn TEST2 xong mở lại tab "Thêm môn mới" là vào thẳng **bước 3** với
+     * mã/tên/mô tả của môn vừa lưu còn nguyên trong ô — thả file mới vào là lưu lần hai vào cùng mã.
+     * Ngoài localStorage còn 3 thứ phải dọn: `window.__selectedImportFile` (handle .zip của lần
+     * trước), state ảnh của module zip, và modal xem trước đang mở.
+     */
+    window.__resetAddSubjectForm = function () {
+      try {
+        ADD_SUBJECT_LS_KEYS.forEach(k => localStorage.removeItem(k));
+        setParsed([]);
+        window.__selectedImportFile = null;
+        window.__previewSelections = {};
+        window.LHSubjectImport?.resetSubjectImportState?.();
+        hardClosePreviewModal();
+        window.__resetImportQualityPanel?.();
+
+        ['addSubjectCode', 'addSubjectName', 'addSubjectDesc'].forEach(id => {
+          const el = $(id);
+          if (el) el.value = '';
+        });
+        const fileInput = $('userImportFile');
+        if (fileInput) fileInput.value = '';
+        if ($('userImportData')) $('userImportData').value = '';
+        if ($('importDropZone')) $('importDropZone').classList.remove('hidden');
+        if ($('userImportFileCard')) $('userImportFileCard').classList.add('hidden');
+        if ($('userImportFileName')) $('userImportFileName').textContent = 'Chưa chọn file';
+        if ($('userImportFileMeta')) $('userImportFileMeta').textContent = 'File import câu hỏi';
+        const pv = $('previewImportBtn');
+        if (pv) {
+          pv.classList.add('hidden');
+          pv.disabled = true;
+        }
+        const save = $('userImportBtn');
+        if (save) save.disabled = true;
+
+        syncImportPath('');
+        window.__switchStep?.(1);
+        // `__switchStep` vừa ghi lại step=1; khoá này chỉ để "nhớ chỗ đang dở", form đã sạch thì bỏ.
+        localStorage.removeItem('learninghub_add_subject_step_v1');
+      } catch (e) {
+        lhWarn('ADD_SUBJECT_RESET_AFTER_SAVE_20260805', e);
+      }
+    };
 
     function restoreAddSubjectState() {
       const code = localStorage.getItem('learninghub_add_subject_code_v1') || '';
@@ -891,21 +962,39 @@ Bắt đầu ngay từ câu 1.`;
         if (card) card.classList.remove('hidden');
         if (nameEl) nameEl.textContent = fileName;
         if (metaEl)
-          metaEl.textContent = Math.max(1, Math.round(parseInt(fileSize || '0') / 1024)) + ' KB · Sẵn sàng xem trước';
+          metaEl.textContent = Math.max(1, Math.round(parseInt(fileSize || '0') / 1024)) + ' KB · Sẵn sàng kiểm tra';
         const pv = $('previewImportBtn');
         if (pv) {
           pv.classList.remove('hidden');
           pv.disabled = false;
         }
 
+        // IMPORT_RESTORE_NO_POPUP_20260805: khôi phục thì chấm lại IM LẶNG (`silent`) — dựng lại
+        // bảng chấm điểm + trạng thái nút Lưu, nhưng không bung bản xem trước ra giữa màn hình.
         const wasPreviewed = localStorage.getItem('learninghub_add_subject_file_previewed_v1') === 'true';
         if (wasPreviewed) {
           setTimeout(() => {
             if (typeof window.__previewUserImport === 'function') {
-              window.__previewUserImport();
+              window.__previewUserImport({ silent: true });
             }
           }, 100);
         }
+      } else if (getParsed().length) {
+        // ADD_SUBJECT_ONE_STATE_20260805: file .pdf/.docx/.zip KHÔNG lưu nội dung vào localStorage
+        // (vài MB là vượt hạn mức) nên không khôi phục được từ đó — nhưng danh sách câu vẫn còn
+        // trong bộ nhớ khi chỉ là đổi tab. Chấm lại từ chính mảng đó để bảng kiểm tra và nút Lưu
+        // không biến mất sau mỗi lượt đổi tab.
+        if (fileName) {
+          if ($('importDropZone')) $('importDropZone').classList.add('hidden');
+          if ($('userImportFileCard')) $('userImportFileCard').classList.remove('hidden');
+          if ($('userImportFileName')) $('userImportFileName').textContent = fileName;
+        }
+        const pv = $('previewImportBtn');
+        if (pv) {
+          pv.classList.remove('hidden');
+          pv.disabled = false;
+        }
+        setTimeout(() => window.__reanalyzeImport?.(), 100);
       }
 
       $('userImportFile')?.addEventListener('change', handleFileImport);
@@ -923,9 +1012,9 @@ Bắt đầu ngay từ câu 1.`;
       <div class="subject-stepper" id="subjectStepper">
         <div class="step active" data-step="1"><span>1</span> Thông tin</div>
         <div class="step-line"></div>
-        <div class="step" data-step="2"><span>2</span> Lấy Prompt</div>
+        <div class="step" data-step="2"><span>2</span> Chọn hướng</div>
         <div class="step-line"></div>
-        <div class="step" data-step="3"><span>3</span> Import</div>
+        <div class="step" data-step="3"><span>3</span> Import &amp; kiểm tra</div>
       </div>
 
       <div id="addStep1" class="add-step-content active">
@@ -949,10 +1038,28 @@ Bắt đầu ngay từ câu 1.`;
       </div>
 
       <div id="addStep2" class="add-step-content">
+        <!-- IMPORT_QUALITY_GATE_20260805: hai hướng đi. Trước đây bước 2 chỉ có một đường (lấy
+             prompt), người đã có file sẵn vẫn phải bấm qua màn prompt mới tới ô tải file. -->
+        <div class="importPathFork" id="importPathFork">
+          <button class="importPathCard" type="button" data-import-path="file">
+            <span class="importPathIcon">📄</span>
+            <b>Tài liệu đọc được chữ</b>
+            <span class="importPathDesc">PDF chuẩn, file Word, hoặc JSON / ZIP có sẵn. Hệ thống tự trích xuất văn bản và tách câu hỏi — <b>không cần AI</b>. Dưới ${QUALITY_THRESHOLDS.low}% sai lệch là lưu luôn.</span>
+            <span class="importPathGo">Tải tài liệu lên ➔</span>
+          </button>
+          <button class="importPathCard" type="button" data-import-path="prompt">
+            <span class="importPathIcon">🖼</span>
+            <b>Bản chụp, hoặc có hình ảnh</b>
+            <span class="importPathDesc">PDF scan (ảnh trang giấy), tài liệu có hình phải giữ lại, hoặc PDF không trích xuất được chữ. Nhờ AI chuyển thành JSON + ảnh.</span>
+            <span class="importPathGo">Lấy prompt ➔</span>
+          </button>
+        </div>
+
+        <div class="importPromptRoute hidden" id="importPromptRoute">
         <div class="aiStepCard" style="margin-bottom:0;">
           <p>Copy prompt dưới đây và dán vào AI (Gemini/ChatGPT/Claude) kèm theo tài liệu môn học của bạn.</p>
         </div>
-        
+
         <div class="aiPromptActions">
           <button class="aiCopyBtn" type="button" onclick="window.__copyUserAIPrompt()" id="btnCopyPrompt">📋 Sao chép prompt</button>
           <button class="aiViewPromptBtn" type="button" onclick="window.__openUserAIPromptModal()" id="btnViewPrompt">👁 Xem prompt</button>
@@ -963,10 +1070,11 @@ Bắt đầu ngay từ câu 1.`;
           <a href="https://chatgpt.com" target="_blank" class="aiToolBtn chatgpt">◉ ChatGPT</a>
           <a href="https://claude.ai" target="_blank" class="aiToolBtn claude">◈ Claude</a>
         </div>
+        </div>
 
         <div class="step-actions">
-          <button class="btn" type="button" onclick="window.__switchStep(1)">⬅ Quay lại</button>
-          <button class="primary" type="button" onclick="window.__switchStep(3)">Đã có file, Tiếp tục ➔</button>
+          <button class="btn" type="button" id="importStepBack" onclick="window.__importStepBack()">⬅ Quay lại</button>
+          <button class="primary hidden" type="button" id="promptRouteNext" onclick="window.__switchStep(3)">Đã có file, Tiếp tục ➔</button>
         </div>
       </div>
 
@@ -974,8 +1082,8 @@ Bắt đầu ngay từ câu 1.`;
         <div class="importUnifiedBox">
           <div class="userFileInputWrap" id="importDropZone" onclick="document.getElementById('userImportFile').click()">
             <span class="icon">☁️</span>
-            <p><b>Kéo thả file .json hoặc .zip (gồm JSON & hình ảnh) vào đây</b><br><span style="font-size:0.85rem; opacity:0.6;">Hoặc bấm để chọn file từ máy (.json, .zip, .md, .txt)</span></p>
-            <input type="file" id="userImportFile" accept=".json,.zip,.md,.txt" style="display:none;">
+            <p><b>Kéo thả file PDF, Word, JSON hoặc ZIP vào đây</b><br><span style="font-size:0.85rem; opacity:0.6;">PDF chuẩn / .docx thì hệ thống tự đọc và tách câu hỏi, không cần AI (.pdf, .docx, .json, .zip, .md, .txt)</span></p>
+            <input type="file" id="userImportFile" accept=".pdf,.docx,.json,.zip,.md,.txt" style="display:none;">
           </div>
 
           <textarea id="userImportData" class="hiddenImportData" aria-hidden="true"></textarea>
@@ -988,10 +1096,13 @@ Bắt đầu ngay từ câu 1.`;
             <button class="removeFileBtn" type="button" onclick="window.__clearUserImportFile()">Xóa file</button>
           </div>
 
+          <!-- Bảng chấm độ sai lệch: quyết định cho lưu ngay hay phải đi hướng prompt -->
+          <div class="importQualityPanel hidden" id="importQualityPanel"></div>
+
           <div class="step-actions importStepActions">
             <button class="btn" type="button" onclick="window.__switchStep(2)">⬅ Quay lại</button>
             <div>
-              <button class="btn previewImportBtn hidden" type="button" id="previewImportBtn" onclick="window.__previewUserImport()">Xem trước</button>
+              <button class="btn previewImportBtn hidden" type="button" id="previewImportBtn" onclick="window.__checkImportFile()">Kiểm tra lại</button>
               <button class="primary" type="button" id="userImportBtn" onclick="window.__submitSubjectRequest()" disabled>Lưu Môn Học</button>
             </div>
           </div>
@@ -1001,6 +1112,264 @@ Bắt đầu ngay từ câu 1.`;
       <div class="userApprovalNote" id="userApprovalNote" style="margin-top:15px; display:none;">⏳ Yêu cầu sẽ được gửi cho admin duyệt trước.</div>
     </div>`;
     }
+
+    // ===== IMPORT_QUALITY_GATE_20260805 =====
+    // Hai hướng đi ở bước 2 + cổng chấm độ sai lệch ở bước 3.
+    // Cổng CHỈ mở nút "Lưu Môn Học":
+    //   · tier low    -> mở luôn
+    //   · tier medium -> phải tick #importQualityAccept
+    //   · tier high   -> chặn, mời sang hướng prompt (hoặc tự sửa trong bản xem trước)
+    const IMPORT_PATH_KEY = 'learninghub_add_subject_path_v1';
+
+    /**
+     * IMPORT_PREVIEW_STALE_MODAL_20260805 — đóng HẲN bản xem trước (xoá khỏi DOM).
+     *
+     * Phải xoá chứ không chỉ `.hidden`: modal được dựng lại mỗi lần `__openImportPreviewModal`
+     * chạy, còn khi nó nằm lại trong DOM thì nội dung là của FILE TRƯỚC. Đo được: đang mở bản xem
+     * trước của file 4 câu, thả file 2 câu mới vào → modal vẫn in "4 câu" của file cũ, và nút "Lưu
+     * Môn Học" ngay trong modal đó gửi dữ liệu của file MỚI (chưa ai xem).
+     * Khác `__closeImportPreviewModal`: hàm kia đóng khi người dùng chủ động đóng nên phải chấm lại
+     * theo các sửa tay; hàm này dùng cho lúc dữ liệu bị thay/bị xoá — chấm lại là vô nghĩa.
+     */
+    function hardClosePreviewModal() {
+      document.getElementById('importPreviewModal')?.remove();
+    }
+
+    function syncImportPath(path) {
+      const fork = $('importPathFork');
+      const route = $('importPromptRoute');
+      const next = $('promptRouteNext');
+      const showPrompt = path === 'prompt';
+      if (fork) fork.classList.toggle('hidden', showPrompt);
+      if (route) route.classList.toggle('hidden', !showPrompt);
+      if (next) next.classList.toggle('hidden', !showPrompt);
+    }
+
+    // Phơi ra window vì `PROMPT_STEP_UX_UI_POLISH_20260625` (IIFE khác, phía dưới file) là block
+    // ĐANG CHẠY vẽ #addStep2 — nó dựng lại hai thẻ chọn hướng nên phải gọi lại hàm này sau khi vẽ.
+    window.__syncImportPath = syncImportPath;
+
+    window.__pickImportPath = function (path) {
+      localStorage.setItem(IMPORT_PATH_KEY, path);
+      syncImportPath(path);
+      if (path === 'file') window.__switchStep(3);
+    };
+
+    /** Quay về màn chọn hướng — hướng đã chọn được nhớ nên cần một đường đổi ý. */
+    window.__resetImportPath = function () {
+      localStorage.removeItem(IMPORT_PATH_KEY);
+      syncImportPath('');
+    };
+
+    /*
+      IMPORT_PATH_BACK_TO_FORK_20260806 — nút "⬅ Quay lại" của bước 2 lùi ĐÚNG MỘT BẬC.
+      Bước 2 có hai màn xếp trong nhau: màn chọn hướng, rồi khối prompt của hướng AI. Bản cũ
+      nút này luôn `__switchStep(1)`, nên đang đứng ở khối prompt mà bấm Quay lại là nhảy vọt
+      về bước 1 "Thông tin" — bỏ qua màn chọn hướng, tức không có đường lùi ra để đổi hướng
+      ngoài một nút "⇄ Chọn lại hướng khác" riêng nằm dưới. Nay một nút lo cả hai bậc và nút
+      riêng kia đã xoá (kèm 4 rule `.importPathSwitch` trong app.css).
+    */
+    window.__importStepBack = function () {
+      if ((localStorage.getItem(IMPORT_PATH_KEY) || '') === 'prompt') {
+        window.__resetImportPath();
+        return;
+      }
+      window.__switchStep(1);
+    };
+
+    /** Đẩy người dùng sang hướng prompt (nút trong bảng kết quả khi sai lệch quá cao). */
+    window.__goPromptRoute = function () {
+      window.__pickImportPath('prompt');
+      window.__switchStep(2);
+      $('importPromptRoute')?.scrollIntoView({ block: 'nearest' });
+    };
+
+    /**
+     * IMPORT_SCHEMA_EXPORT_20260806 — tải danh sách câu ĐANG có về máy dưới dạng JSON đúng schema
+     * import. Đây là đường duy nhất xem được kết quả của parser PDF/Word (`docExtract.js`) ở dạng
+     * dữ liệu: trước đây chỉ có bản xem trước trong modal, muốn kiểm 500 câu hoặc đưa file cho
+     * người khác sửa thì không có cách nào lấy ra.
+     *
+     * Đọc `window.__previewImportData` qua `getParsed()` — MỘT chỗ chứa duy nhất
+     * (`ADD_SUBJECT_ONE_STATE_20260805`), nên file tải về luôn khớp thứ đang được chấm điểm và
+     * thứ nút "Lưu Môn Học" sẽ gửi, kể cả sau khi sửa tay trong bản xem trước.
+     */
+    window.__downloadImportJson = function () {
+      const list = getParsed();
+      if (!list.length) {
+        alert('Chưa có câu hỏi nào để xuất. Hãy chọn file rồi kiểm tra trước.');
+        return;
+      }
+      try {
+        const code = ($('addSubjectCode')?.value || '').trim();
+        const blob = new Blob([questionsToImportJson(list)], { type: 'application/json;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = importJsonFileName(code);
+        a.click();
+        URL.revokeObjectURL(a.href);
+        window.notify?.('Đã tải ' + list.length + ' câu ra file JSON');
+      } catch (e) {
+        lhWarn('IMPORT_SCHEMA_EXPORT_20260806', e);
+        alert('Không tạo được file JSON: ' + (e?.message || e));
+      }
+    };
+
+    function qualityPanelHTML(report) {
+      const v = report.verdict;
+      const nb = report.numbering;
+      // IMPORT_NUM_BLANK_OK_20260805: file không có trường `num` (Quizlet, DOCX) là chuyện bình
+      // thường — nói rõ hệ thống tự đánh số, đừng in "0 câu liên tục từ 1".
+      const blank = nb.blankCount || 0;
+      const numLine = nb.ok
+        ? blank && !nb.mainCount && !nb.variantCount
+          ? `File không có số câu — hệ thống sẽ tự đánh số 1…${blank} theo đúng thứ tự trong file.`
+          : (blank ? `${blank} câu để trống số (hệ thống tự đánh) · ` : '') +
+            (nb.variantCount
+              ? `${nb.mainCount} câu gốc liên tục + ${nb.variantCount} biến thể dạng "X.1".`
+              : `${nb.mainCount} câu liên tục từ 1.`)
+        : `Đánh số có ${nb.problems.length} chỗ sai: ` +
+          esc(
+            nb.problems
+              .slice(0, 3)
+              .map(p => 'câu ' + p.num + ' — ' + p.msg)
+              .join(' · '),
+          ) +
+          (nb.problems.length > 3 ? ` …còn ${nb.problems.length - 3} chỗ` : '');
+
+      const groups = report.groups
+        .map(
+          g => `<li class="iqIssue iqSev-${g.sev}">
+            <span class="iqIssueTag">${esc(severityLabel(g.sev))}</span>
+            <span class="iqIssueBody">
+              <b>${esc(g.label)}</b> <span class="iqIssueCount">${g.count} câu</span>
+              <span class="iqIssueHint">${esc(g.hint)}</span>
+              ${g.nums.length ? `<span class="iqIssueNums">Câu: ${esc(g.nums.join(', '))}</span>` : ''}
+            </span>
+          </li>`,
+        )
+        .join('');
+
+      // IMPORT_PREVIEW_REOPEN_20260805: MỌI mức đều phải có đường mở lại bản xem trước. Trước đây
+      // chỉ tier `high` có nút này: đóng bản xem trước của file tier low/medium là mất luôn đường
+      // vào các nút "Sửa" nội tuyến — nút "Kiểm tra lại" chỉ chấm lại chứ không mở modal.
+      const openPreviewBtn = report.total
+        ? `<button class="btn" type="button" onclick="window.__openImportPreviewModal(window.__previewImportData||[])">${
+            report.tier === 'high' ? `Sửa tay ${report.rows.length} câu này` : `👁 Xem lại ${report.total} câu`
+          }</button>`
+        : '';
+
+      // IMPORT_SCHEMA_EXPORT_20260806: có ở MỌI mức, kể cả `high` — file bị chặn mới là file cần
+      // mang ra ngoài để xem parser đọc sai ở đâu.
+      const exportJsonBtn = report.total
+        ? `<button class="btn" type="button" title="Tải file JSON đúng schema import — mở ra xem hoặc nhập lại được" onclick="window.__downloadImportJson()">⬇ Xuất JSON</button>`
+        : '';
+
+      const actions =
+        report.tier === 'high'
+          ? `<div class="iqActions">
+              ${openPreviewBtn}
+              ${exportJsonBtn}
+              <button class="primary iqRouteBtn" type="button" onclick="window.__goPromptRoute()">➔ Chuyển sang hướng Prompt</button>
+             </div>`
+          : report.tier === 'medium'
+            ? `<div class="iqActions">${openPreviewBtn}${exportJsonBtn}</div>
+               <label class="iqAccept"><input type="checkbox" id="importQualityAccept"> Tôi đã xem danh sách trên và chấp nhận lưu môn với mức sai lệch này.</label>`
+            : `<div class="iqActions">${openPreviewBtn}${exportJsonBtn}</div>`;
+
+      // IMPORT_QUALITY_SCORE_BOX_20260805: câu chặn cứng KHÔNG cộng điểm sai lệch (xem
+      // `analyzeImport`), nên file mà mọi câu đều thiếu dữ liệu vẫn ra 0%. Ô điểm to in "0% sai
+      // lệch" trên nền đỏ đọc thành "file sạch mà vẫn bị chặn" — đo được đúng ca đó với file 2 câu
+      // thiếu đề bài. Có câu chặn cứng thì in số câu bị chặn; phần trăm vẫn còn ở hàng `iqMeta`.
+      return `<div class="iqHead iq-${v.cls}">
+          <span class="iqIcon">${esc(v.icon)}</span>
+          <div class="iqHeadText">
+            <b>${esc(v.title)}</b>
+            <span>${esc(v.sub)}</span>
+          </div>
+          <div class="iqScore">
+            <b>${report.fatalCount ? report.fatalCount : report.deviationPct + '%'}</b>
+            <span>${report.fatalCount ? 'câu bị chặn' : 'sai lệch'}</span>
+          </div>
+        </div>
+        <div class="iqMeta">
+          <span><b>${report.total}</b> câu đọc được</span>
+          <span><b>${report.rows.length}</b> câu có vấn đề</span>
+          <span><b>${report.fatalCount}</b> câu thiếu dữ liệu bắt buộc</span>
+          ${report.fatalCount ? `<span>sai lệch <b>${report.deviationPct}%</b></span>` : ''}
+          <span class="iqThreshold">Ngưỡng: ≤${QUALITY_THRESHOLDS.low}% chấp nhận · ≤${QUALITY_THRESHOLDS.medium}% cần xác nhận · trên đó phải dùng prompt</span>
+        </div>
+        <div class="iqNumbering ${nb.ok ? 'ok' : 'bad'}">🔢 ${numLine}</div>
+        ${groups ? `<ul class="iqIssues">${groups}</ul>` : '<div class="iqClean">Không phát hiện vấn đề nào.</div>'}
+        ${actions}`;
+    }
+
+    /** Chấm điểm `list`, vẽ bảng, rồi mở/chặn nút Lưu. Trả về report. */
+    function applyImportQuality(list) {
+      const report = analyzeImport(list);
+      window.__importQualityReport = report;
+
+      const panel = $('importQualityPanel');
+      if (panel) {
+        panel.className = 'importQualityPanel iqTier-' + report.tier;
+        panel.innerHTML = qualityPanelHTML(report);
+        const cb = $('importQualityAccept');
+        if (cb) cb.addEventListener('change', () => gateSaveButton(report, cb.checked));
+      }
+      gateSaveButton(report, false);
+
+      const metaEl = $('userImportFileMeta');
+      if (metaEl) {
+        metaEl.textContent =
+          report.total +
+          ' câu · sai lệch ' +
+          report.deviationPct +
+          '% · ' +
+          (report.tier === 'low' ? 'chấp nhận' : report.tier === 'medium' ? 'cần bạn xác nhận' : 'phải dùng prompt');
+      }
+      return report;
+    }
+
+    function gateSaveButton(report, accepted) {
+      const btn = $('userImportBtn');
+      if (!btn) return;
+      const allow = report.tier === 'low' || (report.tier === 'medium' && accepted);
+      btn.disabled = !allow;
+      btn.title = allow
+        ? ''
+        : report.tier === 'medium'
+          ? 'Hãy tick xác nhận đã xem danh sách câu nghi lỗi.'
+          : 'Sai lệch quá cao — sửa các câu bị báo hoặc chuyển sang hướng prompt.';
+    }
+
+    window.__reanalyzeImport = function () {
+      const list = getParsed();
+      if (!list.length) return null;
+      return applyImportQuality(list);
+    };
+
+    /**
+     * Nút "Kiểm tra lại". PHẢI chấm lại trên danh sách đang có, không gọi `__previewUserImport()` —
+     * hàm đó đọc lại từ file thô nên mọi sửa tay trong bản xem trước (nhánh sửa nội tuyến) sẽ bị
+     * mất trắng.
+     */
+    window.__checkImportFile = function () {
+      if (getParsed().length) return window.__reanalyzeImport();
+      return window.__previewUserImport();
+    };
+
+    window.__resetImportQualityPanel = function () {
+      const panel = $('importQualityPanel');
+      if (panel) {
+        panel.className = 'importQualityPanel hidden';
+        panel.innerHTML = '';
+      }
+      window.__importQualityReport = null;
+      // IMPORT_PREVIEW_STALE_MODAL_20260805: bảng chấm điểm biến mất thì bản xem trước cũng phải
+      // biến mất — hai thứ nói về cùng một file.
+      hardClosePreviewModal();
+    };
+    // ===== IMPORT_QUALITY_GATE_20260805 END =====
 
     // Logic chuyển bước & Khởi tạo tính năng kéo thả
     window.__switchStep = function (step) {
@@ -1034,6 +1403,10 @@ Bắt đầu ngay từ câu 1.`;
         if (s <= step) el.classList.add('active');
         else el.classList.remove('active');
       });
+
+      // IMPORT_QUALITY_GATE_20260805: quay lại bước 2 thì trả về màn chọn hướng, không giữ
+      // nguyên khối prompt đang mở — nếu không thì lần sau vào bước 2 mất luôn hai thẻ chọn.
+      if (step === 2) syncImportPath(localStorage.getItem(IMPORT_PATH_KEY) || '');
 
       // Kích hoạt tính năng kéo thả file ở Bước 3
       if (step === 3 && !window._dropZoneInit) {
@@ -1074,9 +1447,119 @@ Bắt đầu ngay từ câu 1.`;
       }
     };
 
+    /**
+     * DOC_EXTRACT_DIRECT_20260805 — nhánh "đọc trực tiếp PDF chuẩn / Word", không qua AI.
+     * Nằm TRƯỚC nhánh .zip và .json trong `handleFileImport` vì nó là hướng đi mặc định của thẻ
+     * bên trái ở bước 2. PDF không có văn bản (bản chụp) thì KHÔNG cố parse — mời sang hướng AI.
+     */
+    async function handleDirectDocImport(file, kind) {
+      window.__selectedImportFile = null;
+      localStorage.setItem('learninghub_add_subject_file_name_v1', file.name);
+      localStorage.setItem('learninghub_add_subject_file_size_v1', String(file.size));
+      // Không nhét nội dung tài liệu vào localStorage: PDF vài MB là vượt hạn mức ngay.
+      localStorage.removeItem('learninghub_add_subject_file_data_v1');
+      localStorage.removeItem('learninghub_add_subject_file_previewed_v1');
+      if ($('userImportData')) $('userImportData').value = '';
+
+      const dropZone = $('importDropZone');
+      const card = $('userImportFileCard');
+      const nameEl = $('userImportFileName');
+      const metaEl = $('userImportFileMeta');
+      if (dropZone) dropZone.classList.add('hidden');
+      if (card) card.classList.remove('hidden');
+      if (nameEl) nameEl.textContent = file.name;
+      if (metaEl) metaEl.textContent = 'Đang đọc ' + (kind === 'pdf' ? 'PDF' : 'file Word') + '...';
+      const saveBtn = $('userImportBtn');
+      if (saveBtn) saveBtn.disabled = true;
+      setParsed([]);
+      window.__resetImportQualityPanel?.();
+      window.notify('Đang đọc ' + file.name + ' — không cần AI.');
+
+      let report;
+      try {
+        report = await extractFromFile(file, { JSZip });
+      } catch (err) {
+        lhWarn('DOC_EXTRACT_DIRECT_20260805', err);
+        if (metaEl) metaEl.textContent = 'Đọc file thất bại';
+        alert(
+          'Không đọc được file này:\n' +
+            (err?.message || err) +
+            '\n\nHãy thử hướng "PDF scan / có hình ảnh" để nhờ AI chuyển.',
+        );
+        return;
+      }
+
+      if (report.isScan) {
+        if (metaEl) metaEl.textContent = report.pageCount + ' trang · không có văn bản (bản chụp)';
+        showScanNotice(report);
+        return;
+      }
+
+      if (!report.questions.length) {
+        if (metaEl) metaEl.textContent = 'Không tách được câu hỏi nào';
+        showScanNotice(report, true);
+        return;
+      }
+
+      normalizeImportedQuestions(report.questions);
+      setParsed(report.questions);
+      window.__previewSelections = {};
+      window.__lastDirectExtract = report;
+
+      const q = applyImportQuality(report.questions);
+      const pv = $('previewImportBtn');
+      if (pv) {
+        pv.classList.remove('hidden');
+        pv.disabled = false;
+      }
+      if (q.tier === 'high') {
+        window.notify('Đọc được ' + report.questions.length + ' câu, sai lệch ' + q.deviationPct + '%');
+        return;
+      }
+      window.__openImportPreviewModal(report.questions);
+      window.notify('Đọc trực tiếp xong: ' + report.questions.length + ' câu hỏi');
+    }
+
+    /** Bảng "file này phải đi hướng AI" — dùng chung cho PDF scan và PDF đọc được nhưng không tách được câu. */
+    function showScanNotice(report, parsedEmpty) {
+      const panel = $('importQualityPanel');
+      if (!panel) return;
+      panel.className = 'importQualityPanel iqTier-high';
+      panel.innerHTML = `<div class="iqHead iq-bad">
+          <span class="iqIcon">🖼</span>
+          <div class="iqHeadText">
+            <b>${parsedEmpty ? 'Đọc được chữ nhưng không tách được câu hỏi' : 'File này là bản chụp, không có văn bản'}</b>
+            <span>${
+              parsedEmpty
+                ? 'Tài liệu không theo dạng "đề bài → A. B. C. D. → đáp án" nên không tách tự động được.'
+                : 'PDF gồm ảnh trang giấy nên không trích xuất chữ trực tiếp được.'
+            }</span>
+          </div>
+        </div>
+        <div class="iqMeta">
+          <span><b>${report.pageCount}</b> trang</span>
+          <span><b>${report.charsPerPage}</b> ký tự/trang${parsedEmpty ? '' : ` (dưới ngưỡng ${SCAN_CHARS_PER_PAGE})`}</span>
+        </div>
+        <div class="iqActions">
+          <button class="primary iqRouteBtn" type="button" onclick="window.__goPromptRoute()">➔ Chuyển sang hướng AI</button>
+        </div>`;
+      gateSaveButton({ tier: 'high', deviationPct: 100, fatalCount: 0 }, false);
+    }
+
     function handleFileImport(e) {
       const file = e.target.files?.[0];
       if (!file) return;
+
+      // IMPORT_PREVIEW_STALE_MODAL_20260805: file mới thì bản xem trước của file cũ phải đóng NGAY,
+      // trước cả khi đọc — nếu không, quãng đọc file (PDF vài giây) người dùng vẫn đang nhìn danh
+      // sách câu của file trước kèm nút "Lưu Môn Học" của nó.
+      hardClosePreviewModal();
+
+      const directKind = directExtractKind(file.name);
+      if (directKind) {
+        handleDirectDocImport(file, directKind);
+        return;
+      }
 
       if (file.name.toLowerCase().endsWith('.zip')) {
         window.__selectedImportFile = file;
@@ -1094,7 +1577,7 @@ Bắt đầu ngay từ câu 1.`;
         if (nameEl) nameEl.textContent = file.name;
         if (metaEl)
           metaEl.textContent =
-            (file.size / (1024 * 1024)).toFixed(1) + ' MB · File ZIP (JSON & ảnh) · Sẵn sàng xem trước';
+            (file.size / (1024 * 1024)).toFixed(1) + ' MB · File ZIP (JSON & ảnh) · Sẵn sàng kiểm tra';
         const pv = $('previewImportBtn');
         if (pv) {
           pv.classList.remove('hidden');
@@ -1102,8 +1585,10 @@ Bắt đầu ngay từ câu 1.`;
         }
         const saveBtn = $('userImportBtn');
         if (saveBtn) saveBtn.disabled = true;
-        parsedQuestions = [];
-        window.notify('Đã chọn file ZIP ' + file.name + '. Bấm Xem trước để kiểm tra & giải nén.');
+        setParsed([]);
+        window.__resetImportQualityPanel?.();
+        window.notify('Đã chọn file ZIP ' + file.name + '. Đang giải nén & kiểm tra...');
+        setTimeout(() => window.__previewUserImport?.(), 30);
         return;
       }
 
@@ -1134,7 +1619,7 @@ Bắt đầu ngay từ câu 1.`;
         if (dropZone) dropZone.classList.add('hidden');
         if (card) card.classList.remove('hidden');
         if (nameEl) nameEl.textContent = file.name;
-        if (metaEl) metaEl.textContent = Math.max(1, Math.round(file.size / 1024)) + ' KB · Sẵn sàng xem trước';
+        if (metaEl) metaEl.textContent = Math.max(1, Math.round(file.size / 1024)) + ' KB · Sẵn sàng kiểm tra';
         const pv = $('previewImportBtn');
         if (pv) {
           pv.classList.remove('hidden');
@@ -1142,8 +1627,12 @@ Bắt đầu ngay từ câu 1.`;
         }
         const saveBtn = $('userImportBtn');
         if (saveBtn) saveBtn.disabled = true;
-        parsedQuestions = [];
-        window.notify('Đã đọc file ' + file.name + '. Bấm Xem trước để kiểm tra.');
+        setParsed([]);
+        window.__resetImportQualityPanel?.();
+        // IMPORT_QUALITY_GATE_20260805: chấm điểm ngay, khỏi bắt bấm thêm một nút. Nút "Kiểm tra
+        // lại" giữ lại để chấm lại sau khi sửa tay trong bản xem trước.
+        window.notify('Đã đọc file ' + file.name + '. Đang kiểm tra dữ liệu...');
+        setTimeout(() => window.__previewUserImport?.(), 30);
       };
       reader.readAsText(file);
     }
@@ -1245,7 +1734,16 @@ Bắt đầu ngay từ câu 1.`;
     };
     // ===== END QUIZLET_IMPORT_AUTODETECT_20260701 =====
 
-    window.__previewUserImport = async function () {
+    /**
+     * Đọc lại file thô → chuẩn hoá → chấm điểm → mở bản xem trước.
+     *
+     * IMPORT_RESTORE_NO_POPUP_20260805: `opts.silent` = chỉ chấm điểm, KHÔNG bung modal và không
+     * `notify`. Dùng cho lúc khôi phục trạng thái (mở lại tab "Thêm môn mới", F5): trước đây mỗi
+     * lần đổi tab qua lại là bản xem trước tự bung ra giữa màn hình dù người dùng chỉ muốn xem danh
+     * sách môn — đo được modal mở lại sau mỗi lượt `list` → `add`.
+     */
+    window.__previewUserImport = async function (opts) {
+      const silent = !!(opts && opts.silent);
       if (window.__selectedImportFile && window.__selectedImportFile.name.toLowerCase().endsWith('.zip')) {
         try {
           const importer = window.LHSubjectImport;
@@ -1289,8 +1787,7 @@ Bắt đầu ngay từ câu 1.`;
           }
 
           const questions = parsedZipData.questions;
-          window.__previewImportData = questions;
-          parsedQuestions = questions;
+          setParsed(questions);
           localStorage.setItem('learninghub_add_subject_file_previewed_v1', 'true');
 
           const codeInp = $('addSubjectCode');
@@ -1298,11 +1795,15 @@ Bắt đầu ngay từ câu 1.`;
             codeInp.value = parsedZipData.suggestedCode;
           }
 
-          const metaEl = $('userImportFileMeta');
-          if (metaEl) metaEl.textContent = questions.length + ' câu hỏi đã kiểm tra · Sẵn sàng lưu';
-          const btn = $('userImportBtn');
-          if (btn) btn.disabled = false;
+          // IMPORT_QUALITY_GATE_20260805: chấm điểm rồi mới quyết định có mở nút Lưu hay không.
+          // Bản cũ ở đây `btn.disabled = false` vô điều kiện — file rác cũng lưu được.
+          const report = applyImportQuality(questions);
 
+          if (silent) return;
+          if (report.tier === 'high') {
+            window.notify('Sai lệch ' + report.deviationPct + '% — xem bảng kiểm tra bên dưới');
+            return;
+          }
           // Mở giao diện Import chuẩn của Learning Hub
           window.__openImportPreviewModal(questions);
           window.notify('OK! ' + questions.length + ' câu hỏi sẵn sàng');
@@ -1313,7 +1814,6 @@ Bắt đầu ngay từ câu 1.`;
       }
 
       const raw = ($('userImportData')?.value || '').trim();
-      const btn = $('userImportBtn');
       if (!raw) {
         alert('Bạn hãy chọn file .zip / .json / .md / .txt trước.');
         return;
@@ -1355,170 +1855,41 @@ Bắt đầu ngay từ câu 1.`;
         }
       }
 
-      const errors = [];
-      data.forEach((q, i) => {
-        if (!q.question) errors.push('Câu ' + (i + 1) + ': thiếu "question"');
-        if (!q.options || typeof q.options !== 'object') errors.push('Câu ' + (i + 1) + ': thiếu "options"');
-        if (!q.answer) errors.push('Câu ' + (i + 1) + ': thiếu "answer"');
-      });
-      if (errors.length) {
-        localStorage.removeItem('learninghub_add_subject_file_previewed_v1');
-        alert('Dữ liệu có lỗi:\n\n' + errors.slice(0, 10).join('\n'));
-        return;
-      }
+      // IMPORT_QUALITY_GATE_20260805: bản cũ chỉ có 3 phép kiểm rồi `alert` một danh sách chuỗi
+      // (thiếu question / options / answer) và bật nút Lưu. Nay chuẩn hoá hình dạng như nhánh .zip
+      // rồi để bảng chấm điểm quyết định — 3 phép kiểm cũ nằm trong nhóm "chặn cứng" của bộ chấm.
+      normalizeImportedQuestions(data);
 
       localStorage.setItem('learninghub_add_subject_file_previewed_v1', 'true');
-      parsedQuestions = data;
+      setParsed(data);
       window.__previewSelections = {};
-      const metaEl = $('userImportFileMeta');
-      if (metaEl) metaEl.textContent = data.length + ' câu hỏi đã kiểm tra · Có thể lưu';
-      if (btn) btn.disabled = false;
+      const report = applyImportQuality(data);
+      if (silent) return report;
+      if (report.tier === 'high') {
+        window.notify('Sai lệch ' + report.deviationPct + '% — xem bảng kiểm tra bên dưới');
+        return;
+      }
       window.__openImportPreviewModal(data);
       window.notify('OK! ' + data.length + ' câu hỏi sẵn sàng');
     };
 
     window.__closeImportPreviewModal = function () {
       document.getElementById('importPreviewModal')?.classList.add('hidden');
+      // IMPORT_QUALITY_GATE_20260805: người dùng vừa có thể sửa tay trong bản xem trước, chấm lại
+      // để bảng kết quả và nút Lưu khớp với dữ liệu hiện tại.
+      window.__reanalyzeImport?.();
     };
 
-    window.__submitSubjectRequest = async function () {
-      const code = ($('addSubjectCode')?.value || '').trim().toUpperCase();
-      const name = ($('addSubjectName')?.value || '').trim();
-      const desc = ($('addSubjectDesc')?.value || '').trim();
-
-      if (!code) {
-        alert('Vui lòng nhập mã môn');
-        $('addSubjectCode')?.focus();
-        return;
-      }
-      if (!/^[A-Z0-9_]{2,20}$/.test(code)) {
-        alert('Mã môn chỉ gồm chữ, số, gạch dưới (2-20 ký tự)');
-        $('addSubjectCode')?.focus();
-        return;
-      }
-      if (!name) {
-        alert('Vui lòng nhập tên môn');
-        $('addSubjectName')?.focus();
-        return;
-      }
-      if (!parsedQuestions.length) {
-        alert('Bạn cần chọn file và bấm Xem trước trước khi lưu môn học.');
-        return;
-      }
-
-      const c = client();
-      if (!c) {
-        alert('Chưa kết nối Supabase');
-        return;
-      }
-
-      const btn = $('userImportBtn');
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Đang lưu...';
-      }
-
-      // Hiển thị thanh tiến trình ngay từ khi bắt đầu
-      window.showProgress('Bắt đầu khởi tạo môn học...', 0, 100, 'Đang chuẩn bị dữ liệu...');
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      try {
-        // Cho phép trùng mã môn + tên môn (nhiều bộ câu hỏi cùng mã)
-
-        let successMsg = '';
-        if (isAdminOrEditor()) {
-          // Cho phép thêm nhiều môn cùng mã gốc: HOD102, HOD102_2, HOD102_3...
-          // Như vậy không bị lỗi trùng câu số 1,2,3... trong database.
-          // Tạo môn + nhập toàn bộ câu hỏi (kèm ảnh) trên Turso qua 1 action.
-          window.showProgress('Đang lưu môn học...', 50, 100, 'Đang tạo môn và nhập câu hỏi lên máy chủ...');
-          const u0 = window.HODSupabase?.getUser?.();
-          const res = await fetch('/api/admin-action', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            cache: 'no-store',
-            body: JSON.stringify({
-              user_id: u0?.id,
-              action: 'add_subject',
-              payload: { code, name: name || code, description: desc || '', questions: parsedQuestions || [] },
-            }),
-          });
-          const out = await res.json().catch(() => ({}));
-          if (!res.ok || out.error) {
-            alert('Lỗi tạo môn: ' + (out.error || res.status));
-            return;
-          }
-          const finalCode = out.code || code;
-          const success = (parsedQuestions || []).length;
-          successMsg = 'Đã thêm môn ' + finalCode + ' với ' + success + ' câu hỏi';
-          try {
-            const key = 'learninghub_subject_counts_cache_v3';
-            const store = JSON.parse(localStorage.getItem(key) || '{}') || {};
-            store.counts = store.counts || {};
-            store.confirmed = store.confirmed || {};
-            store.counts[finalCode] = success;
-            store.confirmed[finalCode] = true;
-            store.updated_at = new Date().toISOString();
-            localStorage.setItem(key, JSON.stringify(store));
-            localStorage.setItem('learninghub_subjects_dirty_v3', String(Date.now()));
-            localStorage.removeItem('learninghub_subjects_cache_v1');
-            sessionStorage.removeItem('learninghub_subject_counts_cache_v1');
-            window.clearLearningHubSupabaseCache?.('subjects');
-            window.clearLearningHubSupabaseCache?.('questions');
-          } catch (e) {
-            lhWarn('appCore', e);
-          }
-          alert(successMsg);
-          window.notify(successMsg);
-          window.__switchSubjectGateTab('list');
-          try {
-            $('subjectRefresh')?.click();
-            setTimeout(() => $('subjectRefresh')?.click(), 5600);
-            setTimeout(() => window.refreshSubjectCountsOnce?.(), 6500);
-          } catch (e) {
-            lhWarn('appCore', e);
-          }
-        } else {
-          // Học viên/User gửi request: Hiển thị thanh tiến trình khi upload tệp tin lớn
-          window.showProgress('Đang gửi yêu cầu tạo môn học...', 50, 100, 'Đang tải dữ liệu câu hỏi lên máy chủ...');
-          await new Promise(resolve => setTimeout(resolve, 100));
-
-          const u = window.HODSupabase?.getUser?.();
-          const res = await fetch('/api/admin-action', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            cache: 'no-store',
-            body: JSON.stringify({
-              user_id: u?.id,
-              action: 'add_subject_request',
-              payload: { code, name, description: desc || '', questions_data: parsedQuestions || [] },
-            }),
-          });
-          const out = await res.json().catch(() => ({}));
-          if (!res.ok || out.error) {
-            alert('Lỗi gửi yêu cầu: ' + (out.error || res.status));
-            return;
-          }
-          successMsg = 'Đã gửi yêu cầu thêm môn ' + code + '. Vui lòng chờ admin duyệt.';
-          alert(successMsg);
-          window.notify(successMsg);
-          window.__switchSubjectGateTab('list');
-        }
-
-        parsedQuestions = [];
-        document.getElementById('importPreviewModal')?.classList.add('hidden');
-        clearAddSubjectLocalStorage();
-      } catch (e) {
-        console.warn('Add subject error:', e);
-        alert('Lỗi khi lưu môn học: ' + (e?.message || e));
-        window.notify('Lỗi khi lưu môn học');
-      } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = 'Lưu Môn Học';
-        }
-        window.hideProgress();
-      }
-    };
+    /**
+     * ADD_SUBJECT_ONE_SAVE_PATH_20260805 — bản `__submitSubjectRequest` từng nằm ở đây đã XOÁ (155
+     * dòng, trước có chú thích `DEAD_OVERRIDE_20260805`). Nó là code chết vì
+     * `FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701` (cuối file) gán lại cùng tên — nhưng đọc code
+     * thì hai bản giống nhau tới mức rất dễ sửa vào bản chết: cũng validate mã/tên, cũng chốt cổng
+     * chấm điểm, cũng gọi `add_subject` / `add_subject_request`.
+     * **Bản duy nhất còn sống ở `installFastParallelUpload()`** — sửa luồng lưu môn thì mở đúng nó.
+     * Việc dọn localStorage sau khi lưu nay nằm ở `window.__resetAddSubjectForm()` phía trên: bản
+     * chết là chỗ DUY NHẤT gọi hàm dọn cũ, nên bản sống chưa từng dọn mã/tên/mô tả/bước.
+     */
 
     window.__closeAddSubject = function () {
       window.__switchSubjectGateTab('list');
@@ -1526,6 +1897,14 @@ Bắt đầu ngay từ câu 1.`;
 
     function bind() {
       $('addSubjectBtn')?.addEventListener('click', () => window.__switchSubjectGateTab('add'));
+      // IMPORT_QUALITY_GATE_20260805: hai thẻ chọn hướng được dựng lại mỗi lần mở tab "Thêm môn"
+      // nên nghe nổi (delegate) ở document, không gắn trực tiếp vào từng thẻ.
+      document.addEventListener('click', e => {
+        const card = e.target?.closest?.('[data-import-path]');
+        if (!card) return;
+        e.preventDefault();
+        window.__pickImportPath(card.getAttribute('data-import-path'));
+      });
       showAddBtn();
       setInterval(showAddBtn, 2000);
     }
@@ -1678,6 +2057,15 @@ export function installImportPreviewInlineEdit() {
         previewBtn.disabled = true;
       }
       if (saveBtn) saveBtn.disabled = true;
+      // ADD_SUBJECT_ONE_STATE_20260805: xóa file thì xóa luôn DANH SÁCH CÂU. Trước đây hàm này chỉ
+      // dọn phần hiển thị, còn `window.__previewImportData` giữ nguyên câu của file vừa xóa — nút
+      // Lưu đang xám nên chưa lộ ra, nhưng `readQuestions()` của bản lưu vẫn đọc được mảng đó và
+      // `restoreAddSubjectState()` sẽ chấm lại nó khi mở lại tab.
+      window.__previewImportData = [];
+      // IMPORT_QUALITY_GATE_20260805: xóa file thì xóa luôn bảng chấm điểm của file cũ, không thì
+      // người dùng thấy verdict "chấp nhận" trong khi ô file đã trống.
+      // (`__resetImportQualityPanel` đóng luôn bản xem trước — xem IMPORT_PREVIEW_STALE_MODAL.)
+      window.__resetImportQualityPanel?.();
 
       localStorage.removeItem('learninghub_add_subject_file_name_v1');
       localStorage.removeItem('learninghub_add_subject_file_size_v1');
@@ -1717,7 +2105,28 @@ export function installImportPreviewInlineEdit() {
       if (!step || step.dataset.promptPolished === '1') return;
       step.dataset.promptPolished = '1';
       step.classList.add('promptPolished');
+      // IMPORT_QUALITY_GATE_20260805: ĐÂY là bản đang chạy của bước 2 — nó ghi đè toàn bộ
+      // innerHTML của #addStep2 mà `getAddSubjectHTML()` dựng ra, nên hai thẻ chọn hướng phải
+      // nằm ở đây (sửa vào bản dựng kia là không thấy gì trên web).
+      // Khối .promptMiniGuide cũ đã bỏ: `REMOVE_PROMPT_GUIDE_ROWS_20260625` vốn xóa nó ở mọi cú
+      // bấm nên nó là markup chết, và dòng "Tải file .md / .txt" giờ cũng sai (đã nhận .zip).
       step.innerHTML = `
+      <div class="importPathFork" id="importPathFork">
+        <button class="importPathCard" type="button" data-import-path="file">
+          <span class="importPathIcon">📄</span>
+          <b>Tài liệu đọc được chữ</b>
+          <span class="importPathDesc">PDF chuẩn, file Word, hoặc JSON / ZIP có sẵn. Hệ thống tự trích xuất văn bản và tách câu hỏi — <b>không cần AI</b>. Dưới ${QUALITY_THRESHOLDS.low}% sai lệch là lưu luôn.</span>
+          <span class="importPathGo">Tải tài liệu lên ➔</span>
+        </button>
+        <button class="importPathCard" type="button" data-import-path="prompt">
+          <span class="importPathIcon">🖼</span>
+          <b>Bản chụp, hoặc có hình ảnh</b>
+          <span class="importPathDesc">PDF scan (ảnh trang giấy), tài liệu có hình phải giữ lại, hoặc PDF không trích xuất được chữ. Nhờ AI chuyển thành JSON + ảnh.</span>
+          <span class="importPathGo">Lấy prompt ➔</span>
+        </button>
+      </div>
+
+      <div class="importPromptRoute hidden" id="importPromptRoute">
       <div class="promptStepGrid">
         <section class="promptMainCard">
           <div class="promptEyebrow">Bước 2 · Tạo file câu hỏi</div>
@@ -1727,12 +2136,6 @@ export function installImportPreviewInlineEdit() {
           <div class="promptActionGrid">
             <button class="aiCopyBtn" type="button" onclick="window.__copyUserAIPrompt()" id="btnCopyPrompt">📋 Sao chép prompt</button>
             <button class="aiViewPromptBtn" type="button" onclick="window.__openUserAIPromptModal()" id="btnViewPrompt">👁 Xem prompt</button>
-          </div>
-
-          <div class="promptMiniGuide">
-            <div class="guideRow"><div class="guideNum">1</div><div><b>Copy prompt</b><span>Prompt đã có sẵn format JSON đúng cho hệ thống.</span></div></div>
-            <div class="guideRow"><div class="guideNum">2</div><div><b>Dán vào AI + gửi tài liệu</b><span>Gửi PDF, Word, slide hoặc nội dung môn học cho AI.</span></div></div>
-            <div class="guideRow"><div class="guideNum">3</div><div><b>Tải file .md / .txt</b><span>Sau khi AI tạo xong, qua bước Import để lưu môn học.</span></div></div>
           </div>
         </section>
 
@@ -1746,12 +2149,15 @@ export function installImportPreviewInlineEdit() {
           <div class="promptNoteBox">Mẹo: nếu tài liệu dài, hãy yêu cầu AI tạo từng phần rồi gộp lại thành một file JSON.</div>
         </aside>
       </div>
+      </div>
 
       <div class="step-actions">
-        <button class="btn" type="button" onclick="window.__switchStep(1)">⬅ Quay lại</button>
-        <button class="primary" type="button" onclick="window.__switchStep(3)">Đã có file, tiếp tục ➔</button>
+        <button class="btn" type="button" id="importStepBack" onclick="window.__importStepBack()">⬅ Quay lại</button>
+        <button class="primary hidden" type="button" id="promptRouteNext" onclick="window.__switchStep(3)">Đã có file, tiếp tục ➔</button>
       </div>
     `;
+      // Lần đầu polish chạy là SAU khi __switchStep đã sync trên DOM cũ, nên phải sync lại ở đây.
+      window.__syncImportPath?.(localStorage.getItem('learninghub_add_subject_path_v1') || '');
     }
     const oldSwitch = window.__switchStep;
     window.__switchStep = function (step) {
@@ -3329,11 +3735,19 @@ export function installImportPreviewInlineEdit() {
         return;
       }
       if (e.target.closest('[data-v7-close]')) {
-        document.getElementById('importPreviewModal')?.classList.add('hidden');
+        // IMPORT_PREVIEW_CLOSE_RESCORE_20260805: đóng bằng dấu × phải đi qua
+        // `__closeImportPreviewModal` để CHẤM LẠI. Bản cũ chỉ `.hidden` nên vừa sửa tay xong (nút
+        // "Sửa" trong modal) mà đóng bằng × là bảng chấm điểm + nút Lưu vẫn giữ điểm của dữ liệu
+        // TRƯỚC khi sửa: sửa hết câu lỗi rồi mà nút Lưu vẫn xám.
+        if (typeof window.__closeImportPreviewModal === 'function') window.__closeImportPreviewModal();
+        else document.getElementById('importPreviewModal')?.classList.add('hidden');
         return;
       }
       if (e.target.closest('[data-v7-submit]')) {
-        document.getElementById('importPreviewModal')?.classList.add('hidden');
+        // Đi qua đúng đường của nút × (chấm lại) rồi mới lưu: `__submitSubjectRequest` cần bảng
+        // chấm điểm và ô tick xác nhận khớp với dữ liệu hiện tại để quyết định cho lưu hay không.
+        if (typeof window.__closeImportPreviewModal === 'function') window.__closeImportPreviewModal();
+        else document.getElementById('importPreviewModal')?.classList.add('hidden');
         window.__submitSubjectRequest?.();
         return;
       }
@@ -3622,7 +4036,9 @@ export function installFastParallelUpload() {
     }
 
     function readQuestions() {
-      let arr = window.__previewImportData || window.__LH_LAST_PREVIEW_IMPORT_DATA || [];
+      // ADD_SUBJECT_ONE_STATE_20260805: bỏ nhánh dự phòng `window.__LH_LAST_PREVIEW_IMPORT_DATA` —
+      // không nơi nào GÁN tên đó (grep cả src/), nó chỉ làm người đọc tưởng có nguồn thứ hai.
+      let arr = window.__previewImportData || [];
       if (!Array.isArray(arr) || !arr.length) {
         try {
           let s = String(
@@ -3672,11 +4088,18 @@ export function installFastParallelUpload() {
       }
     }
 
+    /**
+     * ADD_SUBJECT_RESET_AFTER_SAVE_20260805 — lưu xong thì dọn TOÀN BỘ form, không chỉ 4 khoá file.
+     * Bản dọn đầy đủ ở `window.__resetAddSubjectForm()` (block `ADD_SUBJECT_FEATURE`) vì nó mới với
+     * tới được `syncImportPath` / `__switchStep` và các ô nhập. Mấy dòng dưới giữ lại làm lưới an
+     * toàn cho trường hợp block kia chưa cài xong.
+     */
     function clearState() {
       try {
+        window.__resetAddSubjectForm?.();
         window.__previewImportData = [];
-        window.__LH_LAST_PREVIEW_IMPORT_DATA = [];
-        $('importPreviewModal')?.classList.add('hidden');
+        window.__selectedImportFile = null;
+        $('importPreviewModal')?.remove();
         [
           'learninghub_add_subject_file_name_v1',
           'learninghub_add_subject_file_size_v1',
@@ -3778,9 +4201,73 @@ export function installFastParallelUpload() {
         return;
       }
       if (!questions.length) {
-        alert('Bạn cần chọn file và bấm Xem trước trước khi lưu môn học.');
+        alert('Bạn cần chọn file và bấm "Kiểm tra lại" trước khi lưu môn học.');
         return;
       }
+
+      // IMPORT_QUALITY_GATE_LIVE_SUBMIT_20260805: chốt CUỐI của cổng chấm điểm phải nằm Ở ĐÂY —
+      // đây là bản `__submitSubjectRequest` DUY NHẤT còn sống (bản trùng tên ở block
+      // `ADD_SUBJECT_FEATURE` đã xoá 20260805). Trước đây "gate" chỉ còn là nút bị disable, mà
+      // `finally` cuối hàm lại bật nút lại vô điều kiện sau mỗi lần lưu → tải file sai lệch cao
+      // vào là lưu được.
+      // Chấm LẠI ngay tại đây, không tin `window.__importQualityReport` đang có: `saveEdit()` của
+      // bản xem trước sửa câu TẠI CHỖ mà KHÔNG tự chấm lại (chỉ `__closeImportPreviewModal` và nút
+      // "Kiểm tra lại" mới chấm), còn nút "Lưu Môn Học" nằm TRONG modal xem trước là nút riêng —
+      // không có id, không nằm dưới `gateSaveButton`. Dùng `analyzeImport` trực tiếp (hàm thuần,
+      // không chạm DOM) để không xoá dấu tick xác nhận của người dùng.
+      const rawList = Array.isArray(window.__previewImportData) ? window.__previewImportData : [];
+      const qr = rawList.length ? analyzeImport(rawList) : window.__importQualityReport;
+      if (qr) window.__importQualityReport = qr;
+      if (qr && qr.tier === 'high') {
+        alert(
+          'Không lưu được: độ sai lệch ' +
+            qr.deviationPct +
+            '% (' +
+            qr.fatalCount +
+            ' câu thiếu dữ liệu bắt buộc).\n\n' +
+            'Hãy sửa các câu bị báo trong bảng kiểm tra, hoặc chuyển sang hướng prompt để AI chuyển lại tài liệu.',
+        );
+        return;
+      }
+
+      // IMPORT_QUALITY_MEDIUM_ONE_GATE_20260805: mức "cần bạn xác nhận" cũng phải chốt Ở ĐÂY.
+      // Nút "Lưu Môn Học" của bước 3 bị `gateSaveButton` khoá đến khi tick `#importQualityAccept`,
+      // NHƯNG bản xem trước có nút "Lưu Môn Học" RIÊNG (`[data-v7-submit]`, không id) và nó bung ra
+      // che luôn bảng chấm điểm. Đo được: file 20 câu sai lệch 15% → nút bước 3 xám kèm tooltip
+      // "hãy tick xác nhận", bấm nút trong modal là lưu thẳng, không tick không hỏi gì.
+      // Đã tick rồi thì không hỏi lại (đường bước 3 giữ nguyên như cũ).
+      if (qr && qr.tier === 'medium' && !$('importQualityAccept')?.checked) {
+        const ok = confirm(
+          'Độ sai lệch ' +
+            qr.deviationPct +
+            '% — ' +
+            qr.rows.length +
+            '/' +
+            qr.total +
+            ' câu bị đánh dấu nghi lỗi.\n\n' +
+            'Bấm OK để lưu với mức sai lệch này, hoặc Cancel để xem lại bảng kiểm tra ở bước 3.',
+        );
+        if (!ok) return;
+      }
+
+      // `cleanQuestions()` LOẠI mọi câu không có đáp án. Trước đây nó bỏ im lặng: bảng kiểm tra
+      // ghi "533 câu đọc được" mà thông báo cuối lại ghi "498 câu hỏi" — 35 câu mất không ai biết.
+      const dropped = (qr?.total || 0) - questions.length;
+      if (
+        dropped > 0 &&
+        !confirm(
+          dropped +
+            ' câu sẽ KHÔNG được lưu vì thiếu đáp án (hoặc thiếu nội dung / lựa chọn).\n\n' +
+            'Chỉ lưu ' +
+            questions.length +
+            '/' +
+            qr.total +
+            ' câu. Bấm OK để lưu tiếp, hoặc Cancel để quay lại sửa các câu đó.',
+        )
+      ) {
+        return;
+      }
+
       if (!user()) {
         alert('Bạn cần đăng nhập trước khi lưu môn học.');
         return;

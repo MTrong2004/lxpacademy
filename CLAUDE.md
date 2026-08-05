@@ -24,6 +24,11 @@ Frontend thuần JS (không framework), API Vercel Edge, DB Turso, auth Supabase
    `src/student/main.js` và `src/admin/main.js`. Sửa trực tiếp app.js sẽ mất khi build.
 2. **Sau khi sửa phải `npm run build`**, rồi hard refresh (Ctrl+Shift+R) — `index.html`
    nạp `app.js?v=...` nên browser cache rất dai.
+   **Và phải BUMP chuỗi `?v=` trong `index.html`** (2 chỗ: `app.css?v=…` dòng 14,
+   `app.js?v=…` dòng ~298). Chuỗi này là cache-buster DUY NHẤT và nó từng đứng ở
+   `20260726_v9999999` suốt nhiều lần deploy: tính năng mới nằm trong bundle nhưng người dùng
+   thật **không bao giờ thấy** vì browser giữ file cũ (đúng ca "hai thẻ chọn hướng của bước 2 đã
+   có trong build mà không hiện"). Hard refresh chỉ chữa cho máy của mình, không chữa cho họ.
 3. **Không tạo block patch mới cho việc mà một block cũ đang làm.** Sửa vào block đang chạy.
    File đã có 137 block xếp lớp; thêm lớp nữa là tự tạo bug ghi đè.
    `npm run check:overrides` canh việc này: nó so với mốc trong `docs/OVERRIDES_BASELINE.json`
@@ -86,6 +91,9 @@ Khỏi phải nhắc lại quy tắc ở mỗi phiên.
 | `src/student/bookmarks.js` | **lưu câu 🔖** (nút trên flashcard + trong Thư viện) và **chuông thông báo yêu cầu sửa** |
 | `src/student/flashcards.js` | hạt nền `#landingParticles`, nút "Báo cáo đã gửi", **điều hướng flashcard trên điện thoại** (nút + vuốt) |
 | `src/student/subjectImport.js` | **"Thêm môn" trọn gói**: `ADD_SUBJECT_FEATURE`, prompt AI, xem trước + sửa tại chỗ file import, `QUIZLET_IMPORT_AUTODETECT`, upload song song, **và import file .zip** (giải nén trong browser, chặn zip-slip/zip-bomb, upload Cloudinary) |
+| `src/student/importQuality.js` | **chấm "độ sai lệch dữ liệu"** của file import (`analyzeImport`, `checkNumbering`, `parseImportNum`, `normalizeAnswer`) — hàm thuần, test bằng node |
+| `src/student/docExtract.js` | **đọc trực tiếp PDF chuẩn / Word thành câu hỏi, không qua AI** (`parseQuestionsFromPages` thuần + `extractFromFile` nạp pdf.js lazy / giải nén .docx bằng JSZip) |
+| `src/student/importPrompt.js` | **nguồn duy nhất của prompt** chuyển PDF/DOCX → JSON (`IMPORT_AI_PROMPT`) |
 
 `npm run find` và `npm run map` đã bao các file này. Sửa tính năng kiểm tra thì mở
 `exam.js`, sửa form sửa câu hỏi thì mở `editor.js`, sửa ảnh/upload thì `images.js`, sửa thư viện thì `library.js`,
@@ -129,7 +137,37 @@ quãng trước khi `install*()` chạy).
   thẳng Supabase từ client — từng gây mất ảnh.
 - Routes (`api/index.js`): `subjects`, `questions`, `profile`, `edit-requests`,
   `my-edit-requests`, `staff-edit-requests`, `settings`, `notify`, `admin-dashboard`,
-  `admin-action`. Tất cả trừ `settings` đều cần token.
+  `admin-action`, `bookmarks`. Tất cả trừ `settings` đều cần token.
+
+- **"Lưu câu 🔖" đồng bộ giữa các thiết bị, và MỖI HỌC PHẦN một danh sách riêng**
+  (`BOOKMARK_SYNC_PER_PART_20260806`, `src/student/bookmarks.js` + `api/controllers/bookmarks.js`).
+  Hai lỗi cùng gốc "chỉ có localStorage":
+  - **Điện thoại và máy tính không thấy nhau.** Không có bảng nào trong Turso, không có lời gọi
+    API nào — mở web ở máy khác là danh sách trống.
+  - **Các học phần lưu chung một rổ.** Có `lh_starred_v1_<MÃ>` (đúng, theo từng phần) NHƯNG
+    `saveBookmarks` còn ghi ĐÈ `lh_starred_v1_backup_all` bằng danh sách của môn đang mở, rồi
+    `loadBookmarks` lại HỢP backup_all vào MỌI môn. Mà `getQKey` là `num_<số câu>` và mọi phần
+    đều đánh số từ 1, nên lưu câu 5 ở MLN122 xong mở MLN122_2 là câu 5 ở đó cũng hiện "đã lưu".
+  - **Bảng `bookmarks`** (`migrations/004_bookmarks.sql`): `PRIMARY KEY (user_id, subject_code,
+    q_key)`. `subject_code` chính là học phần nên hai phần cùng mã gốc không thể lẫn — **đừng
+    gộp theo mã gốc**, đó là ranh giới của tính năng. `q_key` giữ đúng định danh của client
+    (`num_12` / `id_87` / `q_<40 ký tự đầu>`) để dữ liệu localStorage cũ đẩy lên được mà không
+    phải tra lại `questions.id`.
+  - **Client**: một khoá `lh_starred_v2` = `{ "MLN122": ["num_5"], "MLN122_2": [] }`
+    (`backup_all` đã bỏ hẳn). localStorage tụt xuống vai **bản đệm**: vẽ ngay lúc mở web, rồi
+    `syncBookmarks()` lấy bản server đè lên và vẽ lại. Mỗi lần bấm 🔖 thì đổi local trước rồi
+    `pushBookmark()` bắn POST — lỗi mạng chỉ `lhWarn`, không chặn người dùng.
+  - **Lượt đầu trên mỗi thiết bị thì HỢP local với server** rồi đẩy phần server chưa có lên qua
+    `{merge:{…}}` (một `db.batch`, không phải N request), xong mới đặt cờ
+    `learninghub_bookmarks_pushed_v1`. Từ lượt sau **server ĐÈ local** — không đè thì "bỏ lưu" ở
+    điện thoại bị bản local cũ của máy tính hồi sinh. Đẩy thất bại thì **không đặt cờ**, lần mở
+    web sau thử lại, nên bookmark có từ trước khi có tính năng đồng bộ không mất.
+  - Vào `lh:subject-changed` chỉ VẼ LẠI, không gọi server: một lần GET đã mang về bookmark của
+    mọi phần.
+  - `?mock=1` gieo sẵn `MOCK1_C1: ['num_2']` trong khi MOCK1 và các phần MOCK1_C* khác trống —
+    đúng ca cần kiểm. **Mock nhớ trong RAM nên reload là mất**, đừng dùng reload để kết luận
+    "POST không tới": kiểm bằng `await (await fetch('/api/bookmarks')).json()` trong CÙNG một
+    lần tải trang.
 - **Hai cấp admin** (`ADMIN_TWO_TIERS_20260729`, `api/lib/auth.js`): *admin hệ thống* là
   email trong `getSystemAdminEmails()` — mặc định `trongbm2004@gmail.com` +
   `trongbm1009@gmail.com`, đổi được bằng env `SYSTEM_ADMIN_EMAILS` (phân cách dấu phẩy);
@@ -153,8 +191,107 @@ quãng trước khi `install*()` chạy).
   đúng hành vi cũ. Đừng bỏ `input.clone()` ở `retrySrc`: body của `Request` chỉ đọc được một lần.
 - **Mã lỗi API có ý nghĩa cố định:** `401 UNAUTHORIZED` = chưa/hết phiên;
   `403 PENDING_APPROVAL | BLOCKED | INSUFFICIENT_ROLE` = quyền thật sự không đủ;
-  `500 INTERNAL_ERROR` = **không kết luận được quyền**, client phải hiện "thử lại",
-  KHÔNG được coi là bị thu hồi quyền.
+  `500 INTERNAL_ERROR` và `503 AUTH_CHECK_FAILED` = **không kết luận được quyền**, client
+  phải hiện "thử lại", KHÔNG được coi là bị thu hồi quyền.
+
+- **"Không xác minh được" KHÁC "hết phiên" — đừng gộp lại** (`AUTH_VERIFY_INCONCLUSIVE_20260805`,
+  `api/lib/auth.js: verifyUserDetailed` + `api/index.js`). `verifyUser` cũ trả `null` cho CẢ HAI ca:
+  (1) thiếu token / Supabase khẳng định token sai, và (2) **không hỏi được Supabase** (mất mạng,
+  timeout, Supabase 5xx, **429 rate limit**). Router thấy `null` là trả `401 UNAUTHORIZED`, mà ở
+  client mã đó có nghĩa cố định là "phiên hỏng" → `handleAccessRevoked()` **gọi `signOut()`**. Tức
+  là Supabase auth chớp một nhịp là NGƯỜI DÙNG BỊ ĐĂNG XUẤT dù phiên còn tốt nguyên, và lớp làm mới
+  token của client (`LH_SESSION_REFRESH_20260729`) **không cứu được**: token mới cũng không xác minh
+  được, `inspectDenial` vẫn kết luận UNAUTHORIZED.
+  - Ranh giới: Supabase trả **400/401/403 → UNAUTHORIZED** (401 như cũ); mọi mã khác, mọi exception,
+    và **timeout 8s** (`VERIFY_TIMEOUT_MS`, tự hẹn giờ bằng `AbortController` vì Edge không chắc có
+    `AbortSignal.timeout`) → **`AUTH_CHECK_FAILED` → 503**. Vẫn fail-closed (không cấp quyền), chỉ
+    khác ở chỗ không xoá phiên đăng nhập.
+  - 503 này bắn `postServerErrorEmbed(path + ' (verifyUser)')` — Supabase auth sập là loại lỗi cần
+    biết ngay; tin trùng tự gộp 1 tin / 5 phút.
+  - `verifyUser(req)` vẫn còn, là bản bọc trả `user || null` (fail-closed như trước) cho mọi chỗ
+    không cần phân biệt. **Muốn phân biệt thì phải dùng `verifyUserDetailed`** — hiện chỉ `api/index.js`.
+  - Client: **401 KHÔNG CÓ `code` thì không đăng xuất** nữa. Mọi 401 do `api/` của app sinh ra đều
+    kèm `code: 'UNAUTHORIZED'`; 401 mà body không đọc được / không có code là câu trả lời của **proxy
+    công ty / CDN / cổng wifi**, bản cũ đoán 'UNAUTHORIZED' cho ca đó tức signOut người dùng vì một
+    trang HTML của proxy. Nay chỉ `console.warn`; phiên hỏng thật thì `/api/profile` trả 401 CÓ code
+    và luồng thu hồi quyền chạy đúng ở đó. Sửa ở **hai chốt** của `src/student/auth.js`:
+    `inspectDenial`/`unknownDenial` (lớp fetch) và nhánh `!res.ok` của `loadProfile`. **403 giữ
+    nguyên hành vi cũ** — nó không đăng xuất ai.
+  - Kiểm bằng `?mock=1&fail=503` (503 AUTH_CHECK_FAILED) và `?mock=1&fail=401nocode` (401 body HTML):
+    cả hai phải KHÔNG thu hồi quyền. `?mock=1&fail=401` là ca ngược, vẫn phải ra
+    "Phiên đăng nhập đã hết hạn".
+
+- **RỚT MẠNG VẪN HỌC ĐƯỢC, VÀ CHỈ `BLOCKED` CÒN TỰ ĐĂNG XUẤT** (`LH_OFFLINE_GRACE_20260806`).
+  Hai mục trên (`LH_SESSION_REFRESH_20260729`, `AUTH_VERIFY_INCONCLUSIVE_20260805`) đã chặn phần
+  lớn ca "tự đăng xuất", nhưng còn ba đường và cả ca "mất mạng là mất luôn app":
+  - **Người đang học bị màn hình che kín khi mạng chớp.** Mọi lỗi không kết luận được ở lần
+    XÁC MINH LẠI (polling 90s / quay lại tab / realtime nối lại) đều gọi `showAccessCheckError()`
+    → `showPendingApproval()` đặt `__LH_GATE_LOCKED = true` + `body.hod-locked`. Câu hỏi vẫn nằm
+    trong localStorage (cache 12 giờ) mà người dùng không đọc được câu nào.
+  - **401 sau khi KHÔNG gọi được Supabase để làm mới token.** Token hết hạn + `lhRefreshToken()`
+    thất bại vì mất mạng → request đi ra **không có Authorization** → server trả `401 UNAUTHORIZED`
+    hoàn toàn đúng luật → client cũ hiểu là "phiên hỏng" → `signOut()`. Lớp làm mới token không
+    cứu được vì chính nó là chỗ thất bại.
+  - **`UNAUTHORIZED` gọi `signOut()`.** Mất phiên Supabase = mất luôn `refresh_token` còn sống
+    hàng chục ngày, nên người dùng phải chọn lại mail Google.
+
+  Cách sửa — tách "KẾT LUẬN ĐƯỢC" khỏi "KHÔNG KẾT LUẬN ĐƯỢC":
+
+  | Tình huống | Hành vi |
+  |---|---|
+  | `403 BLOCKED` | chặn + **signOut** (giữ nguyên) + xoá cache + xoá dấu xác nhận |
+  | `403 PENDING_APPROVAL` / `INSUFFICIENT_ROLE` | như cũ (không signOut) + xoá dấu xác nhận |
+  | `401 UNAUTHORIZED` (phiên hỏng thật) | gate "Phiên đăng nhập đã hết hạn", **KHÔNG signOut, KHÔNG xoá cache** |
+  | 500 · 503 · lỗi mạng · 401 lúc không hỏi được Supabase | **chế độ tạm ngoại tuyến** nếu máy này đã từng được xác nhận, ngược lại "Không thể kiểm tra quyền" + tự thử lại |
+
+  - **Dấu xác nhận**: `localStorage['learninghub_access_grant_v1']` = `{id, email, role, at}`, ghi
+    mỗi lần `/api/profile` xác nhận có quyền, hạn **7 ngày** (`GRACE_MS`), khoá theo `id` tài khoản.
+    Điều kiện DUY NHẤT để được học offline. Bị xoá ngay khi server kết luận mất quyền, và khi
+    người dùng tự bấm Đăng xuất. Cờ RAM `revokedConclusively` chặn cửa hậu "bị khoá rồi rút mạng
+    để vào lại" — đã đo: cắm lại dấu xác nhận bằng tay cũng không lọt.
+  - Chấp nhận được vì **cổng ở client chỉ là lớp hiển thị**: server vẫn `checkUserAccess()` ở MỌI
+    request, nên chế độ ngoại tuyến không mở thêm cửa dữ liệu nào — nó chỉ cho đọc lại thứ đã ở
+    trên máy.
+  - **Chế độ tạm ngoại tuyến** (`enterDegradedMode`): giữ giao diện, dựng profile tối thiểu từ dấu
+    xác nhận nếu đang trống, hiện dải `#lhOfflineBar` ("Mất kết nối — bạn vẫn học được với dữ liệu
+    đã tải" + nút Thử lại) — **không** `body.hod-locked`, **không** modal. `window.__LH_OFFLINE_MODE`
+    và `window.__lhIsOfflineMode()` cho chỗ khác soi. Có mạng lại (event `online`) hoặc một lần
+    xác minh thành công là tự thoát + tải lại dữ liệu mới.
+  - **`window.__lhLastRefreshOutcome`** (`'ok' | 'dead' | 'unreachable' | 'none'`) là thứ phân biệt
+    "refresh_token chết thật" với "không gọi được Supabase" — bản cũ nuốt mọi lỗi thành `''` nên hai
+    ca này không thể tách. Ghi ở `lhRefreshToken()` của **cả hai** trang (auth.js + adminCore.js);
+    `'unreachable'` (hoặc `navigator.onLine === false`) thì 401 KHÔNG được đưa vào `inspectDenial`.
+  - **Dữ liệu để học offline**, 2 chỗ đã nới:
+    · `subjects.js`: `readQuestionCache(code, allowStale)` + `loadSubjectLight` gọi server thất bại
+      thì rơi về cache **kể cả quá hạn 12 giờ** (trước đây chỉ `return false` → thư viện trắng, nhất
+      là đường `loadCurrentSubjectOnly(true)` vốn không đọc cache ở đầu hàm).
+    · `subjectGate.js`: `getSubjects()` lưu `learninghub_subjects_cache_v1` (kèm `folder_new_badges`)
+      và dùng nó khi `/api/subjects` lỗi — trước đây rơi về `fallbackSubjects()` = **hai môn viết cứng
+      HOD102/MLN111** mà tài khoản có thể không hề học.
+  - **Trang admin**: `handleAccessRevoked` chỉ signOut với `BLOCKED`; `loadProfile` của adminCore
+    thôi đoán `UNAUTHORIZED` cho 401 không có code (web học sửa từ 20260805, trang admin thì chưa);
+    hook 401/403 của interceptor bỏ qua 401 khi `__lhLastRefreshOutcome === 'unreachable'`.
+    Admin **không** có chế độ ngoại tuyến — dashboard mà không có dữ liệu thật thì vô nghĩa.
+  - **`activeUser()`** trong auth.js đọc `currentUser` rồi mới tới `HODSupabase.getUser()`: production
+    hai cái là một, nhưng `?mock=1` thay cả `window.HODSupabase` nên không có nó thì **toàn bộ nhánh
+    này không tự kiểm được** (mock không có phiên Supabase thật → `loadProfile` return sớm).
+  - Cách kiểm (đã đo, xem bảng `?mock=1` bên dưới): `fail=offline`, hoặc chặn `/api/*` + đặt
+    `navigator.onLine = false` ngay trong Console để mô phỏng đúng ca "rớt mạng giữa phiên".
+
+- **Trang admin cũng làm mới token** (`LH_ADMIN_SESSION_REFRESH_20260805`, `adminCore.js` trong
+  `LH_UNIFIED_SINGLE_FETCH_INTERCEPTOR_20260726`). Web học có lớp này từ `LH_SESSION_REFRESH_20260729`,
+  trang admin thì **không**: `lhToken()` cũ đọc `access_token` trong localStorage mà **không xem
+  `expires_at`**, gắn luôn vào header. `access_token` sống 1 giờ, nên mở dashboard rồi để máy sleep /
+  tab chạy nền quá 1 tiếng (timer tự làm mới của supabase-js bị throttle) là request đầu tiên gửi
+  token HẾT HẠN → 401 → `handleAccessRevoked` gọi `client.auth.signOut()`: **admin bị đá về màn hình
+  đăng nhập dù `refresh_token` còn sống hàng chục ngày.**
+  - Nay giống hệt web học: token hết hạn (hoặc còn <10s) thì **không gắn**, làm mới TRƯỚC khi gọi;
+    gặp 401 thì làm mới rồi thử lại **đúng một lần** (`apiFetchWithRefresh` + `withAuth(..., force)`).
+    Client Supabase lấy từ biến `client` của module (bản `createTursoClientMock` vẫn phơi nguyên
+    `.auth`), dùng chung một lần làm mới qua `refreshInFlight`.
+  - **Hai hook cũ (xoá cache sau `admin-action`, soi 401/403) phải bám vào promise CUỐI**, không phải
+    lần gọi đầu — bám sai chỗ là lần thử lại thành công vẫn kích hoạt luồng thu hồi quyền.
+  - Đừng bỏ `input.clone()` ở `retrySrc`: body của `Request` chỉ đọc được một lần.
 
 - **Thiết bị có ID thật, và MÔN được nhớ theo TỪNG THIẾT BỊ**
   (`DEVICE_ID_AND_SUBJECT_PER_DEVICE_20260731`). `profiles.current_subject` chỉ có MỘT ô nên
@@ -192,6 +329,26 @@ quãng trước khi `install*()` chạy).
 Muốn bỏ qua cả (1) và (2): gọi `loadCurrentSubjectOnly(true)` → thêm `&fresh=1`.
 Trong Console: `clearLearningHubQuestionCache(); location.reload()`.
 
+### Mức tiêu thụ Turso: THẤP so với hạn mức, nhưng 3 chỗ tốn vô ích (đo 20260806)
+
+Số đo trên DB thật: **9,4 MB** (2.405 trang × 4KB), 4.832 câu / 19 môn / 42 tài khoản
+(**36 hoạt động trong 7 ngày**). Free tier Turso là 5 GB dung lượng + 1 tỷ rows read + 25 triệu
+rows write mỗi tháng, nên dung lượng dùng ~0,2% và lượng đọc thường ngày ở mức phần nghìn.
+Ba tầng cache ở trên + cache profile 10s + cache dashboard 2 phút (`OPTIM_TURSO_READS_20260726`)
+đã chặn phần lớn. **Chưa có lý do đổi DB hay đổi gói.** Nhưng ba chỗ dưới đây tốn nhiều hơn
+việc chúng làm — nếu số người dùng tăng chục lần thì sửa chỗ này trước:
+
+| Chỗ | Đo được | Vì sao tốn |
+|---|---|---|
+| `add_question` (đường >80 câu) | **203.203 rows read** cho môn 638 câu · 970.992 rows read tích luỹ cho 13 môn đã nhập | Nó `select num from questions where subject_code = ?` **trước MỖI câu** → O(N²). Ghi cũng nhân 3: `questions` + `question_history` + `admin_logs` = 1.914 dòng cho một môn |
+| `/api/admin-dashboard` | **5.945 rows read + 1,49 MB** mỗi lần cache miss | `select * from questions` lấy TOÀN BỘ 4.832 câu kèm đề bài/lựa chọn, dù trang admin **không còn tab "Câu hỏi"**. `cache.questions` giờ chỉ dùng để đếm và để tra ~52 câu có yêu cầu sửa. Mọi `admin-action` đều xoá cache này nên admin sửa 20 việc = 20 lần nạp lại |
+| `question_history` | **3,50 MB = 37% cả DB** | 1 dòng cho mỗi câu được nhập, kể cả nhập hàng loạt (nơi "lịch sử sửa" chẳng có gì để so) |
+
+Cách sửa nếu cần (chưa làm): gộp `add_question` thành lô như `createSmall` để `resolveImportNums`
+tính một lượt · dashboard trả `select subject_code, count(*)` + chỉ những câu mà `edit_requests`
+đang trỏ tới, nạp câu lẻ theo id khi mở modal · bỏ ghi `question_history` ở đường nhập hàng loạt.
+Cả ba đều đụng nhiều chỗ nên đừng làm kèm việc khác.
+
 ## Test UI không cần đăng nhập: `?mock=1`
 
 `src/core/mock.js` — **chỉ chạy trên localhost**, tên miền thật bỏ qua hoàn toàn.
@@ -206,6 +363,10 @@ Không cần DB, không cần Google login, không ghi gì thật (`admin-action
 | `?mock=1&reload_notice=1` | Banner "Hệ thống vừa cập nhật — Cập nhật ngay" (nhắc tải lại). Banner hiện ở lần xác minh quyền, không phải ngay lúc mở trang — gọi `lhRevalidateAccess('test')` trong Console cho nhanh |
 | `?mock=1&pending=1` / `&blocked=1` | Đúng hai màn 403 khác nhau: "Chờ phê duyệt" vs "Tài khoản bị khóa" |
 | `?mock=1&fail=500` | 500 phải ra fallback "thử lại", KHÔNG được coi là mất quyền |
+| `?mock=1&fail=503` | **503 AUTH_CHECK_FAILED** (server không hỏi được Supabase auth): giữ phiên, KHÔNG đăng xuất — xem `AUTH_VERIFY_INCONCLUSIVE_20260805`. **Kết quả phụ thuộc dấu xác nhận** (`LH_OFFLINE_GRACE_20260806`): có `learninghub_access_grant_v1` thì ra **chế độ ngoại tuyến** (dải "Mất kết nối", không chặn), không có thì ra màn "Không thể kiểm tra quyền" như cũ |
+| `?mock=1&fail=offline` | **Mọi `/api/*` reject như mất mạng** (không phải mã lỗi HTTP — hai đường code khác nhau). Mock xoá cache môn MOCK\* mỗi lần khởi động nên muốn kiểm ca "rớt mạng giữa phiên" thì **đừng reload**: mở `?mock=1`, chạy `await lhRevalidateAccess('x', true)` (ghi dấu xác nhận) + `await loadCurrentSubjectOnly(true)` (ghi cache), rồi chặn `/api/*` bằng tay + `Object.defineProperty(navigator,'onLine',{get:()=>false})` + `dispatchEvent(new Event('offline'))` |
+| `?mock=1&fail=401nocode` | 401 body HTML (proxy/CDN trả lời thay app): cũng KHÔNG được đăng xuất |
+| `?mock=1&fail=401` | Ca NGƯỢC: 401 có `code` → vẫn phải ra "Phiên đăng nhập đã hết hạn" |
 | `?mock=1&subject=MOCK2` | Đổi môn mặc định |
 
 **Chạy thử một lượt thi:** nút "Bắt đầu kiểm tra" mở hộp chọn giao diện — hộp này nằm
@@ -226,6 +387,11 @@ Năm điều dễ làm sai khi sửa file này:
   `cache.subjects` rỗng và mọi trang admin trắng trơn — `mockAdminDashboard()` khớp đúng
   hình dạng của `api/controllers/admin.js`.
 
+- **`/api/questions` KHÔNG có `subject_code` phải trả câu của MỌI môn** (sửa 20260806, xem
+  `EXPORT_PICK_SUBJECTS_20260806`). Mock cũ rơi về `opts.subject` cho ca đó, tức trả môn đang học —
+  đúng cho web học (mọi lời gọi của nó đều kèm mã môn) nhưng sai với server thật
+  (`api/controllers/questions.js` chỉ thêm `and subject_code = ?` khi có tham số) và làm "Xuất dữ
+  liệu" của admin tick 6 môn chỉ ra 4 câu của MOCK1. `count_only=1` giữ đường cũ — nó là endpoint đếm.
 - **Thứ tự import trong `main.js` có ý nghĩa.** `import '../core/mock.js'` phải nằm
   **trước** `import './appCore.js'` (lớp fetch giả tự cài lúc import, cần nằm BÊN TRONG
   lớp bọc fetch của appCore để response 401/403 giả vẫn đi qua `handleAccessRevoked`);
@@ -247,6 +413,240 @@ Năm điều dễ làm sai khi sửa file này:
   (chạy `npm run find <tênHàm>` xem bản nào sống), hoặc là **cache** (xem 3 tầng cache ở trên).
 - Lỗi phía server (`api/`) nằm trong log của `npm run dev` hoặc log Vercel.
 
+## Thêm môn: HAI hướng đi + cổng chấm độ sai lệch (`IMPORT_QUALITY_GATE_20260805`)
+
+Bước 2 của tab "Thêm môn mới" không còn là "Lấy Prompt" mà là **màn chọn hướng**. Ranh giới giữa
+hai hướng là **tài liệu có đọc được chữ hay không**, không phải đuôi file:
+
+| Hướng | Nhận gì | Đi tiếp thế nào |
+|---|---|---|
+| **Tài liệu đọc được chữ** | `.pdf` chuẩn · `.docx` · `.json` · `.zip` · `.md` · `.txt` | PDF/Word thì **tự trích xuất + tách câu hỏi ngay trong browser, KHÔNG qua AI** (`docExtract.js`); rồi tất cả đi qua cùng một cổng chấm điểm |
+| **Bản chụp, hoặc có hình ảnh** | PDF scan, tài liệu cần giữ hình | mở khối prompt (Gemini/ChatGPT/Claude) → nhờ AI chuyển → quay lại bước 3 |
+
+### Đọc trực tiếp PDF / Word (`DOC_EXTRACT_DIRECT_20260805`, `src/student/docExtract.js`)
+
+Hai tầng, cố ý tách: `parseQuestionsFromPages()` + `cleanLines()` là **hàm thuần** nhận mảng text
+**theo TỪNG TRANG** (test bằng node như `importQuality.js`); `extractFromFile()` mới chạm I/O.
+Nhận theo trang vì header/footer lặp y nguyên mỗi trang — có ranh giới trang thì bắt dòng lặp là
+việc đếm, nối hết thành một chuỗi rồi là mất dấu.
+
+- **pdf.js nạp LAZY từ CDN**, không `npm i pdfjs-dist`: `scripts/build.js` bundle thành một file
+  app.js (không code-splitting) nên import tĩnh sẽ nhồi ~1MB vào bundle của MỌI người. Nạp động chỉ
+  tốn khi thật sự chọn PDF — đo được app.js chỉ tăng 815KB → 834KB. `.docx` thì giải nén bằng
+  **JSZip đã có sẵn** rồi đọc `word/document.xml`, không thêm thư viện nào.
+- **PDF không có chữ (< `SCAN_CHARS_PER_PAGE` = 80 ký tự/trang) thì KHÔNG cố parse** — hiện bảng
+  "File này là bản chụp" + nút `__goPromptRoute()`. Đo trên 3 file scan thật: đúng 0 ký tự/trang.
+- Kết quả đo trên 7 file trong `input/` (qua pdf.js thật, trong browser thật):
+
+  | Tài liệu | Đọc trực tiếp | File JSON do AI chuyển (để so) |
+  |---|---|---|
+  | `IPR102 … Quizlet.pdf` | 549 câu · 2,8% · **tier low, lưu luôn** | 548 câu · 2,5% · 3 câu chặn cứng |
+  | `AET102.pdf` | 152 câu · 10,9% · 0 chặn cứng | 152 câu · 5,6% · **5 câu chặn cứng** |
+  | `AET102c.pdf` | 212 câu · 7,4% · 0 chặn cứng | (chưa có) |
+  | `MLN122 NhungHoang.docx` | 533 câu · 7,6% · 20 câu thiếu đáp án | 533 câu · 10,5% · 35 câu thiếu đáp án |
+  | 3 file PDF scan | nhận ra bản chụp → mời sang hướng AI | — |
+
+**Bốn cái bẫy đã sập thật khi viết parser này, đừng lặp lại:**
+
+- **Bộ lọc header/footer ăn luôn dòng ĐÁP ÁN.** Đáp án của layout Quizlet là một chữ cái trơ
+  ("C") nên nó lặp ở gần như mọi trang → bị tính là footer. Hậu quả đo được: `AET102` mất đáp án
+  **150/152 câu**, `IPR102` tụt **548 → 68 câu** (mất dòng đáp án là mất luôn dấu "hết câu", đề câu
+  sau bị nối vào lựa chọn cuối của câu trước). Nay dòng trông như đáp án / lựa chọn / số câu thì
+  **không bao giờ** bị coi là footer.
+- **pdf.js và PyMuPDF cho ra text KHÁC NHAU trên cùng file.** PyMuPDF tách `"12."` thành dòng riêng,
+  pdf.js gộp nó với đề bài (`"12. Mr Blobby…"`, cùng toạ độ Y); pdf.js còn gộp cả cụm footer thành
+  MỘT dòng kèm số trang thay đổi. Parser phải chịu cả hai: `matchNumInline` nhận cả ở trạng thái
+  `'q'` (khi khối còn trắng), và `footerKey()` **che mọi chữ số** khi đếm dòng lặp — không che thì
+  103 biến thể footer lọt vào nội dung và `analyzeImport` chấm **103 câu trùng nhau**.
+  Vì vậy: **fixture test bằng node (PyMuPDF) KHÔNG thay được một lượt đo trong browser thật.**
+- **Số câu phải "hợp lý" mới nhận** (`plausibleNum`, ≤ số khối đã ra + 5). Một câu bắt đầu bằng
+  `"1915. …"` (một cái năm) bị đọc thành số câu 1915 là đủ làm `checkNumbering` báo lệch cả file.
+- **Tài liệu KHÔNG có dòng đáp án thì không biết câu mới bắt đầu ở đâu** (DOCX có 20 câu như vậy).
+  Phải nhìn trước tới **dòng có cấu trúc kế tiếp** (`nextStructural`): nhãn LẶP (`A.` khi đã có A)
+  = câu mới, nhãn TIẾP (`c.` khi đang có a, b) = dòng nối tiếp lựa chọn đang dở. Không có phép thử
+  này thì đề câu sau bị dán vào lựa chọn D của câu trước: đo được **24 câu mất trắng**.
+
+**Nút "⬇ Xuất JSON" trong bảng chấm điểm** (`IMPORT_SCHEMA_EXPORT_20260806`,
+`window.__downloadImportJson`). Tải danh sách câu ĐANG có ra file `<mã môn>_questions.json` —
+đường duy nhất xem được kết quả parser PDF/Word ở dạng dữ liệu (trước đây chỉ có bản xem trước
+trong modal: 500 câu thì không soi được, cũng không đưa file cho người khác sửa được).
+
+- Có ở **mọi mức**, kể cả `high`: file bị chặn mới là file cần mang ra ngoài để xem đọc sai ở đâu.
+- Đọc `getParsed()` = `window.__previewImportData` (một chỗ chứa duy nhất,
+  `ADD_SUBJECT_ONE_STATE_20260805`), nên file tải về luôn khớp thứ vừa được chấm và thứ nút
+  "Lưu Môn Học" sẽ gửi — kể cả sau khi sửa tay trong bản xem trước.
+- Bộ chuyển đổi là **`src/core/importSchema.js`** (thuần, `core/` vì trang admin dùng chung —
+  xem `EXPORT_PICK_SUBJECTS_20260806`). Nó trả về đúng 7 khoá của schema và bỏ mọi trường phụ
+  (`answer_text`, `error_risk_reason`, `answer_unknown`). Hai điều cố ý:
+  · `answer` **về lại ARRAY** (client giữ chuỗi "AC", DB cũng vậy).
+  · `answer_unknown` được **GỘP vào `answer`** thay vì bỏ đi. Nhãn đó có trong tài liệu gốc mà
+    không có trong `options`; bỏ nó thì nhập lại chỉ bị 0,5 điểm "quên đáp án" thay vì chặn cứng
+    "đáp án trỏ sai", tức file xuất ra không dùng để kiểm tra được nữa.
+  · `num` rỗng thì **bỏ hẳn khoá** (`IMPORT_NUM_BLANK_OK_20260805`), không ghi `null`.
+- Đo trên `input/AET102.pdf` (pdf.js thật, `?mock=1`): đọc 152 câu / 10,9% → xuất
+  `TEST101_questions.json` 70 KB, đúng 7 khoá, 145 câu có `num` · **nhập lại chính file đó ra
+  y nguyên 152 câu / 10,9% / tier medium / 7 nhóm lỗi giống hệt** — vòng xuất → nhập không mất gì.
+
+Hướng đã chọn nhớ ở `localStorage['learninghub_add_subject_path_v1']`.
+
+**Nút "⬅ Quay lại" của bước 2 lùi ĐÚNG MỘT BẬC** (`IMPORT_PATH_BACK_TO_FORK_20260806`,
+`window.__importStepBack`). Bước 2 có hai màn xếp trong nhau: màn chọn hướng, rồi khối prompt
+của hướng AI. Bản cũ nút này luôn `__switchStep(1)`, nên đang đứng ở "Lấy prompt rồi đưa tài
+liệu cho AI" mà bấm Quay lại là **nhảy vọt về bước 1 "Thông tin"**, bỏ qua màn chọn hướng — đường
+đổi hướng duy nhất là một nút "⇄ Chọn lại hướng khác" riêng nằm dưới. Nay `__importStepBack`
+xem `learninghub_add_subject_path_v1`: đang ở hướng prompt thì `__resetImportPath()` (về màn chọn
+hướng), ngược lại mới `__switchStep(1)` — **nút riêng kia đã xoá hẳn**, cùng 4 rule
+`.importPathSwitch` trong `app.css` và nhánh `back` của `syncImportPath`.
+Sửa ở **CẢ HAI** bản dựng `#addStep2` (`getAddSubjectHTML` và `enhancePromptStep` — bản sau mới
+là bản đang chạy, xem mục bẫy ngay dưới).
+
+**Cổng chấm điểm** (`src/student/importQuality.js`, thuần, test bằng node):
+`analyzeImport(questions)` cộng điểm trừ theo từng câu rồi chia cho số câu ra `deviationPct`.
+
+- **Chặn cứng (fatal)**: thiếu `question`, dưới 2 lựa chọn, lựa chọn rỗng, đáp án trỏ nhãn
+  không tồn tại. Có 1 câu fatal là `tier: 'high'` bất kể phần trăm.
+- **1 điểm**: `error_risk:'high'` · `has_image:true` mà `images` rỗng · ảnh trỏ tới đường dẫn
+  không tồn tại · nhãn lựa chọn bị nhảy (A, B, D).
+- **0,5 điểm**: không có đáp án · số câu sai quy tắc · nhãn "Câu 12." lọt vào nội dung · trùng đề.
+- **0,25 điểm**: `error_risk:'medium'` · nhiều đáp án · lựa chọn ngoài A–D · nghi rút gọn "...".
+
+Ba mức và hành vi nút **Lưu Môn Học** (`gateSaveButton`):
+`≤5%` mở luôn · `≤15%` phải tick `#importQualityAccept` · trên đó **chặn** + nút
+"➔ Chuyển sang hướng Prompt". Ngưỡng ở `QUALITY_THRESHOLDS`; 5% ≈ "1 câu hỏng / 20 câu".
+Mức nào cũng có nút **"👁 Xem lại N câu"** trong bảng chấm điểm (`IMPORT_PREVIEW_REOPEN_20260805`):
+trước đây chỉ tier `high` có nút mở modal, nên đóng bản xem trước của file tier low/medium là mất
+luôn đường vào các nút "Sửa" nội tuyến — "Kiểm tra lại" chỉ chấm lại, không mở modal.
+
+**Chốt cuối nằm ở bản SỐNG của `__submitSubjectRequest`** (`IMPORT_QUALITY_GATE_LIVE_SUBMIT_20260805`,
+`FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701`, cuối `subjectImport.js`). **Nay chỉ CÒN MỘT bản**:
+bản trùng tên trong block `ADD_SUBJECT_FEATURE` (155 dòng, từng đánh dấu `DEAD_OVERRIDE_20260805`) đã
+xoá hẳn — `ADD_SUBJECT_ONE_SAVE_PATH_20260805`. Nó là code chết nhưng giống bản sống tới mức dễ sửa
+nhầm: cũng validate mã/tên, cũng chốt cổng, cũng gọi `add_subject`/`add_subject_request`. Xoá kèm
+`client()` + HUB_URL/HUB_KEY (một Supabase client riêng, chỉ nó dùng) và `esc2()`.
+Chốt ở bản sống **chấm lại bằng `analyzeImport(window.__previewImportData)` ngay tại chỗ**, không tin
+`window.__importQualityReport` đang có — `saveEdit()` của bản xem trước sửa câu TẠI CHỖ mà không tự
+chấm lại, tin điểm cũ là chặn oan người vừa sửa xong. Dùng `analyzeImport` (hàm thuần) thay vì
+`__reanalyzeImport()` để không xoá dấu tick xác nhận của người dùng.
+
+**Cổng tier medium cũng chốt Ở ĐÂY** (`IMPORT_QUALITY_MEDIUM_ONE_GATE_20260805`), không chỉ dựa vào
+nút bị `disabled`: **modal xem trước có nút "Lưu Môn Học" RIÊNG** (`[data-v7-submit]`, không id,
+không nằm dưới `gateSaveButton`) và nó bung ra che luôn bảng chấm điểm. Đo được: file 20 câu sai lệch
+15% → nút bước 3 xám kèm tooltip "hãy tick xác nhận", bấm nút trong modal là **lưu thẳng, không hỏi
+gì**. Nay chưa tick `#importQualityAccept` thì `confirm()` nêu rõ "% và N/total câu nghi lỗi"; đã
+tick thì không hỏi lại (đường bước 3 giữ nguyên hành vi cũ).
+
+**`cleanQuestions()` LOẠI câu không có đáp án — nay phải `confirm()` trước khi lưu.** Trước đây nó
+bỏ im lặng: bảng kiểm tra ghi "533 câu đọc được", thông báo cuối ghi "498 câu hỏi", 35 câu mất không
+ai biết.
+
+### Trạng thái của luồng "Thêm môn": một mảng, một hàm dọn (`ADD_SUBJECT_ONE_STATE_20260805`)
+
+- **Danh sách câu đang import chỉ có MỘT chỗ chứa: `window.__previewImportData`.** Biến
+  `parsedQuestions` riêng của block `ADD_SUBJECT_FEATURE` đã bỏ (thay bằng `getParsed()`/`setParsed()`
+  đọc thẳng window). Hai cái thường trỏ cùng array nên trông vô hại, nhưng
+  `__switchSubjectGateTab('add')` chỉ xoá `parsedQuestions` trong khi bản xem trước và bản LƯU
+  (`readQuestions()`) đọc `window.__previewImportData` — cổng chấm một mảng, nút Lưu gửi mảng khác.
+  Cũng bỏ luôn nhánh dự phòng `window.__LH_LAST_PREVIEW_IMPORT_DATA`: **không nơi nào GÁN** tên đó.
+- **Lưu xong phải gọi `window.__resetAddSubjectForm()`** (`ADD_SUBJECT_RESET_AFTER_SAVE_20260805`,
+  `clearState()` của block upload gọi nó). Trước đây việc dọn nằm trong `clearAddSubjectLocalStorage()`
+  mà hàm đó **chỉ được gọi từ bản `__submitSubjectRequest` ĐÃ CHẾT**, nên bản sống chỉ xoá 4 khoá
+  file. Đo được: lưu môn xong mở lại tab "Thêm môn mới" là vào thẳng **bước 3** với mã/tên/mô tả của
+  môn vừa lưu còn nguyên trong ô — thả file mới vào là lưu lần hai vào cùng mã. Reset dọn cả 9 khoá
+  `learninghub_add_subject_*` (kể cả `path_v1`, `step_v1`), 3 ô nhập, `__selectedImportFile` (handle
+  .zip của lần trước), state ảnh của module zip, bảng chấm điểm, modal — rồi về bước 1.
+- **"Xóa file" phải xoá luôn danh sách câu.** `__clearUserImportFile` trước chỉ dọn phần hiển thị;
+  mảng câu của file vừa xoá vẫn nằm trong `window.__previewImportData` để `readQuestions()` đọc được.
+- **Bản xem trước KHÔNG được là của file khác.** `handleFileImport` gọi `hardClosePreviewModal()`
+  (xoá khỏi DOM, không phải `.hidden`) ngay đầu hàm — `__resetImportQualityPanel` cũng gọi. Đo được
+  trước khi sửa: đang mở bản xem trước file 4 câu, thả file 2 câu vào → modal vẫn in "4 câu" của file
+  cũ trong khi nút "Lưu Môn Học" của chính modal đó gửi dữ liệu file mới (`IMPORT_PREVIEW_STALE_MODAL_20260805`).
+- **Dấu × của modal phải đi qua `__closeImportPreviewModal()`** để CHẤM LẠI
+  (`IMPORT_PREVIEW_CLOSE_RESCORE_20260805`). Bản cũ chỉ `.hidden`: sửa tay hết câu lỗi rồi đóng bằng
+  × là bảng chấm điểm + nút Lưu vẫn giữ điểm TRƯỚC khi sửa (đo: 1 câu fatal → sửa xong nút vẫn xám).
+- **Khôi phục trạng thái thì chấm IM LẶNG**: `__previewUserImport({ silent: true })`
+  (`IMPORT_RESTORE_NO_POPUP_20260805`) — dựng lại bảng chấm điểm + trạng thái nút Lưu, không bung
+  modal. Trước đây mỗi lượt đổi tab `list` → `add` là bản xem trước tự nhảy ra giữa màn hình.
+  File `.pdf/.docx/.zip` không lưu nội dung vào localStorage nên khôi phục theo nhánh
+  `getParsed().length` (mảng còn trong bộ nhớ) thay vì đọc lại file.
+- **Ô điểm to không in "0% sai lệch" khi bị chặn cứng** (`IMPORT_QUALITY_SCORE_BOX_20260805`): câu
+  fatal không cộng điểm sai lệch, nên file 2 câu thiếu đề bài ra `0%` trên nền đỏ. Nay in "N câu bị
+  chặn", phần trăm chuyển xuống hàng `iqMeta`.
+
+Sáu điều dễ làm sai khi sửa vùng này:
+
+- **`num` để TRỐNG không phải lỗi** (`IMPORT_NUM_BLANK_OK_20260805`). `checkNumbering` từng tính
+  "số câu không đọc được" cho mọi câu thiếu `num`, tức 0,5 điểm × N câu = **sàn sai lệch 50%** →
+  tier `high` → chặn **100% file thật** (file xuất từ Quizlet / DOCX không hề có trường `num`). Đo
+  trên 3 file trong `input/converted/`: 55,6% / 54,5% / 60,5% → sau khi sửa còn 5,6% / 2,5% / 10,5%.
+  Cả hai chốt lưu đều tự đánh số được (`cleanQuestions` lấy `i + 1`, `resolveImportNums()` lấy số
+  nguyên trống nhỏ nhất) nên trừ điểm ở đây là báo động giả thuần. Chỉ `num` RÁC mới là lỗi. Câu
+  trống vẫn chiếm một slot nên `expected` phải nhích lên, không thì `1, (trống), 3` bị báo oan.
+- **"Nghi rút gọn" phải bỏ qua câu ĐIỀN KHUYẾT** (`IMPORT_BLANK_NOT_TRUNCATED_20260805`). Luật cũ
+  chỉ xét "kết thúc bằng `...`" nên `"must be ........"` bị chấm là bị AI cắt: 46/548 câu của
+  `IPR102.json` là báo động giả. Nay `looksTruncated()` bỏ qua khi có dấu chỗ trống
+  (`BLANK_MARK` = `....`+ / `___` / `……`) → còn 1 câu.
+
+- **Bước 2 KHÔNG dựng bởi `getAddSubjectHTML()`.** `PROMPT_STEP_UX_UI_POLISH_20260625` ghi đè
+  toàn bộ `innerHTML` của `#addStep2`, nên hai thẻ chọn hướng phải nằm trong
+  `enhancePromptStep()`. Bản trong `getAddSubjectHTML()` chỉ là dự phòng cho quãng trước khi
+  polish chạy — sửa một chỗ mà quên chỗ kia là giao diện không đổi gì.
+  `enhancePromptStep` phải gọi lại `window.__syncImportPath(...)` sau khi set innerHTML vì
+  `__switchStep` đã sync trên DOM cũ trước đó.
+- **Nút "Kiểm tra lại" gọi `__checkImportFile`, KHÔNG gọi `__previewUserImport`.** Hàm sau đọc
+  lại từ file thô nên mọi sửa tay trong bản xem trước bị mất trắng.
+- **Đừng hạ `has_image` về `false` khi map ảnh thất bại.** Bản cũ ghi
+  `has_image: mappedImages.length > 0` nên câu "cần ảnh mà zip thiếu ảnh" tự đổi thành "câu
+  không cần ảnh" — mất luôn dấu hiệu thiếu dữ liệu.
+- **`answer_unknown` là trường tạm, cố ý.** `normalizeAnswer` loại nhãn không có trong
+  `options`, nên nếu chỉ chấm trên dữ liệu đã chuẩn hoá thì `answer:["E"]` với options A–D
+  trông y như "quên đáp án" (0,5 điểm) thay vì lỗi chặn cứng. Trường này không vào DB — câu
+  `insert` của api liệt kê cột cụ thể.
+
+### File trên 80 câu đi đường KHÁC, và đường đó KHÔNG dùng `resolveImportNums()`
+
+`LARGE_LIMIT = 80` trong `FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701`: quá 80 câu thì
+`createLarge()` gọi `add_subject` với `questions: []` rồi bắn **một `add_question` cho TỪNG câu**
+(đo thật: file 548 câu → **545 request** `/api/admin-action`). Hệ quả:
+
+- `num` do CLIENT quyết (`cleanQuestions`: `Number(q.num) || i + 1`, rồi `uploadOne` lặp lại),
+  nên `resolveImportNums()` của server không có việc gì làm — quy tắc "biến thể 1.1" và "số nguyên
+  trống nhỏ nhất" ở mục dưới **chỉ áp dụng cho file ≤80 câu** (`createSmall`).
+- Mọi file thật trong `input/converted/` đều 152–548 câu, tức **luôn** đi đường này.
+
+Chưa sửa (đổi sang gửi theo lô sẽ phải đụng cả `add_subject` payload lẫn `resolveImportNums`).
+Nhớ khi đổi quy tắc đánh số: sửa 3 chỗ ở mục dưới là CHƯA đủ, còn `cleanQuestions` + `uploadOne`.
+
+### Đánh số câu: `num` của file được TÔN TRỌNG
+
+`api/lib/questionNums.js: resolveImportNums()` (thuần, test bằng node) quyết định
+`questions.num` cho **cả hai** chốt nhập môn: `add_subject` và `approve_subject_request`.
+Trước đây cả hai đều `let currentNum = 1; currentNum++` tức **ném bỏ `num` của file**, nên biến
+thể "Kiểu hỏi khác" (`"1.1"` đứng ngay sau câu gốc 1 theo prompt) thành câu 2 và câu gốc 2 bị
+dồn thành 3 — số câu trong app không còn khớp tài liệu gốc.
+
+- số nguyên → giữ nguyên · `"1.1"` → lưu `1.1` · thiếu/rác/trùng → số nguyên trống nhỏ nhất.
+- **Đo lại 20260806: đường lưu GIỮ được `12.1`, nhưng DB thật chưa có một câu nào như vậy.**
+  `select typeof(num), count(*) group by 1` trên Turso ra **4.832 dòng `integer`, 0 dòng `real`**,
+  và mọi môn đều chạy num liền mạch `1…N`. Không phải vì code chặn: đo trên libsql cùng schema
+  thì `1.1 / 1.2 / 12.1` vào cột `num integer` được giữ nguyên là REAL, `order by num asc` ra
+  đúng `1, 1.1, 1.2, 2`, và `unique(subject_code, num)` phân biệt `1` với `1.1`. Cả hai chốt lưu
+  cũng giữ: `resolveImportNums` trả `[1, 1.1, 1.2, 2, 3, 12.1]`, còn `cleanQuestions` của đường
+  >80 câu là `Number('12.1')` = `12.1` và `add_question` chỉ cấp lại số khi `!finalNum` hoặc
+  trùng. Lý do thật là **file import chưa từng mang trường `num`** (Quizlet/DOCX không có), nên
+  cả `1.1` lẫn `12.1` chỉ tồn tại khi AI được nhắc đánh biến thể theo `importPrompt.js`.
+  Hai giới hạn còn thật, nhớ khi dùng: `"12.10"` quy về `12.1` nên trùng câu `"12.1"` (bị cấp
+  số nguyên trống), và **ô "Giới hạn khoảng câu"** của tab Kiểm tra là `<input type="number">`
+  bước 1 nên không nhập được `12.1` — `applyRange` so bằng `+q.num` nên `12.1` chỉ nằm trong
+  khoảng khi khoảng đó phủ `12→13`, đặt "từ 12 đến 12" là mất câu `12.1`.
+- Cột là `num integer` nhưng **SQLite dùng type affinity**: `1.1` không đổi sang integer mà
+  không mất dữ liệu nên được giữ REAL. `order by num asc` ra đúng `1, 1.1, 1.2, 2` và
+  `unique(subject_code, num)` vẫn phân biệt `1` với `1.1`. Client đọc num qua `Number(c.num)`
+  ở mọi chỗ nên không cần sửa gì thêm.
+- `checkNumbering` lấy mốc kế tiếp theo **số câu gốc đã đi qua**, không theo num vừa đọc: một
+  câu bị đánh 99 mà lấy mốc = 100 thì mọi câu sau đều bị báo sai theo.
+- **Ba chỗ phải khớp nhau** khi đổi quy tắc num: `importPrompt.js` (dạy AI),
+  `importQuality.js: parseImportNum`/`checkNumbering` (chấm), `api/lib/questionNums.js` (lưu).
+
 ## Quyết định sản phẩm (đừng "sửa lại" thành bug)
 
 - **Trang admin KHÔNG còn tab "Câu hỏi"** (xoá 20260729, chốt với chủ dự án). Nút nav
@@ -256,6 +656,12 @@ Năm điều dễ làm sai khi sửa file này:
   sinh. Cũng xoá khối **"Thêm môn học bằng AI"** (`openAddSubjectAI` không có nút gọi).
   **Nguyên văn code đã xoá: `docs/REMOVED_20260729.md`** — đừng thêm lại nếu không có yêu
   cầu rõ ràng.
+- **App CHỈ tự đăng xuất khi tài khoản bị KHOÁ** (`LH_OFFLINE_GRACE_20260806`). `signOut()` tự
+  động chỉ còn ở nhánh `code === 'BLOCKED'` của `handleAccessRevoked` (cả web học và trang admin).
+  Phiên hết hạn (`UNAUTHORIZED`) chỉ hiện gate "Phiên đăng nhập đã hết hạn" — người dùng bấm
+  "Kiểm tra lại" (nút này làm mới token trước) hoặc tự bấm "Đăng xuất". **Đừng thêm lại `signOut()`
+  cho `UNAUTHORIZED`**: `refresh_token` sống hàng chục ngày, xoá phiên là bắt người ta chọn lại
+  mail Google vì một nhịp mạng chớp.
 - **Admin KHÔNG đăng xuất người dùng nữa** (`RELOAD_NOTICE_20260729`). Hai nút cũ
   ("Đăng xuất tất cả" / "Đăng xuất người này") đổi thành **nhắc tải lại trang**:
   `notify_reload_all` / `notify_reload_user` đặt cờ `profiles.reload_notice`, client hiện
@@ -268,6 +674,30 @@ Năm điều dễ làm sai khi sửa file này:
   - `loadProfile` bản đầy đủ (lúc mở trang) **bỏ qua** cờ này: vừa tải mới xong thì nhắc
     tải lại là vô nghĩa. Chỉ các lần xác minh lại (`check_only`) + ping hoạt động + polling
     60s mới hiện banner.
+- **"Xuất dữ liệu" chọn NHIỀU môn bằng danh sách tick, và JSON ra dạng IMPORT**
+  (`EXPORT_PICK_SUBJECTS_20260806`, `exportAll` + `downloadExportFile` của `adminCore.js`,
+  CSS `admin.css` cuối file). Bản cũ là một `<select>` một-lựa-chọn dựng từ `cache.questions`:
+  muốn 3 môn phải mở modal 3 lần, môn **chưa có câu nào không hề hiện** (mã lấy từ bảng câu hỏi
+  chứ không từ `cache.subjects`), danh sách chỉ có mã trơ không tên không số câu, và các phần
+  cùng mã gốc nằm rời rạc giữa 19 dòng.
+  - Nay: danh sách tick gom theo **thư mục (mã gốc)** như trang "Quản lý môn học" — hàng thư mục
+    tick cả cụm, `indeterminate` khi mới tick vài phần; có ô tìm kiếm (đang gõ thì **trải phẳng**,
+    ẩn hàng thư mục, giống web học), nút "Tất cả" / "Bỏ chọn", và dòng tổng "Đã chọn N môn · M câu"
+    (đếm từ `cache.questions`, không gọi thêm request). Chưa tick gì thì hai nút xuất **disabled**.
+  - **`downloadExportFile(type, codes)` nay nhận MẢNG mã** (vẫn chịu chuỗi / `'all'` như cũ).
+    JSON: **mỗi môn một file**, vì tab "Thêm môn mới" nhập một lần là một mã môn — trộn nhiều môn
+    vào một file là nhập lại không được. Nhiều file thì chờ 350ms giữa các lượt tải, nếu không
+    trình duyệt bỏ rơi lượt sau. CSV thì **gộp** mọi môn đã chọn vào một file (có cột
+    `subject_code`), tên `questions_<N>_mon.csv`.
+  - JSON đi qua `src/core/importSchema.js` (dùng chung với nút "⬇ Xuất JSON" của web học), tức
+    ra đúng 7 khoá schema thay vì dòng DB thô. **Bản thô vẫn còn ở "Sao lưu đầy đủ"** — đừng đổi
+    `full_backup` sang schema import, nó là bản sao lưu.
+  - `fetchQuestionsForCodes` gọi `/api/questions` **theo từng mã**, chỉ khi tick hết danh sách mới
+    gọi một lượt `all` — `all` là đọc cả 4.832 câu / ~1,5 MB (xem "Mức tiêu thụ Turso").
+  - Đo bằng `admin.html?mock=1&role=admin`: thư mục MOCK1 in "5 phần · 78 câu", tick 1 phần →
+    thư mục `indeterminate`, "Tất cả" → "6 môn · 80 câu", tìm "chương 2" → còn 1 hàng và mất hàng
+    thư mục; tick MOCK1_C2 + MOCK2 rồi bấm JSON ra **2 file** `MOCK1_C2_questions.json` +
+    `MOCK2_questions.json` đúng 7 khoá, CSV ra 1 file 15 dòng (12+2 câu + header). `lhErrors()` rỗng.
 - **Panel "Quản lý môn học" KHÔNG còn tiêu đề / mô tả / nút "Tải lại môn"**
   (`SUBJECT_ADMIN_COMPACT_HEAD_20260729`): cả ba đều trùng với header trang (tên trang +
   `#refreshBtn`, mà `COPILOT_ADMIN_RELOAD_FIX_20260630` đã cho gọi lại `loadSubjectsAdmin` khi
@@ -313,16 +743,35 @@ Năm điều dễ làm sai khi sửa file này:
     `.subjectFolderCard`, cụm 1 môn là thẻ trần. Bấm thư mục → `openBase`. Mở cổng lên thì
     thư mục chứa môn đang học được mở sẵn. **Đang gõ tìm kiếm thì bỏ thư mục, trải phẳng kết
     quả**; xóa ô tìm kiếm quay lại đúng thư mục cũ.
-  - **Thanh thư mục nằm TRONG hàng tab, không chiếm hàng riêng của lưới**
-    (`SUBJECT_FOLDER_BAR_IN_TABS_20260729`): `syncFolderCrumb` đặt nút "← Tất cả môn" + mã gốc
-    vào `#subjectFolderCrumb` (trong `.subjectGateTabsLeft`, cạnh tab "Danh sách môn học") và
-    "N môn · M câu" vào `#subjectFolderCrumbMeta` (bên phải ô tìm kiếm) — danh sách môn được
-    thêm ~65px. `folderBarHTML` (`.subjectFolderBar` trong lưới) chỉ còn là **bản dự phòng** cho
-    lúc `ensureSubjectGateTabs()` của appCore chưa dựng xong thanh tab; đừng xoá nó, cũng đừng
-    quay lại vẽ thanh vào lưới. Hai chỗ phải sửa kèm khi đổi: danh sách ẩn/hiện của
-    `__switchSubjectGateTab` (appCore ~2615, không thêm thì tab "Thêm môn mới" vẫn thấy nút lùi
-    ra) và `order:-1` ở `max-width:760px` (hàng tab cuộn ngang, để nguyên thứ tự thì nút
-    "← Tất cả môn" nằm ngoài màn hình).
+  - **Thanh thư mục là một HÀNG RIÊNG ngay dưới hàng tab, thụt vào một bậc**
+    (`SUBJECT_FOLDER_CRUMB_OWN_ROW_20260806`, thay chỗ đặt của `SUBJECT_FOLDER_BAR_IN_TABS_20260729`).
+    Bản cũ nhét `#subjectFolderCrumb` vào `.subjectGateTabsLeft` (cạnh tab "Danh sách môn học") và
+    `#subjectFolderCrumbMeta` ra bên phải ô tìm kiếm để tiết kiệm ~65px — nhưng như vậy
+    "← Tất cả môn" trông **ngang cấp với hai tab**, người học không thấy mình đang đứng sâu một
+    bậc bên trong thư mục. Nay `folderCrumbRow()` dựng `#subjectFolderCrumbRow` bằng
+    `bar.insertAdjacentElement('afterend', …)` và **cả hai ô con nằm trong hàng đó**; nội dung là
+    một dải phân cấp `└ ← Tất cả môn ▸ MÃ_GỐC` + "N phần · M câu" đẩy sang phải. Đo được: hàng cao
+    **34px**, hàng tab về đúng 2 tab.
+    - **Ẩn/hiện ở HÀNG, không ở từng ô con** — `syncFolderCrumb` toggle `.hidden` trên
+      `#subjectFolderCrumbRow`; ẩn ô con mà để hàng lại thì còn một dải trống.
+    - `folderCrumbHost`/`folderMetaHost` **kiểm `host.parentElement !== row` rồi mới append**, để
+      DOM cũ (nếu còn nằm trong hàng tab) được kéo xuống thay vì tạo trùng id.
+    - `__switchSubjectGateTab` (`subjectImport.js` ~734) nay ẩn **`$('subjectFolderCrumbRow')`**,
+      không còn ẩn hai ô con — không thêm thì "← Tất cả môn ▸ MÃ" còn nổi ở tab "Thêm môn mới".
+    - `order:-1` ở `max-width:760px` **đã bỏ**: hàng riêng thì nút lùi ra không còn bị đẩy ra
+      ngoài vùng cuộn ngang của hàng tab (đo ở 375px: nút nằm ở 49–152px, trong màn hình).
+      `#subjectFolderCrumbMeta` cũng thôi `display:none` trên mobile vì hàng này không chật.
+    - `folderBarHTML` (`.subjectFolderBar` trong lưới) vẫn là **bản dự phòng** cho lúc
+      `ensureSubjectGateTabs()` chưa dựng xong thanh tab; đừng xoá, cũng đừng quay lại vẽ vào lưới.
+  - **Mục con của một thư mục gọi là "PHẦN", không phải "môn"**
+    (`SUBJECT_FOLDER_PART_WORDING_20260806`). Cùng mã gốc = MỘT môn chia làm nhiều phần, gọi mỗi
+    mục là "môn" thì người học tưởng MLN122 và MLN122_2 là hai môn khác nhau. Sáu chỗ đã đổi:
+    `subjectGate.js` — tooltip thẻ thư mục, chip `THƯ MỤC · N phần`, `folderBarHTML`,
+    `syncFolderCrumb`; `adminCore.js` — `subjectFolderChip`, `subjectAdminBackMeta`, và `unit` của
+    `overviewHTML` (**chỉ khi `mode === 'folder'`**; ngoài cùng vẫn đếm "N môn · N môn lẻ");
+    `exam.js` — nhãn "Gộp thêm phần (chọn thêm phần cùng mã môn để gộp đề)" + ghi chú
+    "Bỏ chọn phần gộp mới dùng được khoảng câu". **"Môn này có câu X–Y" giữ nguyên chữ "môn"**:
+    môn đang học có thể là môn lẻ, không nằm trong thư mục nào.
   - **Nút "Tải lại" giữ nguyên chỗ người dùng đang đứng**
     (`SUBJECT_REFRESH_KEEP_FOLDER_20260729`): `refreshSubjects(force, autoOpenPickedFolder)` chỉ
     mở sẵn thư mục của môn đang học khi `autoOpenPickedFolder = true` — và **chỉ `openGate()`
@@ -353,6 +802,18 @@ Năm điều dễ làm sai khi sửa file này:
     phải đo lại `.subjectCardDesc` (đang kẹp 2 dòng, xem `SUBJECT_DESC_LIMIT_20260728`).
 
 ## Bẫy đã gặp thật
+
+- **Dấu `;` trong COMMENT của file migration cắt mất câu SQL phía sau — mà migration vẫn báo
+  thành công** (đã sập thật với `004_bookmarks.sql`, 20260806). `scripts/migrate.js` tách câu
+  bằng `split(';')`, nên một comment tiếng Việt như `-- index theo user_id; PRIMARY KEY đã lo…`
+  làm khối bị cắt đôi: `CREATE TABLE` chạy, `CREATE INDEX` ngay dưới **không chạy**, log chỉ in
+  `Warning on statement: SQL_PARSE_ERROR … near PRIMARY` rồi vẫn `✅ applied successfully` và ghi
+  dấu vào `schema_migrations`. Lỗi chỉ lộ khi đi soi `sqlite_master`.
+  **Đã sửa gốc**: `migrate.js` nay bỏ mọi dòng comment `--` TRƯỚC khi tách. Chạy lại một
+  migration đã đánh dấu thì `delete from schema_migrations where version = ?` rồi `npm run migrate`.
+  Lệnh `npm run migrate` **không tự nạp `.env`** — dùng `node --env-file=.env scripts/migrate.js`.
+  Sau mỗi migration, kiểm bằng
+  `select name from sqlite_master where name like '%<tên bảng>%'` chứ đừng tin dòng ✅.
 
 - **Tách file làm ĐỨT chuỗi lớp của `renderCard`** (`RENDER_CARD_WINDOW_BRIDGE_20260731`, đã sửa).
   `renderCard` bị xếp 3 lớp ở `subjects.js`; hồi còn một file chúng gán thẳng vào binding nên
@@ -406,6 +867,38 @@ Năm điều dễ làm sai khi sửa file này:
   người dùng tải lại khi có deploy mới. Đừng chỉnh tay file đó.
 
 ## Việc còn nợ (giảm chi phí bảo trì)
+
+- [x] **"Tự đăng xuất người dùng": ĐÃ SỬA 3 chốt (20260805).** Ba đường độc lập đều dẫn tới
+      `signOut()` khi phiên vẫn còn tốt — chi tiết + ranh giới ở mục *Kiến trúc dữ liệu*
+      (`AUTH_VERIFY_INCONCLUSIVE_20260805`, `LH_ADMIN_SESSION_REFRESH_20260805`):
+      · **SERVER, nặng nhất:** `verifyUser` gộp "không hỏi được Supabase" (mất mạng / timeout /
+        5xx / **429 rate limit**) vào cùng một `null` với "token sai" → 401 → client signOut. Nay
+        ca không kết luận được trả **503 AUTH_CHECK_FAILED**.
+      · **TRANG ADMIN:** không hề có lớp làm mới token, và `lhToken()` không xem `expires_at` →
+        để dashboard mở quá 1 giờ là gửi token hết hạn → 401 → signOut.
+      · **CLIENT:** 401 không có `code` (proxy/CDN trả lời thay app) bị đoán thành UNAUTHORIZED.
+      Đo được: 10 ca của `verifyUserDetailed` đúng hết (kể cả timeout ra đúng ~8s); router trả
+      **503 AUTH_CHECK_FAILED** khi Supabase không tới được và **401 UNAUTHORIZED** khi token thật
+      sự sai; `?mock=1&fail=503` + `fail=401nocode` không thu hồi quyền, `fail=401` vẫn ra
+      "Phiên đăng nhập đã hết hạn"; `lhToken()` của admin bỏ token hết hạn / sắp hết hạn <10s và
+      vẫn nhận dạng `{currentSession:{…}}` của bản supabase cũ; admin `?mock=1&role=admin` mở
+      bình thường (`/api/admin-dashboard` 200, 6 môn), `lhErrors()` rỗng ở cả hai trang.
+- [x] **"Rớt mạng là mất app" + 3 đường tự đăng xuất còn lại: ĐÃ SỬA (20260806)** —
+      `LH_OFFLINE_GRACE_20260806`, chi tiết + bảng hành vi ở mục *Kiến trúc dữ liệu*. Mục ngay trên
+      từng ghi "còn cố ý fail-closed: 500/503 lúc xác minh lại vẫn đưa người đang học ra màn hình
+      Không thể kiểm tra quyền" — nay đúng ca đó là **chế độ tạm ngoại tuyến** (giữ giao diện, dải
+      nhỏ ở đáy, tự thử lại với backoff 5s→10s→20s…→60s), miễn là máy đã từng được server xác nhận
+      có quyền (`learninghub_access_grant_v1`, hạn 7 ngày). Cùng lúc: **chỉ `BLOCKED` còn signOut**,
+      401 sau khi không gọi được Supabase không còn bị coi là hết phiên, và dữ liệu offline đã có
+      đường đi (cache câu hỏi quá hạn + cache danh sách môn).
+      Đo được bằng `?mock=1` (pane trình duyệt ẩn, đọc DOM thay vì screenshot): rớt mạng giữa phiên
+      → `__LH_GATE_LOCKED` false, `body.hod-locked` không bật, `.counter` giữ "Câu 1 / 4",
+      `loadCurrentSubjectOnly(true)` với cache **quá hạn 13 giờ** vẫn ra 4 câu + 4 mục thư viện,
+      danh sách môn ra đúng 6 mã đã lưu (không phải HOD102/MLN111) kèm chữ "đang dùng danh sách môn
+      đã lưu trên máy"; `online` → dải biến mất, cache được ghi lại mới. Không hồi quy:
+      `fail=401` vẫn ra "Phiên đăng nhập đã hết hạn", `fail=401nocode` không chặn, `blocked=1` /
+      `pending=1` vẫn chặn kín **và xoá dấu xác nhận** — cắm dấu xác nhận lại bằng tay rồi rớt mạng
+      cũng KHÔNG lọt (`revokedConclusively`). `lhErrors()` rỗng ở cả web học và trang admin.
 
 - [x] Nhóm thư viện (`renderStudy`): đã xóa `LIBRARY_UX_STEP2_PREVIEW_CARDS_20260627` và
       phần render chết của `LIBRARY_FILTER_AND_EDIT_PREVIEW_LAYOUT_20260627`; 4 chỗ còn lại

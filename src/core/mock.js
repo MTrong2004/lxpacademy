@@ -13,6 +13,15 @@
  *   http://localhost:3000/?mock=1&pending=1       tài khoản chờ duyệt (403 PENDING_APPROVAL)
  *   http://localhost:3000/?mock=1&blocked=1       tài khoản bị khóa (403 BLOCKED)
  *   http://localhost:3000/?mock=1&fail=500        API trả 500 (kiểm thông báo "thử lại")
+ *   http://localhost:3000/?mock=1&fail=503        503 AUTH_CHECK_FAILED — không xác minh được
+ *                                                 phiên: phải "thử lại", KHÔNG đăng xuất
+ *   http://localhost:3000/?mock=1&fail=401nocode  401 body HTML (proxy trả lời thay app):
+ *                                                 cũng KHÔNG được đăng xuất
+ *   http://localhost:3000/?mock=1&fail=offline    MỌI request /api/* reject như mất mạng
+ *                                                 (LH_OFFLINE_GRACE_20260806): mở ?mock=1 một
+ *                                                 lần cho có dấu xác nhận quyền, rồi mở lại với
+ *                                                 fail=offline -> phải học tiếp được bằng cache,
+ *                                                 chỉ hiện dải "Mất kết nối" ở đáy trang
  *   http://localhost:3000/admin.html?mock=1&role=admin
  *
  * CHỈ chạy trên localhost. Trên tên miền thật thì `?mock=1` bị bỏ qua hoàn toàn —
@@ -52,7 +61,7 @@ function readOptions() {
     role,
     pending: p.get('pending') === '1',
     blocked: p.get('blocked') === '1',
-    fail: p.get('fail') || '', // '500' | '401' | '403' | ''
+    fail: p.get('fail') || '', // '500' | '401' | '503' | 'auth' | '401nocode' | 'offline' | ''
     subject: (p.get('subject') || 'MOCK1').toUpperCase(),
     /*
       ADMIN_TWO_TIERS_20260729: vai admin trong mock mặc định là ADMIN HỆ THỐNG (đổi được
@@ -104,6 +113,13 @@ const MOCK_CHAPTERS = [
   trong khi các môn con MOCK1_C* đều đang tắt — đúng cái cần kiểm: hai cờ độc lập.
 */
 let mockFolderNewBadges = ['MOCK1'];
+
+/*
+  BOOKMARK_SYNC_PER_PART_20260806 — bảng `bookmarks` giả, nhớ trong phiên như cờ NEW ở trên.
+  Gieo sẵn "câu 2 của MOCK1_C1 đã lưu" để mở web lên là kiểm được ngay hai điều: bookmark từ
+  máy khác về được (đường GET), và nó KHÔNG lây sang MOCK1 hay các phần MOCK1_C* khác.
+*/
+const mockBookmarks = { MOCK1_C1: ['num_2'] };
 
 /** Khớp đúng cột mà api/controllers/subjects.js trả về. */
 function mockSubjects() {
@@ -345,6 +361,14 @@ export function clearMockLeftovers() {
         localStorage.removeItem(k);
       }
     }
+    /*
+      LH_OFFLINE_GRACE_20260806: dấu "đã được xác nhận có quyền" của người dùng GIẢ không
+      được để lại cho chế độ thật (nó khoá theo id nên vô hại, nhưng dọn cho sạch).
+    */
+    const grant = JSON.parse(localStorage.getItem('learninghub_access_grant_v1') || 'null');
+    if (grant && String(grant.id || '').startsWith('mock-')) {
+      localStorage.removeItem('learninghub_access_grant_v1');
+    }
   } catch (e) {
     lhWarn('MOCK:cleanup', e);
   }
@@ -441,6 +465,24 @@ function mockApiResponse(pathname, query, opts, body) {
   if (opts.fail === '401') {
     return jsonResponse({ error: 'Phiên đăng nhập không hợp lệ', code: 'UNAUTHORIZED' }, 401);
   }
+  /*
+    AUTH_VERIFY_INCONCLUSIVE_20260805: server KHÔNG hỏi được Supabase auth (mất mạng,
+    timeout, 429 rate limit, Supabase 5xx). Phải ra fallback "thử lại" và GIỮ NGUYÊN
+    phiên đăng nhập — đây đúng là ca từng làm người dùng bị tự đăng xuất.
+  */
+  if (opts.fail === '503' || opts.fail === 'auth') {
+    return jsonResponse(
+      { error: 'Không xác minh được phiên đăng nhập, vui lòng thử lại.', code: 'AUTH_CHECK_FAILED' },
+      503,
+    );
+  }
+  // 401 KHÔNG CÓ code: giả lập proxy/CDN trả lời thay app -> cũng không được đăng xuất.
+  if (opts.fail === '401nocode') {
+    return new Response('<html>407 Proxy Authentication Required</html>', {
+      status: 401,
+      headers: { 'Content-Type': 'text/html' },
+    });
+  }
   if (opts.blocked) {
     return jsonResponse({ error: 'Tài khoản đã bị khóa', code: 'BLOCKED' }, 403);
   }
@@ -456,8 +498,17 @@ function mockApiResponse(pathname, query, opts, body) {
     case 'questions': {
       // Phải lấy subject_code của REQUEST. Lấy từ location.search thì đổi môn sang
       // MOCK2 vẫn trả câu của MOCK1 — trông y như bug "đổi môn mà thư viện không đổi".
-      const subject = query.get('subject_code') || opts.subject;
-      return jsonResponse(mockQuestions(subject));
+      const asked = query.get('subject_code');
+      // EXPORT_PICK_SUBJECTS_20260806: KHÔNG có subject_code thì server thật trả câu của MỌI môn
+      // (`api/controllers/questions.js`: chỉ thêm `and subject_code = ?` khi có tham số). Chỗ duy
+      // nhất gọi kiểu đó là "Xuất dữ liệu" của trang admin khi tick hết danh sách — trả về môn
+      // đang học như trước thì file xuất ra chỉ có 1 môn và tưởng là lỗi lọc.
+      // `count_only=1` giữ nguyên đường cũ: nó là endpoint đếm, hình dạng khác.
+      if (!asked && !query.get('count_only')) {
+        const all = mockSubjects().data.flatMap(s => mockQuestions(s.code).data);
+        return jsonResponse({ data: all });
+      }
+      return jsonResponse(mockQuestions(asked || opts.subject));
     }
     case 'profile':
       // ?mock=1&reload_notice=1 -> thử banner "Hệ thống vừa cập nhật" mà không cần admin thật.
@@ -475,6 +526,35 @@ function mockApiResponse(pathname, query, opts, body) {
       return jsonResponse(mockAdminDashboard(opts));
     case 'notify':
       return jsonResponse({ ok: true });
+    /*
+      BOOKMARK_SYNC_PER_PART_20260806 — server giả cho "Lưu câu 🔖".
+      Nhớ trong PHIÊN (biến module `mockBookmarks`) chứ không trả rỗng cứng: cái cần kiểm là
+      "lưu ở phần này thì phần kia KHÔNG hiện đã lưu", mà GET luôn rỗng thì mọi lần vẽ lại
+      đều xoá sạch bookmark vừa bấm và không thấy được gì.
+    */
+    case 'bookmarks': {
+      if (body && (body.merge || body.q_key)) {
+        if (body.merge && typeof body.merge === 'object') {
+          Object.entries(body.merge).forEach(([code, keys]) => {
+            const c = String(code).toUpperCase();
+            const set = new Set(mockBookmarks[c] || []);
+            (Array.isArray(keys) ? keys : []).forEach(k => set.add(String(k)));
+            mockBookmarks[c] = [...set];
+          });
+          return jsonResponse({ ok: true, merged: true });
+        }
+        const c = String(body.subject_code || '').toUpperCase();
+        const k = String(body.q_key || '');
+        if (c && k) {
+          const set = new Set(mockBookmarks[c] || []);
+          if (body.on === false) set.delete(k);
+          else set.add(k);
+          mockBookmarks[c] = [...set];
+        }
+        return jsonResponse({ ok: true, on: body.on !== false });
+      }
+      return jsonResponse({ data: mockBookmarks });
+    }
     case 'admin-action': {
       // Không ghi gì cả — chỉ báo thành công để UI đi hết luồng. Ngoại lệ: cấu hình thông
       // báo Discord phải "nhớ" trong phiên, nếu không thì bấm Tắt xong nó lại hiện Bật và
@@ -566,6 +646,16 @@ function installMockNetwork() {
       lhWarn('MOCK:url', e);
     }
     if (!pathname.startsWith('/api')) return realFetch(input, init);
+
+    /*
+      LH_OFFLINE_GRACE_20260806: giả lập MẤT MẠNG cho /api/*. Phải là promise REJECT đúng
+      như fetch thật khi không có mạng (TypeError), không phải một mã lỗi HTTP — hai đường
+      này đi vào hai nhánh code khác nhau ở client.
+    */
+    if (opts.fail === 'offline') {
+      console.log(`[MOCK] ${pathname} -> giả lập MẤT MẠNG (reject)`);
+      return Promise.reject(new TypeError('Failed to fetch (mock offline)'));
+    }
 
     const method = (init?.method || 'GET').toUpperCase();
     const label = query.get('subject_code') ? ` (${query.get('subject_code')})` : '';

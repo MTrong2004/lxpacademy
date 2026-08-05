@@ -4,6 +4,7 @@ import { clearQuestionsCache } from './questions.js';
 import { clearSubjectsCache } from './subjects.js';
 import { getDiscordSettings, saveDiscordSettings, postDiscordEmbed, DISCORD_NOTIFICATION_KINDS, SETTINGS_KEY } from '../lib/discord.js';
 import { getFolderNewBadges, setFolderNewBadge, FOLDER_NEW_BADGE_KEY } from '../lib/folderBadges.js';
+import { resolveImportNums } from '../lib/questionNums.js';
 
 /*
   QUESTION_EDIT_DISCORD_20260729
@@ -718,11 +719,14 @@ export async function handleAdminAction(req, authUser) {
       const newId = Number(res.lastInsertRowid);
 
       if (questions && questions.length > 0) {
-        let currentNum = 1;
-        for (const q of questions) {
+        // IMPORT_QUALITY_GATE_20260805: tôn trọng num của file import (kể cả biến thể "1.1"),
+        // chỉ tự cấp số khi num thiếu/rác/trùng. Xem api/lib/questionNums.js.
+        const finalNums = resolveImportNums(questions);
+        for (let qi = 0; qi < questions.length; qi++) {
+          const q = questions[qi];
           const list = q.images || [];
           const localHasImg = !!(list.length || q.has_image);
-          const finalNum = currentNum++;
+          const finalNum = finalNums[qi];
           await db.execute({
             sql: `insert into questions (subject_code, num, question, options, answer, answer_text, images, is_active, has_image, error_risk, error_risk_reason, created_at, updated_at)
                   values (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
@@ -1030,21 +1034,25 @@ export async function handleAdminAction(req, authUser) {
 
       const qList = safeParse(request.questions_data, []);
       if (qList && qList.length > 0) {
-        let currentNum = 1;
-        for (const q of qList) {
-          const finalNum = currentNum++;
+        // IMPORT_QUALITY_GATE_20260805: cùng luật đánh số với `add_subject` — nếu chỉ sửa một chỗ
+        // thì môn do admin tự thêm và môn do học viên gửi duyệt sẽ đánh số khác nhau.
+        const finalNums = resolveImportNums(qList);
+        for (let qi = 0; qi < qList.length; qi++) {
+          const q = qList[qi];
           await db.execute({
-            sql: `insert into questions (subject_code, num, question, options, answer, answer_text, images, is_active, has_image, created_at, updated_at)
-                  values (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+            sql: `insert into questions (subject_code, num, question, options, answer, answer_text, images, is_active, has_image, error_risk, error_risk_reason, created_at, updated_at)
+                  values (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
             args: [
               request.code.toUpperCase().trim(),
-              finalNum,
+              finalNums[qi],
               q.question,
               JSON.stringify(q.options || {}),
               q.answer,
               q.answer_text || '',
               JSON.stringify(q.images || []),
-              q.images && q.images.length > 0 ? 1 : 0,
+              !!(q.images && q.images.length) || !!q.has_image ? 1 : 0,
+              q.error_risk || 'low',
+              q.error_risk_reason || null,
               now,
               now
             ]

@@ -1509,7 +1509,7 @@
             }
             return e2.insert = e2.strstart < x - 1 ? e2.strstart : x - 1, t2 === f ? (N(e2, true), 0 === e2.strm.avail_out ? O : B) : e2.last_lit && (N(e2, false), 0 === e2.strm.avail_out) ? A : I;
           }
-          function W(e2, t2) {
+          function W2(e2, t2) {
             for (var r2, n2, i2; ; ) {
               if (e2.lookahead < z) {
                 if (j(e2), e2.lookahead < z && t2 === l) return A;
@@ -1561,7 +1561,7 @@
               if (e2.strstart - e2.block_start >= e2.w_size - z && (N(e2, false), 0 === e2.strm.avail_out)) return A;
             }
             return e2.insert = 0, t2 === f ? (N(e2, true), 0 === e2.strm.avail_out ? O : B) : (e2.strstart > e2.block_start && (N(e2, false), e2.strm.avail_out), A);
-          }), new M(4, 4, 8, 4, Z), new M(4, 5, 16, 8, Z), new M(4, 6, 32, 32, Z), new M(4, 4, 16, 16, W), new M(8, 16, 32, 32, W), new M(8, 16, 128, 128, W), new M(8, 32, 128, 256, W), new M(32, 128, 258, 1024, W), new M(32, 258, 258, 4096, W)], r.deflateInit = function(e2, t2) {
+          }), new M(4, 4, 8, 4, Z), new M(4, 5, 16, 8, Z), new M(4, 6, 32, 32, Z), new M(4, 4, 16, 16, W2), new M(8, 16, 32, 32, W2), new M(8, 16, 128, 128, W2), new M(8, 32, 128, 256, W2), new M(32, 128, 258, 1024, W2), new M(32, 258, 258, 4096, W2)], r.deflateInit = function(e2, t2) {
             return Y(e2, t2, v, 15, 8, 0);
           }, r.deflateInit2 = Y, r.deflateReset = K, r.deflateResetKeep = G, r.deflateSetHeader = function(e2, t2) {
             return e2 && e2.state ? 2 !== e2.state.wrap ? _ : (e2.state.gzhead = t2, m) : _;
@@ -2215,7 +2215,7 @@
               0 !== o2 && (e2[2 * i2] = j(s2[o2]++, o2));
             }
           }
-          function W(e2) {
+          function W2(e2) {
             var t2;
             for (t2 = 0; t2 < l; t2++) e2.dyn_ltree[2 * t2] = 0;
             for (t2 = 0; t2 < f; t2++) e2.dyn_dtree[2 * t2] = 0;
@@ -2289,7 +2289,7 @@
               for (; e3 <= 287; ) z[2 * e3 + 1] = 8, e3++, s2[8]++;
               for (Z(z, l + 1, s2), e3 = 0; e3 < f; e3++) C[2 * e3 + 1] = 5, C[2 * e3] = j(e3, 5);
               O = new D(z, w, u + 1, l, g), B = new D(C, k, 0, f, g), R = new D(new Array(0), x, 0, c, p);
-            }(), q = true), e2.l_desc = new F(e2.dyn_ltree, O), e2.d_desc = new F(e2.dyn_dtree, B), e2.bl_desc = new F(e2.bl_tree, R), e2.bi_buf = 0, e2.bi_valid = 0, W(e2);
+            }(), q = true), e2.l_desc = new F(e2.dyn_ltree, O), e2.d_desc = new F(e2.dyn_dtree, B), e2.bl_desc = new F(e2.bl_tree, R), e2.bi_buf = 0, e2.bi_valid = 0, W2(e2);
           }, r._tr_stored_block = J, r._tr_flush_block = function(e2, t2, r2, n2) {
             var i2, s2, a2 = 0;
             0 < e2.level ? (2 === e2.strm.data_type && (e2.strm.data_type = function(e3) {
@@ -2306,7 +2306,7 @@
               var i3;
               for (P(e3, t3 - 257, 5), P(e3, r3 - 1, 5), P(e3, n3 - 4, 4), i3 = 0; i3 < n3; i3++) P(e3, e3.bl_tree[2 * S[i3] + 1], 3);
               V(e3, e3.dyn_ltree, t3 - 1), V(e3, e3.dyn_dtree, r3 - 1);
-            }(e2, e2.l_desc.max_code + 1, e2.d_desc.max_code + 1, a2 + 1), K(e2, e2.dyn_ltree, e2.dyn_dtree)), W(e2), n2 && M(e2);
+            }(e2, e2.l_desc.max_code + 1, e2.d_desc.max_code + 1, a2 + 1), K(e2, e2.dyn_ltree, e2.dyn_dtree)), W2(e2), n2 && M(e2);
           }, r._tr_tally = function(e2, t2, r2) {
             return e2.pending_buf[e2.d_buf + 2 * e2.last_lit] = t2 >>> 8 & 255, e2.pending_buf[e2.d_buf + 2 * e2.last_lit + 1] = 255 & t2, e2.pending_buf[e2.l_buf + e2.last_lit] = 255 & r2, e2.last_lit++, 0 === t2 ? e2.dyn_ltree[2 * r2]++ : (e2.matches++, t2--, e2.dyn_ltree[2 * (A[r2] + u + 1)]++, e2.dyn_dtree[2 * N(t2)]++), e2.last_lit === e2.lit_bufsize - 1;
           }, r._tr_align = function(e2) {
@@ -2886,13 +2886,13 @@
       function cacheKey(code) {
         return "learninghub_questions_cache_v2_" + code;
       }
-      function readQuestionCache(code) {
+      function readQuestionCache(code, allowStale = false) {
         try {
           const raw = localStorage.getItem(cacheKey(code));
           if (!raw) return null;
           const obj = JSON.parse(raw);
           if (!obj || !obj.savedAt || !Array.isArray(obj.rows)) return null;
-          if (Date.now() - obj.savedAt > CACHE_TTL) return null;
+          if (!allowStale && Date.now() - obj.savedAt > CACHE_TTL) return null;
           return obj.rows;
         } catch (e) {
           return null;
@@ -2993,6 +2993,12 @@
             return true;
           } catch (e) {
             console.warn("[loadSubjectLight]", e);
+            const stale = readQuestionCache(code, true);
+            if (stale && stale.length) {
+              console.warn("[loadSubjectLight] d\xF9ng d\u1EEF li\u1EC7u \u0111\xE3 l\u01B0u tr\xEAn m\xE1y cho", code, "\u2014", stale.length, "c\xE2u");
+              applyQuestionRows(stale, code);
+              return true;
+            }
             return false;
           } finally {
             delete activeLoadPromises[code];
@@ -3312,7 +3318,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "154e452" : null;
+  var currentVersion = true ? "70f0273" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -3639,7 +3645,7 @@
       pending: p.get("pending") === "1",
       blocked: p.get("blocked") === "1",
       fail: p.get("fail") || "",
-      // '500' | '401' | '403' | ''
+      // '500' | '401' | '503' | 'auth' | '401nocode' | 'offline' | ''
       subject: (p.get("subject") || "MOCK1").toUpperCase(),
       /*
         ADMIN_TWO_TIERS_20260729: vai admin trong mock mặc định là ADMIN HỆ THỐNG (đổi được
@@ -3676,6 +3682,7 @@
     ["MOCK1_C4", "Ch\u01B0\u01A1ng 4 t\xEAn r\u1EA5t d\xE0i \u0111\u1EC3 ki\u1EC3m tra tr\xE0n ch\u1EEF", 20]
   ];
   var mockFolderNewBadges = ["MOCK1"];
+  var mockBookmarks = { MOCK1_C1: ["num_2"] };
   function mockSubjects() {
     const make = (id, code, name, count) => ({
       id,
@@ -3891,6 +3898,10 @@
           localStorage.removeItem(k);
         }
       }
+      const grant = JSON.parse(localStorage.getItem("learninghub_access_grant_v1") || "null");
+      if (grant && String(grant.id || "").startsWith("mock-")) {
+        localStorage.removeItem("learninghub_access_grant_v1");
+      }
     } catch (e) {
       lhWarn("MOCK:cleanup", e);
     }
@@ -3956,6 +3967,18 @@
     if (opts.fail === "401") {
       return jsonResponse({ error: "Phi\xEAn \u0111\u0103ng nh\u1EADp kh\xF4ng h\u1EE3p l\u1EC7", code: "UNAUTHORIZED" }, 401);
     }
+    if (opts.fail === "503" || opts.fail === "auth") {
+      return jsonResponse(
+        { error: "Kh\xF4ng x\xE1c minh \u0111\u01B0\u1EE3c phi\xEAn \u0111\u0103ng nh\u1EADp, vui l\xF2ng th\u1EED l\u1EA1i.", code: "AUTH_CHECK_FAILED" },
+        503
+      );
+    }
+    if (opts.fail === "401nocode") {
+      return new Response("<html>407 Proxy Authentication Required</html>", {
+        status: 401,
+        headers: { "Content-Type": "text/html" }
+      });
+    }
     if (opts.blocked) {
       return jsonResponse({ error: "T\xE0i kho\u1EA3n \u0111\xE3 b\u1ECB kh\xF3a", code: "BLOCKED" }, 403);
     }
@@ -3967,8 +3990,12 @@
       case "subjects":
         return jsonResponse(mockSubjects());
       case "questions": {
-        const subject = query.get("subject_code") || opts.subject;
-        return jsonResponse(mockQuestions(subject));
+        const asked = query.get("subject_code");
+        if (!asked && !query.get("count_only")) {
+          const all = mockSubjects().data.flatMap((s) => mockQuestions(s.code).data);
+          return jsonResponse({ data: all });
+        }
+        return jsonResponse(mockQuestions(asked || opts.subject));
       }
       case "profile":
         return jsonResponse({ data: mockProfile(opts), reload_notice: !!opts.reloadNotice });
@@ -3982,6 +4009,35 @@
         return jsonResponse(mockAdminDashboard(opts));
       case "notify":
         return jsonResponse({ ok: true });
+      /*
+        BOOKMARK_SYNC_PER_PART_20260806 — server giả cho "Lưu câu 🔖".
+        Nhớ trong PHIÊN (biến module `mockBookmarks`) chứ không trả rỗng cứng: cái cần kiểm là
+        "lưu ở phần này thì phần kia KHÔNG hiện đã lưu", mà GET luôn rỗng thì mọi lần vẽ lại
+        đều xoá sạch bookmark vừa bấm và không thấy được gì.
+      */
+      case "bookmarks": {
+        if (body && (body.merge || body.q_key)) {
+          if (body.merge && typeof body.merge === "object") {
+            Object.entries(body.merge).forEach(([code, keys]) => {
+              const c2 = String(code).toUpperCase();
+              const set = new Set(mockBookmarks[c2] || []);
+              (Array.isArray(keys) ? keys : []).forEach((k2) => set.add(String(k2)));
+              mockBookmarks[c2] = [...set];
+            });
+            return jsonResponse({ ok: true, merged: true });
+          }
+          const c = String(body.subject_code || "").toUpperCase();
+          const k = String(body.q_key || "");
+          if (c && k) {
+            const set = new Set(mockBookmarks[c] || []);
+            if (body.on === false) set.delete(k);
+            else set.add(k);
+            mockBookmarks[c] = [...set];
+          }
+          return jsonResponse({ ok: true, on: body.on !== false });
+        }
+        return jsonResponse({ data: mockBookmarks });
+      }
       case "admin-action": {
         const action = String(body?.action || "");
         if (action === "set_discord_notifications") {
@@ -4055,6 +4111,10 @@
         lhWarn("MOCK:url", e);
       }
       if (!pathname.startsWith("/api")) return realFetch(input, init2);
+      if (opts.fail === "offline") {
+        console.log(`[MOCK] ${pathname} -> gi\u1EA3 l\u1EADp M\u1EA4T M\u1EA0NG (reject)`);
+        return Promise.reject(new TypeError("Failed to fetch (mock offline)"));
+      }
       const method = (init2?.method || "GET").toUpperCase();
       const label = query.get("subject_code") ? ` (${query.get("subject_code")})` : "";
       console.log(`[MOCK] ${method} ${pathname}${label} -> d\u1EEF li\u1EC7u gi\u1EA3`);
@@ -4250,11 +4310,11 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
         "cau",
         "c\xE2u"
       ]);
-      function normText(s) {
+      function normText2(s) {
         return String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/[^a-z0-9#:\s]/g, " ").replace(/\s+/g, " ").trim();
       }
       function splitTokens(s) {
-        return normText(s).split(/\s+/).filter(Boolean);
+        return normText2(s).split(/\s+/).filter(Boolean);
       }
       function meaningfulTokens(q) {
         const raw = splitTokens(q);
@@ -4269,7 +4329,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       }
       function parseQuery(q) {
         const raw = String(q ?? "").trim();
-        const n = normText(raw);
+        const n = normText2(raw);
         const p = { raw, norm: n, num: null, answer: null, multi: false, tokens: [], numericOnly: false, phrase: "" };
         p.numericOnly = /^\d+$/.test(n);
         let m = n.match(/(?:^|\s)#\s*(\d+)(?:\s|$)/) || n.match(/(?:^|\s)cau\s*(\d+)(?:\s|$)/);
@@ -4337,11 +4397,11 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
         const ansSorted = sortAns(String(c.answer || "").toUpperCase());
         if (p.answer && ansSorted !== p.answer) return { ok: false, score: -1, auto: false };
         if (p.multi && String(c.answer || "").length <= 1) return { ok: false, score: -1, auto: false };
-        const qNorm = normText(c.question || "");
-        const optNorm = normText(optionText(c));
-        const corNorm = normText(correctAnswerText(c));
-        const ansLineNorm = normText([c.answer, c.answer_text, correctAnswerText(c)].join(" "));
-        const allNorm = normText([c.num, c.question, c.answer, c.answer_text, optionText(c)].join(" "));
+        const qNorm = normText2(c.question || "");
+        const optNorm = normText2(optionText(c));
+        const corNorm = normText2(correctAnswerText(c));
+        const ansLineNorm = normText2([c.answer, c.answer_text, correctAnswerText(c)].join(" "));
+        const allNorm = normText2([c.num, c.question, c.answer, c.answer_text, optionText(c)].join(" "));
         let score = 0, auto = false;
         if (p.num !== null) {
           const exact = Number(c.num) === p.num;
@@ -4401,7 +4461,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
           let norm = "", map = [], lastSpace = true;
           for (let i = 0; i < s.length; i++) {
             const ch = s[i];
-            const n = normText(ch);
+            const n = normText2(ch);
             if (n) {
               for (const c of n) {
                 norm += c;
@@ -4434,7 +4494,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
         if (!tokens.length) return escLocal(source);
         const parts = source.match(/[\p{L}\p{N}]+|[^\p{L}\p{N}]+/gu) || [source];
         return parts.map((part) => {
-          const np = normText(part);
+          const np = normText2(part);
           if (np && tokens.some((t) => np === t || np.includes(t) || t.includes(np))) {
             return `<mark class="searchMark ${cls}">${escLocal(part)}</mark>`;
           }
@@ -5086,8 +5146,205 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
           title: "Kh\xF4ng th\u1EC3 ki\u1EC3m tra quy\u1EC1n",
           message: "Kh\xF4ng th\u1EC3 ki\u1EC3m tra quy\u1EC1n, vui l\xF2ng th\u1EED l\u1EA1i."
         });
+        scheduleAccessRetry();
       }
       window.showAccessCheckError = showAccessCheckError;
+      const ACCESS_GRANT_KEY = "learninghub_access_grant_v1";
+      const GRACE_MS = 7 * 24 * 60 * 60 * 1e3;
+      let sessionConfirmed = false;
+      let revokedConclusively = false;
+      let degraded = false;
+      function activeUser() {
+        if (currentUser) return currentUser;
+        try {
+          return window.HODSupabase?.getUser?.() || null;
+        } catch (e) {
+          return null;
+        }
+      }
+      function rememberAccessGrant(p) {
+        try {
+          localStorage.setItem(
+            ACCESS_GRANT_KEY,
+            JSON.stringify({
+              id: p?.id || activeUser()?.id || "",
+              email: p?.email || activeUser()?.email || "",
+              role: p?.role || "user",
+              at: Date.now()
+            })
+          );
+        } catch (e) {
+          lhWarn("LH_OFFLINE_GRACE_20260806", e);
+        }
+      }
+      function readAccessGrant() {
+        try {
+          const raw = localStorage.getItem(ACCESS_GRANT_KEY);
+          if (!raw) return null;
+          const g = JSON.parse(raw);
+          if (!g || !g.at || Date.now() - g.at > GRACE_MS) return null;
+          const u = activeUser();
+          if (u?.id && g.id && String(g.id) !== String(u.id)) return null;
+          return g;
+        } catch (e) {
+          return null;
+        }
+      }
+      function clearAccessGrant() {
+        try {
+          localStorage.removeItem(ACCESS_GRANT_KEY);
+        } catch (e) {
+          lhWarn("LH_OFFLINE_GRACE_20260806", e);
+        }
+      }
+      function canWorkOffline() {
+        if (revokedConclusively) return false;
+        if (!activeUser()) return false;
+        return sessionConfirmed || !!readAccessGrant();
+      }
+      function ensureOfflineBarStyle() {
+        if (document.getElementById("lhOfflineBarStyle")) return;
+        const st = document.createElement("style");
+        st.id = "lhOfflineBarStyle";
+        st.textContent = `
+      #lhOfflineBar{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:2147483000;
+        display:flex;align-items:center;gap:10px;max-width:min(560px,calc(100vw - 24px));
+        padding:9px 14px;border-radius:999px;background:rgba(18,24,38,.96);color:#f8fafc;
+        border:1px solid rgba(200,169,110,.35);box-shadow:0 10px 30px rgba(0,0,0,.45);
+        font:500 13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+        backdrop-filter:blur(14px)}
+      #lhOfflineBar.hidden{display:none}
+      #lhOfflineBar .lhOfflineDot{width:8px;height:8px;border-radius:50%;background:#f59e0b;flex:0 0 auto;
+        animation:lhOfflinePulse 1.6s ease-in-out infinite}
+      @keyframes lhOfflinePulse{0%,100%{opacity:1}50%{opacity:.35}}
+      #lhOfflineBar .lhOfflineTxt{min-width:0}
+      #lhOfflineBar button{flex:0 0 auto;cursor:pointer;border-radius:999px;padding:5px 12px;
+        font:600 12px/1 inherit;color:#0f172a;background:#c8a96e;border:0}
+      #lhOfflineBar button:disabled{opacity:.6;cursor:default}
+      @media (max-width:520px){#lhOfflineBar{bottom:10px;font-size:12px;padding:8px 12px}}
+    `;
+        document.head.appendChild(st);
+      }
+      function showOfflineBar(on) {
+        if (!on) {
+          document.getElementById("lhOfflineBar")?.classList.add("hidden");
+          return;
+        }
+        ensureOfflineBarStyle();
+        let bar = document.getElementById("lhOfflineBar");
+        if (!bar) {
+          bar = document.createElement("div");
+          bar.id = "lhOfflineBar";
+          bar.innerHTML = '<span class="lhOfflineDot"></span><span class="lhOfflineTxt">M\u1EA5t k\u1EBFt n\u1ED1i \u2014 b\u1EA1n v\u1EABn h\u1ECDc \u0111\u01B0\u1EE3c v\u1EDBi d\u1EEF li\u1EC7u \u0111\xE3 t\u1EA3i.</span><button type="button">Th\u1EED l\u1EA1i</button>';
+          bar.querySelector("button").addEventListener("click", retryFromOfflineBar);
+          (document.body || document.documentElement).appendChild(bar);
+        }
+        bar.classList.remove("hidden");
+      }
+      async function retryFromOfflineBar() {
+        const btn = document.querySelector("#lhOfflineBar button");
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "\u0110ang th\u1EED...";
+        }
+        try {
+          await loadProfile(true, true);
+        } catch (e) {
+          lhWarn("LH_OFFLINE_GRACE_20260806", e);
+        }
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "Th\u1EED l\u1EA1i";
+        }
+      }
+      function enterDegradedMode(reason) {
+        if (!currentProfile) {
+          const g = readAccessGrant();
+          currentProfile = {
+            id: g?.id || activeUser()?.id || "",
+            email: g?.email || activeUser()?.email || "",
+            role: g?.role || "user",
+            approved: 1,
+            blocked: 0,
+            __offline: true
+          };
+        }
+        window.__LH_ACCESS_OK = true;
+        hidePendingApproval();
+        updateAuthUI();
+        cancelAccessRetry();
+        showOfflineBar(true);
+        if (!degraded) {
+          degraded = true;
+          window.__LH_OFFLINE_MODE = true;
+          console.warn("[LH access] ch\u1EBF \u0111\u1ED9 t\u1EA1m ngo\u1EA1i tuy\u1EBFn \u2014 gi\u1EEF phi\xEAn, d\xF9ng d\u1EEF li\u1EC7u \u0111\xE3 t\u1EA3i. L\xFD do:", reason);
+          window.dispatchEvent(new CustomEvent("lh:profile-ready"));
+        }
+        try {
+          if (typeof window.startFallbackPolling === "function") window.startFallbackPolling();
+        } catch (e) {
+          lhWarn("LH_OFFLINE_GRACE_20260806", e);
+        }
+        return currentProfile;
+      }
+      function exitDegradedMode() {
+        showOfflineBar(false);
+        if (!degraded) return;
+        degraded = false;
+        window.__LH_OFFLINE_MODE = false;
+        console.log("[LH access] \u0111\xE3 k\u1EBFt n\u1ED1i l\u1EA1i \u2014 tho\xE1t ch\u1EBF \u0111\u1ED9 ngo\u1EA1i tuy\u1EBFn");
+      }
+      window.__lhIsOfflineMode = () => degraded;
+      function handleInconclusiveAccess(reason) {
+        if (window.__LH_REVOKING_ACCESS || revokedConclusively) return null;
+        if (canWorkOffline()) return enterDegradedMode(reason);
+        showAccessCheckError();
+        updateAuthUI();
+        return null;
+      }
+      function sessionLooksDead() {
+        if (navigator.onLine === false) return false;
+        return window.__lhLastRefreshOutcome !== "unreachable";
+      }
+      let accessRetryTimer = null;
+      let accessRetryDelay = 5e3;
+      function cancelAccessRetry() {
+        if (accessRetryTimer) clearTimeout(accessRetryTimer);
+        accessRetryTimer = null;
+        accessRetryDelay = 5e3;
+      }
+      function scheduleAccessRetry() {
+        if (accessRetryTimer) return;
+        accessRetryTimer = setTimeout(() => {
+          accessRetryTimer = null;
+          accessRetryDelay = Math.min(accessRetryDelay * 2, 6e4);
+          if (revokedConclusively || window.__LH_GATE_LOCKED !== true) {
+            cancelAccessRetry();
+            return;
+          }
+          loadProfile(true, true).catch((e) => lhWarn("LH_OFFLINE_GRACE_20260806", e));
+        }, accessRetryDelay);
+      }
+      window.addEventListener("offline", () => {
+        if (canWorkOffline()) enterDegradedMode("event:offline");
+      });
+      window.addEventListener("online", () => {
+        cancelAccessRetry();
+        accessRetryDelay = 5e3;
+        Promise.resolve(loadProfile(true, true)).then(() => {
+          if (degraded) return;
+          try {
+            window.loadCurrentSubjectOnly?.(true);
+          } catch (e) {
+            lhWarn("LH_OFFLINE_GRACE_20260806", e);
+          }
+          try {
+            window.refreshSubjectCountsOnce?.(true);
+          } catch (e) {
+            lhWarn("LH_OFFLINE_GRACE_20260806", e);
+          }
+        }).catch((e) => lhWarn("LH_OFFLINE_GRACE_20260806", e));
+      });
       function hidePendingApproval() {
         const el = $id("hodPendingApproval");
         if (el) el.classList.add("hidden");
@@ -5171,6 +5428,12 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       }
       function handleAccessRevoked(reason, code = null) {
         if (window.__LH_REVOKING_ACCESS) return;
+        if (navigator.onLine === false && code !== "BLOCKED") {
+          if (canWorkOffline()) {
+            enterDegradedMode("revoke-while-offline:" + code);
+            return;
+          }
+        }
         window.__LH_REVOKING_ACCESS = true;
         console.warn("[LH Auth] Thu h\u1ED3i quy\u1EC1n:", reason, "| code:", code);
         try {
@@ -5183,19 +5446,30 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
         }
         window.__LH_ACCESS_OK = false;
         currentProfile = null;
-        purgeOfflineQuestionCache();
+        degraded = false;
+        window.__LH_OFFLINE_MODE = false;
+        showOfflineBar(false);
+        cancelAccessRetry();
+        if (code === "UNAUTHORIZED") {
+          sessionConfirmed = false;
+        } else {
+          revokedConclusively = true;
+          sessionConfirmed = false;
+          clearAccessGrant();
+          purgeOfflineQuestionCache();
+        }
         try {
           if (typeof window.lhTeardownAccessWatch === "function") window.lhTeardownAccessWatch();
         } catch (e) {
           lhWarn("APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627", e);
         }
-        const mustSignOut = code === "BLOCKED" || code === "UNAUTHORIZED";
+        const mustSignOut = code === "BLOCKED";
         if (code === "BLOCKED") {
           showPendingApproval({ title: BLOCKED_TITLE, message: BLOCKED_MESSAGE });
         } else if (code === "UNAUTHORIZED") {
           showPendingApproval({
             title: "Phi\xEAn \u0111\u0103ng nh\u1EADp \u0111\xE3 h\u1EBFt h\u1EA1n",
-            message: "Vui l\xF2ng \u0111\u0103ng nh\u1EADp l\u1EA1i \u0111\u1EC3 ti\u1EBFp t\u1EE5c."
+            message: "B\u1EA5m <b>Ki\u1EC3m tra l\u1EA1i</b> \u0111\u1EC3 n\u1ED1i l\u1EA1i phi\xEAn.<br>N\u1EBFu v\u1EABn kh\xF4ng \u0111\u01B0\u1EE3c, b\u1EA5m <b>\u0110\u0103ng xu\u1EA5t</b> r\u1ED3i \u0111\u0103ng nh\u1EADp l\u1EA1i."
           });
         } else {
           showPendingApproval({ title: PENDING_DEFAULT_TITLE, message: PENDING_DEFAULT_MESSAGE });
@@ -5305,7 +5579,8 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       let activeProfilePromise = null;
       async function loadProfile(force = false, checkOnly = false) {
         window.loadProfile = loadProfile;
-        if (!currentUser) {
+        const me = activeUser();
+        if (!me) {
           currentProfile = null;
           updateAuthUI();
           return null;
@@ -5315,10 +5590,10 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
           try {
             const activeSubjectCode = (localStorage.getItem("learninghub_subject_code_merged_v1") || "").trim();
             const body = checkOnly ? { check_only: true } : {
-              id: currentUser.id,
-              email: currentUser.email || "",
-              full_name: currentUser.user_metadata?.full_name || "",
-              avatar_url: currentUser.user_metadata?.avatar_url || currentUser.user_metadata?.picture || "",
+              id: me.id,
+              email: me.email || "",
+              full_name: me.user_metadata?.full_name || "",
+              avatar_url: me.user_metadata?.avatar_url || me.user_metadata?.picture || "",
               current_subject: activeSubjectCode,
               device_info: typeof getDeviceTypeString === "function" ? getDeviceTypeString() : void 0,
               // DEVICE_ID_AND_SUBJECT_PER_DEVICE_20260731: khoá lịch sử thiết bị theo ID trình duyệt.
@@ -5334,18 +5609,19 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
             });
             const json = await res.json().catch(() => ({}));
             if (!res.ok || json.error) {
-              currentProfile = null;
-              window.__LH_ACCESS_OK = false;
-              if (res.status === 401 || res.status === 403) {
-                handleAccessRevoked(
-                  json.error || "T\xE0i kho\u1EA3n ch\u01B0a \u0111\u01B0\u1EE3c duy\u1EC7t ho\u1EB7c \u0111\xE3 b\u1ECB kh\xF3a.",
-                  json.code || (res.status === 401 ? "UNAUTHORIZED" : "PENDING_APPROVAL")
-                );
-              } else {
-                showAccessCheckError();
-                updateAuthUI();
+              const denyCode = json.code || (res.status === 403 ? "PENDING_APPROVAL" : "");
+              const conclusive = (res.status === 401 || res.status === 403) && !!denyCode && (denyCode !== "UNAUTHORIZED" || sessionLooksDead());
+              if (conclusive) {
+                currentProfile = null;
+                window.__LH_ACCESS_OK = false;
+                handleAccessRevoked(json.error || "T\xE0i kho\u1EA3n ch\u01B0a \u0111\u01B0\u1EE3c duy\u1EC7t ho\u1EB7c \u0111\xE3 b\u1ECB kh\xF3a.", denyCode);
+                return null;
               }
-              throw new Error(json.error || `Kh\xF4ng ki\u1EC3m tra \u0111\u01B0\u1EE3c quy\u1EC1n (HTTP ${res.status})`);
+              console.warn(
+                "[LH access] kh\xF4ng k\u1EBFt lu\u1EADn \u0111\u01B0\u1EE3c quy\u1EC1n \u2014 gi\u1EEF phi\xEAn. HTTP " + res.status,
+                json.code || "(kh\xF4ng c\xF3 code)"
+              );
+              return handleInconclusiveAccess("http:" + res.status + ":" + (json.code || "nocode"));
             }
             currentProfile = json.data || json.profile || json;
             if (checkOnly && json.reload_notice) showReloadNoticeNow();
@@ -5359,20 +5635,18 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
             }
             if (!checkOnly) await notifyLoginToDiscordOnce();
             window.__LH_ACCESS_OK = true;
+            sessionConfirmed = true;
+            revokedConclusively = false;
+            rememberAccessGrant(currentProfile);
+            cancelAccessRetry();
+            exitDegradedMode();
             hidePendingApproval();
             updateAuthUI();
             window.dispatchEvent(new CustomEvent("lh:profile-ready"));
             return currentProfile;
           } catch (e) {
-            console.error("[Turso profile]", e);
-            currentProfile = null;
-            window.__LH_ACCESS_OK = false;
-            if (!document.getElementById("hodPendingApproval")?.classList.contains("hidden")) {
-            } else {
-              showAccessCheckError();
-            }
-            updateAuthUI();
-            return null;
+            console.warn("[Turso profile] kh\xF4ng g\u1ECDi \u0111\u01B0\u1EE3c /api/profile:", e?.message || e);
+            return handleInconclusiveAccess("exception:" + (e?.name || "Error"));
           } finally {
             activeProfilePromise = null;
           }
@@ -5488,6 +5762,12 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
         currentUser = null;
         currentProfile = null;
         window.__LH_ACCESS_OK = false;
+        sessionConfirmed = false;
+        degraded = false;
+        window.__LH_OFFLINE_MODE = false;
+        showOfflineBar(false);
+        cancelAccessRetry();
+        clearAccessGrant();
         updateAuthUI();
         notify22("\u0110\xE3 \u0111\u0103ng xu\u1EA5t");
       }
@@ -5655,6 +5935,11 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
           if (btn) {
             btn.disabled = true;
             btn.textContent = "\u0110ang ki\u1EC3m tra...";
+          }
+          try {
+            if (typeof window.__lhRefreshAccessToken === "function") await window.__lhRefreshAccessToken();
+          } catch (e) {
+            lhWarn("LH_OFFLINE_GRACE_20260806", e);
           }
           await loadProfile();
           if (hasFullAccess(currentProfile)) await loadQuestionsFromSupabase();
@@ -6025,21 +6310,52 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
         if (session.expires_at && Date.now() / 1e3 > session.expires_at - 10) return "";
         return tok.trim();
       }
+      function markRefreshOutcome(v) {
+        window.__lhLastRefreshOutcome = v;
+        return v;
+      }
+      markRefreshOutcome("none");
+      function refreshErrorKind(err) {
+        if (!err) return "unreachable";
+        var st = err.status || err.code || 0;
+        if (st === 400 || st === 401 || st === 403) return "dead";
+        var msg = String(err.message || err.name || "");
+        if (/invalid refresh token|refresh token not found|already used|revoked/i.test(msg)) return "dead";
+        return "unreachable";
+      }
       var refreshInFlight = null;
       function lhRefreshToken() {
         if (refreshInFlight) return refreshInFlight;
         var c = authClient();
-        if (!c || !hasRefreshToken()) return Promise.resolve("");
+        if (!c || !hasRefreshToken()) {
+          markRefreshOutcome(navigator.onLine === false ? "unreachable" : "none");
+          return Promise.resolve("");
+        }
+        if (navigator.onLine === false) {
+          markRefreshOutcome("unreachable");
+          return Promise.resolve("");
+        }
         refreshInFlight = Promise.resolve().then(function() {
           return c.auth.getSession();
         }).then(function(r) {
           var tok = freshTokenOf(r && r.data && r.data.session);
-          if (tok) return tok;
+          if (tok) {
+            markRefreshOutcome("ok");
+            return tok;
+          }
+          if (r && r.error) markRefreshOutcome(refreshErrorKind(r.error));
           return c.auth.refreshSession().then(function(r2) {
-            return freshTokenOf(r2 && r2.data && r2.data.session);
+            var t2 = freshTokenOf(r2 && r2.data && r2.data.session);
+            if (t2) {
+              markRefreshOutcome("ok");
+              return t2;
+            }
+            markRefreshOutcome(refreshErrorKind(r2 && r2.error));
+            return "";
           });
         }).catch(function(e) {
           lhWarn("LH_SESSION_REFRESH_20260729", e);
+          markRefreshOutcome(refreshErrorKind(e));
           return "";
         }).then(function(tok) {
           refreshInFlight = null;
@@ -6146,15 +6462,26 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
           window.handleAccessRevoked(message || "T\xE0i kho\u1EA3n b\u1ECB t\u1EEB ch\u1ED1i truy c\u1EADp.", code);
         }
       }
-      function inspectDenial(res) {
+      function unknownDenial(res, where) {
+        if (res.status === 401) {
+          console.warn("[LH fetch] 401 kh\xF4ng c\xF3 code (kh\xF4ng ph\u1EA3i t\u1EEB /api c\u1EE7a app) \u2014 KH\xD4NG \u0111\u0103ng xu\u1EA5t:", where || res.url);
+          return;
+        }
+        dispatchDenial("PENDING_APPROVAL", null);
+      }
+      function inspectDenial(res, where) {
         res.clone().json().then(function(data) {
           var code = data && data.code;
           if (code && REVOKE_CODES[code]) dispatchDenial(code, data.error);
-          else if (!code) {
-            dispatchDenial(res.status === 401 ? "UNAUTHORIZED" : "PENDING_APPROVAL", null);
-          }
+          else if (code) {
+            console.warn(
+              "[LH fetch] " + res.status + " code=" + code + " \u2014 kh\xF4ng k\u1EBFt lu\u1EADn quy\u1EC1n:",
+              where || res.url,
+              data.error || ""
+            );
+          } else unknownDenial(res, where);
         }).catch(function() {
-          dispatchDenial(res.status === 401 ? "UNAUTHORIZED" : "PENDING_APPROVAL", null);
+          unknownDenial(res, where);
         });
       }
       function withAuth(input, init2, tok, force) {
@@ -6204,17 +6531,21 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
               if (res.status === 401) {
                 return lhRefreshToken().then(function(fresh) {
                   if (!fresh || fresh === token) {
-                    inspectDenial(res);
+                    if (window.__lhLastRefreshOutcome === "unreachable" || navigator.onLine === false) {
+                      console.warn("[LH fetch] 401 khi kh\xF4ng x\xE1c minh \u0111\u01B0\u1EE3c token (m\u1EA5t m\u1EA1ng) \u2014 gi\u1EEF phi\xEAn:", url.pathname);
+                      return res;
+                    }
+                    inspectDenial(res, url.pathname);
                     return res;
                   }
                   var args = withAuth(retrySrc, retryInit, fresh, true);
                   return originalFetch.apply(null, args).then(function(res2) {
-                    if (res2.status === 401 || res2.status === 403) inspectDenial(res2);
+                    if (res2.status === 401 || res2.status === 403) inspectDenial(res2, url.pathname);
                     return res2;
                   });
                 });
               }
-              if (res.status === 403) inspectDenial(res);
+              if (res.status === 403) inspectDenial(res, url.pathname);
               return res;
             });
           });
@@ -6320,9 +6651,50 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       }
       return localStorage.getItem("learninghub_subject_code_merged_v1") || "default_subject";
     }
-    function bookmarkKey() {
-      return BOOKMARK_PREFIX + getSubjectCode2();
+    const STORE_KEY = "lh_starred_v2";
+    const MIGRATED_FLAG = "lh_starred_v2_migrated";
+    const PUSHED_FLAG = "learninghub_bookmarks_pushed_v1";
+    function readStore() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+        return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+      } catch (e) {
+        return {};
+      }
     }
+    function writeStore(map) {
+      try {
+        localStorage.setItem(STORE_KEY, JSON.stringify(map || {}));
+      } catch (e) {
+        lhWarn("BOOKMARK_SYNC_PER_PART_20260806", e);
+      }
+    }
+    function migrateLegacyStore() {
+      if (localStorage.getItem(MIGRATED_FLAG) === "1") return;
+      const map = readStore();
+      const legacyKeys = [];
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith(BOOKMARK_PREFIX)) legacyKeys.push(k);
+        }
+        legacyKeys.forEach((k) => {
+          if (k === "lh_starred_v1_backup_all") return;
+          const code = k.slice(BOOKMARK_PREFIX.length).trim().toUpperCase();
+          if (!code) return;
+          const arr = JSON.parse(localStorage.getItem(k) || "[]");
+          if (!Array.isArray(arr) || !arr.length) return;
+          const merged = /* @__PURE__ */ new Set([...map[code] || [], ...arr.map(String)]);
+          map[code] = [...merged];
+        });
+        writeStore(map);
+        legacyKeys.forEach((k) => localStorage.removeItem(k));
+        localStorage.setItem(MIGRATED_FLAG, "1");
+      } catch (e) {
+        lhWarn("BOOKMARK_SYNC_PER_PART_20260806", e);
+      }
+    }
+    migrateLegacyStore();
     function getQKey(q) {
       if (!q) return null;
       if (typeof q === "string" || typeof q === "number") return "num_" + String(q);
@@ -6332,27 +6704,70 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       return null;
     }
     function loadBookmarks() {
-      try {
-        const primaryKey = bookmarkKey();
-        const primaryArr = JSON.parse(localStorage.getItem(primaryKey) || "[]");
-        const backupArr = JSON.parse(localStorage.getItem("lh_starred_v1_backup_all") || "[]");
-        const merged = new Set(
-          [...Array.isArray(primaryArr) ? primaryArr : [], ...Array.isArray(backupArr) ? backupArr : []].map(
-            (x) => String(x)
-          )
-        );
-        return merged;
-      } catch (e) {
-        return /* @__PURE__ */ new Set();
-      }
+      const arr = readStore()[getSubjectCode2().toUpperCase()];
+      return new Set(Array.isArray(arr) ? arr.map(String) : []);
     }
     function saveBookmarks(set) {
+      const map = readStore();
+      map[getSubjectCode2().toUpperCase()] = [...set].map((x) => String(x));
+      writeStore(map);
+    }
+    let syncing = false;
+    async function syncBookmarks() {
+      if (syncing) return false;
+      syncing = true;
       try {
-        const arr = [...set].map((x) => String(x));
-        localStorage.setItem(bookmarkKey(), JSON.stringify(arr));
-        localStorage.setItem("lh_starred_v1_backup_all", JSON.stringify(arr));
+        const res = await fetch("/api/bookmarks", { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const out = await res.json();
+        const server = out?.data && typeof out.data === "object" ? out.data : {};
+        const firstRun = localStorage.getItem(PUSHED_FLAG) !== "1";
+        if (!firstRun) {
+          writeStore(server);
+          return true;
+        }
+        const local = readStore();
+        const merged = {};
+        const onlyLocal = {};
+        (/* @__PURE__ */ new Set([...Object.keys(local), ...Object.keys(server)])).forEach((code) => {
+          const s = new Set((server[code] || []).map(String));
+          const l = (local[code] || []).map(String);
+          const missing = l.filter((k) => !s.has(k));
+          if (missing.length) onlyLocal[code] = missing;
+          merged[code] = [.../* @__PURE__ */ new Set([...s, ...l])];
+        });
+        writeStore(merged);
+        if (Object.keys(onlyLocal).length) {
+          const push = await fetch("/api/bookmarks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({ merge: onlyLocal })
+          });
+          if (!push.ok) throw new Error("merge HTTP " + push.status);
+        }
+        localStorage.setItem(PUSHED_FLAG, "1");
+        return true;
       } catch (e) {
-        lhWarn("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
+        lhWarn("BOOKMARK_SYNC_PER_PART_20260806", e);
+        return false;
+      } finally {
+        syncing = false;
+      }
+    }
+    window.__lhSyncBookmarks = syncBookmarks;
+    function pushBookmark(key, on) {
+      try {
+        fetch("/api/bookmarks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({ subject_code: getSubjectCode2().toUpperCase(), q_key: String(key), on: !!on })
+        }).then((res) => {
+          if (!res.ok) lhWarn("BOOKMARK_SYNC_PER_PART_20260806", new Error("HTTP " + res.status));
+        }).catch((e) => lhWarn("BOOKMARK_SYNC_PER_PART_20260806", e));
+      } catch (e) {
+        lhWarn("BOOKMARK_SYNC_PER_PART_20260806", e);
       }
     }
     function isBookmarked(qOrKey) {
@@ -6375,6 +6790,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
         added = true;
       }
       saveBookmarks(s);
+      pushBookmark(key, added);
       return added;
     }
     function countBookmarks() {
@@ -6546,24 +6962,8 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
         false
       );
     }
-    function init2() {
-      addBookmarkButtonToCard();
-      bindLibraryClickEvents();
-      if (typeof window.renderUnified === "function") {
-        try {
-          window.renderUnified();
-        } catch (e) {
-          lhWarn("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
-        }
-      }
-    }
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", () => setTimeout(init2, 100));
-    } else {
-      setTimeout(init2, 100);
-    }
-    window.addEventListener("lh:subject-changed", () => {
-      setTimeout(updateBookmarkBtn, 100);
+    function repaintBookmarks() {
+      updateBookmarkBtn();
       if (typeof window.renderUnified === "function") {
         try {
           window.renderUnified();
@@ -6577,6 +6977,34 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
           lhWarn("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
         }
       }
+    }
+    function init2() {
+      addBookmarkButtonToCard();
+      bindLibraryClickEvents();
+      if (typeof window.renderUnified === "function") {
+        try {
+          window.renderUnified();
+        } catch (e) {
+          lhWarn("BOOKMARK_QUESTIONS_FEATURE_20260726", e);
+        }
+      }
+      syncBookmarks().then((changed) => {
+        if (changed) repaintBookmarks();
+      });
+      window.addEventListener("online", () => {
+        syncBookmarks().then((changed) => {
+          if (changed) repaintBookmarks();
+        });
+      });
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", () => setTimeout(init2, 100));
+    } else {
+      setTimeout(init2, 100);
+    }
+    window.addEventListener("lh:subject-changed", () => {
+      setTimeout(updateBookmarkBtn, 100);
+      repaintBookmarks();
     });
   }
   function installHeaderBell() {
@@ -7393,7 +7821,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       zone.__mobileDragBound = true;
       let sx = 0, sy = 0, st = 0, dragging = false, decided = false, axis = null, moved = false;
       let ignoreTouch = false;
-      const W = () => zone.getBoundingClientRect().width || window.innerWidth || 360;
+      const W2 = () => zone.getBoundingClientRect().width || window.innerWidth || 360;
       function markSeen() {
         zone.classList.add("swiped");
         try {
@@ -7445,7 +7873,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
             const w = ensureSlideWrap();
             if (w) {
               w.style.transform = "translateX(" + dx + "px)";
-              w.style.opacity = String(Math.max(0.4, 1 - Math.abs(dx) / (W() * 1.1)));
+              w.style.opacity = String(Math.max(0.4, 1 - Math.abs(dx) / (W2() * 1.1)));
             }
           }
         },
@@ -7459,7 +7887,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
         const t = e.changedTouches && e.changedTouches[0];
         const dx = t ? t.clientX - sx : 0;
         const dt = Date.now() - st;
-        const commit = Math.abs(dx) > W() * 0.3 || dt < 320 && Math.abs(dx) > 56;
+        const commit = Math.abs(dx) > W2() * 0.3 || dt < 320 && Math.abs(dx) > 56;
         if (!w) return;
         if (commit) {
           markSeen();
@@ -7512,6 +7940,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
     installAddSubjectFeature: () => installAddSubjectFeature,
     installFastParallelUpload: () => installFastParallelUpload,
     installImportPreviewInlineEdit: () => installImportPreviewInlineEdit,
+    normalizeImportedQuestions: () => normalizeImportedQuestions,
     prepareZipQuestionsBeforeSave: () => prepareZipQuestionsBeforeSave,
     processSelectedJsonFromZip: () => processSelectedJsonFromZip,
     readAndValidateZipFile: () => readAndValidateZipFile,
@@ -7520,6 +7949,1288 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
     uploadZipImagesToCloudinary: () => uploadZipImagesToCloudinary
   });
   var import_jszip = __toESM(require_jszip_min(), 1);
+
+  // src/student/importQuality.js
+  var QUALITY_THRESHOLDS = { low: 5, medium: 15 };
+  var W = { major: 1, mid: 0.5, minor: 0.25 };
+  var ISSUE_META = {
+    // ── chặn cứng ────────────────────────────────────────────────────────────
+    no_question: { sev: "fatal", label: "Thi\u1EBFu n\u1ED9i dung c\xE2u h\u1ECFi", hint: 'Tr\u01B0\u1EDDng "question" r\u1ED7ng.' },
+    few_options: { sev: "fatal", label: "D\u01B0\u1EDBi 2 l\u1EF1a ch\u1ECDn", hint: "C\xE2u tr\u1EAFc nghi\u1EC7m ph\u1EA3i c\xF3 \xEDt nh\u1EA5t 2 l\u1EF1a ch\u1ECDn." },
+    empty_option: { sev: "fatal", label: "L\u1EF1a ch\u1ECDn r\u1ED7ng", hint: "C\xF3 nh\xE3n l\u1EF1a ch\u1ECDn nh\u01B0ng kh\xF4ng c\xF3 n\u1ED9i dung." },
+    answer_unknown: {
+      sev: "fatal",
+      label: "\u0110\xE1p \xE1n tr\u1ECF t\u1EDBi nh\xE3n kh\xF4ng t\u1ED3n t\u1EA1i",
+      hint: 'V\xED d\u1EE5 answer l\xE0 "D" nh\u01B0ng c\xE2u ch\u1EC9 c\xF3 A, B, C.'
+    },
+    // ── nặng (1 điểm) ────────────────────────────────────────────────────────
+    risk_high: { sev: "major", label: "AI t\u1EF1 \u0111\xE1nh error_risk = high", hint: "Ch\xEDnh AI b\xE1o c\xE2u n\xE0y d\u1EC5 sai." },
+    image_missing: {
+      sev: "major",
+      label: "C\u1EA7n \u1EA3nh nh\u01B0ng kh\xF4ng c\xF3 \u1EA3nh",
+      hint: 'has_image = true m\xE0 "images" r\u1ED7ng \u2014 c\xE2u n\xE0y thi\u1EBFu d\u1EEF li\u1EC7u \u0111\u1EC3 tr\u1EA3 l\u1EDDi.'
+    },
+    image_broken: {
+      sev: "major",
+      label: "\u1EA2nh tham chi\u1EBFu kh\xF4ng t\u1ED3n t\u1EA1i",
+      hint: '\u0110\u01B0\u1EDDng d\u1EABn trong "images" l\xE0 \u0111\u01B0\u1EDDng d\u1EABn t\u01B0\u01A1ng \u0111\u1ED1i (images/\u2026) nh\u01B0ng kh\xF4ng c\xF3 \u1EA3nh k\xE8m theo \u2014 h\xE3y n\xE9n JSON + th\u01B0 m\u1EE5c \u1EA3nh th\xE0nh .zip r\u1ED3i t\u1EA3i l\xEAn.'
+    },
+    options_gap: {
+      sev: "major",
+      label: "Nh\xE3n l\u1EF1a ch\u1ECDn b\u1ECB nh\u1EA3y",
+      hint: "V\xED d\u1EE5 c\xF3 A, B, D m\xE0 thi\u1EBFu C \u2014 d\u1EA5u hi\u1EC7u tr\xEDch xu\u1EA5t b\u1ECB r\u01A1i m\u1EA5t m\u1ED9t l\u1EF1a ch\u1ECDn."
+    },
+    // ── vừa (0,5 điểm) ───────────────────────────────────────────────────────
+    no_answer: { sev: "mid", label: "Kh\xF4ng c\xF3 \u0111\xE1p \xE1n", hint: '"answer" r\u1ED7ng \u2014 ng\u01B0\u1EDDi h\u1ECDc s\u1EBD kh\xF4ng bi\u1EBFt \u0111\xE1p \xE1n \u0111\xFAng.' },
+    num_problem: { sev: "mid", label: "S\u1ED1 c\xE2u sai quy t\u1EAFc", hint: 'Xem kh\u1ED1i "\u0110\xE1nh s\u1ED1 c\xE2u" b\xEAn d\u01B0\u1EDBi.' },
+    num_in_question: {
+      sev: "mid",
+      label: "Nh\xE3n s\u1ED1 c\xE2u l\u1ECDt v\xE0o n\u1ED9i dung",
+      hint: 'N\u1ED9i dung c\xF2n d\xEDnh "C\xE2u 12." / "Question 12." \u1EDF \u0111\u1EA7u.'
+    },
+    duplicate: { sev: "mid", label: "Tr\xF9ng n\u1ED9i dung v\u1EDBi c\xE2u kh\xE1c", hint: "Hai c\xE2u c\xF3 ph\u1EA7n \u0111\u1EC1 b\xE0i gi\u1ED1ng nhau." },
+    // ── nhẹ (0,25 điểm) ──────────────────────────────────────────────────────
+    risk_medium: { sev: "minor", label: "AI \u0111\xE1nh error_risk = medium", hint: "AI b\xE1o c\xF3 y\u1EBFu t\u1ED1 ch\u01B0a ch\u1EAFc ch\u1EAFn." },
+    multi_answer: { sev: "minor", label: "Nhi\u1EC1u \u0111\xE1p \xE1n \u0111\xFAng", hint: "C\u1EA7n xem l\u1EA1i t\xE0i li\u1EC7u g\u1ED1c c\xF3 \u0111\xFAng l\xE0 nhi\u1EC1u \u0111\xE1p \xE1n." },
+    label_beyond_d: { sev: "minor", label: "L\u1EF1a ch\u1ECDn ngo\xE0i A\u2013D", hint: "C\xE2u c\xF3 E, F\u2026 ho\u1EB7c nh\xE3n \u0110\xFAng/Sai \u0111\u01B0\u1EE3c \u0111\u1ED5i t\xEAn." },
+    maybe_truncated: {
+      sev: "minor",
+      label: 'Nghi b\u1ECB r\xFAt g\u1ECDn b\u1EB1ng "..."',
+      hint: 'N\u1ED9i dung k\u1EBFt th\xFAc b\u1EB1ng "..." \u2014 c\xF3 th\u1EC3 AI c\u1EAFt b\u1EDBt.'
+    }
+  };
+  var SEV_WEIGHT = { fatal: 0, major: W.major, mid: W.mid, minor: W.minor };
+  function severityLabel(sev) {
+    return { fatal: "Ch\u1EB7n", major: "N\u1EB7ng", mid: "V\u1EEBa", minor: "Nh\u1EB9" }[sev] || sev;
+  }
+  function parseImportNum(raw) {
+    if (raw === null || raw === void 0) return { kind: "invalid", value: null, parent: null, seq: null };
+    const s = String(raw).trim();
+    if (!s) return { kind: "invalid", value: null, parent: null, seq: null };
+    let m = s.match(/^(\d+)$/);
+    if (m) return { kind: "main", value: Number(m[1]), parent: Number(m[1]), seq: 0 };
+    m = s.match(/^(\d+)[.\-](\d+)$/);
+    if (m) {
+      const parent = Number(m[1]);
+      const seq2 = Number(m[2]);
+      if (seq2 < 1) return { kind: "invalid", value: null, parent: null, seq: null };
+      return { kind: "variant", value: parent + "." + seq2, parent, seq: seq2 };
+    }
+    return { kind: "invalid", value: null, parent: null, seq: null };
+  }
+  function normalizeAnswer(raw, options) {
+    const src = Array.isArray(raw) ? raw.join("") : String(raw ?? "");
+    const letters = src.toUpperCase().replace(/[^A-Z]/g, "");
+    const seen = /* @__PURE__ */ new Set();
+    const out = [];
+    const unknown = [];
+    for (const ch of letters) {
+      if (seen.has(ch)) continue;
+      seen.add(ch);
+      if (!options || Object.prototype.hasOwnProperty.call(options, ch)) out.push(ch);
+      else unknown.push(ch);
+    }
+    return { answer: out.join(""), labels: out, unknown };
+  }
+  function buildAnswerText(labels, options) {
+    return (labels || []).filter((l) => options && options[l]).map((l) => l + ". " + options[l]).join(" \xB7 ");
+  }
+  function usableImageRef(p, zipPaths) {
+    if (!p) return false;
+    if (/^(https?:|data:|blob:)/i.test(p)) return true;
+    if (!zipPaths) return false;
+    const base = p.split("/").pop();
+    return zipPaths.has(p) || zipPaths.has(p.replace(/^\/+/, "")) || zipPaths.has(base);
+  }
+  var BLANK_MARK = /\.{4,}|_{3,}|…{2,}/;
+  function looksTruncated(t) {
+    const s = String(t || "").trim();
+    if (s.length <= 40) return false;
+    if (!/(\.\.\.|…)\s*$/.test(s)) return false;
+    return !BLANK_MARK.test(s);
+  }
+  function normText(s) {
+    return String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
+  }
+  function isBlankNum(raw) {
+    return raw === null || raw === void 0 || String(raw).trim() === "";
+  }
+  function checkNumbering(questions) {
+    const problems = [];
+    const mains = [];
+    const seen = /* @__PURE__ */ new Set();
+    let variantCount = 0;
+    let blankCount = 0;
+    let lastMain = null;
+    questions.forEach((q, i) => {
+      const info = parseImportNum(q?.num);
+      const shown = isBlankNum(q?.num) ? "(tr\u1ED1ng)" : String(q.num);
+      if (isBlankNum(q?.num)) {
+        blankCount++;
+        lastMain = null;
+        return;
+      }
+      if (info.kind === "invalid") {
+        problems.push({ index: i, num: shown, msg: 'S\u1ED1 c\xE2u kh\xF4ng \u0111\u1ECDc \u0111\u01B0\u1EE3c \u2014 ph\u1EA3i l\xE0 s\u1ED1 nguy\xEAn ho\u1EB7c d\u1EA1ng "X.1".' });
+        return;
+      }
+      const key = String(info.value);
+      if (seen.has(key)) {
+        problems.push({ index: i, num: shown, msg: "S\u1ED1 c\xE2u b\u1ECB tr\xF9ng v\u1EDBi m\u1ED9t c\xE2u ph\xEDa tr\xEAn." });
+        return;
+      }
+      seen.add(key);
+      if (info.kind === "main") {
+        const lo = mains.length + 1;
+        const hi = mains.length + blankCount + 1;
+        mains.push(info.value);
+        if (info.value < lo || info.value > hi) {
+          problems.push({
+            index: i,
+            num: shown,
+            msg: "S\u1ED1 c\xE2u g\u1ED1c kh\xF4ng li\xEAn t\u1EE5c \u2014 \u0111ang ch\u1EDD c\xE2u " + lo + "."
+          });
+        }
+        lastMain = info.value;
+      } else {
+        variantCount++;
+        if (lastMain !== info.parent) {
+          problems.push({
+            index: i,
+            num: shown,
+            msg: 'Bi\u1EBFn th\u1EC3 "' + info.value + '" kh\xF4ng n\u1EB1m ngay sau c\xE2u g\u1ED1c ' + info.parent + "."
+          });
+        }
+      }
+    });
+    return { mainCount: mains.length, variantCount, blankCount, ok: problems.length === 0, problems };
+  }
+  function analyzeImport(questions, opts = {}) {
+    const list = Array.isArray(questions) ? questions : [];
+    const total = list.length;
+    const rows = [];
+    const counts = {};
+    let points = 0;
+    let fatalCount = 0;
+    if (!total) {
+      return {
+        total: 0,
+        points: 0,
+        deviationPct: 100,
+        tier: "high",
+        fatalCount: 1,
+        counts: { no_question: 1 },
+        groups: [{ code: "no_question", ...ISSUE_META.no_question, count: 1, nums: [] }],
+        rows: [],
+        numbering: { mainCount: 0, variantCount: 0, blankCount: 0, ok: false, problems: [] },
+        verdict: {
+          cls: "bad",
+          icon: "\u2715",
+          title: "File kh\xF4ng c\xF3 c\xE2u h\u1ECFi n\xE0o",
+          sub: 'Ki\u1EC3m tra l\u1EA1i file: JSON ph\u1EA3i l\xE0 m\u1ED9t m\u1EA3ng c\xE2u h\u1ECFi [...] ho\u1EB7c { "questions": [...] }.'
+        }
+      };
+    }
+    const numbering = checkNumbering(list);
+    const numProblemIdx = new Set(numbering.problems.map((p) => p.index));
+    const textSeen = /* @__PURE__ */ new Map();
+    list.forEach((q, i) => {
+      const key = normText(q?.question).slice(0, 120);
+      if (!key) return;
+      if (!textSeen.has(key)) textSeen.set(key, []);
+      textSeen.get(key).push(i);
+    });
+    const dupIdx = /* @__PURE__ */ new Set();
+    textSeen.forEach((idxs) => {
+      if (idxs.length > 1) idxs.forEach((i) => dupIdx.add(i));
+    });
+    const zipPaths = opts.zipImagePaths || null;
+    list.forEach((q, i) => {
+      const codes = [];
+      const question = String(q?.question || "").trim();
+      const options = q?.options && typeof q.options === "object" && !Array.isArray(q.options) ? q.options : {};
+      const labels = Object.keys(options).map((k) => String(k).trim().toUpperCase());
+      const images = Array.isArray(q?.images) ? q.images : [];
+      const risk = String(q?.error_risk || "").toLowerCase();
+      if (!question) codes.push("no_question");
+      if (labels.length < 2) codes.push("few_options");
+      if (labels.some((k) => !String(options[k] ?? "").trim())) codes.push("empty_option");
+      const ans = normalizeAnswer(q?.answer, options);
+      const droppedLabels = String(q?.answer_unknown || "");
+      if (ans.unknown.length || droppedLabels) codes.push("answer_unknown");
+      else if (!ans.labels.length) codes.push("no_answer");
+      else if (ans.labels.length > 1) codes.push("multi_answer");
+      const sorted = [...labels].sort();
+      const gap = sorted.some((k, idx) => k !== String.fromCharCode(65 + idx));
+      if (labels.length >= 2 && gap) codes.push("options_gap");
+      if (labels.some((k) => k > "D")) codes.push("label_beyond_d");
+      const wantImage = !!q?.has_image;
+      if (wantImage && !images.length) codes.push("image_missing");
+      if (images.length) {
+        const broken = images.some((im) => {
+          if (im && typeof im === "object") {
+            if (im.blob || im.zipPath) return false;
+            return !usableImageRef(String(im.src || im.url || "").trim(), zipPaths);
+          }
+          return !usableImageRef(typeof im === "string" ? im.trim() : "", zipPaths);
+        });
+        if (broken) codes.push("image_broken");
+      }
+      if (risk === "high") codes.push("risk_high");
+      else if (risk === "medium") codes.push("risk_medium");
+      if (/^\s*(câu|cau|question|q)\s*\d+\s*[.:)\-]/i.test(question)) codes.push("num_in_question");
+      if (numProblemIdx.has(i)) codes.push("num_problem");
+      if (dupIdx.has(i)) codes.push("duplicate");
+      const tail = [question, ...labels.map((k) => String(options[k] ?? ""))];
+      if (tail.some(looksTruncated)) codes.push("maybe_truncated");
+      if (!codes.length) return;
+      let hasFatal = false;
+      codes.forEach((c) => {
+        const meta = ISSUE_META[c];
+        if (!meta) return;
+        counts[c] = (counts[c] || 0) + 1;
+        if (meta.sev === "fatal") hasFatal = true;
+        else points += SEV_WEIGHT[meta.sev];
+      });
+      if (hasFatal) fatalCount++;
+      rows.push({
+        index: i,
+        num: q?.num === null || q?.num === void 0 || q?.num === "" ? "#" + (i + 1) : String(q.num),
+        codes,
+        severity: hasFatal ? "fatal" : codes.some((c) => ISSUE_META[c]?.sev === "major") ? "major" : "minor"
+      });
+    });
+    const deviationPct = Math.round(points / total * 1e3) / 10;
+    const tier = fatalCount ? "high" : deviationPct <= QUALITY_THRESHOLDS.low ? "low" : deviationPct <= QUALITY_THRESHOLDS.medium ? "medium" : "high";
+    const groups = Object.keys(counts).map((code) => ({
+      code,
+      ...ISSUE_META[code],
+      count: counts[code],
+      nums: rows.filter((r) => r.codes.includes(code)).slice(0, 40).map((r) => r.num)
+    })).sort((a, b) => {
+      const order = { fatal: 0, major: 1, mid: 2, minor: 3 };
+      return order[a.sev] - order[b.sev] || b.count - a.count;
+    });
+    const sevOrder = { fatal: 0, major: 1, minor: 2 };
+    rows.sort((a, b) => sevOrder[a.severity] - sevOrder[b.severity] || a.index - b.index);
+    return {
+      total,
+      points: Math.round(points * 100) / 100,
+      deviationPct,
+      tier,
+      fatalCount,
+      counts,
+      groups,
+      rows,
+      numbering,
+      verdict: verdictOf(tier, deviationPct, fatalCount)
+    };
+  }
+  function verdictOf(tier, pct, fatalCount) {
+    if (tier === "low") {
+      return {
+        cls: "ok",
+        icon: "\u2713",
+        title: "Sai l\u1EC7ch r\u1EA5t th\u1EA5p \u2014 ch\u1EA5p nh\u1EADn file n\xE0y",
+        sub: "D\u1EEF li\u1EC7u \u0111\u1EE7 s\u1EA1ch \u0111\u1EC3 l\u01B0u th\u1EB3ng. Kh\xF4ng c\u1EA7n ch\u1EA1y l\u1EA1i prompt."
+      };
+    }
+    if (tier === "medium") {
+      return {
+        cls: "warn",
+        icon: "!",
+        title: "Sai l\u1EC7ch " + pct + "% \u2014 c\u1EA7n b\u1EA1n xem l\u1EA1i tr\u01B0\u1EDBc khi l\u01B0u",
+        sub: "V\u1EABn l\u01B0u \u0111\u01B0\u1EE3c, nh\u01B0ng h\xE3y xem danh s\xE1ch c\xE2u nghi l\u1ED7i r\u1ED3i t\u1EF1 x\xE1c nh\u1EADn."
+      };
+    }
+    return {
+      cls: "bad",
+      icon: "\u2715",
+      title: fatalCount ? "C\xF3 " + fatalCount + " c\xE2u thi\u1EBFu d\u1EEF li\u1EC7u b\u1EAFt bu\u1ED9c \u2014 kh\xF4ng l\u01B0u \u0111\u01B0\u1EE3c" : "Sai l\u1EC7ch " + pct + "% \u2014 qu\xE1 cao \u0111\u1EC3 ch\u1EA5p nh\u1EADn",
+      sub: "H\xE3y \u0111i theo h\u01B0\u1EDBng prompt: nh\u1EDD AI chuy\u1EC3n l\u1EA1i t\xE0i li\u1EC7u g\u1ED1c r\u1ED3i t\u1EA3i file m\u1EDBi l\xEAn."
+    };
+  }
+
+  // src/student/importPrompt.js
+  var IMPORT_AI_PROMPT = `B\u1EA1n l\xE0 tr\u1EE3 l\xFD chuy\u1EC3n \u0111\u1ED5i c\xE2u h\u1ECFi tr\u1EAFc nghi\u1EC7m t\u1EEB PDF ho\u1EB7c DOCX th\xE0nh JSON \u0111\u1EC3 import v\xE0o website.
+
+## NHI\u1EC6M V\u1EE4
+
+X\u1EED l\xFD file PDF ho\u1EB7c DOCX trong th\u01B0 m\u1EE5c input/. M\u1ED7i l\u1EA7n ch\u1EC9 c\xF3 1 file ngu\u1ED3n.
+
+- \u0110\u1ECDc to\xE0n b\u1ED9 n\u1ED9i dung tr\u01B0\u1EDBc khi chuy\u1EC3n \u0111\u1ED5i.
+- Tr\xEDch xu\u1EA5t t\u1EA5t c\u1EA3 c\xE2u h\u1ECFi, l\u1EF1a ch\u1ECDn, \u0111\xE1p \xE1n v\xE0 h\xECnh \u1EA3nh.
+- Kh\xF4ng b\u1ECF c\xE2u, th\xEAm n\u1ED9i dung ho\u1EB7c t\u1EF1 \u0111o\xE1n d\u1EEF li\u1EC7u thi\u1EBFu.
+- Kh\xF4ng s\u1EEDa ch\xEDnh t\u1EA3, d\u1EA5u c\xE2u, ch\u1EEF hoa, ch\u1EEF th\u01B0\u1EDDng ho\u1EB7c c\xE1ch di\u1EC5n \u0111\u1EA1t.
+- Gi\u1EEF nguy\xEAn th\u1EE9 t\u1EF1 c\xE2u h\u1ECFi v\xE0 l\u1EF1a ch\u1ECDn.
+- Kh\xF4ng s\u1EEDa, \u0111\u1ED5i t\xEAn, di chuy\u1EC3n ho\u1EB7c x\xF3a file ngu\u1ED3n.
+- T\xEAn \u0111\u1EA7u ra vi\u1EBFt th\u01B0\u1EDDng, kh\xF4ng d\u1EA5u, kho\u1EA3ng tr\u1EAFng thay b\u1EB1ng d\u1EA5u g\u1EA1ch ngang.
+
+## TR\xCDCH XU\u1EA4T N\u1ED8I DUNG
+
+### DOCX
+
+- \u0110\u1ECDc \u0111\u1EA7y \u0111\u1EE7 paragraph, b\u1EA3ng, textbox v\xE0 h\xECnh \u1EA3nh theo \u0111\xFAng th\u1EE9 t\u1EF1.
+- Kh\xF4ng b\u1ECF qua n\u1ED9i dung n\u1EB1m trong b\u1EA3ng.
+- \u01AFu ti\xEAn l\u1EA5y \u1EA3nh g\u1ED1c trong DOCX.
+
+### PDF
+
+- \u01AFu ti\xEAn l\u1EA5y text g\u1ED1c theo \u0111\xFAng v\u1ECB tr\xED v\xE0 th\u1EE9 t\u1EF1 \u0111\u1ECDc.
+- X\u1EED l\xFD \u0111\xFAng t\xE0i li\u1EC7u nhi\u1EC1u c\u1ED9t.
+- Ch\u1EC9 OCR trang kh\xF4ng c\xF3 text ho\u1EB7c text kh\xF4ng \u0111\u1ECDc \u0111\u01B0\u1EE3c.
+- N\u1EBFu c\xE2u b\u1ECB chia qua nhi\u1EC1u trang, gh\xE9p \u0111\xFAng n\u1ED9i dung thu\u1ED9c c\xF9ng c\xE2u.
+- B\u1ECF header, footer, watermark, logo v\xE0 s\u1ED1 trang.
+
+### V\u1EDBi trang c\u1EA7n OCR
+
+N\u1EBFu file (ho\u1EB7c m\u1ED9t ph\u1EA7n file) l\xE0 \u1EA3nh qu\xE9t c\u1EA7n OCR:
+
+1. OCR l\u1EA7n \u0111\u1EA7u, tr\xEDch xu\u1EA5t c\xE2u h\u1ECFi, l\u1EF1a ch\u1ECDn, \u0111\xE1p \xE1n nh\u01B0 b\xECnh th\u01B0\u1EDDng.
+2. \u0110\u1ED1i chi\u1EBFu l\u1EA1i k\u1EBFt qu\u1EA3 OCR v\u1EDBi \u1EA3nh trang g\u1ED1c, ki\u1EC3m tra t\u1EEBng c\xE2u:
+   - Ch\u1EEF, s\u1ED1, k\xFD hi\u1EC7u c\xF3 b\u1ECB \u0111\u1ECDc sai kh\xF4ng (v\xED d\u1EE5 nh\u1EA7m 0/O, 1/l/I, d\u1EA5u ti\u1EBFng Vi\u1EC7t sai).
+   - C\xF3 d\xF2ng, ch\u1EEF ho\u1EB7c l\u1EF1a ch\u1ECDn n\xE0o b\u1ECB b\u1ECF s\xF3t kh\xF4ng.
+   - Ranh gi\u1EDBi gi\u1EEFa c\xE1c c\xE2u, c\xE1c l\u1EF1a ch\u1ECDn c\xF3 b\u1ECB l\u1EABn kh\xF4ng.
+   - C\xF4ng th\u1EE9c, s\u1ED1 li\u1EC7u, \u0111\u01A1n v\u1ECB c\xF3 \u0111\u1ECDc \u0111\xFAng kh\xF4ng.
+3. N\u1EBFu ph\xE1t hi\u1EC7n sai s\xF3t, s\u1EEDa l\u1EA1i v\xE0 OCR/\u0111\u1ED1i chi\u1EBFu l\u1EA1i t\u1EEB b\u01B0\u1EDBc 2.
+4. L\u1EB7p l\u1EA1i b\u01B0\u1EDBc 2-3 cho \u0111\u1EBFn khi m\u1ED9t l\u01B0\u1EE3t \u0111\u1ED1i chi\u1EBFu kh\xF4ng ph\xE1t hi\u1EC7n th\xEAm sai s\xF3t n\xE0o, ho\u1EB7c \u0111\xE3 \u0111\u1ED1i chi\u1EBFu \u0111\u1EE7 3 l\u1EA7n li\xEAn ti\u1EBFp m\xE0 kh\xF4ng c\u1EA3i thi\u1EC7n th\xEAm.
+5. N\u1EBFu sau khi l\u1EB7p v\u1EABn c\xF2n n\u1ED9i dung kh\xF4ng ch\u1EAFc ch\u1EAFn (ch\u1EEF m\u1EDD, kh\xF4ng \u0111o\xE1n \u0111\u01B0\u1EE3c), gi\u1EEF nguy\xEAn ph\u1EA7n \u0111\u1ECDc \u0111\u01B0\u1EE3c, kh\xF4ng t\u1EF1 b\u1ECBa, v\xE0 \u0111\xE1nh "error_risk": "high" cho c\xE2u \u0111\xF3.
+6. C\xE2u \u0111\xE3 OCR xong v\xE0 \u0111\u1ED1i chi\u1EBFu s\u1EA1ch th\xEC \u0111\xE1nh "error_risk": "low" ho\u1EB7c "medium" theo m\u1EE5c ERROR_RISK, kh\xF4ng m\u1EB7c \u0111\u1ECBnh "high" ch\u1EC9 v\xEC t\u1EEBng qua OCR.
+
+### N\u1EBFu file kh\xF4ng ph\u1EA3i c\xE2u h\u1ECFi tr\u1EAFc nghi\u1EC7m
+
+- N\u1EBFu file kh\xF4ng ch\u1EE9a c\u1EA5u tr\xFAc tr\u1EAFc nghi\u1EC7m (c\xE2u h\u1ECFi + l\u1EF1a ch\u1ECDn) nh\u1EADn di\u1EC7n \u0111\u01B0\u1EE3c, kh\xF4ng c\u1ED1 \xE9p n\u1ED9i dung v\xE0o schema.
+- D\u1EEBng l\u1EA1i v\xE0 b\xE1o: "Kh\xF4ng nh\u1EADn di\u1EC7n \u0111\u01B0\u1EE3c c\xE2u h\u1ECFi tr\u1EAFc nghi\u1EC7m trong file n\xE0y."
+
+## C\xC2U H\u1ECEI V\xC0 L\u1EF0A CH\u1ECCN
+
+- M\u1ED7i c\xE2u h\u1ECFi t\u01B0\u01A1ng \u1EE9ng m\u1ED9t object JSON.
+- \u0110\xE1nh "num" li\xEAn t\u1EE5c t\u1EEB 1 \u0111\u1EBFn h\u1EBFt cho c\xE1c c\xE2u g\u1ED1c.
+- N\u1EBFu c\xE2u c\xF3 k\xE8m "Ki\u1EC3u h\u1ECFi kh\xE1c" ho\u1EB7c bi\u1EBFn th\u1EC3 t\u01B0\u01A1ng t\u1EF1 (\u0111\u1EC1 b\xE0i \u0111\u1ED5i t\xEAn, \u0111\u1ED5i s\u1ED1 li\u1EC7u nh\u01B0ng c\xF9ng d\u1EA1ng c\xE2u h\u1ECFi), t\u1EA1o th\xEAm m\u1ED9t object ri\xEAng ngay sau c\xE2u g\u1ED1c, d\xF9ng "num" d\u1EA1ng th\u1EADp ph\xE2n theo c\xE2u g\u1ED1c: c\xE2u g\u1ED1c "1" th\xEC bi\u1EBFn th\u1EC3 l\xE0 "1.1"; n\u1EBFu c\xF3 nhi\u1EC1u bi\u1EBFn th\u1EC3 th\xEC "1.1", "1.2"... Bi\u1EBFn th\u1EC3 kh\xF4ng t\xEDnh v\xE0o s\u1ED1 \u0111\u1EBFm li\xEAn t\u1EE5c c\u1EE7a c\xE2u g\u1ED1c.
+- Ch\u1EC9 l\u01B0u c\xE1c l\u1EF1a ch\u1ECDn th\u1EF1c s\u1EF1 t\u1ED3n t\u1EA1i.
+- N\u1EBFu c\xE2u ch\u1EC9 c\xF3 A, B, C th\xEC kh\xF4ng t\u1EA1o D.
+- Kh\xF4ng t\u1EF1 t\u1EA1o l\u1EF1a ch\u1ECDn b\u1ECB thi\u1EBFu.
+- Kh\xF4ng gh\xE9p n\u1ED9i dung c\u1EE7a hai c\xE2u kh\xE1c nhau.
+- Kh\xF4ng \u0111\u01B0a nh\xE3n s\u1ED1 c\xE2u nh\u01B0 "C\xE2u 1" ho\u1EB7c "Question 1" v\xE0o n\u1ED9i dung c\xE2u h\u1ECFi.
+- Kh\xF4ng coi d\xF2ng h\u01B0\u1EDBng d\u1EABn nh\u01B0 "Choose one answer" l\xE0 l\u1EF1a ch\u1ECDn.
+- N\u1EBFu d\xF2ng h\u01B0\u1EDBng d\u1EABn thu\u1ED9c n\u1ED9i dung c\xE2u h\u1ECFi, gi\u1EEF nguy\xEAn trong "question".
+
+### L\u1EF1a ch\u1ECDn ngo\xE0i A-D
+
+- N\u1EBFu c\xE2u c\xF3 nhi\u1EC1u h\u01A1n 4 l\u1EF1a ch\u1ECDn (v\xED d\u1EE5 A-E) ho\u1EB7c l\u1EF1a ch\u1ECDn kh\xF4ng d\xF9ng nh\xE3n A, B, C, D (v\xED d\u1EE5 \u0110\xFAng/Sai, 1/2/3/4), v\u1EABn gi\u1EEF \u0111\xFAng s\u1ED1 l\u01B0\u1EE3ng v\xE0 n\u1ED9i dung g\u1ED1c, g\xE1n nh\xE3n theo th\u1EE9 t\u1EF1 ch\u1EEF c\xE1i b\u1EAFt \u0111\u1EA7u t\u1EEB A (A, B, C, D, E...).
+- Ghi "error_risk": "medium" cho c\xE2u n\xE0y (xem m\u1EE5c ERROR_RISK).
+
+### Ki\u1EC3u h\u1ECFi kh\xE1c (bi\u1EBFn th\u1EC3 c\xE2u h\u1ECFi)
+
+- N\u1EBFu t\xE0i li\u1EC7u c\xF3 ph\u1EA7n "Ki\u1EC3u h\u1ECFi kh\xE1c" (ho\u1EB7c nh\xE3n t\u01B0\u01A1ng \u0111\u01B0\u01A1ng) \u0111i k\xE8m c\xE2u g\u1ED1c, tr\xEDch xu\u1EA5t ph\u1EA7n n\xE0y th\xE0nh m\u1ED9t object JSON ri\xEAng, \u0111\u1EA7y \u0111\u1EE7 "question", "options", "answer", "images" nh\u01B0 m\u1ED9t c\xE2u b\xECnh th\u01B0\u1EDDng.
+- "num" c\u1EE7a bi\u1EBFn th\u1EC3 l\u1EA5y theo d\u1EA1ng X.1 nh\u01B0 m\xF4 t\u1EA3 \u1EDF tr\xEAn.
+- Kh\xF4ng sao ch\xE9p nguy\xEAn c\xE2u g\u1ED1c v\xE0o bi\u1EBFn th\u1EC3; ch\u1EC9 l\u1EA5y \u0111\xFAng n\u1ED9i dung c\u1EE7a ph\u1EA7n bi\u1EBFn th\u1EC3.
+- N\u1EBFu bi\u1EBFn th\u1EC3 ch\u1EC9 \u0111\u1ED5i t\xEAn/s\u1ED1 li\u1EC7u nh\u01B0ng l\u1EF1a ch\u1ECDn gi\u1EEF nguy\xEAn th\u1EE9 t\u1EF1, v\u1EABn ghi l\u1EA1i \u0111\u1EA7y \u0111\u1EE7 l\u1EF1a ch\u1ECDn c\u1EE7a bi\u1EBFn th\u1EC3 (kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng r\u1ED3i tham chi\u1EBFu ng\u01B0\u1EE3c v\u1EC1 c\xE2u g\u1ED1c).
+
+### \u0110o\u1EA1n v\u0103n / ng\u1EEF c\u1EA3nh d\xF9ng chung cho nhi\u1EC1u c\xE2u
+
+- N\u1EBFu nhi\u1EC1u c\xE2u li\xEAn ti\u1EBFp c\xF9ng d\u1EF1a tr\xEAn m\u1ED9t \u0111o\u1EA1n v\u0103n, b\u1EA3ng d\u1EEF li\u1EC7u ho\u1EB7c ng\u1EEF c\u1EA3nh chung, ch\xE9p nguy\xEAn \u0111o\u1EA1n ng\u1EEF c\u1EA3nh \u0111\xF3 v\xE0o \u0111\u1EA7u "question" c\u1EE7a M\u1ED6I c\xE2u li\xEAn quan.
+- Kh\xF4ng r\xFAt g\u1ECDn ho\u1EB7c t\xF3m t\u1EAFt \u0111o\u1EA1n ng\u1EEF c\u1EA3nh.
+- N\u1EBFu ng\u1EEF c\u1EA3nh chung l\xE0 h\xECnh \u1EA3nh, \xE1p d\u1EE5ng theo quy t\u1EAFc h\xECnh \u1EA3nh d\xF9ng chung (xem m\u1EE5c H\xCCNH \u1EA2NH).
+
+## \u0110\xC1P \xC1N
+
+"answer" lu\xF4n l\xE0 array:
+
+- M\u1ED9t \u0111\xE1p \xE1n: ["B"]
+- Nhi\u1EC1u \u0111\xE1p \xE1n: ["A", "C"]
+- Kh\xF4ng c\xF3 ho\u1EB7c kh\xF4ng nh\u1EADn di\u1EC7n ch\u1EAFc ch\u1EAFn: []
+
+Sau "\u0110\xE1p \xE1n:", "Answer:" ho\u1EB7c nh\xE3n t\u01B0\u01A1ng \u0111\u01B0\u01A1ng:
+
+- L\u1EA5y t\u1EA5t c\u1EA3 \u0111\xE1p \xE1n \u0111\u01B0\u1EE3c ghi r\xF5, theo \u0111\xFAng nh\xE3n l\u1EF1a ch\u1ECDn \u0111\xE3 d\xF9ng trong c\xE2u \u0111\xF3 (A, B, C, D, ho\u1EB7c th\xEAm E, F... n\u1EBFu c\xE2u c\xF3 nhi\u1EC1u h\u01A1n 4 l\u1EF1a ch\u1ECDn).
+- Ch\u1EA5p nh\u1EADn c\xE1c d\u1EA1ng: A, A C, A v\xE0 C, A; C, A/C ho\u1EB7c AC.
+- Chu\u1EA9n h\xF3a th\xE0nh ch\u1EEF hoa.
+- Lo\u1EA1i \u0111\xE1p \xE1n tr\xF9ng nh\u01B0ng gi\u1EEF th\u1EE9 t\u1EF1 xu\u1EA5t hi\u1EC7n.
+- B\u1ECF ph\u1EA7n gi\u1EA3i th\xEDch sau \u0111\xE1p \xE1n.
+- N\u1EBFu \u0111\xE1p \xE1n n\u1EB1m cu\u1ED1i t\xE0i li\u1EC7u, li\xEAn k\u1EBFt theo s\u1ED1 c\xE2u.
+- Kh\xF4ng t\u1EF1 suy lu\u1EADn \u0111\xE1p \xE1n.
+
+N\u1EBFu t\xE0i li\u1EC7u kh\xF4ng c\xF3 nh\xE3n "\u0110\xE1p \xE1n:"/"Answer:" r\xF5 r\xE0ng, nh\u01B0ng l\u1EF1a ch\u1ECDn \u0111\xFAng \u0111\u01B0\u1EE3c \u0111\xE1nh d\u1EA5u b\u1EB1ng \u0111\u1ECBnh d\u1EA1ng ch\u1EEF in \u0111\u1EADm (bold):
+
+- Coi l\u1EF1a ch\u1ECDn \u0111\u01B0\u1EE3c in \u0111\u1EADm l\xE0 \u0111\xE1p \xE1n \u0111\xFAng, \u0111\u01B0a v\xE0o "answer".
+- Ch\u1EC9 \xE1p d\u1EE5ng khi in \u0111\u1EADm r\xF5 r\xE0ng d\xF9ng \u0111\u1EC3 \u0111\xE1nh d\u1EA5u \u0111\xE1p \xE1n (to\xE0n b\u1ED9 n\u1ED9i dung l\u1EF1a ch\u1ECDn \u0111\u01B0\u1EE3c b\xF4i \u0111\u1EADm), kh\xF4ng \xE1p d\u1EE5ng n\u1EBFu in \u0111\u1EADm ch\u1EC9 l\xE0 \u0111\u1ECBnh d\u1EA1ng trang tr\xED th\xF4ng th\u01B0\u1EDDng c\u1EE7a t\xE0i li\u1EC7u.
+- N\u1EBFu kh\xF4ng ch\u1EAFc ch\u1EAFn in \u0111\u1EADm c\xF3 ph\u1EA3i l\xE0 d\u1EA5u hi\u1EC7u \u0111\xE1p \xE1n hay kh\xF4ng, \u0111\u1EC3 "answer": [] v\xE0 \u0111\xE1nh "error_risk": "medium".
+
+## H\xCCNH \u1EA2NH
+
+\u0110\u1EB7t "has_image": true n\u1EBFu thi\u1EBFu b\u1EA5t k\u1EF3 h\xECnh n\xE0o (k\u1EC3 c\u1EA3 h\xECnh ch\u1EC9 n\u1EB1m trong m\u1ED9t l\u1EF1a ch\u1ECDn) s\u1EBD khi\u1EBFn c\xE2u h\u1ECFi ho\u1EB7c l\u1EF1a ch\u1ECDn \u0111\xF3 kh\xF4ng th\u1EC3 hi\u1EC3u ho\u1EB7c tr\u1EA3 l\u1EDDi \u0111\u1EA7y \u0111\u1EE7.
+
+L\u1EA5y c\xE1c h\xECnh sau:
+
+- \u1EA2nh minh h\u1ECDa c\u1EE7a c\xE2u h\u1ECFi.
+- B\u1EA3ng, s\u01A1 \u0111\u1ED3, \u0111\u1ED3 th\u1ECB, bi\u1EC3u \u0111\u1ED3 ho\u1EB7c b\u1EA3n \u0111\u1ED3.
+- C\xF4ng th\u1EE9c ho\u1EB7c k\xFD hi\u1EC7u d\u1EA1ng \u1EA3nh.
+- H\xECnh n\u1EB1m trong l\u1EF1a ch\u1ECDn.
+- Ch\xFA th\xEDch c\u1EA7n thi\u1EBFt \u0111\u1EC3 hi\u1EC3u h\xECnh.
+
+Kh\xF4ng l\u1EA5y:
+
+- Logo, watermark ho\u1EB7c n\u1EC1n trang.
+- Header, footer v\xE0 s\u1ED1 trang.
+- Icon, n\xFAt ch\u1ECDn ho\u1EB7c th\xE0nh ph\u1EA7n trang tr\xED.
+- C\xE2u h\u1ECFi, l\u1EF1a ch\u1ECDn, \u0111\xE1p \xE1n ho\u1EB7c l\u1EDDi gi\u1EA3i.
+- H\xECnh kh\xF4ng li\xEAn quan.
+- To\xE0n b\u1ED9 trang n\u1EBFu c\xF3 th\u1EC3 t\xE1ch ri\xEAng v\xF9ng h\xECnh.
+
+### C\xE1ch l\u1EA5y h\xECnh
+
+1. \u01AFu ti\xEAn tr\xEDch xu\u1EA5t \u1EA3nh g\u1ED1c t\u1EEB PDF ho\u1EB7c DOCX.
+2. N\u1EBFu kh\xF4ng l\u1EA5y \u0111\u01B0\u1EE3c \u1EA3nh g\u1ED1c \u0111\u1EA7y \u0111\u1EE7, c\u1EAFt \u0111\xFAng v\xF9ng h\xECnh t\u1EEB trang ngu\u1ED3n.
+3. M\u1ED7i h\xECnh ph\u1EA3i c\xF3 v\xF9ng c\u1EAFt ri\xEAng, kh\xF4ng d\xF9ng c\xF9ng m\u1ED9t v\xF9ng c\u1EAFt cho m\u1ECDi trang.
+4. Khi x\xE1c \u0111\u1ECBnh v\xF9ng c\u1EAFt, lu\xF4n \u01B0u ti\xEAn l\u1EA5y d\u01B0 h\u01A1n l\xE0 l\u1EA5y thi\u1EBFu: n\u1EBFu kh\xF4ng ch\u1EAFc ch\u1EAFn ranh gi\u1EDBi h\xECnh n\u1EB1m \u1EDF \u0111\xE2u, m\u1EDF r\u1ED9ng v\xF9ng c\u1EAFt th\xEAm ra ngo\xE0i thay v\xEC c\u1EAFt s\xE1t.
+5. Sau khi x\xE1c \u0111\u1ECBnh v\xF9ng c\u1EAFt, c\u1ED9ng th\xEAm bi\xEAn an to\xE0n t\u1ED1i thi\u1EC3u 15-20px (ho\u1EB7c kho\u1EA3ng 3-5% chi\u1EC1u r\u1ED9ng/cao c\u1EE7a v\xF9ng) quanh to\xE0n b\u1ED9 n\u1ED9i dung tr\u01B0\u1EDBc khi c\u1EAFt.
+6. Kh\xF4ng d\xF9ng v\xF9ng c\u1EAFt c\u1ED1 \u0111\u1ECBnh/\xE1ng ch\u1EEBng theo t\u1ECDa \u0111\u1ED9 chung; ph\u1EA3i x\xE1c \u0111\u1ECBnh l\u1EA1i bounding box theo n\u1ED9i dung th\u1EF1c t\u1EBF c\u1EE7a t\u1EEBng h\xECnh.
+7. Lo\u1EA1i b\u1ECF l\u1EC1 tr\u1EAFng th\u1EEBa, nh\u01B0ng ch\u1EC9 c\u1EAFt ph\u1EA7n tr\u1EAFng n\u1EB1m ngo\xE0i bi\xEAn an to\xE0n \u1EDF b\u01B0\u1EDBc 5, kh\xF4ng c\u1EAFt v\xE0o s\xE1t n\u1ED9i dung.
+8. Tuy\u1EC7t \u0111\u1ED1i kh\xF4ng c\u1EAFt m\u1EA5t m\xE9p h\xECnh, ch\u1EEF, nh\xE3n, ch\xFA th\xEDch, k\xFD hi\u1EC7u, \u0111\u01A1n v\u1ECB, tr\u1EE5c t\u1ECDa \u0111\u1ED9 ho\u1EB7c s\u1ED1 li\u1EC7u tr\xEAn bi\u1EC3u \u0111\u1ED3/b\u1EA3ng. N\u1EBFu nghi ng\u1EDD b\u1ECB c\u1EAFt m\u1EA5t, th\xE0 gi\u1EEF d\u01B0 vi\u1EC1n tr\u1EAFng c\xF2n h\u01A1n c\u1EAFt thi\u1EBFu.
+9. Gi\u1EEF nguy\xEAn t\u1EF7 l\u1EC7, kh\xF4ng k\xE9o gi\xE3n ho\u1EB7c ch\u1EC9nh s\u1EEDa h\xECnh.
+10. Kh\xF4ng d\xF9ng AI \u0111\u1EC3 v\u1EBD l\u1EA1i ho\u1EB7c l\xE0m \u0111\u1EB9p h\xECnh.
+11. N\u1EBFu c\xE2u c\xF3 nhi\u1EC1u h\xECnh, l\u01B0u ri\xEAng theo \u0111\xFAng th\u1EE9 t\u1EF1 xu\u1EA5t hi\u1EC7n.
+12. N\u1EBFu m\u1ED9t h\xECnh d\xF9ng chung cho nhi\u1EC1u c\xE2u, ch\u1EC9 l\u01B0u m\u1ED9t l\u1EA7n v\xE0 d\xF9ng chung \u0111\u01B0\u1EDDng d\u1EABn trong "images" c\u1EE7a m\u1ED7i c\xE2u li\xEAn quan.
+
+### V\u1EDBi PDF l\xE0 \u1EA3nh qu\xE9t (scan)
+
+- Render trang \u1EDF \u0111\u1ED9 ph\xE2n gi\u1EA3i \u0111\u1EE7 cao tr\u01B0\u1EDBc khi x\xE1c \u0111\u1ECBnh v\xF9ng c\u1EAFt (kh\xF4ng d\xF9ng \u1EA3nh \u0111\u1ED9 ph\xE2n gi\u1EA3i th\u1EA5p r\u1ED3i crop, v\xEC d\u1EC5 l\u1EC7ch t\u1ECDa \u0111\u1ED9 v\xE0 m\u1EA5t m\xE9p).
+- V\xEC OCR/t\u1ECDa \u0111\u1ED9 tr\xEAn \u1EA3nh qu\xE9t th\u01B0\u1EDDng kh\xF4ng ch\xEDnh x\xE1c tuy\u1EC7t \u0111\u1ED1i, lu\xF4n \xE1p d\u1EE5ng bi\xEAn an to\xE0n \u1EDF b\u01B0\u1EDBc 5 ph\xEDa tr\xEAn, kh\xF4ng b\u1ECF qua b\u01B0\u1EDBc n\xE0y v\u1EDBi PDF scan.
+- Sau khi c\u1EAFt, ph\xF3ng to ki\u1EC3m tra l\u1EA1i 4 c\u1EA1nh c\u1EE7a \u1EA3nh: n\u1EBFu c\xF3 ch\u1EEF, s\u1ED1, k\xFD hi\u1EC7u ho\u1EB7c \u0111\u01B0\u1EDDng k\u1EBB b\u1ECB c\u1EAFt c\u1EE5t s\xE1t m\xE9p \u1EA3nh, coi l\xE0 c\u1EAFt thi\u1EBFu v\xE0 ph\u1EA3i c\u1EAFt l\u1EA1i r\u1ED9ng h\u01A1n.
+- N\u1EBFu v\xF9ng h\xECnh n\u1EB1m g\u1EA7n m\xE9p trang ho\u1EB7c g\u1EA7n c\u1ED9t v\u0103n b\u1EA3n kh\xE1c, \u01B0u ti\xEAn l\u1EA5y d\u01B0 sang ph\u1EA7n l\xE2n c\u1EADn r\u1ED3i m\u1EDBi c\u1EAFt t\u1EC9a, kh\xF4ng c\u1EAFt \u0111\xFAng khung \u01B0\u1EDBc l\u01B0\u1EE3ng ban \u0111\u1EA7u.
+
+V\xED d\u1EE5: n\u1EBFu trang c\xF3 c\xE2u h\u1ECFi, \u1EA3nh chi\u1EBFc gh\u1EBF v\xE0 c\xE1c l\u1EF1a ch\u1ECDn, \u1EA3nh xu\u1EA5t ra ch\u1EC9 ch\u1EE9a chi\u1EBFc gh\u1EBF, kh\xF4ng ch\u1EE9a c\xE2u h\u1ECFi, l\u1EF1a ch\u1ECDn, \u0111\xE1p \xE1n ho\u1EB7c l\u1EC1 trang.
+
+N\u1EBFu kh\xF4ng th\u1EC3 l\u1EA5y h\xECnh c\u1EA7n thi\u1EBFt:
+
+- V\u1EABn \u0111\u1EB7t "has_image": true.
+- \u0110\u1EB7t "images": [].
+- Kh\xF4ng d\xF9ng \u1EA3nh to\xE0n trang \u0111\u1EC3 thay th\u1EBF.
+- Ghi "error_risk": "high" cho c\xE2u n\xE0y.
+
+## KI\u1EC2M TRA \u1EA2NH
+
+Tr\u01B0\u1EDBc khi l\u01B0u, ki\u1EC3m tra t\u1EEBng \u1EA3nh:
+
+- \u1EA2nh m\u1EDF \u0111\u01B0\u1EE3c v\xE0 kh\xF4ng b\u1ECB tr\u1ED1ng.
+- \u0110\xFAng h\xECnh thu\u1ED9c c\xE2u h\u1ECFi.
+- Kh\xF4ng ch\u1EE9a ph\u1EA7n l\u1EDBn trang ngu\u1ED3n.
+- Kh\xF4ng ch\u1EE9a c\xE2u h\u1ECFi, l\u1EF1a ch\u1ECDn, \u0111\xE1p \xE1n ho\u1EB7c l\u1EDDi gi\u1EA3i.
+- Kh\xF4ng c\xF3 l\u1EC1 tr\u1EAFng l\u1EDBn.
+- Kh\xF4ng b\u1ECB c\u1EAFt m\u1EA5t n\u1ED9i dung.
+- Ch\u1EEF v\xE0 k\xFD hi\u1EC7u trong h\xECnh \u0111\u1EE7 r\xF5 \u0111\u1EC3 \u0111\u1ECDc.
+- Kh\xF4ng b\u1ECB k\xE9o gi\xE3n ho\u1EB7c sai t\u1EF7 l\u1EC7.
+
+N\u1EBFu \u1EA3nh chi\u1EBFm g\u1EA7n to\xE0n b\u1ED9 trang, ph\u1EA3i ki\u1EC3m tra v\xE0 c\u1EAFt l\u1EA1i. Ch\u1EC9 gi\u1EEF g\u1EA7n to\xE0n trang khi to\xE0n b\u1ED9 trang th\u1EF1c s\u1EF1 l\xE0 b\u1EA3ng, s\u01A1 \u0111\u1ED3, b\u1EA3n \u0111\u1ED3 ho\u1EB7c h\xECnh c\u1EA7n thi\u1EBFt.
+
+N\u1EBFu ph\xE1t hi\u1EC7n \u1EA3nh b\u1ECB m\u1EA5t m\xE9p, m\u1EA5t ch\u1EEF, m\u1EA5t nh\xE3n, m\u1EA5t k\xFD hi\u1EC7u ho\u1EB7c \u0111\u01A1n v\u1ECB: kh\xF4ng \u0111\u01B0\u1EE3c gi\u1EEF l\u1EA1i, ph\u1EA3i x\xE1c \u0111\u1ECBnh l\u1EA1i v\xF9ng c\u1EAFt r\u1ED9ng h\u01A1n (theo bi\xEAn an to\xE0n \u1EDF m\u1EE5c "C\xE1ch l\u1EA5y h\xECnh") v\xE0 c\u1EAFt l\u1EA1i. L\u1EB7p l\u1EA1i vi\u1EC7c c\u1EAFt v\xE0 ki\u1EC3m tra cho \u0111\u1EBFn khi \u1EA3nh kh\xF4ng c\xF2n b\u1ECB m\u1EA5t n\u1ED9i dung \u1EDF b\u1EA5t k\u1EF3 c\u1EA1nh n\xE0o, ho\u1EB7c \u0111\xE3 th\u1EED l\u1EA1i 3 l\u1EA7n li\xEAn ti\u1EBFp m\xE0 ngu\u1ED3n g\u1ED1c (trang scan) kh\xF4ng \u0111\u1EE7 \u0111\u1EC3 l\u1EA5y tr\u1ECDn n\u1ED9i dung \u2014 tr\u01B0\u1EDDng h\u1EE3p n\xE0y ghi "error_risk": "high" cho c\xE2u \u0111\xF3 v\xE0 gi\u1EEF \u1EA3nh c\u1EAFt r\u1ED9ng nh\u1EA5t c\xF3 \u0111\u01B0\u1EE3c thay v\xEC b\u1ECF tr\u1ED1ng.
+
+## T\xCAN \u1EA2NH
+
+L\u01B0u \u1EA3nh trong th\u01B0 m\u1EE5c:
+
+\`\`\`
+output/images/
+\`\`\`
+
+\u0110\u1EB7t t\xEAn:
+
+\`\`\`
+question_NNN_II.png
+\`\`\`
+
+Trong \u0111\xF3:
+
+- NNN l\xE0 s\u1ED1 c\xE2u, \u0111\u1EE7 3 ch\u1EEF s\u1ED1.
+- II l\xE0 s\u1ED1 th\u1EE9 t\u1EF1 \u1EA3nh trong c\xE2u, \u0111\u1EE7 2 ch\u1EEF s\u1ED1.
+- V\u1EDBi c\xE2u bi\u1EBFn th\u1EC3 "X.1", d\xF9ng NNN c\u1EE7a c\xE2u g\u1ED1c k\xE8m h\u1EADu t\u1ED1, v\xED d\u1EE5 c\xE2u "1.1" \u2192 question_001-1_01.png.
+
+V\xED d\u1EE5:
+
+\`\`\`
+question_003_01.png
+question_003_02.png
+question_001-1_01.png
+\`\`\`
+
+Trong JSON d\xF9ng \u0111\u01B0\u1EDDng d\u1EABn t\u01B0\u01A1ng \u0111\u1ED1i:
+
+\`\`\`json
+"images": ["images/question_003_01.png"]
+\`\`\`
+
+## ERROR_RISK
+
+"error_risk" \u0111\xE1nh gi\xE1 \u0111\u1ED9 tin c\u1EADy c\u1EE7a d\u1EEF li\u1EC7u tr\xEDch xu\u1EA5t cho t\u1EEBng c\xE2u. Gi\xE1 tr\u1ECB ch\u1EC9 \u0111\u01B0\u1EE3c l\xE0 "low", "medium" ho\u1EB7c "high".
+
+- "low": c\xE2u h\u1ECFi, l\u1EF1a ch\u1ECDn, \u0111\xE1p \xE1n v\xE0 h\xECnh \u1EA3nh (n\u1EBFu c\xF3) \u0111\u1EC1u r\xF5 r\xE0ng, tr\xEDch xu\u1EA5t \u0111\u1EA7y \u0111\u1EE7, kh\xF4ng c\xF3 g\xEC b\u1EA5t th\u01B0\u1EDDng.
+- "medium": c\xF3 \xEDt nh\u1EA5t m\u1ED9t y\u1EBFu t\u1ED1 kh\xF4ng ch\u1EAFc ch\u1EAFn nh\u01B0ng kh\xF4ng nghi\xEAm tr\u1ECDng, v\xED d\u1EE5: text OCR kh\xF3 \u0111\u1ECDc m\u1ED9t ph\u1EA7n, c\xE2u b\u1ECB chia qua nhi\u1EC1u trang ph\u1EA3i gh\xE9p th\u1EE7 c\xF4ng, l\u1EF1a ch\u1ECDn d\xF9ng nh\xE3n ngo\xE0i A-D, \u0111\xE1p \xE1n ghi \u1EDF \u0111\u1ECBnh d\u1EA1ng kh\xF4ng chu\u1EA9n.
+- "high": thi\u1EBFu d\u1EEF li\u1EC7u quan tr\u1ECDng ho\u1EB7c c\xF3 kh\u1EA3 n\u0103ng sai cao, v\xED d\u1EE5: kh\xF4ng l\u1EA5y \u0111\u01B0\u1EE3c h\xECnh \u1EA3nh c\u1EA7n thi\u1EBFt, kh\xF4ng x\xE1c \u0111\u1ECBnh \u0111\u01B0\u1EE3c \u0111\xE1p \xE1n d\xF9 c\xF3 nh\xE3n "\u0110\xE1p \xE1n", n\u1ED9i dung c\xE2u h\u1ECFi ho\u1EB7c l\u1EF1a ch\u1ECDn b\u1ECB nghi ng\u1EDD kh\xF4ng \u0111\u1EA7y \u0111\u1EE7.
+
+## SCHEMA JSON
+
+File JSON ch\xEDnh ph\u1EA3i l\xE0 m\u1ED9t array.
+
+M\u1ED7i c\xE2u c\xF3 \u0111\xFAng c\u1EA5u tr\xFAc:
+
+\`\`\`json
+{
+  "num": 1,
+  "question": "N\u1ED9i dung c\xE2u h\u1ECFi",
+  "options": {
+    "A": "L\u1EF1a ch\u1ECDn A",
+    "B": "L\u1EF1a ch\u1ECDn B",
+    "C": "L\u1EF1a ch\u1ECDn C",
+    "D": "L\u1EF1a ch\u1ECDn D"
+  },
+  "answer": ["B"],
+  "images": [],
+  "has_image": false,
+  "error_risk": "low"
+}
+\`\`\`
+
+Quy \u0111\u1ECBnh "num":
+
+- C\xE2u g\u1ED1c: number nguy\xEAn, v\xED d\u1EE5 1, 2, 3.
+- Bi\u1EBFn th\u1EC3 "Ki\u1EC3u h\u1ECFi kh\xE1c": string d\u1EA1ng "X.1", v\xED d\u1EE5 "1.1", "2.1". N\u1EBFu nhi\u1EC1u bi\u1EBFn th\u1EC3 c\u1EE7a c\xF9ng c\xE2u g\u1ED1c: "1.1", "1.2"...
+
+## QUY T\u1EAEC JSON
+
+- Kh\xF4ng th\xEAm field ngo\xE0i schema.
+- Kh\xF4ng d\xF9ng comment ho\u1EB7c Markdown.
+- Kh\xF4ng c\xF3 d\u1EA5u ph\u1EA9y th\u1EEBa.
+- Kh\xF4ng d\xF9ng "..." \u0111\u1EC3 r\xFAt g\u1ECDn n\u1ED9i dung.
+- "question" kh\xF4ng \u0111\u01B0\u1EE3c r\u1ED7ng.
+- "options" ch\u1EC9 ch\u1EE9a c\xE1c l\u1EF1a ch\u1ECDn th\u1EF1c s\u1EF1 t\u1ED3n t\u1EA1i trong c\xE2u, nh\xE3n theo th\u1EE9 t\u1EF1 ch\u1EEF c\xE1i t\u1EEB A.
+- "answer" lu\xF4n l\xE0 array v\xE0 ch\u1EC9 ch\u1EE9a c\xE1c nh\xE3n t\u1ED3n t\u1EA1i trong "options".
+- "images" lu\xF4n l\xE0 array.
+- "has_image" ph\u1EA3i l\xE0 boolean.
+- N\u1EBFu "has_image": false th\xEC "images" ph\u1EA3i r\u1ED7ng.
+- "error_risk" ch\u1EC9 nh\u1EADn "low", "medium" ho\u1EB7c "high".
+- M\u1ECDi \u0111\u01B0\u1EDDng d\u1EABn trong "images" ph\u1EA3i tr\u1ECF \u0111\u1EBFn file \u1EA3nh t\u1ED3n t\u1EA1i.
+
+## \u0110\u1EA6U RA
+
+\`\`\`
+output/
+\u251C\u2500\u2500 [ten-mon]_questions.json
+\u2514\u2500\u2500 images/
+\`\`\`
+
+T\u1EF1 x\xE1c \u0111\u1ECBnh t\xEAn m\xF4n. N\u1EBFu kh\xF4ng ch\u1EAFc ch\u1EAFn, d\xF9ng t\xEAn file ngu\u1ED3n.
+
+Tr\u01B0\u1EDBc khi ho\xE0n th\xE0nh, ki\u1EC3m tra:
+
+- JSON m\u1EDF v\xE0 parse \u0111\u01B0\u1EE3c.
+- S\u1ED1 object b\u1EB1ng s\u1ED1 c\xE2u \u0111\xE3 nh\u1EADn di\u1EC7n.
+- "num" c\u1EE7a c\xE2u g\u1ED1c li\xEAn t\u1EE5c t\u1EEB 1, kh\xF4ng tr\xF9ng; bi\u1EBFn th\u1EC3 (n\u1EBFu c\xF3) \u0111\xFAng \u0111\u1ECBnh d\u1EA1ng "X.1" g\u1EAFn v\u1EDBi c\xE2u g\u1ED1c t\u01B0\u01A1ng \u1EE9ng, \u0111\u1EE9ng ngay sau c\xE2u g\u1ED1c trong array.
+- Kh\xF4ng thi\u1EBFu c\xE2u ho\u1EB7c l\u1EF1a ch\u1ECDn.
+- M\u1ECDi \u1EA3nh \u0111\u01B0\u1EE3c tham chi\u1EBFu \u0111\u1EC1u t\u1ED3n t\u1EA1i.
+- \u1EA2nh \u0111\u01B0\u1EE3c c\u1EAFt \u0111\xFAng n\u1ED9i dung, kh\xF4ng l\u1EA5y c\u1EA3 trang.
+
+Kh\xF4ng in JSON trong chat.
+
+Khi ho\xE0n th\xE0nh, ch\u1EC9 tr\u1EA3 l\u1EDDi:
+
+Ho\xE0n th\xE0nh: [X] c\xE2u | [Y] \u1EA3nh
+File: output/`;
+
+  // src/student/docExtract.js
+  var LABELS = ["A", "B", "C", "D", "E", "F"];
+  var SCAN_CHARS_PER_PAGE = 80;
+  var JUNK_PATTERNS = [
+    /^\d+\s*\/\s*\d+$/,
+    // "1 / 40", "2/103"
+    /^(https?:\/\/|www\.)\S+$/i,
+    /^\d{1,2}:\d{2}\s+\d{1,2}\/\d{1,2}\/\d{2,4}$/,
+    // "11:03 7/7/26"
+    /^\d(?:[.,]\d)?\s*\(\d+\s*(?:đánh giá|reviews?|ratings?)\)$/i,
+    // "5.0 (285 đánh giá)"
+    /^(?:Thuật ngữ trong học phần này|Terms in this set)\s*\(\d+\)$/i,
+    /^(?:Lưu|Thêm vào lịch|Save|Add to folder|Study|Học)$/i,
+    /trực tuyến tại\s+https?:/i,
+    // chữ "Học" trong PDF này bị mã hoá lỗi, đừng neo vào nó
+    /^Thẻ ghi nhớ:\s/i
+  ];
+  function isJunkLine(line) {
+    const s = line.trim();
+    if (!s) return true;
+    return JUNK_PATTERNS.some((re) => re.test(s));
+  }
+  function normLine(s) {
+    return String(s || "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").replace(/\s+/g, " ").trim();
+  }
+  function repeatedLines(pages) {
+    const empty = { keys: /* @__PURE__ */ new Set(), raw: /* @__PURE__ */ new Set() };
+    if (pages.length < 3) return empty;
+    const count = /* @__PURE__ */ new Map();
+    const sample2 = /* @__PURE__ */ new Map();
+    pages.forEach((p) => {
+      const seen = new Set(
+        String(p || "").split(/\r?\n/).map(normLine).filter(Boolean)
+      );
+      seen.forEach((l) => {
+        const k = footerKey(l);
+        count.set(k, (count.get(k) || 0) + 1);
+        if (!sample2.has(k)) sample2.set(k, l);
+      });
+    });
+    const limit = Math.max(3, Math.ceil(pages.length * 0.4));
+    const out = { keys: /* @__PURE__ */ new Set(), raw: /* @__PURE__ */ new Set() };
+    count.forEach((n, k) => {
+      if (n < limit) return;
+      const l = sample2.get(k) || "";
+      if (l.length > 200) return;
+      if (matchAnswerLine(l) || matchOption(l) || matchNumOnly(l) !== null) return;
+      out.keys.add(k);
+      out.raw.add(l);
+    });
+    return out;
+  }
+  function footerKey(line) {
+    return line.replace(/\d+/g, "#");
+  }
+  function stripChrome(line) {
+    return line.replace(/^.{0,300}?(?:Thêm vào lịch|Add to folder)\s*/i, "");
+  }
+  function titlesFromFooters(repeated) {
+    const out = /* @__PURE__ */ new Set();
+    repeated.forEach((l) => {
+      l.split("|").forEach((part) => {
+        const s = part.trim().replace(/^.*?(?:Thẻ ghi nhớ|Flashcards?|Học phần|Study set)\s*:\s*/i, "").trim();
+        if (s.length >= 4 && s.length <= 100) out.add(s);
+      });
+    });
+    return out;
+  }
+  function splitQuizletInlineLines(line) {
+    let s = String(line || "").trim();
+    if (!s) return [];
+    s = s.replace(/\s+(TRUE|FALSE|T|F|ĐÚNG|SAI)\s+(?=\d{1,4}\s*[.)]\s+)/gi, "\n$1\n");
+    s = s.replace(/\b(TRUE|FALSE|T|F)(?=\d{1,4}\s*[.)]\s+)/gi, "$1\n");
+    return s.split(/\n+/).map((x) => x.trim()).filter(Boolean);
+  }
+  function cleanLines(pages) {
+    const rep = repeatedLines(pages);
+    const titles = titlesFromFooters(rep.raw);
+    const raw = [];
+    pages.forEach((p) => {
+      String(p || "").split(/\r?\n/).forEach((l) => {
+        const t = stripChrome(normLine(l));
+        if (!t || rep.keys.has(footerKey(t)) || titles.has(t) || isJunkLine(t)) return;
+        splitQuizletInlineLines(t).forEach((part) => raw.push(part));
+      });
+    });
+    const out = [];
+    for (const line of raw) {
+      const prev2 = out[out.length - 1];
+      if (prev2 && /[a-zà-ỹ]-$/.test(prev2) && /^[a-zà-ỹ]/.test(line)) {
+        out[out.length - 1] = prev2.slice(0, -1) + line;
+        continue;
+      }
+      out.push(line);
+    }
+    return out;
+  }
+  function matchNumOnly(line) {
+    const m = line.match(/^(\d{1,4})\s*[.)]\s*$/);
+    return m ? Number(m[1]) : null;
+  }
+  function matchNumInline(line) {
+    const m = line.match(/^(\d{1,4})\s*[.)]\s+(?:(?:đáp án|answer)\s*[:.\-]?\s*)?(?:([A-Fa-f](?:\s*[,/;+]?\s*[A-Fa-f])*)\s*[:：]\s*)?(\S.*)$/i);
+    if (!m) return null;
+    return {
+      num: Number(m[1]),
+      answer: (m[2] || "").toUpperCase().replace(/[^A-F]/g, ""),
+      text: m[3]
+    };
+  }
+  function matchOption(line) {
+    const m = line.match(/^([A-Fa-f])\s*[.)]\s*(\S.*)$/);
+    if (!m) return null;
+    const label = m[1].toUpperCase();
+    let text = m[2].trim();
+    let inlineAnswer = "";
+    const tail = text.match(/^(.*?)(?:\s*[:：]\s*)([A-Fa-f](?:\s*[,/;+]?\s*[A-Fa-f])*)\s*\.?$/);
+    if (tail && tail[1].trim()) {
+      text = tail[1].trim();
+      inlineAnswer = tail[2].toUpperCase().replace(/[^A-F]/g, "");
+    }
+    return { label, text, inlineAnswer };
+  }
+  function matchAnswerLine(line) {
+    const m = line.match(/^(?:(?:đáp án|dap an|answer|đ\.?a)\s*[:.\-]?\s*)?([A-Fa-f](?:\s*[,/;+]?\s*[A-Fa-f])*)\s*\.?(?:\s*\([^\n]*)?$/i);
+    if (!m) return null;
+    const letters = m[1].toUpperCase().replace(/[^A-F]/g, "");
+    return letters || null;
+  }
+  function matchTruthAnswerLine(line) {
+    const t = String(line || "").trim().replace(/[.。]$/, "").toUpperCase();
+    if (t === "T" || t === "TRUE" || t === "\u0110\xDANG" || t === "DUNG") return "T";
+    if (t === "F" || t === "FALSE" || t === "SAI") return "F";
+    return null;
+  }
+  function packTruthQuestion(num, questionParts, answerLetter) {
+    const question = stripLeadingNumLabel(joinText(questionParts));
+    if (!question) return null;
+    return {
+      question,
+      options: { T: "\u0110\xFAng", F: "Sai" },
+      answer: [answerLetter],
+      images: [],
+      has_image: false,
+      error_risk: "low",
+      error_risk_reason: null,
+      ...num !== null && num !== void 0 ? { num } : {}
+    };
+  }
+  function joinText(parts) {
+    return parts.join(" ").replace(/\s+/g, " ").replace(/\s+([.,;:?!])/g, "$1").trim();
+  }
+  function stripLeadingNumLabel(text) {
+    return String(text || "").replace(/^(?:câu|cau|question|q)\s*\d+\s*[.:)\-]\s*/i, "").trim();
+  }
+  function packQuestion(num, questionParts, options, answerLetters) {
+    const question = stripLeadingNumLabel(joinText(questionParts));
+    const labels = LABELS.filter((k) => options[k] !== void 0);
+    const answer = (answerLetters || "").split("").filter((k) => labels.includes(k));
+    const dropped = (answerLetters || "").split("").filter((k) => !labels.includes(k));
+    let risk = "low";
+    let reason = "";
+    if (!answerLetters) {
+      risk = "high";
+      reason = "Kh\xF4ng t\xECm \u0111\u01B0\u1EE3c d\xF2ng \u0111\xE1p \xE1n trong t\xE0i li\u1EC7u.";
+    } else if (dropped.length) {
+      risk = "high";
+      reason = '\u0110\xE1p \xE1n "' + dropped.join("") + '" kh\xF4ng c\xF3 trong danh s\xE1ch l\u1EF1a ch\u1ECDn.';
+    } else if (labels.some((k, i) => k !== LABELS[i])) {
+      risk = "medium";
+      reason = "Nh\xE3n l\u1EF1a ch\u1ECDn b\u1ECB nh\u1EA3y \u2014 c\xF3 th\u1EC3 r\u01A1i m\u1EA5t m\u1ED9t l\u1EF1a ch\u1ECDn.";
+    }
+    const hasImage = /(?:\bthis\s+(?:picture|image|photo|figure|diagram|chart|map)\b|\b(?:picture|image|photo|figure|diagram|chart|map)\s+(?:shown|provided|depicted|displayed)\b|\b(?:shown|provided|depicted|displayed)\s+(?:below|above)\b|\bimage\s+below\b|\bhình\s+(?:dưới|trên|sau|bên)\b|\b(?:xem|quan\s+sát)\s+hình\b)/i.test(question);
+    if (hasImage && !reason) {
+      reason = "C\xE2u h\u1ECFi c\xF3 h\xECnh \u1EA3nh; c\xF3 th\u1EC3 b\u1ED5 sung \u1EA3nh sau.";
+    }
+    const out = {
+      question,
+      options: labels.reduce((acc, k) => {
+        acc[k] = options[k];
+        return acc;
+      }, {}),
+      answer,
+      images: [],
+      has_image: hasImage,
+      error_risk: risk,
+      error_risk_reason: reason || null
+    };
+    if (num !== null && num !== void 0) out.num = num;
+    if (dropped.length) out.answer_unknown = dropped.join("");
+    return out;
+  }
+  function parseQuestionsFromPages(pages) {
+    const lines = cleanLines(Array.isArray(pages) ? pages : [pages]);
+    const out = [];
+    function nextStructural(from) {
+      for (let j = from; j < lines.length && j < from + 40; j++) {
+        if (matchNumOnly(lines[j]) !== null) return { kind: "num" };
+        const o = matchOption(lines[j]);
+        if (o) return { kind: "option", label: o.label };
+        if (matchAnswerLine(lines[j])) return { kind: "answer" };
+      }
+      return { kind: "none" };
+    }
+    let num = null;
+    let qParts = [];
+    let options = {};
+    let answer = "";
+    let state = "q";
+    let answerNoteOpen = false;
+    const optCount = () => Object.keys(options).length;
+    function flush() {
+      if (optCount() >= 2 && joinText(qParts)) out.push(packQuestion(num, qParts, options, answer));
+      num = null;
+      qParts = [];
+      options = {};
+      answer = "";
+      state = "q";
+    }
+    const plausibleNum = (n) => n >= 1 && n <= out.length + 5;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (answerNoteOpen) {
+        if (/\)/.test(line)) answerNoteOpen = false;
+        continue;
+      }
+      const embeddedNum = line.match(/^(.+?)\s+(\d{1,3})[.)]\s+(?:([A-Fa-f](?:\s*[,/;+]?\s*[A-Fa-f])*)\s*[:：]\s*)?(\S.*)$/);
+      if (embeddedNum) {
+        const n = Number(embeddedNum[2]);
+        if (plausibleNum(n) && n >= out.length) {
+          const prefix = embeddedNum[1].trim();
+          const prefixAnswer = matchAnswerLine(prefix);
+          if (prefixAnswer) {
+            for (const ch of prefixAnswer) if (!answer.includes(ch)) answer += ch;
+          } else if (state === "opt") {
+            const last = LABELS.filter((k) => options[k] !== void 0).pop();
+            if (last) options[last] = joinText([options[last], prefix]);
+          } else if (state === "q") {
+            qParts.push(prefix);
+          }
+          flush();
+          num = n;
+          answer = (embeddedNum[3] || "").toUpperCase().replace(/[^A-F]/g, "");
+          qParts.push(embeddedNum[4]);
+          state = "q";
+          continue;
+        }
+      }
+      const numOnly = matchNumOnly(line);
+      if (numOnly !== null && plausibleNum(numOnly)) {
+        flush();
+        num = numOnly;
+        continue;
+      }
+      const numInline = matchNumInline(line);
+      if (numInline && plausibleNum(numInline.num)) {
+        if (num !== null || qParts.length || optCount()) flush();
+        num = numInline.num;
+        answer = numInline.answer || "";
+        qParts.push(numInline.text);
+        state = "q";
+        continue;
+      }
+      const opt = matchOption(line);
+      if (opt) {
+        if (options[opt.label] !== void 0) {
+          if (opt.label === "A" && optCount() >= 2) {
+            flush();
+            options[opt.label] = opt.text;
+            state = "opt";
+            continue;
+          }
+          if (!answer) answer = opt.label;
+          state = "after";
+          continue;
+        }
+        options[opt.label] = opt.text;
+        if (opt.inlineAnswer) {
+          for (const ch of opt.inlineAnswer) if (!answer.includes(ch)) answer += ch;
+        }
+        state = opt.inlineAnswer ? "after" : "opt";
+        continue;
+      }
+      if (state === "opt") {
+        const tailAnswer = line.match(/^(.*?)(?:\s*[:：]\s*)([A-Fa-f](?:\s*[,/;+]?\s*[A-Fa-f])*)\s*\.?$/);
+        if (tailAnswer && tailAnswer[1].trim()) {
+          const last = LABELS.filter((k) => options[k] !== void 0).pop();
+          if (last) options[last] = joinText([options[last], tailAnswer[1].trim()]);
+          const found = tailAnswer[2].toUpperCase().replace(/[^A-F]/g, "");
+          for (const ch of found) if (!answer.includes(ch)) answer += ch;
+          state = "after";
+          continue;
+        }
+      }
+      const truthAnswer = matchTruthAnswerLine(line);
+      if (truthAnswer && optCount() === 0 && qParts.length) {
+        const item = packTruthQuestion(num, qParts, truthAnswer);
+        if (item) out.push(item);
+        num = null;
+        qParts = [];
+        options = {};
+        answer = "";
+        state = "after";
+        continue;
+      }
+      const ans = matchAnswerLine(line);
+      if (ans) {
+        if (/\(/.test(line) && !/\)/.test(line)) answerNoteOpen = true;
+        for (const ch of ans) if (!answer.includes(ch)) answer += ch;
+        const nxt = nextStructural(i + 1);
+        const hasMoreOptions = nxt.kind === "option" && options[nxt.label] === void 0;
+        if (state === "opt" && optCount() >= 2 && !hasMoreOptions) state = "after";
+        continue;
+      }
+      if (state === "q") {
+        qParts.push(line);
+        continue;
+      }
+      if (state === "opt") {
+        const nxt = nextStructural(i + 1);
+        const startsAfterKnownAnswer = num === null && answer && nxt.kind === "answer" && optCount() >= 2;
+        if (startsAfterKnownAnswer || nxt.kind === "option" && options[nxt.label] !== void 0 && optCount() >= 2) {
+          flush();
+          qParts.push(line);
+          continue;
+        }
+        const last = LABELS.filter((k) => options[k] !== void 0).pop();
+        if (last) options[last] = joinText([options[last], line]);
+        continue;
+      }
+      flush();
+      qParts.push(line);
+    }
+    flush();
+    const source = String((pages || []).join("\n")).replace(/\u00a0/g, " ");
+    for (const item of out) {
+      if ((Array.isArray(item.answer) ? item.answer.length : String(item.answer || "").length) || !item.num) continue;
+      const startRe = new RegExp("(?:^|\n)" + item.num + "\\s*[.)]\\s*", "m");
+      const sm = startRe.exec(source);
+      if (!sm) continue;
+      const rest = source.slice(sm.index + sm[0].length);
+      const nextRe = new RegExp("(?:^|\n)" + (item.num + 1) + "\\s*[.)]\\s*", "m");
+      const nm = nextRe.exec(rest);
+      const block = nm ? rest.slice(0, nm.index) : rest.slice(0, 5e3);
+      const hits = [...block.matchAll(/[:：]\s*([A-F](?:\s*[,/;+]?\s*[A-F])*)\s*(?=\n|$)/gi)];
+      if (hits.length) {
+        item.answer = [...new Set(hits[hits.length - 1][1].toUpperCase().replace(/[^A-F]/g, ""))];
+        item.answer_unknown = false;
+        item.error_risk = item.answer.every((k) => item.options?.[k] !== void 0) ? "low" : "high";
+        item.error_risk_reason = item.error_risk === "low" ? null : "\u0110\xE1p \xE1n kh\xF4ng kh\u1EDBp l\u1EF1a ch\u1ECDn.";
+      }
+    }
+    return out;
+  }
+  function renumberIfMissing(questions) {
+    const list = Array.isArray(questions) ? questions : [];
+    let mainNum = 0;
+    let variantSeq = 0;
+    let mainQuestion = null;
+    const isVariant = (q) => /^(?:\(?\s*)?(?:ki[eể]u\s+h[oỏ]i\s+(?:kh[aá]c|tương\s+tự)|c[aá]ch\s+h[oỏ]i\s+kh[aá]c|d[aạ]ng\s+h[oỏ]i\s+kh[aá]c|alternative\s+question)\s*[:\-]/i.test(
+      String(q?.question || "").trim()
+    );
+    list.forEach((q) => {
+      if (isVariant(q) && mainNum > 0) {
+        variantSeq++;
+        q.num = mainNum + "." + variantSeq;
+        q.question = String(q.question || "").trim().replace(/^(?:\(?\s*)?(?:ki[eể]u\s+h[oỏ]i\s+(?:kh[aá]c|tương\s+tự)|c[aá]ch\s+h[oỏ]i\s+kh[aá]c|d[aạ]ng\s+h[oỏ]i\s+kh[aá]c|alternative\s+question)\s*[:\-]\s*/i, "").replace(/\)\s*$/, "").trim();
+        if ((!Array.isArray(q.answer) || !q.answer.length) && mainQuestion?.answer?.length) {
+          const labels = new Set(Object.keys(q.options || {}));
+          const inherited = mainQuestion.answer.filter((k) => labels.has(k));
+          if (inherited.length === mainQuestion.answer.length) {
+            q.answer = [...inherited];
+            if (labels.size < 3) {
+              q.error_risk = "medium";
+              q.error_risk_reason = "Ch\u1EC9 \u0111\u1ECDc \u0111\u01B0\u1EE3c " + labels.size + " l\u1EF1a ch\u1ECDn.";
+            } else {
+              q.error_risk = "low";
+              q.error_risk_reason = null;
+            }
+            q.answer_inherited_from = mainNum;
+          }
+        }
+        return;
+      }
+      mainNum++;
+      variantSeq = 0;
+      q.num = mainNum;
+      mainQuestion = q;
+    });
+    return list;
+  }
+  function scoreExtractedQuestions(questions) {
+    const list = Array.isArray(questions) ? questions : [];
+    const seen = /* @__PURE__ */ new Set();
+    let low = 0, medium = 0, high = 0, answered = 0, duplicates = 0, malformed = 0;
+    for (const q of list) {
+      if (q?.error_risk === "low") low++;
+      else if (q?.error_risk === "medium") medium++;
+      else high++;
+      if (Array.isArray(q?.answer) && q.answer.length) answered++;
+      const key = String(q?.question || "").toLowerCase().replace(/\W+/g, " ").trim();
+      if (!key || key.length < 8 || Object.keys(q?.options || {}).length < 2) malformed++;
+      if (key && seen.has(key)) duplicates++;
+      if (key) seen.add(key);
+    }
+    const score = low * 12 + medium * 5 + answered * 2 + list.length - high * 10 - duplicates * 8 - malformed * 8;
+    return { score, total: list.length, low, medium, high, answered, duplicates, malformed };
+  }
+  function chooseBestPdfCandidate(candidates) {
+    const ranked = candidates.map((c) => ({ ...c, stats: scoreExtractedQuestions(c.questions) })).sort((a, b) => b.stats.score - a.stats.score || b.stats.low - a.stats.low || b.stats.total - a.stats.total);
+    return { best: ranked[0], ranked };
+  }
+  function buildReport(pages, questions, kind, fileName) {
+    const chars = pages.reduce((n, p) => n + String(p || "").length, 0);
+    const perPage = Math.round(chars / Math.max(1, pages.length));
+    return {
+      kind,
+      fileName,
+      pageCount: pages.length,
+      chars,
+      charsPerPage: perPage,
+      isScan: kind === "pdf" && perPage < SCAN_CHARS_PER_PAGE,
+      questions
+    };
+  }
+  var PDFJS_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs";
+  var PDFJS_WORKER = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.mjs";
+  var pdfjsPromise = null;
+  async function loadPdfjs() {
+    if (window.pdfjsLib) return window.pdfjsLib;
+    if (!pdfjsPromise) {
+      pdfjsPromise = import(
+        /* @vite-ignore */
+        PDFJS_URL
+      ).then((mod) => {
+        const lib = mod.default || mod;
+        if (lib.GlobalWorkerOptions) lib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+        window.pdfjsLib = lib;
+        return lib;
+      });
+    }
+    return pdfjsPromise;
+  }
+  async function pdfPagesText(file, mode = "auto") {
+    const lib = await loadPdfjs();
+    const buf = await file.arrayBuffer();
+    const doc = await lib.getDocument({ data: buf, isEvalSupported: false }).promise;
+    const pages = [];
+    for (let i = 1; i <= doc.numPages; i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      const width = page.getViewport({ scale: 1 }).width;
+      if (mode === "embedded" || mode === "auto" && width > 700) {
+        let text = "";
+        let lastY = null;
+        for (const it of content.items) {
+          if (typeof it.str !== "string") continue;
+          const y = it.transform ? it.transform[5] : null;
+          if (lastY !== null && y !== null && Math.abs(y - lastY) > 2) text += "\n";
+          text += it.str;
+          if (it.hasEOL) text += "\n";
+          lastY = y;
+        }
+        pages.push(text);
+        page.cleanup();
+        continue;
+      }
+      const rows = [];
+      for (const it of content.items) {
+        if (typeof it.str !== "string" || !it.str.trim()) continue;
+        const x = it.transform ? Number(it.transform[4]) : 0;
+        const y = it.transform ? Number(it.transform[5]) : 0;
+        let row = rows.find((r) => Math.abs(r.y - y) <= 2);
+        if (!row) {
+          row = { y, items: [] };
+          rows.push(row);
+        }
+        row.items.push({ text: it.str, x, width: Number(it.width) || 0 });
+      }
+      rows.sort((a, b) => b.y - a.y);
+      const lines = [];
+      for (const row of rows) {
+        row.items.sort((a, b) => a.x - b.x);
+        const normal = [];
+        const sideAnswers = [];
+        let sideStart = null;
+        for (const item of row.items) {
+          const t = normLine(item.text);
+          const side = t.match(/^([A-Fa-f](?:\s*[,/;+]?\s*[A-Fa-f]){0,5})(?:$|[.)]\s)/);
+          if (item.x > width * 0.68) {
+            sideStart = sideStart === null ? item.x : Math.min(sideStart, item.x);
+            if (side) sideAnswers.push(side[1].toUpperCase().replace(/[^A-F]/g, ""));
+          }
+        }
+        for (const item of row.items) {
+          let t = normLine(item.text);
+          if (!t) continue;
+          if (item.x > width * 0.68 || sideStart !== null && item.x >= sideStart - 1) continue;
+          if (item.x < width * 0.2 && /^[A-Fa-f]\s+[A-ZÀ-Ỹ]/.test(t)) t = t[0] + ". " + t.slice(1).trim();
+          normal.push({ ...item, text: t });
+        }
+        if (normal.length) {
+          let line = "";
+          let right = null;
+          for (const item of normal) {
+            const t = normLine(item.text);
+            if (!t) continue;
+            const gap = right === null ? 0 : item.x - right;
+            if (line && !/^[.,;:?!)]$/.test(t) && gap > 1) line += " ";
+            line += t;
+            right = item.x + item.width;
+          }
+          if (line) lines.push(line);
+        }
+        sideAnswers.forEach((a) => lines.push(a));
+      }
+      pages.push(lines.join("\n"));
+      page.cleanup();
+    }
+    return pages;
+  }
+  async function docxParagraphs(file, JSZip2) {
+    const zip = await JSZip2.loadAsync(file);
+    const entry = zip.file("word/document.xml");
+    if (!entry) throw new Error("Kh\xF4ng t\xECm th\u1EA5y word/document.xml \u2014 file .docx c\xF3 th\u1EC3 b\u1ECB h\u1ECFng.");
+    const xml = await entry.async("string");
+    const paras = [];
+    const reP = /<w:p\b[^>]*>([\s\S]*?)<\/w:p>/g;
+    let m;
+    while ((m = reP.exec(xml)) !== null) {
+      const body = m[1].replace(/<w:tab\b[^>]*\/>/g, " ").replace(/<w:br\b[^>]*\/>/g, "\n").replace(/<w:cr\b[^>]*\/>/g, "\n");
+      const texts = [];
+      const reToken = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>|<w:(?:br|cr)\b[^>]*\/>/g;
+      let t;
+      while ((t = reToken.exec(m[1])) !== null) texts.push(t[1] !== void 0 ? t[1] : "\n");
+      const line = texts.join("").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&").replace(/ /g, " ").trim();
+      if (line) line.split(/\r?\n/).map((x) => x.trim()).filter(Boolean).forEach((x) => paras.push(x));
+    }
+    return paras;
+  }
+  function decodeMarkdownCell(s) {
+    return String(s || "").replace(/<br\s*\/?>/gi, "\n").replace(/\\([_`*|])/g, "$1").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+  }
+  function parseQuestionsFromMarkdown(markdown) {
+    const out = [];
+    for (const raw of String(markdown || "").split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line.startsWith("|") || !line.endsWith("|")) continue;
+      const cells = line.slice(1, -1).split(/(?<!\\)\|/).map(decodeMarkdownCell);
+      if (cells.length < 2 || /^term$/i.test(cells[0]) || /^-+$/.test(cells[0])) continue;
+      let term = cells.slice(0, -1).join(" | ").trim();
+      let key = cells[cells.length - 1].trim().toUpperCase();
+      const numHit = term.match(/^(\d+)\s*[).:-]\s*/);
+      const num = numHit ? Number(numHit[1]) : null;
+      if (numHit) term = term.slice(numHit[0].length).trim();
+      key = key === "TRUE" ? "T" : key === "FALSE" ? "F" : /^[TF]$/.test(key) ? key : key.replace(/[^A-F]/g, "");
+      const allHits = [...term.matchAll(/([A-Fa-f])\s*[).]\s*/g)];
+      const startAt = allHits.findIndex((h) => h[1].toUpperCase() === "A");
+      const hits = [];
+      if (startAt >= 0) {
+        for (const h of allHits.slice(startAt)) {
+          if (h[1].toUpperCase() === LABELS[hits.length]) hits.push(h);
+          if (hits.length === LABELS.length) break;
+        }
+      }
+      const options = {};
+      let question = term;
+      if (hits.length >= 2 && hits[0].index > 0) {
+        question = term.slice(0, hits[0].index).trim();
+        for (let i = 0; i < hits.length; i++) {
+          const label = hits[i][1].toUpperCase();
+          const start = hits[i].index + hits[i][0].length;
+          const end = i + 1 < hits.length ? hits[i + 1].index : term.length;
+          options[label] = term.slice(start, end).trim();
+        }
+      } else if (/^[TF]$/.test(key)) {
+        options.T = "\u0110\xFAng";
+        options.F = "Sai";
+      }
+      const labels = Object.keys(options);
+      const answers = [...new Set(key.split("").filter((k) => labels.includes(k)))];
+      const unknown = key.split("").filter((k) => !labels.includes(k));
+      let risk = "low", reason = null;
+      if (!question || labels.length < 2 || !key || unknown.length) {
+        risk = "high";
+        reason = !key ? "Thi\u1EBFu \u0111\xE1p \xE1n." : unknown.length ? "\u0110\xE1p \xE1n kh\xF4ng kh\u1EDBp l\u1EF1a ch\u1ECDn." : "Kh\xF4ng t\xE1ch \u0111\u01B0\u1EE3c \u0111\u1EE7 l\u1EF1a ch\u1ECDn.";
+      } else if (labels.some((k, i) => k !== (key.match(/^[TF]$/) ? ["T", "F"][i] : LABELS[i]))) {
+        risk = "medium";
+        reason = "Nh\xE3n l\u1EF1a ch\u1ECDn kh\xF4ng li\xEAn t\u1EE5c.";
+      }
+      const item = { question, options, answer: answers, images: [], has_image: false, error_risk: risk, error_risk_reason: reason };
+      if (num !== null) item.num = num;
+      if (unknown.length) item.answer_unknown = unknown.join("");
+      out.push(item);
+    }
+    return renumberIfMissing(out);
+  }
+  function parseQuestionsFromQuizletJson(input) {
+    const data = typeof input === "string" ? JSON.parse(input) : input;
+    const terms = Array.isArray(data) ? data : data?.terms;
+    if (!Array.isArray(terms)) throw new Error("JSON kh\xF4ng c\xF3 danh s\xE1ch terms h\u1EE3p l\u1EC7.");
+    const markdown = ["| Term | Definition |", "| --- | --- |"];
+    for (const item of terms) {
+      const term = String(item?.term ?? item?.question ?? "").replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+      const definition = String(item?.definition ?? item?.answer ?? "").replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+      markdown.push("| " + term + " | " + definition + " |");
+    }
+    return parseQuestionsFromMarkdown(markdown.join("\n"));
+  }
+  function directExtractKind(fileName) {
+    const n = String(fileName || "").toLowerCase();
+    if (n.endsWith(".pdf")) return "pdf";
+    if (n.endsWith(".docx")) return "docx";
+    if (n.endsWith(".md") || n.endsWith(".markdown")) return "md";
+    if (n.endsWith(".json")) return "json";
+    return null;
+  }
+  async function extractFromFile(file, deps = {}) {
+    const kind = directExtractKind(file?.name);
+    if (!kind) throw new Error("Ch\u1EC9 \u0111\u1ECDc tr\u1EF1c ti\u1EBFp \u0111\u01B0\u1EE3c file .pdf, .docx, .md v\xE0 .json.");
+    if (kind === "json") {
+      const text = await file.text();
+      const questions = parseQuestionsFromQuizletJson(text);
+      return buildReport([text], questions, kind, file.name);
+    }
+    if (kind === "md") {
+      const text = await file.text();
+      const questions = parseQuestionsFromMarkdown(text);
+      return buildReport([text], questions, kind, file.name);
+    }
+    if (kind === "docx") {
+      const JSZip2 = deps.JSZip || window.JSZip;
+      if (!JSZip2) throw new Error("Thi\u1EBFu JSZip \u0111\u1EC3 \u0111\u1ECDc file .docx.");
+      const paras = await docxParagraphs(file, JSZip2);
+      const pages = [paras.join("\n")];
+      return buildReport(pages, renumberIfMissing(parseQuestionsFromPages(pages)), kind, file.name);
+    }
+    const [embeddedPages, spatialPages] = await Promise.all([
+      pdfPagesText(file, "embedded"),
+      pdfPagesText(file, "spatial")
+    ]);
+    const firstReport = buildReport(embeddedPages, [], kind, file.name);
+    if (firstReport.isScan) return firstReport;
+    const candidates = [
+      { strategy: "embedded-order", pages: embeddedPages, questions: renumberIfMissing(parseQuestionsFromPages(embeddedPages)) },
+      { strategy: "visual-position", pages: spatialPages, questions: renumberIfMissing(parseQuestionsFromPages(spatialPages)) }
+    ];
+    const { best, ranked } = chooseBestPdfCandidate(candidates);
+    const report = buildReport(best.pages, best.questions, kind, file.name);
+    report.extractionStrategy = best.strategy;
+    report.extractionDiagnostics = ranked.map((x) => ({ strategy: x.strategy, ...x.stats }));
+    report.needsReview = best.questions.filter((q) => q.error_risk !== "low").map((q) => q.num);
+    return report;
+  }
+
+  // src/core/importSchema.js
+  var RISKS = ["low", "medium", "high"];
+  function answerLabels(q) {
+    const raw = Array.isArray(q.answer) ? q.answer.join("") : String(q.answer ?? "");
+    const letters = (raw + String(q.answer_unknown ?? "")).toUpperCase().replace(/[^A-Z]/g, "");
+    const out = [];
+    for (const ch of letters) if (!out.includes(ch)) out.push(ch);
+    return out;
+  }
+  function toImportSchemaQuestion(q) {
+    const src = q && typeof q === "object" ? q : {};
+    const rawOptions = src.options && typeof src.options === "object" && !Array.isArray(src.options) ? src.options : {};
+    const options = {};
+    Object.keys(rawOptions).map((k) => String(k).trim().toUpperCase()).sort().forEach((k) => {
+      const v = rawOptions[k] ?? rawOptions[k.toLowerCase()];
+      options[k] = String(v ?? "").trim();
+    });
+    const images = Array.isArray(src.images) ? src.images.map((x) => String(x ?? "")).filter(Boolean) : [];
+    const risk = String(src.error_risk || "").toLowerCase();
+    const out = {};
+    if (src.num !== null && src.num !== void 0 && String(src.num).trim() !== "") out.num = src.num;
+    out.question = String(src.question ?? "").trim();
+    out.options = options;
+    out.answer = answerLabels(src);
+    out.images = images;
+    out.has_image = !!src.has_image || images.length > 0;
+    out.error_risk = RISKS.includes(risk) ? risk : "low";
+    return out;
+  }
+  function questionsToImportJson(list) {
+    const arr = Array.isArray(list) ? list : [];
+    return JSON.stringify(arr.map(toImportSchemaQuestion), null, 2);
+  }
+  function importJsonFileName(code) {
+    const safe = String(code || "").trim().replace(/[^a-z0-9_.-]+/gi, "_").replace(/^_+|_+$/g, "") || "questions";
+    return safe + "_questions.json";
+  }
+
+  // src/student/subjectImport.js
   var MAX_ZIP_SIZE = 30 * 1024 * 1024;
   var MAX_ZIP_ENTRIES = 2e3;
   var MAX_UNCOMPRESSED_TOTAL = 100 * 1024 * 1024;
@@ -7716,15 +9427,12 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       }
     }
     const validatedQuestions = [];
-    const usedNums = /* @__PURE__ */ new Set();
-    let expectedNum = 1;
     for (let i = 0; i < rawQuestions.length; i++) {
       const item = rawQuestions[i];
-      const num = Number(item?.num) || i + 1;
+      const numInfo = parseImportNum(item?.num);
+      const num = numInfo.kind === "invalid" ? null : numInfo.value;
       const questionText = String(item?.question || "").trim();
       const rawOptions = item?.options && typeof item.options === "object" && !Array.isArray(item.options) ? item.options : {};
-      let answer = item?.answer !== void 0 && item?.answer !== null ? String(item.answer).trim().toUpperCase() : null;
-      if (answer === "") answer = null;
       const rawImages = Array.isArray(item?.images) ? item.images : [];
       const errorRisk = String(item?.error_risk || "low").toLowerCase();
       const cleanedOptions = {};
@@ -7757,18 +9465,22 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
           });
         }
       }
-      let answerText2 = "";
-      if (answer && cleanedOptions[answer]) {
-        answerText2 = `${answer}. ${cleanedOptions[answer]}`;
-      }
+      const ansInfo = normalizeAnswer(item?.answer, cleanedOptions);
+      const answer = ansInfo.answer;
+      const answerText2 = buildAnswerText(ansInfo.labels, cleanedOptions);
       validatedQuestions.push({
         num,
         question: questionText,
         options: cleanedOptions,
         answer: answer || "",
+        // Giữ vết nhãn bị loại (xem normalizeImportedQuestions) để bộ chấm thấy "đáp án trỏ sai".
+        answer_unknown: ansInfo.unknown.join("") || void 0,
         answer_text: answerText2,
         images: mappedImages,
-        has_image: mappedImages.length > 0,
+        // IMPORT_QUALITY_GATE_20260805: KHÔNG hạ has_image về false khi map ảnh thất bại.
+        // Bản cũ ghi `mappedImages.length > 0` nên câu "cần ảnh mà zip thiếu ảnh" tự đổi thành
+        // "câu không cần ảnh" — mất luôn dấu hiệu thiếu dữ liệu mà cổng kiểm tra phải bắt.
+        has_image: mappedImages.length > 0 || !!item?.has_image,
         error_risk: ["low", "medium", "high"].includes(errorRisk) ? errorRisk : "low",
         error_risk_reason: item?.error_risk_reason || null
       });
@@ -7785,6 +9497,29 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
       suggestedCode,
       questions: validatedQuestions
     };
+  }
+  function normalizeImportedQuestions(list) {
+    (Array.isArray(list) ? list : []).forEach((q) => {
+      if (!q || typeof q !== "object") return;
+      const numInfo = parseImportNum(q.num);
+      q.num = numInfo.kind === "invalid" ? null : numInfo.value;
+      const rawOptions = q.options && typeof q.options === "object" && !Array.isArray(q.options) ? q.options : {};
+      const options = {};
+      for (const [k, v] of Object.entries(rawOptions)) options[String(k).trim().toUpperCase()] = String(v ?? "").trim();
+      q.options = options;
+      q.question = String(q.question || "").trim();
+      const ansInfo = normalizeAnswer(q.answer, options);
+      q.answer = ansInfo.answer;
+      q.answer_text = q.answer_text || buildAnswerText(ansInfo.labels, options);
+      if (ansInfo.unknown.length) q.answer_unknown = ansInfo.unknown.join("");
+      else delete q.answer_unknown;
+      if (!Array.isArray(q.images)) q.images = [];
+      q.has_image = q.images.length > 0 || !!q.has_image;
+      const risk = String(q.error_risk || "").toLowerCase();
+      q.error_risk = ["low", "medium", "high"].includes(risk) ? risk : "low";
+      if (q.error_risk_reason === void 0) q.error_risk_reason = null;
+    });
+    return list;
   }
   async function uploadZipImagesToCloudinary(onProgress) {
     const isMock = window.HOD_MOCK_MODE || new URLSearchParams(window.location.search).get("mock") === "1";
@@ -7883,21 +9618,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
   }
   function installAddSubjectFeature() {
     (function() {
-      const HUB_URL = window.APP_CONFIG?.SUPABASE_URL || "";
-      const HUB_KEY = window.APP_CONFIG?.SUPABASE_ANON_KEY || "";
       const $3 = (id) => document.getElementById(id);
-      let supa = null;
-      function client() {
-        if (!window.supabase) return null;
-        if (!supa) supa = window.supabase.createClient(HUB_URL, HUB_KEY);
-        return supa;
-      }
-      function esc2(s) {
-        return String(s ?? "").replace(
-          /[&<>"']/g,
-          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
-        );
-      }
       function isLoggedIn() {
         return !!window.HODSupabase?.getUser?.();
       }
@@ -8083,10 +9804,10 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
           document.querySelector(".subjectGateSubline"),
           document.querySelector(".subjectGateTools"),
           $3("subjectGateSearchWrap"),
-          // SUBJECT_FOLDER_BAR_IN_TABS_20260729: thanh thư mục nay nằm TRONG hàng tab, nên phải
-          // nằm trong danh sách ẩn/hiện này — không thì "← Tất cả môn" còn nổi ở tab Thêm môn mới.
-          $3("subjectFolderCrumb"),
-          $3("subjectFolderCrumbMeta"),
+          // SUBJECT_FOLDER_CRUMB_OWN_ROW_20260806: thanh thư mục là một HÀNG RIÊNG dưới hàng tab
+          // (trước nằm trong hàng tab, phải ẩn hai ô con). Ẩn cả hàng — không thì
+          // "← Tất cả môn ▸ MÃ" còn nổi ở tab Thêm môn mới.
+          $3("subjectFolderCrumbRow"),
           $3("subjectList"),
           $3("subjectLoading"),
           $3("subjectError"),
@@ -8101,7 +9822,6 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
           form.classList.toggle("hidden", !isAdd);
           if (isAdd) {
             form.innerHTML = getAddSubjectHTML();
-            parsedQuestions = [];
             restoreAddSubjectState();
           }
         }
@@ -8162,63 +9882,59 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
           }
         }
       }
-      const AI_PROMPT = `B\u1EA1n l\xE0 tr\u1EE3 l\xFD chuy\u1EC3n \u0111\u1ED5i ng\xE2n h\xE0ng c\xE2u h\u1ECFi tr\u1EAFc nghi\u1EC7m sang JSON trong file Markdown.
-
-\u0110\u1ECCC FILE v\xE0 chuy\u1EC3n \u0111\u1ED5i NGUY\xCAN V\u1EB8N (KH\xD4NG t\u1EF1 bi\xEAn th\xEAm, KH\xD4NG b\u1ECF b\u1EDBt).
-
-QUY T\u1EAEC BATCH:
-
-- Sau m\u1ED7i batch D\u1EEANG v\xE0 n\xF3i: "G\xF5 'ti\u1EBFp' \u0111\u1EC3 xu\u1EA5t c\xE2u X-Y."
-- Khi nh\u1EADn "ti\u1EBFp", xu\u1EA5t batch ti\u1EBFp theo, \u0111\xE1nh s\u1ED1 "num" li\xEAn t\u1EE5c.
-- M\u1ED7i batch xu\u1EA5t 1 file .md ho\xE0n ch\u1EC9nh, t\u1EA3i \u0111\u01B0\u1EE3c ngay.
-
-QUY T\u1EAEC CHUY\u1EC2N \u0110\u1ED4I:
-- \u0110\xE1p \xE1n: ch\u1EC9 l\u1EA5y k\xFD t\u1EF1 ch\u1EEF c\xE1i \u0111\u1EA7u ti\xEAn sau "**\u0110\xE1p \xE1n:**" (b\u1ECF m\u1ECDi ch\xFA th\xEDch ph\xEDa sau).
-- N\u1EBFu c\xE2u ch\u1EC9 c\xF3 A/B/C (kh\xF4ng c\xF3 D): b\u1ECF key "D" kh\u1ECFi object options.
-- Gi\u1EEF NGUY\xCAN n\u1ED9i dung c\xE2u h\u1ECFi v\xE0 l\u1EF1a ch\u1ECDn, KH\xD4NG paraphrase.
-- "has_image": false (tr\u1EEB khi c\xE2u \u0111\u1EC1 c\u1EADp h\xECnh \u1EA3nh/bi\u1EC3u \u0111\u1ED3).
-- "error_risk": "low" (c\xE2u ng\u1EAFn, r\xF5) | "medium" (c\xE2u trung b\xECnh) | "high" (c\xE2u d\xE0i, ph\u1EE9c t\u1EA1p, d\u1EC5 nh\u1EA7m).
-
-FORMAT FILE .MD OUTPUT:
----
-# [T\xEAn m\xF4n] - Batch [N] (C\xE2u [X]-[Y])
-> Xu\u1EA5t ng\xE0y: [ng\xE0y h\xF4m nay] | T\u1ED5ng: [s\u1ED1 c\xE2u trong batch] c\xE2u
----
-
-\`\`\`json
-[
-  {
-    "num": 1,
-    "question": "\u2026?",
-    "options": {
-      "A": "\u2026",
-      "B": "\u2026",
-      "C": "\u2026",
-      "D": "\u2026"
-    },
-    "answer": "B",
-    "images": [],
-    "has_image": false,
-    "error_risk": "low"
-  }
-]
-\`\`\`
----
-
-KH\xD4NG th\xEAm b\u1EA5t k\u1EF3 text gi\u1EA3i th\xEDch n\xE0o b\xEAn ngo\xE0i c\u1EA5u tr\xFAc tr\xEAn.
-B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
+      const AI_PROMPT = IMPORT_AI_PROMPT;
       window.__ADD_SUBJECT_AI_PROMPT = AI_PROMPT;
-      let parsedQuestions = [];
-      function clearAddSubjectLocalStorage() {
-        localStorage.removeItem("learninghub_add_subject_code_v1");
-        localStorage.removeItem("learninghub_add_subject_name_v1");
-        localStorage.removeItem("learninghub_add_subject_desc_v1");
-        localStorage.removeItem("learninghub_add_subject_step_v1");
-        localStorage.removeItem("learninghub_add_subject_file_name_v1");
-        localStorage.removeItem("learninghub_add_subject_file_size_v1");
-        localStorage.removeItem("learninghub_add_subject_file_data_v1");
-        localStorage.removeItem("learninghub_add_subject_file_previewed_v1");
+      function getParsed() {
+        return Array.isArray(window.__previewImportData) ? window.__previewImportData : [];
       }
+      function setParsed(list) {
+        window.__previewImportData = Array.isArray(list) ? list : [];
+      }
+      const ADD_SUBJECT_LS_KEYS = [
+        "learninghub_add_subject_code_v1",
+        "learninghub_add_subject_name_v1",
+        "learninghub_add_subject_desc_v1",
+        "learninghub_add_subject_step_v1",
+        "learninghub_add_subject_path_v1",
+        "learninghub_add_subject_file_name_v1",
+        "learninghub_add_subject_file_size_v1",
+        "learninghub_add_subject_file_data_v1",
+        "learninghub_add_subject_file_previewed_v1"
+      ];
+      window.__resetAddSubjectForm = function() {
+        try {
+          ADD_SUBJECT_LS_KEYS.forEach((k) => localStorage.removeItem(k));
+          setParsed([]);
+          window.__selectedImportFile = null;
+          window.__previewSelections = {};
+          window.LHSubjectImport?.resetSubjectImportState?.();
+          hardClosePreviewModal();
+          window.__resetImportQualityPanel?.();
+          ["addSubjectCode", "addSubjectName", "addSubjectDesc"].forEach((id) => {
+            const el = $3(id);
+            if (el) el.value = "";
+          });
+          const fileInput = $3("userImportFile");
+          if (fileInput) fileInput.value = "";
+          if ($3("userImportData")) $3("userImportData").value = "";
+          if ($3("importDropZone")) $3("importDropZone").classList.remove("hidden");
+          if ($3("userImportFileCard")) $3("userImportFileCard").classList.add("hidden");
+          if ($3("userImportFileName")) $3("userImportFileName").textContent = "Ch\u01B0a ch\u1ECDn file";
+          if ($3("userImportFileMeta")) $3("userImportFileMeta").textContent = "File import c\xE2u h\u1ECFi";
+          const pv = $3("previewImportBtn");
+          if (pv) {
+            pv.classList.add("hidden");
+            pv.disabled = true;
+          }
+          const save = $3("userImportBtn");
+          if (save) save.disabled = true;
+          syncImportPath("");
+          window.__switchStep?.(1);
+          localStorage.removeItem("learninghub_add_subject_step_v1");
+        } catch (e) {
+          lhWarn("ADD_SUBJECT_RESET_AFTER_SAVE_20260805", e);
+        }
+      };
       function restoreAddSubjectState() {
         const code = localStorage.getItem("learninghub_add_subject_code_v1") || "";
         const name = localStorage.getItem("learninghub_add_subject_name_v1") || "";
@@ -8263,7 +9979,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           if (card) card.classList.remove("hidden");
           if (nameEl) nameEl.textContent = fileName;
           if (metaEl)
-            metaEl.textContent = Math.max(1, Math.round(parseInt(fileSize || "0") / 1024)) + " KB \xB7 S\u1EB5n s\xE0ng xem tr\u01B0\u1EDBc";
+            metaEl.textContent = Math.max(1, Math.round(parseInt(fileSize || "0") / 1024)) + " KB \xB7 S\u1EB5n s\xE0ng ki\u1EC3m tra";
           const pv = $3("previewImportBtn");
           if (pv) {
             pv.classList.remove("hidden");
@@ -8273,10 +9989,22 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           if (wasPreviewed) {
             setTimeout(() => {
               if (typeof window.__previewUserImport === "function") {
-                window.__previewUserImport();
+                window.__previewUserImport({ silent: true });
               }
             }, 100);
           }
+        } else if (getParsed().length) {
+          if (fileName) {
+            if ($3("importDropZone")) $3("importDropZone").classList.add("hidden");
+            if ($3("userImportFileCard")) $3("userImportFileCard").classList.remove("hidden");
+            if ($3("userImportFileName")) $3("userImportFileName").textContent = fileName;
+          }
+          const pv = $3("previewImportBtn");
+          if (pv) {
+            pv.classList.remove("hidden");
+            pv.disabled = false;
+          }
+          setTimeout(() => window.__reanalyzeImport?.(), 100);
         }
         $3("userImportFile")?.addEventListener("change", handleFileImport);
         if (savedStep > 1 && code && name) {
@@ -8290,9 +10018,9 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       <div class="subject-stepper" id="subjectStepper">
         <div class="step active" data-step="1"><span>1</span> Th\xF4ng tin</div>
         <div class="step-line"></div>
-        <div class="step" data-step="2"><span>2</span> L\u1EA5y Prompt</div>
+        <div class="step" data-step="2"><span>2</span> Ch\u1ECDn h\u01B0\u1EDBng</div>
         <div class="step-line"></div>
-        <div class="step" data-step="3"><span>3</span> Import</div>
+        <div class="step" data-step="3"><span>3</span> Import &amp; ki\u1EC3m tra</div>
       </div>
 
       <div id="addStep1" class="add-step-content active">
@@ -8316,10 +10044,28 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       </div>
 
       <div id="addStep2" class="add-step-content">
+        <!-- IMPORT_QUALITY_GATE_20260805: hai h\u01B0\u1EDBng \u0111i. Tr\u01B0\u1EDBc \u0111\xE2y b\u01B0\u1EDBc 2 ch\u1EC9 c\xF3 m\u1ED9t \u0111\u01B0\u1EDDng (l\u1EA5y
+             prompt), ng\u01B0\u1EDDi \u0111\xE3 c\xF3 file s\u1EB5n v\u1EABn ph\u1EA3i b\u1EA5m qua m\xE0n prompt m\u1EDBi t\u1EDBi \xF4 t\u1EA3i file. -->
+        <div class="importPathFork" id="importPathFork">
+          <button class="importPathCard" type="button" data-import-path="file">
+            <span class="importPathIcon">\u{1F4C4}</span>
+            <b>T\xE0i li\u1EC7u \u0111\u1ECDc \u0111\u01B0\u1EE3c ch\u1EEF</b>
+            <span class="importPathDesc">PDF chu\u1EA9n, file Word, ho\u1EB7c JSON / ZIP c\xF3 s\u1EB5n. H\u1EC7 th\u1ED1ng t\u1EF1 tr\xEDch xu\u1EA5t v\u0103n b\u1EA3n v\xE0 t\xE1ch c\xE2u h\u1ECFi \u2014 <b>kh\xF4ng c\u1EA7n AI</b>. D\u01B0\u1EDBi ${QUALITY_THRESHOLDS.low}% sai l\u1EC7ch l\xE0 l\u01B0u lu\xF4n.</span>
+            <span class="importPathGo">T\u1EA3i t\xE0i li\u1EC7u l\xEAn \u2794</span>
+          </button>
+          <button class="importPathCard" type="button" data-import-path="prompt">
+            <span class="importPathIcon">\u{1F5BC}</span>
+            <b>B\u1EA3n ch\u1EE5p, ho\u1EB7c c\xF3 h\xECnh \u1EA3nh</b>
+            <span class="importPathDesc">PDF scan (\u1EA3nh trang gi\u1EA5y), t\xE0i li\u1EC7u c\xF3 h\xECnh ph\u1EA3i gi\u1EEF l\u1EA1i, ho\u1EB7c PDF kh\xF4ng tr\xEDch xu\u1EA5t \u0111\u01B0\u1EE3c ch\u1EEF. Nh\u1EDD AI chuy\u1EC3n th\xE0nh JSON + \u1EA3nh.</span>
+            <span class="importPathGo">L\u1EA5y prompt \u2794</span>
+          </button>
+        </div>
+
+        <div class="importPromptRoute hidden" id="importPromptRoute">
         <div class="aiStepCard" style="margin-bottom:0;">
           <p>Copy prompt d\u01B0\u1EDBi \u0111\xE2y v\xE0 d\xE1n v\xE0o AI (Gemini/ChatGPT/Claude) k\xE8m theo t\xE0i li\u1EC7u m\xF4n h\u1ECDc c\u1EE7a b\u1EA1n.</p>
         </div>
-        
+
         <div class="aiPromptActions">
           <button class="aiCopyBtn" type="button" onclick="window.__copyUserAIPrompt()" id="btnCopyPrompt">\u{1F4CB} Sao ch\xE9p prompt</button>
           <button class="aiViewPromptBtn" type="button" onclick="window.__openUserAIPromptModal()" id="btnViewPrompt">\u{1F441} Xem prompt</button>
@@ -8330,10 +10076,11 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           <a href="https://chatgpt.com" target="_blank" class="aiToolBtn chatgpt">\u25C9 ChatGPT</a>
           <a href="https://claude.ai" target="_blank" class="aiToolBtn claude">\u25C8 Claude</a>
         </div>
+        </div>
 
         <div class="step-actions">
-          <button class="btn" type="button" onclick="window.__switchStep(1)">\u2B05 Quay l\u1EA1i</button>
-          <button class="primary" type="button" onclick="window.__switchStep(3)">\u0110\xE3 c\xF3 file, Ti\u1EBFp t\u1EE5c \u2794</button>
+          <button class="btn" type="button" id="importStepBack" onclick="window.__importStepBack()">\u2B05 Quay l\u1EA1i</button>
+          <button class="primary hidden" type="button" id="promptRouteNext" onclick="window.__switchStep(3)">\u0110\xE3 c\xF3 file, Ti\u1EBFp t\u1EE5c \u2794</button>
         </div>
       </div>
 
@@ -8341,8 +10088,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         <div class="importUnifiedBox">
           <div class="userFileInputWrap" id="importDropZone" onclick="document.getElementById('userImportFile').click()">
             <span class="icon">\u2601\uFE0F</span>
-            <p><b>K\xE9o th\u1EA3 file .json ho\u1EB7c .zip (g\u1ED3m JSON & h\xECnh \u1EA3nh) v\xE0o \u0111\xE2y</b><br><span style="font-size:0.85rem; opacity:0.6;">Ho\u1EB7c b\u1EA5m \u0111\u1EC3 ch\u1ECDn file t\u1EEB m\xE1y (.json, .zip, .md, .txt)</span></p>
-            <input type="file" id="userImportFile" accept=".json,.zip,.md,.txt" style="display:none;">
+            <p><b>K\xE9o th\u1EA3 file PDF, Word, JSON ho\u1EB7c ZIP v\xE0o \u0111\xE2y</b><br><span style="font-size:0.85rem; opacity:0.6;">PDF chu\u1EA9n / .docx th\xEC h\u1EC7 th\u1ED1ng t\u1EF1 \u0111\u1ECDc v\xE0 t\xE1ch c\xE2u h\u1ECFi, kh\xF4ng c\u1EA7n AI (.pdf, .docx, .json, .zip, .md, .txt)</span></p>
+            <input type="file" id="userImportFile" accept=".pdf,.docx,.json,.zip,.md,.txt" style="display:none;">
           </div>
 
           <textarea id="userImportData" class="hiddenImportData" aria-hidden="true"></textarea>
@@ -8355,10 +10102,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             <button class="removeFileBtn" type="button" onclick="window.__clearUserImportFile()">X\xF3a file</button>
           </div>
 
+          <!-- B\u1EA3ng ch\u1EA5m \u0111\u1ED9 sai l\u1EC7ch: quy\u1EBFt \u0111\u1ECBnh cho l\u01B0u ngay hay ph\u1EA3i \u0111i h\u01B0\u1EDBng prompt -->
+          <div class="importQualityPanel hidden" id="importQualityPanel"></div>
+
           <div class="step-actions importStepActions">
             <button class="btn" type="button" onclick="window.__switchStep(2)">\u2B05 Quay l\u1EA1i</button>
             <div>
-              <button class="btn previewImportBtn hidden" type="button" id="previewImportBtn" onclick="window.__previewUserImport()">Xem tr\u01B0\u1EDBc</button>
+              <button class="btn previewImportBtn hidden" type="button" id="previewImportBtn" onclick="window.__checkImportFile()">Ki\u1EC3m tra l\u1EA1i</button>
               <button class="primary" type="button" id="userImportBtn" onclick="window.__submitSubjectRequest()" disabled>L\u01B0u M\xF4n H\u1ECDc</button>
             </div>
           </div>
@@ -8368,6 +10118,150 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       <div class="userApprovalNote" id="userApprovalNote" style="margin-top:15px; display:none;">\u23F3 Y\xEAu c\u1EA7u s\u1EBD \u0111\u01B0\u1EE3c g\u1EEDi cho admin duy\u1EC7t tr\u01B0\u1EDBc.</div>
     </div>`;
       }
+      const IMPORT_PATH_KEY = "learninghub_add_subject_path_v1";
+      function hardClosePreviewModal() {
+        document.getElementById("importPreviewModal")?.remove();
+      }
+      function syncImportPath(path) {
+        const fork = $3("importPathFork");
+        const route = $3("importPromptRoute");
+        const next2 = $3("promptRouteNext");
+        const showPrompt = path === "prompt";
+        if (fork) fork.classList.toggle("hidden", showPrompt);
+        if (route) route.classList.toggle("hidden", !showPrompt);
+        if (next2) next2.classList.toggle("hidden", !showPrompt);
+      }
+      window.__syncImportPath = syncImportPath;
+      window.__pickImportPath = function(path) {
+        localStorage.setItem(IMPORT_PATH_KEY, path);
+        syncImportPath(path);
+        if (path === "file") window.__switchStep(3);
+      };
+      window.__resetImportPath = function() {
+        localStorage.removeItem(IMPORT_PATH_KEY);
+        syncImportPath("");
+      };
+      window.__importStepBack = function() {
+        if ((localStorage.getItem(IMPORT_PATH_KEY) || "") === "prompt") {
+          window.__resetImportPath();
+          return;
+        }
+        window.__switchStep(1);
+      };
+      window.__goPromptRoute = function() {
+        window.__pickImportPath("prompt");
+        window.__switchStep(2);
+        $3("importPromptRoute")?.scrollIntoView({ block: "nearest" });
+      };
+      window.__downloadImportJson = function() {
+        const list = getParsed();
+        if (!list.length) {
+          alert("Ch\u01B0a c\xF3 c\xE2u h\u1ECFi n\xE0o \u0111\u1EC3 xu\u1EA5t. H\xE3y ch\u1ECDn file r\u1ED3i ki\u1EC3m tra tr\u01B0\u1EDBc.");
+          return;
+        }
+        try {
+          const code = ($3("addSubjectCode")?.value || "").trim();
+          const blob = new Blob([questionsToImportJson(list)], { type: "application/json;charset=utf-8" });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = importJsonFileName(code);
+          a.click();
+          URL.revokeObjectURL(a.href);
+          window.notify?.("\u0110\xE3 t\u1EA3i " + list.length + " c\xE2u ra file JSON");
+        } catch (e) {
+          lhWarn("IMPORT_SCHEMA_EXPORT_20260806", e);
+          alert("Kh\xF4ng t\u1EA1o \u0111\u01B0\u1EE3c file JSON: " + (e?.message || e));
+        }
+      };
+      function qualityPanelHTML(report) {
+        const v = report.verdict;
+        const nb = report.numbering;
+        const blank = nb.blankCount || 0;
+        const numLine = nb.ok ? blank && !nb.mainCount && !nb.variantCount ? `File kh\xF4ng c\xF3 s\u1ED1 c\xE2u \u2014 h\u1EC7 th\u1ED1ng s\u1EBD t\u1EF1 \u0111\xE1nh s\u1ED1 1\u2026${blank} theo \u0111\xFAng th\u1EE9 t\u1EF1 trong file.` : (blank ? `${blank} c\xE2u \u0111\u1EC3 tr\u1ED1ng s\u1ED1 (h\u1EC7 th\u1ED1ng t\u1EF1 \u0111\xE1nh) \xB7 ` : "") + (nb.variantCount ? `${nb.mainCount} c\xE2u g\u1ED1c li\xEAn t\u1EE5c + ${nb.variantCount} bi\u1EBFn th\u1EC3 d\u1EA1ng "X.1".` : `${nb.mainCount} c\xE2u li\xEAn t\u1EE5c t\u1EEB 1.`) : `\u0110\xE1nh s\u1ED1 c\xF3 ${nb.problems.length} ch\u1ED7 sai: ` + esc(
+          nb.problems.slice(0, 3).map((p) => "c\xE2u " + p.num + " \u2014 " + p.msg).join(" \xB7 ")
+        ) + (nb.problems.length > 3 ? ` \u2026c\xF2n ${nb.problems.length - 3} ch\u1ED7` : "");
+        const groups = report.groups.map(
+          (g) => `<li class="iqIssue iqSev-${g.sev}">
+            <span class="iqIssueTag">${esc(severityLabel(g.sev))}</span>
+            <span class="iqIssueBody">
+              <b>${esc(g.label)}</b> <span class="iqIssueCount">${g.count} c\xE2u</span>
+              <span class="iqIssueHint">${esc(g.hint)}</span>
+              ${g.nums.length ? `<span class="iqIssueNums">C\xE2u: ${esc(g.nums.join(", "))}</span>` : ""}
+            </span>
+          </li>`
+        ).join("");
+        const openPreviewBtn = report.total ? `<button class="btn" type="button" onclick="window.__openImportPreviewModal(window.__previewImportData||[])">${report.tier === "high" ? `S\u1EEDa tay ${report.rows.length} c\xE2u n\xE0y` : `\u{1F441} Xem l\u1EA1i ${report.total} c\xE2u`}</button>` : "";
+        const exportJsonBtn = report.total ? `<button class="btn" type="button" title="T\u1EA3i file JSON \u0111\xFAng schema import \u2014 m\u1EDF ra xem ho\u1EB7c nh\u1EADp l\u1EA1i \u0111\u01B0\u1EE3c" onclick="window.__downloadImportJson()">\u2B07 Xu\u1EA5t JSON</button>` : "";
+        const actions = report.tier === "high" ? `<div class="iqActions">
+              ${openPreviewBtn}
+              ${exportJsonBtn}
+              <button class="primary iqRouteBtn" type="button" onclick="window.__goPromptRoute()">\u2794 Chuy\u1EC3n sang h\u01B0\u1EDBng Prompt</button>
+             </div>` : report.tier === "medium" ? `<div class="iqActions">${openPreviewBtn}${exportJsonBtn}</div>
+               <label class="iqAccept"><input type="checkbox" id="importQualityAccept"> T\xF4i \u0111\xE3 xem danh s\xE1ch tr\xEAn v\xE0 ch\u1EA5p nh\u1EADn l\u01B0u m\xF4n v\u1EDBi m\u1EE9c sai l\u1EC7ch n\xE0y.</label>` : `<div class="iqActions">${openPreviewBtn}${exportJsonBtn}</div>`;
+        return `<div class="iqHead iq-${v.cls}">
+          <span class="iqIcon">${esc(v.icon)}</span>
+          <div class="iqHeadText">
+            <b>${esc(v.title)}</b>
+            <span>${esc(v.sub)}</span>
+          </div>
+          <div class="iqScore">
+            <b>${report.fatalCount ? report.fatalCount : report.deviationPct + "%"}</b>
+            <span>${report.fatalCount ? "c\xE2u b\u1ECB ch\u1EB7n" : "sai l\u1EC7ch"}</span>
+          </div>
+        </div>
+        <div class="iqMeta">
+          <span><b>${report.total}</b> c\xE2u \u0111\u1ECDc \u0111\u01B0\u1EE3c</span>
+          <span><b>${report.rows.length}</b> c\xE2u c\xF3 v\u1EA5n \u0111\u1EC1</span>
+          <span><b>${report.fatalCount}</b> c\xE2u thi\u1EBFu d\u1EEF li\u1EC7u b\u1EAFt bu\u1ED9c</span>
+          ${report.fatalCount ? `<span>sai l\u1EC7ch <b>${report.deviationPct}%</b></span>` : ""}
+          <span class="iqThreshold">Ng\u01B0\u1EE1ng: \u2264${QUALITY_THRESHOLDS.low}% ch\u1EA5p nh\u1EADn \xB7 \u2264${QUALITY_THRESHOLDS.medium}% c\u1EA7n x\xE1c nh\u1EADn \xB7 tr\xEAn \u0111\xF3 ph\u1EA3i d\xF9ng prompt</span>
+        </div>
+        <div class="iqNumbering ${nb.ok ? "ok" : "bad"}">\u{1F522} ${numLine}</div>
+        ${groups ? `<ul class="iqIssues">${groups}</ul>` : '<div class="iqClean">Kh\xF4ng ph\xE1t hi\u1EC7n v\u1EA5n \u0111\u1EC1 n\xE0o.</div>'}
+        ${actions}`;
+      }
+      function applyImportQuality(list) {
+        const report = analyzeImport(list);
+        window.__importQualityReport = report;
+        const panel = $3("importQualityPanel");
+        if (panel) {
+          panel.className = "importQualityPanel iqTier-" + report.tier;
+          panel.innerHTML = qualityPanelHTML(report);
+          const cb = $3("importQualityAccept");
+          if (cb) cb.addEventListener("change", () => gateSaveButton(report, cb.checked));
+        }
+        gateSaveButton(report, false);
+        const metaEl = $3("userImportFileMeta");
+        if (metaEl) {
+          metaEl.textContent = report.total + " c\xE2u \xB7 sai l\u1EC7ch " + report.deviationPct + "% \xB7 " + (report.tier === "low" ? "ch\u1EA5p nh\u1EADn" : report.tier === "medium" ? "c\u1EA7n b\u1EA1n x\xE1c nh\u1EADn" : "ph\u1EA3i d\xF9ng prompt");
+        }
+        return report;
+      }
+      function gateSaveButton(report, accepted) {
+        const btn = $3("userImportBtn");
+        if (!btn) return;
+        const allow = report.tier === "low" || report.tier === "medium" && accepted;
+        btn.disabled = !allow;
+        btn.title = allow ? "" : report.tier === "medium" ? "H\xE3y tick x\xE1c nh\u1EADn \u0111\xE3 xem danh s\xE1ch c\xE2u nghi l\u1ED7i." : "Sai l\u1EC7ch qu\xE1 cao \u2014 s\u1EEDa c\xE1c c\xE2u b\u1ECB b\xE1o ho\u1EB7c chuy\u1EC3n sang h\u01B0\u1EDBng prompt.";
+      }
+      window.__reanalyzeImport = function() {
+        const list = getParsed();
+        if (!list.length) return null;
+        return applyImportQuality(list);
+      };
+      window.__checkImportFile = function() {
+        if (getParsed().length) return window.__reanalyzeImport();
+        return window.__previewUserImport();
+      };
+      window.__resetImportQualityPanel = function() {
+        const panel = $3("importQualityPanel");
+        if (panel) {
+          panel.className = "importQualityPanel hidden";
+          panel.innerHTML = "";
+        }
+        window.__importQualityReport = null;
+        hardClosePreviewModal();
+      };
       window.__switchStep = function(step) {
         if (step >= 2) {
           const code = (document.getElementById("addSubjectCode")?.value || "").trim();
@@ -8392,6 +10286,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           if (s <= step) el.classList.add("active");
           else el.classList.remove("active");
         });
+        if (step === 2) syncImportPath(localStorage.getItem(IMPORT_PATH_KEY) || "");
         if (step === 3 && !window._dropZoneInit) {
           const dropZone = document.getElementById("importDropZone");
           const fileInput = document.getElementById("userImportFile");
@@ -8429,9 +10324,93 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           }
         }
       };
+      async function handleDirectDocImport(file, kind) {
+        window.__selectedImportFile = null;
+        localStorage.setItem("learninghub_add_subject_file_name_v1", file.name);
+        localStorage.setItem("learninghub_add_subject_file_size_v1", String(file.size));
+        localStorage.removeItem("learninghub_add_subject_file_data_v1");
+        localStorage.removeItem("learninghub_add_subject_file_previewed_v1");
+        if ($3("userImportData")) $3("userImportData").value = "";
+        const dropZone = $3("importDropZone");
+        const card = $3("userImportFileCard");
+        const nameEl = $3("userImportFileName");
+        const metaEl = $3("userImportFileMeta");
+        if (dropZone) dropZone.classList.add("hidden");
+        if (card) card.classList.remove("hidden");
+        if (nameEl) nameEl.textContent = file.name;
+        if (metaEl) metaEl.textContent = "\u0110ang \u0111\u1ECDc " + (kind === "pdf" ? "PDF" : "file Word") + "...";
+        const saveBtn = $3("userImportBtn");
+        if (saveBtn) saveBtn.disabled = true;
+        setParsed([]);
+        window.__resetImportQualityPanel?.();
+        window.notify("\u0110ang \u0111\u1ECDc " + file.name + " \u2014 kh\xF4ng c\u1EA7n AI.");
+        let report;
+        try {
+          report = await extractFromFile(file, { JSZip: import_jszip.default });
+        } catch (err) {
+          lhWarn("DOC_EXTRACT_DIRECT_20260805", err);
+          if (metaEl) metaEl.textContent = "\u0110\u1ECDc file th\u1EA5t b\u1EA1i";
+          alert(
+            "Kh\xF4ng \u0111\u1ECDc \u0111\u01B0\u1EE3c file n\xE0y:\n" + (err?.message || err) + '\n\nH\xE3y th\u1EED h\u01B0\u1EDBng "PDF scan / c\xF3 h\xECnh \u1EA3nh" \u0111\u1EC3 nh\u1EDD AI chuy\u1EC3n.'
+          );
+          return;
+        }
+        if (report.isScan) {
+          if (metaEl) metaEl.textContent = report.pageCount + " trang \xB7 kh\xF4ng c\xF3 v\u0103n b\u1EA3n (b\u1EA3n ch\u1EE5p)";
+          showScanNotice(report);
+          return;
+        }
+        if (!report.questions.length) {
+          if (metaEl) metaEl.textContent = "Kh\xF4ng t\xE1ch \u0111\u01B0\u1EE3c c\xE2u h\u1ECFi n\xE0o";
+          showScanNotice(report, true);
+          return;
+        }
+        normalizeImportedQuestions(report.questions);
+        setParsed(report.questions);
+        window.__previewSelections = {};
+        window.__lastDirectExtract = report;
+        const q = applyImportQuality(report.questions);
+        const pv = $3("previewImportBtn");
+        if (pv) {
+          pv.classList.remove("hidden");
+          pv.disabled = false;
+        }
+        if (q.tier === "high") {
+          window.notify("\u0110\u1ECDc \u0111\u01B0\u1EE3c " + report.questions.length + " c\xE2u, sai l\u1EC7ch " + q.deviationPct + "%");
+          return;
+        }
+        window.__openImportPreviewModal(report.questions);
+        window.notify("\u0110\u1ECDc tr\u1EF1c ti\u1EBFp xong: " + report.questions.length + " c\xE2u h\u1ECFi");
+      }
+      function showScanNotice(report, parsedEmpty) {
+        const panel = $3("importQualityPanel");
+        if (!panel) return;
+        panel.className = "importQualityPanel iqTier-high";
+        panel.innerHTML = `<div class="iqHead iq-bad">
+          <span class="iqIcon">\u{1F5BC}</span>
+          <div class="iqHeadText">
+            <b>${parsedEmpty ? "\u0110\u1ECDc \u0111\u01B0\u1EE3c ch\u1EEF nh\u01B0ng kh\xF4ng t\xE1ch \u0111\u01B0\u1EE3c c\xE2u h\u1ECFi" : "File n\xE0y l\xE0 b\u1EA3n ch\u1EE5p, kh\xF4ng c\xF3 v\u0103n b\u1EA3n"}</b>
+            <span>${parsedEmpty ? 'T\xE0i li\u1EC7u kh\xF4ng theo d\u1EA1ng "\u0111\u1EC1 b\xE0i \u2192 A. B. C. D. \u2192 \u0111\xE1p \xE1n" n\xEAn kh\xF4ng t\xE1ch t\u1EF1 \u0111\u1ED9ng \u0111\u01B0\u1EE3c.' : "PDF g\u1ED3m \u1EA3nh trang gi\u1EA5y n\xEAn kh\xF4ng tr\xEDch xu\u1EA5t ch\u1EEF tr\u1EF1c ti\u1EBFp \u0111\u01B0\u1EE3c."}</span>
+          </div>
+        </div>
+        <div class="iqMeta">
+          <span><b>${report.pageCount}</b> trang</span>
+          <span><b>${report.charsPerPage}</b> k\xFD t\u1EF1/trang${parsedEmpty ? "" : ` (d\u01B0\u1EDBi ng\u01B0\u1EE1ng ${SCAN_CHARS_PER_PAGE})`}</span>
+        </div>
+        <div class="iqActions">
+          <button class="primary iqRouteBtn" type="button" onclick="window.__goPromptRoute()">\u2794 Chuy\u1EC3n sang h\u01B0\u1EDBng AI</button>
+        </div>`;
+        gateSaveButton({ tier: "high", deviationPct: 100, fatalCount: 0 }, false);
+      }
       function handleFileImport(e) {
         const file = e.target.files?.[0];
         if (!file) return;
+        hardClosePreviewModal();
+        const directKind = directExtractKind(file.name);
+        if (directKind) {
+          handleDirectDocImport(file, directKind);
+          return;
+        }
         if (file.name.toLowerCase().endsWith(".zip")) {
           window.__selectedImportFile = file;
           localStorage.setItem("learninghub_add_subject_file_name_v1", file.name);
@@ -8446,7 +10425,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           if (card) card.classList.remove("hidden");
           if (nameEl) nameEl.textContent = file.name;
           if (metaEl)
-            metaEl.textContent = (file.size / (1024 * 1024)).toFixed(1) + " MB \xB7 File ZIP (JSON & \u1EA3nh) \xB7 S\u1EB5n s\xE0ng xem tr\u01B0\u1EDBc";
+            metaEl.textContent = (file.size / (1024 * 1024)).toFixed(1) + " MB \xB7 File ZIP (JSON & \u1EA3nh) \xB7 S\u1EB5n s\xE0ng ki\u1EC3m tra";
           const pv = $3("previewImportBtn");
           if (pv) {
             pv.classList.remove("hidden");
@@ -8454,8 +10433,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           }
           const saveBtn = $3("userImportBtn");
           if (saveBtn) saveBtn.disabled = true;
-          parsedQuestions = [];
-          window.notify("\u0110\xE3 ch\u1ECDn file ZIP " + file.name + ". B\u1EA5m Xem tr\u01B0\u1EDBc \u0111\u1EC3 ki\u1EC3m tra & gi\u1EA3i n\xE9n.");
+          setParsed([]);
+          window.__resetImportQualityPanel?.();
+          window.notify("\u0110\xE3 ch\u1ECDn file ZIP " + file.name + ". \u0110ang gi\u1EA3i n\xE9n & ki\u1EC3m tra...");
+          setTimeout(() => window.__previewUserImport?.(), 30);
           return;
         }
         window.__selectedImportFile = null;
@@ -8482,7 +10463,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           if (dropZone) dropZone.classList.add("hidden");
           if (card) card.classList.remove("hidden");
           if (nameEl) nameEl.textContent = file.name;
-          if (metaEl) metaEl.textContent = Math.max(1, Math.round(file.size / 1024)) + " KB \xB7 S\u1EB5n s\xE0ng xem tr\u01B0\u1EDBc";
+          if (metaEl) metaEl.textContent = Math.max(1, Math.round(file.size / 1024)) + " KB \xB7 S\u1EB5n s\xE0ng ki\u1EC3m tra";
           const pv = $3("previewImportBtn");
           if (pv) {
             pv.classList.remove("hidden");
@@ -8490,8 +10471,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           }
           const saveBtn = $3("userImportBtn");
           if (saveBtn) saveBtn.disabled = true;
-          parsedQuestions = [];
-          window.notify("\u0110\xE3 \u0111\u1ECDc file " + file.name + ". B\u1EA5m Xem tr\u01B0\u1EDBc \u0111\u1EC3 ki\u1EC3m tra.");
+          setParsed([]);
+          window.__resetImportQualityPanel?.();
+          window.notify("\u0110\xE3 \u0111\u1ECDc file " + file.name + ". \u0110ang ki\u1EC3m tra d\u1EEF li\u1EC7u...");
+          setTimeout(() => window.__previewUserImport?.(), 30);
         };
         reader.readAsText(file);
       }
@@ -8574,7 +10557,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         });
         return out.length ? out : null;
       };
-      window.__previewUserImport = async function() {
+      window.__previewUserImport = async function(opts) {
+        const silent = !!(opts && opts.silent);
         if (window.__selectedImportFile && window.__selectedImportFile.name.toLowerCase().endsWith(".zip")) {
           try {
             const importer = window.LHSubjectImport;
@@ -8610,17 +10594,18 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
               );
             }
             const questions = parsedZipData.questions;
-            window.__previewImportData = questions;
-            parsedQuestions = questions;
+            setParsed(questions);
             localStorage.setItem("learninghub_add_subject_file_previewed_v1", "true");
             const codeInp = $3("addSubjectCode");
             if (codeInp && !codeInp.value.trim() && parsedZipData.suggestedCode) {
               codeInp.value = parsedZipData.suggestedCode;
             }
-            const metaEl2 = $3("userImportFileMeta");
-            if (metaEl2) metaEl2.textContent = questions.length + " c\xE2u h\u1ECFi \u0111\xE3 ki\u1EC3m tra \xB7 S\u1EB5n s\xE0ng l\u01B0u";
-            const btn2 = $3("userImportBtn");
-            if (btn2) btn2.disabled = false;
+            const report2 = applyImportQuality(questions);
+            if (silent) return;
+            if (report2.tier === "high") {
+              window.notify("Sai l\u1EC7ch " + report2.deviationPct + "% \u2014 xem b\u1EA3ng ki\u1EC3m tra b\xEAn d\u01B0\u1EDBi");
+              return;
+            }
             window.__openImportPreviewModal(questions);
             window.notify("OK! " + questions.length + " c\xE2u h\u1ECFi s\u1EB5n s\xE0ng");
           } catch (err) {
@@ -8629,7 +10614,6 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           return;
         }
         const raw = ($3("userImportData")?.value || "").trim();
-        const btn = $3("userImportBtn");
         if (!raw) {
           alert("B\u1EA1n h\xE3y ch\u1ECDn file .zip / .json / .md / .txt tr\u01B0\u1EDBc.");
           return;
@@ -8668,158 +10652,34 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
             return;
           }
         }
-        const errors = [];
-        data.forEach((q, i) => {
-          if (!q.question) errors.push("C\xE2u " + (i + 1) + ': thi\u1EBFu "question"');
-          if (!q.options || typeof q.options !== "object") errors.push("C\xE2u " + (i + 1) + ': thi\u1EBFu "options"');
-          if (!q.answer) errors.push("C\xE2u " + (i + 1) + ': thi\u1EBFu "answer"');
-        });
-        if (errors.length) {
-          localStorage.removeItem("learninghub_add_subject_file_previewed_v1");
-          alert("D\u1EEF li\u1EC7u c\xF3 l\u1ED7i:\n\n" + errors.slice(0, 10).join("\n"));
+        normalizeImportedQuestions(data);
+        localStorage.setItem("learninghub_add_subject_file_previewed_v1", "true");
+        setParsed(data);
+        window.__previewSelections = {};
+        const report = applyImportQuality(data);
+        if (silent) return report;
+        if (report.tier === "high") {
+          window.notify("Sai l\u1EC7ch " + report.deviationPct + "% \u2014 xem b\u1EA3ng ki\u1EC3m tra b\xEAn d\u01B0\u1EDBi");
           return;
         }
-        localStorage.setItem("learninghub_add_subject_file_previewed_v1", "true");
-        parsedQuestions = data;
-        window.__previewSelections = {};
-        const metaEl = $3("userImportFileMeta");
-        if (metaEl) metaEl.textContent = data.length + " c\xE2u h\u1ECFi \u0111\xE3 ki\u1EC3m tra \xB7 C\xF3 th\u1EC3 l\u01B0u";
-        if (btn) btn.disabled = false;
         window.__openImportPreviewModal(data);
         window.notify("OK! " + data.length + " c\xE2u h\u1ECFi s\u1EB5n s\xE0ng");
       };
       window.__closeImportPreviewModal = function() {
         document.getElementById("importPreviewModal")?.classList.add("hidden");
-      };
-      window.__submitSubjectRequest = async function() {
-        const code = ($3("addSubjectCode")?.value || "").trim().toUpperCase();
-        const name = ($3("addSubjectName")?.value || "").trim();
-        const desc = ($3("addSubjectDesc")?.value || "").trim();
-        if (!code) {
-          alert("Vui l\xF2ng nh\u1EADp m\xE3 m\xF4n");
-          $3("addSubjectCode")?.focus();
-          return;
-        }
-        if (!/^[A-Z0-9_]{2,20}$/.test(code)) {
-          alert("M\xE3 m\xF4n ch\u1EC9 g\u1ED3m ch\u1EEF, s\u1ED1, g\u1EA1ch d\u01B0\u1EDBi (2-20 k\xFD t\u1EF1)");
-          $3("addSubjectCode")?.focus();
-          return;
-        }
-        if (!name) {
-          alert("Vui l\xF2ng nh\u1EADp t\xEAn m\xF4n");
-          $3("addSubjectName")?.focus();
-          return;
-        }
-        if (!parsedQuestions.length) {
-          alert("B\u1EA1n c\u1EA7n ch\u1ECDn file v\xE0 b\u1EA5m Xem tr\u01B0\u1EDBc tr\u01B0\u1EDBc khi l\u01B0u m\xF4n h\u1ECDc.");
-          return;
-        }
-        const c = client();
-        if (!c) {
-          alert("Ch\u01B0a k\u1EBFt n\u1ED1i Supabase");
-          return;
-        }
-        const btn = $3("userImportBtn");
-        if (btn) {
-          btn.disabled = true;
-          btn.textContent = "\u0110ang l\u01B0u...";
-        }
-        window.showProgress("B\u1EAFt \u0111\u1EA7u kh\u1EDFi t\u1EA1o m\xF4n h\u1ECDc...", 0, 100, "\u0110ang chu\u1EA9n b\u1ECB d\u1EEF li\u1EC7u...");
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        try {
-          let successMsg = "";
-          if (isAdminOrEditor()) {
-            window.showProgress("\u0110ang l\u01B0u m\xF4n h\u1ECDc...", 50, 100, "\u0110ang t\u1EA1o m\xF4n v\xE0 nh\u1EADp c\xE2u h\u1ECFi l\xEAn m\xE1y ch\u1EE7...");
-            const u0 = window.HODSupabase?.getUser?.();
-            const res = await fetch("/api/admin-action", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              cache: "no-store",
-              body: JSON.stringify({
-                user_id: u0?.id,
-                action: "add_subject",
-                payload: { code, name: name || code, description: desc || "", questions: parsedQuestions || [] }
-              })
-            });
-            const out = await res.json().catch(() => ({}));
-            if (!res.ok || out.error) {
-              alert("L\u1ED7i t\u1EA1o m\xF4n: " + (out.error || res.status));
-              return;
-            }
-            const finalCode = out.code || code;
-            const success = (parsedQuestions || []).length;
-            successMsg = "\u0110\xE3 th\xEAm m\xF4n " + finalCode + " v\u1EDBi " + success + " c\xE2u h\u1ECFi";
-            try {
-              const key = "learninghub_subject_counts_cache_v3";
-              const store = JSON.parse(localStorage.getItem(key) || "{}") || {};
-              store.counts = store.counts || {};
-              store.confirmed = store.confirmed || {};
-              store.counts[finalCode] = success;
-              store.confirmed[finalCode] = true;
-              store.updated_at = (/* @__PURE__ */ new Date()).toISOString();
-              localStorage.setItem(key, JSON.stringify(store));
-              localStorage.setItem("learninghub_subjects_dirty_v3", String(Date.now()));
-              localStorage.removeItem("learninghub_subjects_cache_v1");
-              sessionStorage.removeItem("learninghub_subject_counts_cache_v1");
-              window.clearLearningHubSupabaseCache?.("subjects");
-              window.clearLearningHubSupabaseCache?.("questions");
-            } catch (e) {
-              lhWarn("appCore", e);
-            }
-            alert(successMsg);
-            window.notify(successMsg);
-            window.__switchSubjectGateTab("list");
-            try {
-              $3("subjectRefresh")?.click();
-              setTimeout(() => $3("subjectRefresh")?.click(), 5600);
-              setTimeout(() => window.refreshSubjectCountsOnce?.(), 6500);
-            } catch (e) {
-              lhWarn("appCore", e);
-            }
-          } else {
-            window.showProgress("\u0110ang g\u1EEDi y\xEAu c\u1EA7u t\u1EA1o m\xF4n h\u1ECDc...", 50, 100, "\u0110ang t\u1EA3i d\u1EEF li\u1EC7u c\xE2u h\u1ECFi l\xEAn m\xE1y ch\u1EE7...");
-            await new Promise((resolve) => setTimeout(resolve, 100));
-            const u = window.HODSupabase?.getUser?.();
-            const res = await fetch("/api/admin-action", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              cache: "no-store",
-              body: JSON.stringify({
-                user_id: u?.id,
-                action: "add_subject_request",
-                payload: { code, name, description: desc || "", questions_data: parsedQuestions || [] }
-              })
-            });
-            const out = await res.json().catch(() => ({}));
-            if (!res.ok || out.error) {
-              alert("L\u1ED7i g\u1EEDi y\xEAu c\u1EA7u: " + (out.error || res.status));
-              return;
-            }
-            successMsg = "\u0110\xE3 g\u1EEDi y\xEAu c\u1EA7u th\xEAm m\xF4n " + code + ". Vui l\xF2ng ch\u1EDD admin duy\u1EC7t.";
-            alert(successMsg);
-            window.notify(successMsg);
-            window.__switchSubjectGateTab("list");
-          }
-          parsedQuestions = [];
-          document.getElementById("importPreviewModal")?.classList.add("hidden");
-          clearAddSubjectLocalStorage();
-        } catch (e) {
-          console.warn("Add subject error:", e);
-          alert("L\u1ED7i khi l\u01B0u m\xF4n h\u1ECDc: " + (e?.message || e));
-          window.notify("L\u1ED7i khi l\u01B0u m\xF4n h\u1ECDc");
-        } finally {
-          if (btn) {
-            btn.disabled = false;
-            btn.textContent = "L\u01B0u M\xF4n H\u1ECDc";
-          }
-          window.hideProgress();
-        }
+        window.__reanalyzeImport?.();
       };
       window.__closeAddSubject = function() {
         window.__switchSubjectGateTab("list");
       };
       function bind() {
         $3("addSubjectBtn")?.addEventListener("click", () => window.__switchSubjectGateTab("add"));
+        document.addEventListener("click", (e) => {
+          const card = e.target?.closest?.("[data-import-path]");
+          if (!card) return;
+          e.preventDefault();
+          window.__pickImportPath(card.getAttribute("data-import-path"));
+        });
         showAddBtn();
         setInterval(showAddBtn, 2e3);
       }
@@ -8956,6 +10816,8 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           previewBtn.disabled = true;
         }
         if (saveBtn) saveBtn.disabled = true;
+        window.__previewImportData = [];
+        window.__resetImportQualityPanel?.();
         localStorage.removeItem("learninghub_add_subject_file_name_v1");
         localStorage.removeItem("learninghub_add_subject_file_size_v1");
         localStorage.removeItem("learninghub_add_subject_file_data_v1");
@@ -8990,6 +10852,22 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         step.dataset.promptPolished = "1";
         step.classList.add("promptPolished");
         step.innerHTML = `
+      <div class="importPathFork" id="importPathFork">
+        <button class="importPathCard" type="button" data-import-path="file">
+          <span class="importPathIcon">\u{1F4C4}</span>
+          <b>T\xE0i li\u1EC7u \u0111\u1ECDc \u0111\u01B0\u1EE3c ch\u1EEF</b>
+          <span class="importPathDesc">PDF chu\u1EA9n, file Word, ho\u1EB7c JSON / ZIP c\xF3 s\u1EB5n. H\u1EC7 th\u1ED1ng t\u1EF1 tr\xEDch xu\u1EA5t v\u0103n b\u1EA3n v\xE0 t\xE1ch c\xE2u h\u1ECFi \u2014 <b>kh\xF4ng c\u1EA7n AI</b>. D\u01B0\u1EDBi ${QUALITY_THRESHOLDS.low}% sai l\u1EC7ch l\xE0 l\u01B0u lu\xF4n.</span>
+          <span class="importPathGo">T\u1EA3i t\xE0i li\u1EC7u l\xEAn \u2794</span>
+        </button>
+        <button class="importPathCard" type="button" data-import-path="prompt">
+          <span class="importPathIcon">\u{1F5BC}</span>
+          <b>B\u1EA3n ch\u1EE5p, ho\u1EB7c c\xF3 h\xECnh \u1EA3nh</b>
+          <span class="importPathDesc">PDF scan (\u1EA3nh trang gi\u1EA5y), t\xE0i li\u1EC7u c\xF3 h\xECnh ph\u1EA3i gi\u1EEF l\u1EA1i, ho\u1EB7c PDF kh\xF4ng tr\xEDch xu\u1EA5t \u0111\u01B0\u1EE3c ch\u1EEF. Nh\u1EDD AI chuy\u1EC3n th\xE0nh JSON + \u1EA3nh.</span>
+          <span class="importPathGo">L\u1EA5y prompt \u2794</span>
+        </button>
+      </div>
+
+      <div class="importPromptRoute hidden" id="importPromptRoute">
       <div class="promptStepGrid">
         <section class="promptMainCard">
           <div class="promptEyebrow">B\u01B0\u1EDBc 2 \xB7 T\u1EA1o file c\xE2u h\u1ECFi</div>
@@ -8999,12 +10877,6 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           <div class="promptActionGrid">
             <button class="aiCopyBtn" type="button" onclick="window.__copyUserAIPrompt()" id="btnCopyPrompt">\u{1F4CB} Sao ch\xE9p prompt</button>
             <button class="aiViewPromptBtn" type="button" onclick="window.__openUserAIPromptModal()" id="btnViewPrompt">\u{1F441} Xem prompt</button>
-          </div>
-
-          <div class="promptMiniGuide">
-            <div class="guideRow"><div class="guideNum">1</div><div><b>Copy prompt</b><span>Prompt \u0111\xE3 c\xF3 s\u1EB5n format JSON \u0111\xFAng cho h\u1EC7 th\u1ED1ng.</span></div></div>
-            <div class="guideRow"><div class="guideNum">2</div><div><b>D\xE1n v\xE0o AI + g\u1EEDi t\xE0i li\u1EC7u</b><span>G\u1EEDi PDF, Word, slide ho\u1EB7c n\u1ED9i dung m\xF4n h\u1ECDc cho AI.</span></div></div>
-            <div class="guideRow"><div class="guideNum">3</div><div><b>T\u1EA3i file .md / .txt</b><span>Sau khi AI t\u1EA1o xong, qua b\u01B0\u1EDBc Import \u0111\u1EC3 l\u01B0u m\xF4n h\u1ECDc.</span></div></div>
           </div>
         </section>
 
@@ -9018,12 +10890,14 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           <div class="promptNoteBox">M\u1EB9o: n\u1EBFu t\xE0i li\u1EC7u d\xE0i, h\xE3y y\xEAu c\u1EA7u AI t\u1EA1o t\u1EEBng ph\u1EA7n r\u1ED3i g\u1ED9p l\u1EA1i th\xE0nh m\u1ED9t file JSON.</div>
         </aside>
       </div>
+      </div>
 
       <div class="step-actions">
-        <button class="btn" type="button" onclick="window.__switchStep(1)">\u2B05 Quay l\u1EA1i</button>
-        <button class="primary" type="button" onclick="window.__switchStep(3)">\u0110\xE3 c\xF3 file, ti\u1EBFp t\u1EE5c \u2794</button>
+        <button class="btn" type="button" id="importStepBack" onclick="window.__importStepBack()">\u2B05 Quay l\u1EA1i</button>
+        <button class="primary hidden" type="button" id="promptRouteNext" onclick="window.__switchStep(3)">\u0110\xE3 c\xF3 file, ti\u1EBFp t\u1EE5c \u2794</button>
       </div>
     `;
+        window.__syncImportPath?.(localStorage.getItem("learninghub_add_subject_path_v1") || "");
       }
       const oldSwitch = window.__switchStep;
       window.__switchStep = function(step) {
@@ -10464,11 +12338,13 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           return;
         }
         if (e.target.closest("[data-v7-close]")) {
-          document.getElementById("importPreviewModal")?.classList.add("hidden");
+          if (typeof window.__closeImportPreviewModal === "function") window.__closeImportPreviewModal();
+          else document.getElementById("importPreviewModal")?.classList.add("hidden");
           return;
         }
         if (e.target.closest("[data-v7-submit]")) {
-          document.getElementById("importPreviewModal")?.classList.add("hidden");
+          if (typeof window.__closeImportPreviewModal === "function") window.__closeImportPreviewModal();
+          else document.getElementById("importPreviewModal")?.classList.add("hidden");
           window.__submitSubjectRequest?.();
           return;
         }
@@ -10734,7 +12610,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         }).filter((q) => q.question && q.answer && q.options);
       }
       function readQuestions() {
-        let arr = window.__previewImportData || window.__LH_LAST_PREVIEW_IMPORT_DATA || [];
+        let arr = window.__previewImportData || [];
         if (!Array.isArray(arr) || !arr.length) {
           try {
             let s = String(
@@ -10783,9 +12659,10 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       }
       function clearState() {
         try {
+          window.__resetAddSubjectForm?.();
           window.__previewImportData = [];
-          window.__LH_LAST_PREVIEW_IMPORT_DATA = [];
-          $3("importPreviewModal")?.classList.add("hidden");
+          window.__selectedImportFile = null;
+          $3("importPreviewModal")?.remove();
           [
             "learninghub_add_subject_file_name_v1",
             "learninghub_add_subject_file_size_v1",
@@ -10879,7 +12756,28 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
           return;
         }
         if (!questions.length) {
-          alert("B\u1EA1n c\u1EA7n ch\u1ECDn file v\xE0 b\u1EA5m Xem tr\u01B0\u1EDBc tr\u01B0\u1EDBc khi l\u01B0u m\xF4n h\u1ECDc.");
+          alert('B\u1EA1n c\u1EA7n ch\u1ECDn file v\xE0 b\u1EA5m "Ki\u1EC3m tra l\u1EA1i" tr\u01B0\u1EDBc khi l\u01B0u m\xF4n h\u1ECDc.');
+          return;
+        }
+        const rawList = Array.isArray(window.__previewImportData) ? window.__previewImportData : [];
+        const qr = rawList.length ? analyzeImport(rawList) : window.__importQualityReport;
+        if (qr) window.__importQualityReport = qr;
+        if (qr && qr.tier === "high") {
+          alert(
+            "Kh\xF4ng l\u01B0u \u0111\u01B0\u1EE3c: \u0111\u1ED9 sai l\u1EC7ch " + qr.deviationPct + "% (" + qr.fatalCount + " c\xE2u thi\u1EBFu d\u1EEF li\u1EC7u b\u1EAFt bu\u1ED9c).\n\nH\xE3y s\u1EEDa c\xE1c c\xE2u b\u1ECB b\xE1o trong b\u1EA3ng ki\u1EC3m tra, ho\u1EB7c chuy\u1EC3n sang h\u01B0\u1EDBng prompt \u0111\u1EC3 AI chuy\u1EC3n l\u1EA1i t\xE0i li\u1EC7u."
+          );
+          return;
+        }
+        if (qr && qr.tier === "medium" && !$3("importQualityAccept")?.checked) {
+          const ok = confirm(
+            "\u0110\u1ED9 sai l\u1EC7ch " + qr.deviationPct + "% \u2014 " + qr.rows.length + "/" + qr.total + " c\xE2u b\u1ECB \u0111\xE1nh d\u1EA5u nghi l\u1ED7i.\n\nB\u1EA5m OK \u0111\u1EC3 l\u01B0u v\u1EDBi m\u1EE9c sai l\u1EC7ch n\xE0y, ho\u1EB7c Cancel \u0111\u1EC3 xem l\u1EA1i b\u1EA3ng ki\u1EC3m tra \u1EDF b\u01B0\u1EDBc 3."
+          );
+          if (!ok) return;
+        }
+        const dropped = (qr?.total || 0) - questions.length;
+        if (dropped > 0 && !confirm(
+          dropped + " c\xE2u s\u1EBD KH\xD4NG \u0111\u01B0\u1EE3c l\u01B0u v\xEC thi\u1EBFu \u0111\xE1p \xE1n (ho\u1EB7c thi\u1EBFu n\u1ED9i dung / l\u1EF1a ch\u1ECDn).\n\nCh\u1EC9 l\u01B0u " + questions.length + "/" + qr.total + " c\xE2u. B\u1EA5m OK \u0111\u1EC3 l\u01B0u ti\u1EBFp, ho\u1EB7c Cancel \u0111\u1EC3 quay l\u1EA1i s\u1EEDa c\xE1c c\xE2u \u0111\xF3."
+        )) {
           return;
         }
         if (!user()) {
@@ -11221,7 +13119,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
       <div class="examOnlyStart">
         <div class="examOnlyLabel">M\xF4n \u0111ang h\u1ECDc</div>
         ${activeCard || '<span style="color:var(--mist)">Ch\u01B0a ch\u1ECDn m\xF4n h\u1ECDc</span>'}
-        ${extraChips ? `<div class="examOnlyLabel">G\u1ED9p th\xEAm m\xF4n <span style="font-weight:400;color:var(--mist);font-size:.85rem">(ch\u1ECDn th\xEAm m\xF4n c\xF9ng m\xE3 \u0111\u1EC3 g\u1ED9p \u0111\u1EC1)</span></div><div class="examSubjectChips" id="examSubjectChipsExtra">${extraChips}</div>` : ""}
+        ${extraChips ? `<div class="examOnlyLabel">G\u1ED9p th\xEAm ph\u1EA7n <span style="font-weight:400;color:var(--mist);font-size:.85rem">(ch\u1ECDn th\xEAm ph\u1EA7n c\xF9ng m\xE3 m\xF4n \u0111\u1EC3 g\u1ED9p \u0111\u1EC1)</span></div><div class="examSubjectChips" id="examSubjectChipsExtra">${extraChips}</div>` : ""}
         <div class="examOnlyLabel">S\u1ED1 c\xE2u ki\u1EC3m tra <span style="font-weight:400;color:var(--mist);font-size:.85rem">(Th\u01B0 vi\u1EC7n hi\u1EC7n c\xF3: <span id="examTotalCountVal">${totalCount}</span> c\xE2u)</span></div>
         <div class="examOnlyCountGrid">
           <button class="cnt" data-exam-cnt="10">10</button>
@@ -11257,7 +13155,7 @@ B\u1EAFt \u0111\u1EA7u ngay t\u1EEB c\xE2u 1.`;
         if (cb) cb.checked = examRangeOn;
         const note = $3("examRangeNote");
         if (note) {
-          if (extra) note.textContent = "B\u1ECF ch\u1ECDn m\xF4n g\u1ED9p m\u1EDBi d\xF9ng \u0111\u01B0\u1EE3c kho\u1EA3ng c\xE2u";
+          if (extra) note.textContent = "B\u1ECF ch\u1ECDn ph\u1EA7n g\u1ED9p m\u1EDBi d\xF9ng \u0111\u01B0\u1EE3c kho\u1EA3ng c\xE2u";
           else if (examRangeOn) note.textContent = `C\xF2n ${applyRange(LHState2.RAW || []).length} c\xE2u trong kho\u1EA3ng`;
           else note.textContent = `M\xF4n n\xE0y c\xF3 c\xE2u ${bounds.min}\u2013${bounds.max}`;
         }
@@ -13951,6 +15849,30 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         return { ...s, question_count: n };
       });
     }
+    const SUBJECTS_CACHE_KEY = "learninghub_subjects_cache_v1";
+    function writeSubjectsCache(rows, json) {
+      try {
+        localStorage.setItem(
+          SUBJECTS_CACHE_KEY,
+          JSON.stringify({
+            savedAt: Date.now(),
+            rows: rows || [],
+            folder_new_badges: Array.isArray(json?.folder_new_badges) ? json.folder_new_badges : []
+          })
+        );
+      } catch (e) {
+        lhWarn("LH_OFFLINE_GRACE_20260806", e);
+      }
+    }
+    function readSubjectsCache() {
+      try {
+        const obj = JSON.parse(localStorage.getItem(SUBJECTS_CACHE_KEY) || "null");
+        if (!obj || !Array.isArray(obj.rows) || !obj.rows.length) return null;
+        return obj;
+      } catch (e) {
+        return null;
+      }
+    }
     async function getSubjects() {
       if (!logged()) return fallbackSubjects();
       try {
@@ -13963,9 +15885,16 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
         rows.sort(
           (a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) || String(a.code || "").localeCompare(String(b.code || ""))
         );
+        writeSubjectsCache(rows, json);
         return await addQuestionCounts(rows);
       } catch (e) {
         console.warn("[Turso subjects]", e);
+        const cached = readSubjectsCache();
+        if (cached) {
+          rememberFolderNewBadges(cached);
+          showErr("M\u1EA5t k\u1EBFt n\u1ED1i \u2014 \u0111ang d\xF9ng danh s\xE1ch m\xF4n \u0111\xE3 l\u01B0u tr\xEAn m\xE1y.");
+          return await addQuestionCounts(cached.rows);
+        }
         showErr("Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c danh s\xE1ch m\xF4n h\u1ECDc t\u1EEB Turso. \u0110ang d\xF9ng m\xF4n m\u1EB7c \u0111\u1ECBnh.");
         return fallbackSubjects();
       }
@@ -14033,11 +15962,11 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       const isNew = isNewFolder(g.base);
       const holdsPicked = g.items.some((s) => s.code === pickedCode);
       const names = esc2(g.items.map((s) => displayCode(s.code)).join(" \xB7 "));
-      const title = `${esc2(g.base)} \u2014 ${g.items.length} m\xF4n \xB7 ${total} c\xE2u&#10;${names}`;
+      const title = `${esc2(g.base)} \u2014 ${g.items.length} ph\u1EA7n \xB7 ${total} c\xE2u&#10;${names}`;
       return `<button class="subjectFolderCard${isNew ? " hasNewBadge" : ""}${holdsPicked ? " holdsPicked" : ""}" type="button" data-folder="${esc2(g.base)}" title="${title}">
       ${isNew ? '<span class="subjectNewBadge">NEW</span>' : ""}
       <span class="subjectCardCode"><span class="subjectFolderIcon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></span><span>${esc2(g.base)}</span></span>
-      <span class="subjectFolderTag"><span class="subjectFolderBadgeText">TH\u01AF M\u1EE4C</span> \xB7 ${g.items.length} m\xF4n</span>
+      <span class="subjectFolderTag"><span class="subjectFolderBadgeText">TH\u01AF M\u1EE4C</span> \xB7 ${g.items.length} ph\u1EA7n</span>
       <span class="subjectFolderNames">${names}</span>
       <span class="subjectMeta">
         <span>${total.toLocaleString("vi-VN")} c\xE2u</span>
@@ -14049,50 +15978,64 @@ M\xF4n n\xE0y c\xF3 c\xE2u ${b.min} \u0111\u1EBFn ${b.max}.`);
       return `<div class="subjectFolderBar">
       <button class="subjectFolderBack" type="button" data-folder-back="1">\u2190 T\u1EA5t c\u1EA3 m\xF4n</button>
       <span class="subjectFolderBarCode">${esc2(g.base)}</span>
-      <span class="subjectFolderBarMeta">${g.items.length} m\xF4n \xB7 ${groupTotal(g).toLocaleString("vi-VN")} c\xE2u</span>
+      <span class="subjectFolderBarMeta">${g.items.length} ph\u1EA7n \xB7 ${groupTotal(g).toLocaleString("vi-VN")} c\xE2u</span>
     </div>`;
     }
     function tabsBar() {
       return document.getElementById("subjectGateTabsBar");
     }
-    function folderCrumbHost() {
+    function folderCrumbRow() {
       const bar = tabsBar();
       if (!bar) return null;
+      let row = $3("subjectFolderCrumbRow");
+      if (!row) {
+        row = document.createElement("div");
+        row.id = "subjectFolderCrumbRow";
+        row.className = "subjectFolderCrumbRow hidden";
+        bar.insertAdjacentElement("afterend", row);
+      }
+      return row;
+    }
+    function folderCrumbHost() {
+      const row = folderCrumbRow();
+      if (!row) return null;
       let host = $3("subjectFolderCrumb");
       if (!host) {
         host = document.createElement("div");
         host.id = "subjectFolderCrumb";
-        host.className = "subjectFolderCrumb hidden";
-        (bar.querySelector(".subjectGateTabsLeft") || bar).appendChild(host);
+        host.className = "subjectFolderCrumb";
       }
+      if (host.parentElement !== row) row.appendChild(host);
       return host;
     }
     function folderMetaHost() {
-      const bar = tabsBar();
-      if (!bar) return null;
+      const row = folderCrumbRow();
+      if (!row) return null;
       let host = $3("subjectFolderCrumbMeta");
       if (!host) {
         host = document.createElement("span");
         host.id = "subjectFolderCrumbMeta";
-        host.className = "subjectFolderCrumbMeta hidden";
-        bar.appendChild(host);
+        host.className = "subjectFolderCrumbMeta";
       }
+      if (host.parentElement !== row) row.appendChild(host);
       return host;
     }
     function syncFolderCrumb(g) {
+      const row = folderCrumbRow();
       const crumb = folderCrumbHost();
       const meta2 = folderMetaHost();
-      if (!crumb || !meta2) return false;
-      crumb.classList.toggle("hidden", !g);
-      meta2.classList.toggle("hidden", !g);
+      if (!row || !crumb || !meta2) return false;
+      row.classList.toggle("hidden", !g);
       if (!g) {
         crumb.innerHTML = "";
         meta2.textContent = "";
         return true;
       }
-      crumb.innerHTML = `<button class="subjectFolderBack" type="button" data-folder-back="1">\u2190 T\u1EA5t c\u1EA3 m\xF4n</button>
+      crumb.innerHTML = `<span class="subjectFolderCrumbTree" aria-hidden="true">\u2514</span>
+      <button class="subjectFolderBack" type="button" data-folder-back="1">\u2190 T\u1EA5t c\u1EA3 m\xF4n</button>
+      <span class="subjectFolderCrumbSep" aria-hidden="true">\u25B8</span>
       <span class="subjectFolderBarCode">${esc2(g.base)}</span>`;
-      meta2.textContent = `${g.items.length} m\xF4n \xB7 ${groupTotal(g).toLocaleString("vi-VN")} c\xE2u`;
+      meta2.textContent = `${g.items.length} ph\u1EA7n \xB7 ${groupTotal(g).toLocaleString("vi-VN")} c\xE2u`;
       return true;
     }
     function renderSubjects2() {

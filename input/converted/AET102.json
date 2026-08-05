@@ -1,0 +1,2118 @@
+[
+  {
+    "question": "Mr Blobby is typically found at what depth below the ocean surface",
+    "options": {
+      "A": "10 meters",
+      "B": "100 meters",
+      "C": "1,000 meters",
+      "D": "10,000 meters"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Mr Blobby was awarded what title by the Ugly Animal Preservation Society in 2013",
+    "options": {
+      "A": "Most beautiful in the world",
+      "B": "the best at being ugly",
+      "C": "the most intelligent",
+      "D": "the fiercest"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What do 'feminist art' and the aesthetics of Black people have in common",
+    "options": {
+      "A": "No commonality",
+      "B": "Both focus on the beauty of the human body",
+      "C": "Both are created by Black women",
+      "D": "Both challenge the assumptions about the nature of art and artistic beauty"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "(Cho.n 2 phương án) Which information is not correct about the artist Marcel Duchamp",
+    "options": {
+      "A": "Duchamp is the author of the famous painting Les Demoiselles d'Avignon (1907)",
+      "B": "Marcel Duchamp is a famous sculptor of the 20th century",
+      "C": "Before becoming a significant artist of Dadaism, Duchamp was involved in Futurism",
+      "D": "Duchamp is considered one of the important artists"
+    },
+    "answer": "AD",
+    "images": [],
+    "has_image": false,
+    "error_risk": "medium",
+    "error_risk_reason": "Câu chọn nhiều đáp án (AD)."
+  },
+  {
+    "question": "of 20th-century Modern art. 5. (cho.n 3 phương án) How did Louis Daguerre influence the artistic views of the 19th century",
+    "options": {
+      "A": "Triggered a revolution in the history of painting",
+      "B": "Affirmed art's departure from imitation",
+      "C": "Introduced a definition of art",
+      "D": "Changed the perception of expression in art"
+    },
+    "answer": "ABD",
+    "images": [],
+    "has_image": false,
+    "error_risk": "medium",
+    "error_risk_reason": "Câu chọn nhiều đáp án (ABD)."
+  },
+  {
+    "question": "A revolutionary art theory, according to Thomasson, is...",
+    "options": {
+      "A": "A theory suitable for ordinary art practice",
+      "B": "A theory that explains art in a new way",
+      "C": "A theory accepted by many artists",
+      "D": "An easy-to-understand theory"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Anne Eaton, why is it 'naïve' or 'mischievous' to remove the special position of the artist or critic from the equation",
+    "options": {
+      "A": "Because it would make art meaningless",
+      "B": "Because it would perpetuate the 'default' dominant position in history, historically assigned to men and women corresponding roles",
+      "C": "Because it would make art apolitical",
+      "D": "Because it would make art amoral"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Anthony Ashley Cooper, 3rd Earl of Shaftesbury, what is the basis of our perception of beauty",
+    "options": {
+      "A": "Imagination",
+      "B": "Personal experience",
+      "C": "The innate concept",
+      "D": "Imagination and Persona"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Aristotle, what is tragedy",
+    "options": {
+      "A": "A story about fortunate events happening to people with good character",
+      "B": "A story about absurd events happening to people with poor character",
+      "C": "A story about unfortunate events happening to people with good character",
+      "D": "A story about unfortunate events happening to people with poor character"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Aristotle, what makes tragedy appealing",
+    "options": {
+      "A": "The characters in tragedy are famous individuals",
+      "B": "Tragedy tells true stories",
+      "C": "Tragedy has a plot arranged in a chain of cause and effect",
+      "D": "Tragedy uses poetic language"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Berleant, what is the most important factor in evaluating the aesthetics of the living environment",
+    "options": {
+      "A": "The natural beauty of the environment",
+      "B": "The extent of human intervention in the environment",
+      "C": "How humans interact with the environment",
+      "D": "The economic value of the environment"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Berys Gaut, intentionalist critics like Hirsch and anti-intentionalist critics like Wimsatt and Beardsley are trying to do",
+    "options": {
+      "A": "Explaining the meaning of a work of art",
+      "B": "Analysis of various aspects of interpretation",
+      "C": "To find a universal theory of interpretation",
+      "D": "Evaluating the value of a work of art"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Bicknell, what is the respectful attitude that performers and audiences should have when playing or listening to blues music",
+    "options": {
+      "A": "Focus on musical technique",
+      "B": "Focus on the performer's emotions",
+      "C": "Focus on the song's significance to the audience",
+      "D": "Focus on the history of blues music"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Clive Bell, what is art",
+    "options": {
+      "A": "It is a means to achieve a beautiful spiritual state",
+      "B": "It is something that evokes aesthetic emotions",
+      "C": "It is a human activity that brings moral benefits",
+      "D": "All of the above answers are correct"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to contextualists, what is the main difference between an original work of art and a derivative work",
+    "options": {
+      "A": "The value of the artwork",
+      "B": "The reputation of the author",
+      "C": "The creative conditions of the artwork",
+      "D": "The aesthetic properties of the artwork"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to critic Daniel Durchholz, how was Tom Waits's singing voice developed",
+    "options": {
+      "A": "Through extensive vocal training and classical techniques",
+      "B": "By performing in smoky bars and clubs for many years",
+      "C": "By soaking his voice in a vat of bourbon, leaving it"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "in a smokehouse, and running it over with a car D. Through a combination of natural talent and professional coaching 17. According to Francis Hutcheson, where is beauty found",
+    "options": {
+      "A": "Proportion",
+      "B": "Uniformity amidst variety",
+      "C": "Harmony",
+      "D": "Balance"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to George Dickie, what factor constitutes a work of art",
+    "options": {
+      "A": "Aesthetics",
+      "B": "Ideas",
+      "C": "The recognition by the art world",
+      "D": "The material value of the artwork"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to I. Kant, what creates the sense of the sublime",
+    "options": {
+      "A": "Art",
+      "B": "Nature",
+      "C": "Both art and nature",
+      "D": "Nothing"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Jerrold Levinson, what determines the meaning of a literary work",
+    "options": {
+      "A": "Word-sequence meaning",
+      "B": "Utterer's meaning",
+      "C": "Utterance meaning",
+      "D": "Autonomy of the text"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Kant, how can we evaluate the beauty of an object",
+    "options": {
+      "A": "By comparing it to a definite concept of beauty",
+      "B": "By using simple rules to evaluate its qualities",
+      "C": "By using intuition",
+      "D": "By comparing it to other objects"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Levinson, who is the appropriate reader to interpret a literary work",
+    "options": {
+      "A": "The reader with knowledge of the literary tradition to which the work belongs",
+      "B": "The reader familiar with other works by the author",
+      "C": "The reader knowledgeable about the public persona of the author",
+      "D": "All of the above"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Marcilio Ficino, how do we perceive beauty",
+    "options": {
+      "A": "Through the perfect forms of beauty found in the things themselves",
+      "B": "Through a mental alignment with our innate ideas of beauty",
+      "C": "Through the skill of the artist in capturing perfect forms",
+      "D": "Through the divine inspiration that strikes the poet during creation"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Margolis, what would happen if all the tokens of an artwork were destroyed",
+    "options": {
+      "A": "The artwork will still exist",
+      "B": "The artwork will be replaced by a new artwork",
+      "C": "The original artwork will cease to exist",
+      "D": "The artwork will be converted into a different form"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "of art. 25. According to Monroe C. Beardsley, can a toaster be considered a work of art",
+    "options": {
+      "A": "Yes, if it's designed by a highly intelligent Bauhaus designer",
+      "B": "Yes, if it is intended to satisfy aesthetic preferences",
+      "C": "No, because it does not create an aesthetic effect for the viewer",
+      "D": "No, because it is not an object created by an artist"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Novitz, what is necessary to understand a fictional work correctly",
+    "options": {
+      "A": "Believe in the story",
+      "B": "Treat the story as if it were real",
+      "C": "Interpret and treat the story as if it were real",
+      "D": "Implicitly understand that one is reading a fictional work"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Paul Ziff, can a true definition of art be found",
+    "options": {
+      "A": "Yes",
+      "B": "No",
+      "C": "Not for sure",
+      "D": "Not mentioned"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to R. G. Collingwood, what makes true art",
+    "options": {
+      "A": "Arouse emotions in the audience",
+      "B": "Entertain the audience",
+      "C": "Showcase the artist's skills",
+      "D": "To reflect reality honestly"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to radical constructivism, when two people interpret the same work of art, will they create two different meanings",
+    "options": {
+      "A": "They will create the same artwork",
+      "B": "They will create two different artworks",
+      "C": "They will not create any artwork",
+      "D": "They will destroy the artwork"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Robert Stecker, what is the ultimate purpose of our interest in experiencing art",
+    "options": {
+      "A": "The purpose of art",
+      "B": "The intrinsic value of art",
+      "C": "The joy that art brings",
+      "D": "The utilitarian value of art"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Ronald W. Hepburn, why are philosophers indifferent to natural beauty",
+    "options": {
+      "A": "Natural beauty is not important",
+      "B": "Natural beauty cannot be explained",
+      "C": "Natural beauty is not as beautiful as art",
+      "D": "Natural beauty is not suitable for aesthetic studies"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Shusterman, how can the suppression of bad art to allow good art to flourish be justified",
+    "options": {
+      "A": "By arguing that bad art can harm society",
+      "B": "By arguing that good art serves the ultimate moral benefit",
+      "C": "By arguing that good art will always prevail over bad art",
+      "D": "By arguing that bad art is a waste of time and money"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Sibley, what is the relationship between the non-aesthetic and aesthetic qualities of a work of art",
+    "options": {
+      "A": "Non-aesthetic qualities completely determine the aesthetic qualities of a work",
+      "B": "Non-aesthetic qualities have no relation to the aesthetic qualities of a work",
+      "C": "Non-aesthetic qualities can influence aesthetic qualities but do not guarantee them",
+      "D": "Non-aesthetic qualities always exclude certain aesthetic qualities"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Taylor, why is the portrayal of black characters as victims in films harmful",
+    "options": {
+      "A": "Because it makes black people invisible",
+      "B": "Because it reinforces the stereotype that black people are victims",
+      "C": "Because it makes white people feel guilty",
+      "D": "Because it makes black people feel inferior"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to the anti-intentionalist perspective of Wimsatt and Beardsley, which interpretation of the film Plan 9 from Outer Space is correct",
+    "options": {
+      "A": "The interpretation intended by the author",
+      "B": "The interpretation that best fits the artwork",
+      "C": "The interpretation agreed upon by film critics",
+      "D": "The interpretation that makes the film successful"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Tom Leddy, what roles do superficial aesthetic qualities like tidiness or messiness play Is tidiness or messiness a criterion for evaluating whether a work is art or non-art",
+    "options": {
+      "A": "They are unimportant parts of our aesthetic experience",
+      "B": "They are important parts of our aesthetic experience, applicable to both artistic and non-artistic environments",
+      "C": "They are important parts of our aesthetic experience, but only applicable to non-artistic environments",
+      "D": "They are important parts of our aesthetic experience, but only applicable to the artistic environment"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Torquato Tasso, where does the beauty of art originate from",
+    "options": {
+      "A": "The creative ability of humans",
+      "B": "The techniques and tools of the artist",
+      "C": "Direct imitation of the beauty of nature",
+      "D": "Religious belief and spirituality"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Virginia Woolf, what is necessary for a woman to be able to write",
+    "options": {
+      "A": "Natural talent",
+      "B": "Formal education",
+      "C": "Natural talent and formal education",
+      "D": "Money, a room of one's own, and educational attainment"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to which view is the meaning of a work of art primarily determined by",
+    "options": {
+      "A": "The author's intention",
+      "B": "The content of the work",
+      "C": "The reader",
+      "D": "All three factors above"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Among the philosophers below, who argued that art is an 'open' concept",
+    "options": {
+      "A": "Monroe Beardsley",
+      "B": "Morris Weitz",
+      "C": "R.G. Collingwood",
+      "D": "Arthur Danto"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Arthur Danto argues that what is needed to perceive something like the Fountain as art is ... the artwork itself is simply not achievable.",
+    "options": {
+      "A": "Atmosphere of artistic theory",
+      "B": "Knowledge of art history",
+      "C": "Artworld",
+      "D": "All of the above"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Berys Gaut argues against a global theory of interpretation in his essay Interpreting the Arts The Patchwork Theory because...",
+    "options": {
+      "A": "Intentionalist theories are always correct",
+      "B": "There are no acceptable consequences of interpreting an author's intent",
+      "C": "Authors can fail to achieve their intended meaning in a work",
+      "D": "The text itself can contribute to meaning, regardless of authorial intent"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Fill in the blank The relationship between the moral value and aesthetic value of an artwork, according to Anderson and Dean, is...",
+    "options": {
+      "A": "They are one and the same",
+      "B": "They are unrelated",
+      "C": "Moral value is more important than aesthetic value",
+      "D": "Aesthetic value is more important than moral value"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Hegel agrees with which of Kant's views on beauty (found in nature or in art)",
+    "options": {
+      "A": "Nature is more beautiful than art",
+      "B": "The beauty of art is a product of human intellect",
+      "C": "Both art and nature possess beauty",
+      "D": "The beauty of nature is the beauty of a particular external appearance"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "How can we evaluate a painting",
+    "options": {
+      "A": "It's bland, boring",
+      "B": "It's dull",
+      "C": "Whether it's beautiful or not",
+      "D": "The painting is drawn in black within a square"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "How does Aristotle view the role of the artist in imitating reality",
+    "options": {
+      "A": "The artist should only create perfect replicas of the real world",
+      "B": "The artist should focus on portraying the negative aspects of reality",
+      "C": "The artist can improve upon reality by incorporating universals",
+      "D": "The artist should primarily document historical events"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "How does Levinson define a new work of art",
+    "options": {
+      "A": "Some exhibited features of the artwork",
+      "B": "Its relationship with a formal or informal artistic organization",
+      "C": "Its relationship with pre-existing art",
+      "D": "Our experience of the artwork"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "How is Tom Waits's music often described",
+    "options": {
+      "A": "Accessible and market-friendly",
+      "B": "Smooth and melodious",
+      "C": "Hard to listen to and incomprehensible",
+      "D": "Either accessible or very difficult to access"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "How is Tom Waits's music often perceived by both critics and fellow musicians",
+    "options": {
+      "A": "As strictly adhering to traditional musical styles and conventions",
+      "B": "As predominantly blues ballads or sea shanties, reflecting his diverse influences",
+      "C": "As adventure songs and Halloween music, combining tradition with innovation",
+      "D": "As exclusively belonging to a cult following, without broader appeal"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "In the aesthetic philosophy of the Vietnamese people, which factor is often regarded as an expression of subtlety and contrast, commonly found in architecture and interior decoration",
+    "options": {
+      "A": "Harmony",
+      "B": "Bright colors",
+      "C": "Richness and beauty",
+      "D": "Diversity in forms"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "In the anti-intentionalist perspective, what is the correct interpretation of a work of art",
+    "options": {
+      "A": "The interpretation intended by the author",
+      "B": "There is no interpretation that is correct",
+      "C": "The interpretation by critics",
+      "D": "The interpretation that best fits the artwork"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "In the history of Western painting, which style emerged later, characterized by non-representational and departure from Realism",
+    "options": {
+      "A": "Renaissance",
+      "B": "Baroque",
+      "C": "Realism",
+      "D": "Post-Impressionism"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "In the traditional art of Vietnam, which element is often regarded as a symbol of nobility and grandeur, commonly appearing in sculptures and interior decorations",
+    "options": {
+      "A": "Lotus flower",
+      "B": "Human figures",
+      "C": "Dragon",
+      "D": "Rice grains"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "In Vietnamese culture, which concept emphasizes the appreciation and cultivation of aesthetic principles, often applied in art, architecture, and daily life",
+    "options": {
+      "A": "Moral conduct",
+      "B": "Harmony",
+      "C": "Traditional motifs",
+      "D": "Natural beauty"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Pythagoras and his followers believed that beauty arose from...",
+    "options": {
+      "A": "Irregularity and complexity",
+      "B": "Harmony, order, and regularity",
+      "C": "Personal emotions and intuition",
+      "D": "Cultural and social factors"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Since when has the term 'Ars' been mentioned",
+    "options": {
+      "A": "Ancient Greece",
+      "B": "The Middle Ages",
+      "C": "The Renaissance",
+      "D": "The Enlightenment"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "The claim Last Leaf is a song about death according to Krausz's theory, is it correct",
+    "options": {
+      "A": "True, because it adds to the meaning of the work",
+      "B": "False, because it changes the meaning of the work",
+      "C": "Cannot be determined, because the meaning of the work is not predetermined",
+      "D": "Depends on the context"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "The most important thing, according to Pettit, to experience a work of art is...",
+    "options": {
+      "A": "Understanding the author and the artwork",
+      "B": "Experiencing the artwork under suitable conditions",
+      "C": "Having knowledge about art",
+      "D": "Having well-functioning senses"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "The notion of art with an aesthetic function by Monroe Beardsley, Oswald Hanfling, George Schlesinger, and Richard Lind faces what issues",
+    "options": {
+      "A": "Overlooks the expressive aspect of art",
+      "B": "Neglects the aesthetic function of art with non-art",
+      "C": "It equates the aesthetic function of art with non-art",
+      "D": "All of the above issues"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What are the unresolved issues in Clive Bell's Formalist Theory",
+    "options": {
+      "A": "Failure to explain the significance of form and aesthetic emotion",
+      "B": "Art is a matter of form, not of content",
+      "C": "He dismisses descriptive painting as not being art",
+      "D": "All of the above viewpoints"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What causes us to describe a work of art with emotions",
+    "options": {
+      "A": "Artworks can be described using language",
+      "B": "Artworks can evoke emotions in the viewers",
+      "C": "Artworks can be compared to other artworks",
+      "D": "Artworks can be analyzed according to their constituent elements"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What did Marsilio Ficino do that contributed to the revival of Platonic thought",
+    "options": {
+      "A": "Criticized Plato's theories in favor of other classical thinkers",
+      "B": "Translated Plato's complete works into a spoken language",
+      "C": "Developed entirely original theories unrelated to Plato",
+      "D": "Argued against the Neoplatonist concept of beauty"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What does the Blobfish eat",
+    "options": {
+      "A": "Algae",
+      "B": "Small fish",
+      "C": "Organic matter particles",
+      "D": "Aquatic plants"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What does the concept of wu weiwúwéi in Daoist philosophy, as advocated by Laozi, imply",
+    "options": {
+      "A": "Harmony with society",
+      "B": "Freedom of thought",
+      "C": "Compliance with the laws of nature",
+      "D": "Cultural advancement"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What impact has the feminist movement had on artistic philosophy",
+    "options": {
+      "A": "Spawned various ideological movements such as contextualism",
+      "B": "Brought art back into a broader societal context",
+      "C": "Raised questions about the ethical and political roles of art",
+      "D": "All of the above answers"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What is an advantage in Collingwood's artistic viewperspective",
+    "options": {
+      "A": "It can be applied universally to all forms of art",
+      "B": "Distinguishes artwork from art itself, essentially a spiritual rather than a material thing",
+      "C": "Argues about entertainment art",
+      "D": "Argues about magic art"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What is Aristotle's main disagreement with Plato regarding poetry",
+    "options": {
+      "A": "Poetry should focus on reason rather than emotion",
+      "B": "Poetry is a poor representation of reality",
+      "C": "Poetry has a negative impact on the human condition",
+      "D": "Poetry is not a uniquely human characteristic"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What is Leon Battista Alberti's view on beauty",
+    "options": {
+      "A": "Beauty is subjective and varies greatly among individuals",
+      "B": "Judgments of beauty are based on an innate sense of beauty and lead to universal agreement on what is beautiful",
+      "C": "Beauty can only be appreciated by those with a particularly acute sense of taste",
+      "D": "The sense of beauty is entirely separate from the moral sense"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What is one characteristic often used to describe Tom Waits's albums",
+    "options": {
+      "A": "Mainstream appeal and radio-friendliness",
+      "B": "Smooth and polished production quality",
+      "C": "Varied levels of accessibility, ranging from commercially friendly to highly eclectic",
+      "D": "Traditional and conventional songwriting structures"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What is the key difference between Aristotle's view on beauty and the views of his predecessors",
+    "options": {
+      "A": "He believes beauty is based on objective qualities, not subjective experience",
+      "B": "He emphasizes the importance of moderation in achieving beauty",
+      "C": "He defines beauty solely in terms of size and order",
+      "D": "He rejects the Pythagorean connection of beauty to mathematics"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What is the main difference between Pythagoras's view and Gorgias's view of the impact of art",
+    "options": {
+      "A": "Pythagoras believed that art has a positive effect, whereas Gorgias believed that art has a negative effect",
+      "B": "Pythagoras believed that art has a lasting effect, while Gorgias believed that art has a transient effect",
+      "C": "Pythagoras believed that art affects the soul, while Gorgias believed that art affects emotions",
+      "D": "Pythagoras believed that art has a purifying effect,"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "while Gorgias believed that art has a stimulating effect. 72. What is the purpose of an 'Introduction Aesthetics and the Philosophy of Art, An Extremely Brief History'",
+    "options": {
+      "A": "Provide a comprehensive and complete history of Western aesthetics",
+      "B": "Highlighting some central themes in the Western aesthetic tradition",
+      "C": "Explain the difference between 'aesthetics' and 'philosophy of art'",
+      "D": "Analyzing contemporary works of art involves examining various aspects"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What is the relationship between 'Aesthetics' and 'The Philosophy of Art'",
+    "options": {
+      "A": "The two terms are completely different and unrelated",
+      "B": "Two terms are often used interchangeably to refer to the same field of study",
+      "C": "Aesthetics is a subfield of philosophy of art",
+      "D": "The philosophy of art is a subfield of aesthetics"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What is the role of music according to Pythagoras",
+    "options": {
+      "A": "As a form of entertainment",
+      "B": "As a tool to explore order and purify the soul",
+      "C": "As a means of self-expression",
+      "D": "As a means to earn money"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What is the term used to describe the academic discipline that focuses on the study of aesthetic principles, artistic expressions, and cultural values in Eastern societies",
+    "options": {
+      "A": "Eastern Aesthetics",
+      "B": "Oriental Studies",
+      "C": "Asian Aesthetics",
+      "D": "Eastern Humanities"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What role did the term 'Fine Art' play in the 18th century",
+    "options": {
+      "A": "Providing a definition of art",
+      "B": "Asserting the specificity of art",
+      "C": "Contributing to distinguishing art from other areas of skill",
+      "D": "It was in the 18th century that the concept of fine art emerged, gathering the Arts with a capital 'A' and distinguishing them from other areas of skill"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Which approach does Berys Gaut advocate for in interpretation theories",
+    "options": {
+      "A": "Intentionalism",
+      "B": "Anti-intentionalism",
+      "C": "Hypothetical intentionalism",
+      "D": "Reader-response criticism"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Which approach to determining the meaning of a literary work does Jerrold Levinson advocate for",
+    "options": {
+      "A": "Word-sequence meaning",
+      "B": "Utterer's meaning",
+      "C": "Author's intention",
+      "D": "Utterance meaning"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Which book is authored by Clive Bell",
+    "options": {
+      "A": "The Role of Theory in Aesthetics",
+      "B": "The Principles of Art",
+      "C": "Art",
+      "D": "Institutional Theory of Art"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Which film does Carroll use as an example to discuss the idea of subversive filmmaking",
+    "options": {
+      "A": "Plan 9 From Outer Space",
+      "B": "Night of the Living Dead",
+      "C": "The Day the Earth Stood Still",
+      "D": "The War of the Worlds"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Which information is incorrect about the artwork Black Square (1915)",
+    "options": {
+      "A": "Black Square is a work by the artist Kasimir Malevich",
+      "B": "Black Square is a representative work of Futurism",
+      "C": "Black Square is a representative work of Suprematism",
+      "D": "Black Square was exhibited in the 0-10 exhibition in 1915"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Which of the following definitions is not by George Dickie",
+    "options": {
+      "A": "An artist is someone who participates with under-"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "high",
+    "error_risk_reason": "Tự động tách từ file gốc — dưới 2 lựa chọn; đáp án \"D\" không khớp lựa chọn nào. Hãy kiểm tra lại trước khi lưu."
+  },
+  {
+    "question": "standing in the making of a work of art. B. A work of art is an artifact of a kind created to be presented to an artworld public. C. A public is a set of persons the members of which are prepared in some degree to understand an object which is presented to them. D. A work of art is any creative arrangement made by one or more media, with the primary function of conveying an important aesthetic object. 83. Which painting method is considered the painting method of Chinese painting and influences both the painter and the viewer, consisting of 6 methods and 24 techniques",
+    "options": {
+      "A": "Ink-wash",
+      "B": "Painting method",
+      "C": "Six Principles of Chinese painting",
+      "D": "Eastern Painting"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Which philosophical system heavily influenced the aesthetic theory in traditional Chinese art",
+    "options": {
+      "A": "Confucianism",
+      "B": "Daoism",
+      "C": "Buddhism",
+      "D": "Buddhism, Daoism and Confucianism"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Which statement is correct about Marcel Duchamp's artwork Fountain",
+    "options": {
+      "A": "Fountain was exhibited at the 1917 exhibition of the Society of Independent Artists in New York",
+      "B": "Fountain is considered the most famous artwork of the 20th century",
+      "C": "Fountain is Marcel Duchamp's first Readymade artwork",
+      "D": "Fountain was rejected by the Society of Independent Artists at the 1917 exhibition"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Which term from the passage typically denotes a value judgment when assessing artworks",
+    "options": {
+      "A": "Elegant",
+      "B": "Black",
+      "C": "Square",
+      "D": "Imposing"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Which term refers to the traditional Eastern art form that focuses on creating harmonious landscapes, often featuring elements such as rocks, water, plants, and architecture",
+    "options": {
+      "A": "Bonsai",
+      "B": "Ikebana",
+      "C": "Zen Garden",
+      "D": "Koi Pond"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Which theory does Berys Gaut challenge in his essay 'Interpreting the Arts The Patchwork Theory'",
+    "options": {
+      "A": "Global theory of interpretation",
+      "B": "Intentionalist theory",
+      "C": "Anti-intentionalist theory",
+      "D": "Hypothetical intentionalist theory"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Who argued that To evaluate a new work of art, one must rely not only on its own characteristics but also on its relationship to previous ones",
+    "options": {
+      "A": "Jerrold Levinson",
+      "B": "Aristotle",
+      "C": "Collingwood",
+      "D": "George Schlesinger"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Who argued that works of art are not created out of nothing, but depend on preexisting art by adhering to, advancing, or challenging existing artistic traditions",
+    "options": {
+      "A": "Jerrold Levinson",
+      "B": "R.G. Collingwood",
+      "C": "George Dickie",
+      "D": "Morris Weitz"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Who argued that defining art is at best a matter of describing what counts as an accepted work at any one time; the hope of finding some real definition of art - some set of necessary and sufficient conditions - is a fruitless one, as that definition is always subject to change with the next artistic revolution",
+    "options": {
+      "A": "Oswald Hanfling",
+      "B": "R.G. Collingwood",
+      "C": "Paul Ziff",
+      "D": "Clive Bell"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Who is considered the first to aim at defining Art",
+    "options": {
+      "A": "Aristotle",
+      "B": "Plato",
+      "C": "I. Kant",
+      "D": "St. Augustine"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Who is the author of the Six Principles of Chinese painting which is considered a foundational document for the study of Chinese painting theory",
+    "options": {
+      "A": "Xie He",
+      "B": "William Acker",
+      "C": "Alexander C. Soper",
+      "D": "Nam Te"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Who stated An artwork is something created with the purpose of providing others with the satisfaction of aesthetic pleasure",
+    "options": {
+      "A": "Monroe Beardsley",
+      "B": "Oswald Hanfling",
+      "C": "George Schlesinger",
+      "D": "Richard Lind"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Who was the first to distinguish artworks from handicrafts",
+    "options": {
+      "A": "I. Kant",
+      "B": "R.G. Collingwood",
+      "C": "Clive Bell",
+      "D": "Monroe Beardsley"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Why did the art critic Alexander Benois describe the Black Square as 'aloof', 'arrogant', and 'ostentatious'",
+    "options": {
+      "A": "Because the painting is just a black square",
+      "B": "Because it is the most representative painting of Suprematism",
+      "C": "Because of its placement in the exhibition hall",
+      "D": "Because Black Square is significant for the innovation in Russian art"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Why doesn't the ontological model of natural kinds apply to works of art",
+    "options": {
+      "A": "Because works of art lack essential nature",
+      "B": "Because works of art are always changing",
+      "C": "Because works of art are created by humans",
+      "D": "Because works of art cannot be distinguished by"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "examining their composition. 98. Why is the movie The Exorcist considered so scary, even though it is a work of fiction",
+    "options": {
+      "A": "It is based on a true story",
+      "B": "It evokes primal human fears",
+      "C": "It uses many special effects",
+      "D": "It is filmed in a frightening location"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What sparked a renewed interest in natural aesthetics in philosophy after a period of neglect?",
+    "options": {
+      "A": "The publication of R. W. Hepburn's influential article, \"Contemporary Aesthetics and the Neglect of Natural Beauty.\"",
+      "B": "The rise of the fine arts",
+      "C": "Immanuel Kant's prioritization of natural beauty over artistic beauty",
+      "D": "G.W.F. Hegel's reversal of priorities, valuing artistic beauty over natural beauty"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "When we practice futures thinking methods, they can help us build SEVEN key strengths. One of the strengths is Creativity. Which of the following best describes Creativity in terms of futures thinking?",
+    "options": {
+      "A": "You transcend traditional ideas, and invent new possibilities. You can imagine things that don't exist today or have never happened before"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "high",
+    "error_risk_reason": "Tự động tách từ file gốc — dưới 2 lựa chọn; đáp án \"B\" không khớp lựa chọn nào. Hãy kiểm tra lại trước khi lưu."
+  },
+  {
+    "question": "You anticipate hard to see possibilities that others can't or won't see. You don't get blindsided by the future. You see it coming. C. You accept that things can be different than they are now, that virtually anything can change. This is the opposite of having a fixed or a stuck mindset. D. You have a strong awareness of the hopes and fears of others. You pay close attention to how any future could affect different groups of people and communities differently. 101. Which of the following techniques can help overcome neurological obstacles to thinking about the future effectively?",
+    "options": {
+      "A": "Mindfulness meditation",
+      "B": "Ignoring all future possibilities",
+      "C": "Catastrophizing",
+      "D": "Focusing solely on present pleasures"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "When does a description of an artwork not convey an evaluation of its value?",
+    "options": {
+      "A": "When the description emphasizes the emotions the artwork evokes",
+      "B": "When the description refers to the form or color without commenting on its value",
+      "C": "When the description uses evaluative terms like \"impressive\" or \"unappealing.\"",
+      "D": "When the description reflects the viewer's personal opinion"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Champa was formed on the basis of the development of the ... culture along with strong assimilation of major cultures (India, China, Dai Viet, Oc Eo - Funan, Southeast Asia). Check one option.",
+    "options": {
+      "A": "Oc Eo",
+      "B": "Phu Nam",
+      "C": "Sa Huynh",
+      "D": "Đong Son"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "\"Mr Blobby\" was awarded what title by the Ugly Animal Preservation Society in 2013?",
+    "options": {
+      "A": "Most beautiful in the world",
+      "B": "The best at being ugly",
+      "C": "The most intelligent",
+      "D": "The fiercest"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "The claim \"Last Leaf\" is a song about death according to Krausz's theory, is it correct?",
+    "options": {
+      "A": "True, because it adds to the meaning of the work",
+      "B": "False, because it changes the meaning of the work",
+      "C": "Cannot be determined, because the meaning of the work is not predetermined",
+      "D": "Depends on the context"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Why is the movie \"The Exorcist\" considered so scary, even though it is a work of fiction?",
+    "options": {
+      "A": "Based on a true story",
+      "B": "Evokes primal human fears",
+      "C": "Uses many special effects",
+      "D": "Filmed in a frightening location"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Why is it important to read and analyze future forecasts?",
+    "options": {
+      "A": "To anticipate future events and trends",
+      "B": "To rely solely on predictions without planning",
+      "C": "To learn about past events",
+      "D": "To ignore current trends"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Taylor, why is the portrayal of black characters as victims in films harmful?",
+    "options": {
+      "A": "Because it makes black people invisible",
+      "B": "Because it reinforces the stereotype that black people are victims",
+      "C": "Because it makes white people feel guilty",
+      "D": "Because it makes black people feel inferior"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "famously entered the American public consciousness in 1966 playing the role of Kato in the short-lived TV action series The Green Hornet.",
+    "options": {
+      "A": "Jay Chou",
+      "B": "Seth Rogen",
+      "C": "Christoph Waltz",
+      "D": "Bruce Lee"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Which film does Carroll use as an example to discuss the idea of subversive filmmaking?",
+    "options": {
+      "A": "\"Plan 9 From Outer Space\"",
+      "B": "\"Night of the Living Dead\"",
+      "C": "\"The Day the Earth Stood Still\"",
+      "D": "\"The War of the Worlds\""
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Who produced the most well-known formalist theory of art?",
+    "options": {
+      "A": "Cezanne",
+      "B": "Man Ray",
+      "C": "Clive Bell",
+      "D": "Roger Fry"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "a painting style characterized by its visible brush strokes, its emphasis on light and its attempts to portray movement.",
+    "options": {
+      "A": "Pop art",
+      "B": "Cubism",
+      "C": "Abstractionism",
+      "D": "Impressionism"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Who was the first to mention the term \"Aesthetic\" in the history?",
+    "options": {
+      "A": "I. Kant",
+      "B": "A. Baumgarten",
+      "C": "Hegel",
+      "D": "Hume"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Which theory does Berys Gaut challenge in his essay \"Interpreting the Arts: The Patchwork Theory\"?",
+    "options": {
+      "A": "Global theory of interpretation",
+      "B": "Intentionalist theory",
+      "C": "Anti-intentionalist theory",
+      "D": "Hypothetical intentionalist theory"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What is an advantage in Collingwood's artistic view/perspective?",
+    "options": {
+      "A": "It can be applied universally to all forms of art",
+      "B": "Distinguishes artwork from art itself, essentially a spiritual rather than a material thing",
+      "C": "Argues about \"entertainment art\"",
+      "D": "Argues about magic art"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Who stated: \"An artwork is something created with the purpose of providing others with the satisfaction of aesthetic pleasure\"?",
+    "options": {
+      "A": "Monroe Beardsley",
+      "B": "Oswald Hanfling",
+      "C": "George Schlesinger",
+      "D": "Richard Lind"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Why doesn't the ontological model of natural kinds apply to works of art?",
+    "options": {
+      "A": "Because works of art lack essential nature",
+      "B": "Because works of art are always changing",
+      "C": "Because works of art are created by humans",
+      "D": "Because works of art cannot be distinguished by examining their composition"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Which book is authored by Clive Bell?",
+    "options": {
+      "A": "The Role of Theory in Aesthetics",
+      "B": "The Principles of Art",
+      "C": "Art",
+      "D": "Institutional Theory of Art"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Hegel agrees with which of Kant's views on beauty (found in nature or in art)?",
+    "options": {
+      "A": "Nature is more beautiful than art",
+      "B": "The beauty of art is a product of human intellect",
+      "C": "Both art and nature possess beauty",
+      "D": "The beauty of nature is the beauty of a particular external appearance"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Berleant, what is the most important factor in evaluating the aesthetics of the living environment?",
+    "options": {
+      "A": "The natural beauty of the environment",
+      "B": "The extent of human intervention in the environment",
+      "C": "How humans interact with the environment",
+      "D": "The economic value of the environment"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "\"Mr Blobby\" is typically found at what depth below the ocean surface?",
+    "options": {
+      "A": "10 meters",
+      "B": "100 meters",
+      "C": "1,000 meters",
+      "D": "10,000 meters"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "During the ____ period, Christian philosophers worked to meld the philosophical principles of the classical period with the tenets of Christianity",
+    "options": {
+      "A": "Rococo",
+      "B": "Baroque",
+      "C": "Renaissance",
+      "D": "Medieval"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Nature, Kant contends, can also give rise to feelings of --- what we might think of as a pronounced awe: where something is sublime, it is quite literally awesome.",
+    "options": {
+      "A": "the sublime",
+      "B": "the beauty",
+      "C": "the tragedy",
+      "D": "the ugly"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Ronald W. Hepburn, why are philosophers indifferent to natural beauty?",
+    "options": {
+      "A": "Natural beauty is not important",
+      "B": "Natural beauty cannot be explained",
+      "C": "Natural beauty is not as beautiful as art",
+      "D": "Natural beauty is not suitable for aesthetic studies"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Torquato Tasso, where does the beauty of art originate from?",
+    "options": {
+      "A": "The creative ability of humans",
+      "B": "The techniques and tools of the artist",
+      "C": "Direct imitation of the beauty of nature",
+      "D": "Religious belief and spirituality"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "\"Mr Blobby\" was awarded what title by the Ugly Animal Preservation Society in 2013?",
+    "options": {
+      "A": "Most beautiful in the world",
+      "B": "The best at being ugly",
+      "C": "The most intelligent",
+      "D": "The fiercest"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "In the anti-intentionalist perspective, what is the \"correct\" interpretation of a work of art?",
+    "options": {
+      "A": "The interpretation intended by the author",
+      "B": "There is no interpretation that is \"correct\"",
+      "C": "The interpretation by critics",
+      "D": "The interpretation that best fits the artwork"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to which view is the meaning of a work of art primarily determined by?",
+    "options": {
+      "A": "The author's intention",
+      "B": "The content of the work",
+      "C": "The reader",
+      "D": "All three factors above"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What is one characteristic often used to describe Tom Waits's albums?",
+    "options": {
+      "A": "Mainstream appeal and radio-friendliness",
+      "B": "Smooth and polished production quality",
+      "C": "Varied levels of accessibility, ranging from commercially friendly to highly eclectic",
+      "D": "Traditional and conventional songwriting structures"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to the anti-internationalist perspective of Wimsatt and Beardsley, which interpretation of the film \"Plan 9 from Outer Space\" is correct?",
+    "options": {
+      "A": "The interpretation intended by the author",
+      "B": "The interpretation that best fits the artwork",
+      "C": "The interpretation agreed upon by film critics",
+      "D": "The interpretation that makes the film successful"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "How is Tom Waits's music often described?",
+    "options": {
+      "A": "Accessible and market-friendly",
+      "B": "Smooth and melodious",
+      "C": "Hard to listen to and incomprehensible",
+      "D": "Either accessible or very difficult to access"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Levinson, who is the \"appropriate\" reader to interpret a literary work?",
+    "options": {
+      "A": "The reader with knowledge of the literary tradition to which the work belongs",
+      "B": "The reader familiar with other works by the author",
+      "C": "The reader knowledgeable about the public per-"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "high",
+    "error_risk_reason": "Tự động tách từ file gốc — đáp án \"D\" không khớp lựa chọn nào. Hãy kiểm tra lại trước khi lưu."
+  },
+  {
+    "question": "sona of the author. D. All of the above. 133. How is Tom Waits's music often perceived by both critics and fellow musicians?",
+    "options": {
+      "A": "As strictly adhering to traditional musical styles and conventions",
+      "B": "As predominantly blues ballads or sea shanties, reflecting his diverse influences",
+      "C": "As adventure songs and Halloween music, combining tradition with innovation",
+      "D": "As exclusively belonging to a cult following, without broader appeal"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "The term \"suspension of disbelief\" was introduced by poet Samuel Taylor Coleridge in which of his works published in 1817?",
+    "options": {
+      "A": "Biographia Literaria",
+      "B": "Republic",
+      "C": "King Lear",
+      "D": "Iliad"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What can marks be said to seem 'angry' about? And we can similarly describe a soft and flowing line as 'calm', a jagged and rigid one as 'agitated' or 'pensive', and so on",
+    "options": {
+      "A": "shape",
+      "B": "form",
+      "C": "type",
+      "D": "rhythm"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "In 1998, for its twenty-fifth anniversary, The Exorcist was re-released in cinemas as '...'",
+    "options": {
+      "A": "The Exorcist 2",
+      "B": "The cultural phenomenon",
+      "C": "The Scariest Movie of All Time",
+      "D": "The Version You've Never Seen'"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Fill in the blank with the correct words: If you are watching The Exorcist, you likely hold another set of beliefs that Regan MacNeil has been possessed by a demon, that her mother is overwhelmed with grief and so on. These are beliefs about the story being told, and we probably want to say these are true beliefs as well (in the way that the priests all make it out of the MacNeil house alive would be a .......... belief). Call these 'second-order' beliefs.",
+    "options": {
+      "A": "false",
+      "B": "true",
+      "C": "unclear",
+      "D": "None of the answer"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Among the philosophers below, who argued that art is an 'open' concept?",
+    "options": {
+      "A": "Monroe Beardsley",
+      "B": "Morris Weitz",
+      "C": "R.G. Collingwood",
+      "D": "Arthur Danto"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Fill in the blank with the correct words: ...was a disciple of Socrates whose cornerstone of thought was his theory of Forms, in which there was another world of perfection.",
+    "options": {
+      "A": "Heraklite",
+      "B": "Plato",
+      "C": "Aristotle",
+      "D": "I. Kant"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What is the main difference between Pythagoras's view and Gorgias's view of the impact of art?",
+    "options": {
+      "A": "Pythagoras believed that art has a positive effect, whereas Gorgias believed that art has a negative effect",
+      "B": "Pythagoras believed that art has a lasting effect, while Gorgias believed that art has a transient effect",
+      "C": "Pythagoras believed that art affects the soul, while Gorgias believed that art affects emotions",
+      "D": "Pythagoras believed that art has a purifying effect, while Gorgias believed that art has a stimulating effect"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "How does Aristotle view the role of the artist in imitating reality?",
+    "options": {
+      "A": "The artist should only create perfect replicas of the real world",
+      "B": "The artist should focus on portraying the negative aspects of reality",
+      "C": "The artist can improve upon reality by incorporating universals",
+      "D": "The artist should primarily document historical events"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What is the key difference between Aristotle's view on beauty and the views of his predecessors?",
+    "options": {
+      "A": "He believes beauty is based on objective qualities,"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "high",
+    "error_risk_reason": "Tự động tách từ file gốc — dưới 2 lựa chọn. Hãy kiểm tra lại trước khi lưu."
+  },
+  {
+    "question": "not subjective experience. B. He emphasizes the importance of moderation in achieving beauty. C. He defines beauty solely in terms of size and order. D. He rejects the Pythagorean connection of beauty to mathematics. 143. When does a description of an artwork not convey an evaluation of its value?",
+    "options": {
+      "A": "When the description emphasizes the emotions the artwork evokes",
+      "B": "When the description refers to the form or color without commenting on its value",
+      "C": "When the description uses evaluative terms like \"impressive\" or \"unappealing.\"",
+      "D": "When the description reflects the viewer's personal opinion"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "When was the exhibition in the Dobychina Gallery, Russia's leading private commercial gallery, Subtitled 'The Last Futurist Exhibition', '0,10' is perhaps better known for its role as the first Suprematist exhibition be held?",
+    "options": {
+      "A": "1915",
+      "B": "1916",
+      "C": "1917",
+      "D": "1918"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "It is worth noticing that in Beardsley's view, ... of a work of art arises entirely from the work's formal qualities.",
+    "options": {
+      "A": "the value",
+      "B": "the price",
+      "C": "the ideas",
+      "D": "the date"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Who argues that although we value art for something it gives us, we should nevertheless distinguish this sort of value from instrumental value, broadly speaking?",
+    "options": {
+      "A": "Malcolm Budd",
+      "B": "Joel Feigenberg",
+      "C": "Monroe Beardsley",
+      "D": "Willem de Kooning"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Russian artist Kasimir Malevich outgrew the movement he himself had founded, and created its successor, ...",
+    "options": {
+      "A": "Futurism",
+      "B": "Cubism",
+      "C": "Suprematism",
+      "D": "Romanticism"
+    },
+    "answer": "C",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "Since when has the term 'Arts' been mentioned?",
+    "options": {
+      "A": "Ancient Greece",
+      "B": "The Middle Ages",
+      "C": "The Renaissance",
+      "D": "The Enlightenment"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "What impact has the feminist movement had on artistic philosophy?",
+    "options": {
+      "A": "Spawned various ideological movements such as contextualism",
+      "B": "Brought art back into a broader societal context",
+      "C": "Raised questions about the ethical and political"
+    },
+    "answer": "D",
+    "images": [],
+    "has_image": false,
+    "error_risk": "high",
+    "error_risk_reason": "Tự động tách từ file gốc — đáp án \"D\" không khớp lựa chọn nào. Hãy kiểm tra lại trước khi lưu."
+  },
+  {
+    "question": "roles of art. D. All of the above answers. 150. Among the many views that were considered, beauty and the........ were almost always tied together, treated as related in some way, if only on the grounds that each involves judgement.",
+    "options": {
+      "A": "good - aesthetics and ethics",
+      "B": "true - good and ethics",
+      "C": "good - aesthetics",
+      "D": "aesthetics - ethics - true"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "In the 1950s, psychologist Fredric Wertham suggested that comic books were a major cause of what condition in juveniles? He corroborated that claim before the US Senate, calling for their censorship.",
+    "options": {
+      "A": "delinquency",
+      "B": "excitement",
+      "C": "violence",
+      "D": "dementia"
+    },
+    "answer": "A",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  },
+  {
+    "question": "According to Shusterman, how can the suppression of bad art to allow good art to flourish be justified?",
+    "options": {
+      "A": "By arguing that bad art can harm society",
+      "B": "By arguing that good art serves the ultimate moral benefit",
+      "C": "By arguing that good art will always prevail over bad art",
+      "D": "By arguing that bad art is a waste of time and money"
+    },
+    "answer": "B",
+    "images": [],
+    "has_image": false,
+    "error_risk": "low",
+    "error_risk_reason": ""
+  }
+]

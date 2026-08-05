@@ -227,7 +227,7 @@ _(không có)_
 
 ## subjectGate.js (cổng chọn môn + số câu, tách khỏi appCore)
 
-1256 dòng · 5 block
+1325 dòng · 5 block
 
 ### Hàm bị ghi đè nhiều lần (bản CUỐI = bản đang chạy)
 
@@ -237,11 +237,11 @@ _(không có)_
 
 | Block | Dòng | Số dòng | Gán ra window.* |
 | --- | --- | --- | --- |
-| `LEARNING_HUB_MERGED_SUBJECT_PATCH_START` | 45–804 | 760 | `syncSubjectTexts`, `__hubPatchSubmitMerged`, `__hubPatchSignoutMerged`, `__LHCheckedOnce`, `__LHTriggerSubjectCheck` …+4 |
-| `FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629` | 806–850 | 45 | `__FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629` |
-| `SUBJECT_COUNTS_ONCE_CACHE_20260629` | 852–1035 | 184 | `__SUBJECT_COUNTS_ONCE_CACHE_20260629`, `clearLearningHubSupabaseCache`, `refreshSubjectCountsOnce` |
-| `CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629` | 1037–1154 | 118 | `__clearAddSubjectDraft` |
-| `TURSO_SUBJECT_COUNTS_FALLBACK_20260630` | 1156–1255 | 100 | `__TURSO_SUBJECT_COUNTS_FALLBACK_20260630`, `renderSubjects` |
+| `LEARNING_HUB_MERGED_SUBJECT_PATCH_START` | 45–873 | 829 | `syncSubjectTexts`, `__hubPatchSubmitMerged`, `__hubPatchSignoutMerged`, `__LHCheckedOnce`, `__LHTriggerSubjectCheck` …+4 |
+| `FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629` | 875–919 | 45 | `__FIX_ARIA_HIDDEN_SUBJECT_GATE_20260629` |
+| `SUBJECT_COUNTS_ONCE_CACHE_20260629` | 921–1104 | 184 | `__SUBJECT_COUNTS_ONCE_CACHE_20260629`, `clearLearningHubSupabaseCache`, `refreshSubjectCountsOnce` |
+| `CLEAR_ADD_SUBJECT_DRAFT_NEW_SESSION_20260629` | 1106–1223 | 118 | `__clearAddSubjectDraft` |
+| `TURSO_SUBJECT_COUNTS_FALLBACK_20260630` | 1225–1324 | 100 | `__TURSO_SUBJECT_COUNTS_FALLBACK_20260630`, `renderSubjects` |
 
 ### Khóa localStorage
 
@@ -266,7 +266,7 @@ _(không có)_
 
 ## bookmarks.js (Bookmark & Edit Request Bell, tách khỏi appCore)
 
-781 dòng · 2 block
+927 dòng · 2 block
 
 ### Hàm bị ghi đè nhiều lần (bản CUỐI = bản đang chạy)
 
@@ -276,8 +276,8 @@ _(không có)_
 
 | Block | Dòng | Số dòng | Gán ra window.* |
 | --- | --- | --- | --- |
-| `BOOKMARK_QUESTIONS_FEATURE_20260726` | 23–335 | 313 | `__isBookmarked`, `__countBookmarks`, `__getBookmarkBtnHTML`, `updateBookmarkBtn`, `updateCardTools` |
-| `HEADER_EDIT_REQUEST_BELL_20260726` | 337–780 | 444 | `jumpToQuestionInLibrary` |
+| `BOOKMARK_QUESTIONS_FEATURE_20260726` | 23–481 | 459 | `__lhSyncBookmarks`, `__isBookmarked`, `__countBookmarks`, `__getBookmarkBtnHTML`, `updateBookmarkBtn` …+1 |
+| `HEADER_EDIT_REQUEST_BELL_20260726` | 483–926 | 444 | `jumpToQuestionInLibrary` |
 
 ### Khóa localStorage
 
@@ -286,12 +286,12 @@ _(không có)_
 | `learninghub_library_filter_v1` | HEADER_EDIT_REQUEST_BELL_20260726 |
 | `learninghub_library_search_v1` | HEADER_EDIT_REQUEST_BELL_20260726 |
 | `learninghub_subject_code_merged_v1` | BOOKMARK_QUESTIONS_FEATURE_20260726, HEADER_EDIT_REQUEST_BELL_20260726 |
-| `lh_starred_v1_backup_all` | BOOKMARK_QUESTIONS_FEATURE_20260726 |
 
 ### Endpoint API
 
 | Endpoint | Block gọi |
 | --- | --- |
+| `/api/bookmarks` | BOOKMARK_QUESTIONS_FEATURE_20260726 |
 | `/api/my-edit-requests` | HEADER_EDIT_REQUEST_BELL_20260726 |
 | `/api/staff-edit-requests` | HEADER_EDIT_REQUEST_BELL_20260726 |
 
@@ -299,7 +299,7 @@ _(không có)_
 
 ## subjectImport.js (Import & Thêm môn, tách khỏi appCore)
 
-3846 dòng · 13 block
+4333 dòng · 14 block
 
 ### Hàm bị ghi đè nhiều lần (bản CUỐI = bản đang chạy)
 
@@ -309,19 +309,20 @@ _(không có)_
 
 | Block | Dòng | Số dòng | Gán ra window.* |
 | --- | --- | --- | --- |
-| `ADD_SUBJECT_FEATURE_20260625_(UPGRADED_TAB_UX/UI)` | 471–1150 | 680 | `__switchSubjectGateTab`, `__ADD_SUBJECT_AI_PROMPT`, `__switchStep`, `_dropZoneInit`, `__selectedImportFile` |
-| `QUIZLET_IMPORT_AUTODETECT_20260701` | 1151–1246 | 96 | `__LHConvertQuizlet` |
-| `FINAL_PROMPT_MODAL_RUNTIME_FIX_20260625` | 1539–1644 | 106 | `__openUserAIPromptModal`, `__closeUserAIPromptModal`, `__copyUserAIPrompt` |
-| `FIX_DELETE_IMPORT_FILE_20260625` | 1645–1708 | 64 | `__clearUserImportFile`, `__selectedImportFile`, `__previewSelections` |
-| `PROMPT_STEP_UX_UI_POLISH_20260625` | 1709–1773 | 65 | `__switchStep` |
-| `PROMPT_STEP_INSIDE_PANEL_FIX_20260625` | 1774–1793 | 20 | — |
-| `REMOVE_PROMPT_GUIDE_ROWS_20260625` | 1794–1807 | 14 | — |
-| `FIX_PROMPT_MODAL_SCOPE_REMOVE_TIP_20260625` | 1808–1852 | 45 | `__openUserAIPromptModal` |
-| `IMPORT_PREVIEW_INLINE_EDIT_20260625` | 1853–2281 | 429 | `__previewImportData`, `__previewQualityFilter`, `__setQualityFilter`, `__toggleQualityImage`, `__setQualityRisk` …+1 |
-| `FINAL_INLINE_EDIT_KEEP_EXISTING_CARD_20260625` | 2282–2415 | 134 | `__editImportPreviewQuestion`, `__inlineAddPreviewOption`, `__cancelInlineKeepEdit`, `__saveInlineKeepEdit` |
-| `INLINE_DELETE_OPTION_20260625` | 2416–2462 | 47 | `__deleteInlinePreviewOption`, `__editImportPreviewQuestion`, `__inlineAddPreviewOption` |
-| `IMPORT_PREVIEW_COMPACT_UX_PATCH_20260626` | 2463–3553 | 1091 | `__previewImportData`, `__openImportPreviewModal`, `__editImportPreviewQuestion`, `__APP_UI_CLEAN_FINAL__` |
-| `FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701` | 3554–3844 | 291 | `__FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701`, `__previewImportData`, `__LH_LAST_PREVIEW_IMPORT_DATA`, `__submitSubjectRequest` |
+| `ADD_SUBJECT_FEATURE_20260625_(UPGRADED_TAB_UX/UI)` | 528–1115 | 588 | `__switchSubjectGateTab`, `__ADD_SUBJECT_AI_PROMPT`, `__previewImportData`, `__resetAddSubjectForm`, `__selectedImportFile` …+1 |
+| `IMPORT_QUALITY_GATE_20260805` | 1116–1372 | 257 | `__syncImportPath`, `__pickImportPath`, `__resetImportPath`, `__importStepBack`, `__goPromptRoute` …+5 |
+| `QUIZLET_IMPORT_AUTODETECT_20260701` | 1640–1735 | 96 | `__LHConvertQuizlet` |
+| `FINAL_PROMPT_MODAL_RUNTIME_FIX_20260625` | 1918–2023 | 106 | `__openUserAIPromptModal`, `__closeUserAIPromptModal`, `__copyUserAIPrompt` |
+| `FIX_DELETE_IMPORT_FILE_20260625` | 2024–2096 | 73 | `__clearUserImportFile`, `__selectedImportFile`, `__previewImportData`, `__previewSelections` |
+| `PROMPT_STEP_UX_UI_POLISH_20260625` | 2097–2179 | 83 | `__switchStep` |
+| `PROMPT_STEP_INSIDE_PANEL_FIX_20260625` | 2180–2199 | 20 | — |
+| `REMOVE_PROMPT_GUIDE_ROWS_20260625` | 2200–2213 | 14 | — |
+| `FIX_PROMPT_MODAL_SCOPE_REMOVE_TIP_20260625` | 2214–2258 | 45 | `__openUserAIPromptModal` |
+| `IMPORT_PREVIEW_INLINE_EDIT_20260625` | 2259–2687 | 429 | `__previewImportData`, `__previewQualityFilter`, `__setQualityFilter`, `__toggleQualityImage`, `__setQualityRisk` …+1 |
+| `FINAL_INLINE_EDIT_KEEP_EXISTING_CARD_20260625` | 2688–2821 | 134 | `__editImportPreviewQuestion`, `__inlineAddPreviewOption`, `__cancelInlineKeepEdit`, `__saveInlineKeepEdit` |
+| `INLINE_DELETE_OPTION_20260625` | 2822–2868 | 47 | `__deleteInlinePreviewOption`, `__editImportPreviewQuestion`, `__inlineAddPreviewOption` |
+| `IMPORT_PREVIEW_COMPACT_UX_PATCH_20260626` | 2869–3967 | 1099 | `__previewImportData`, `__openImportPreviewModal`, `__editImportPreviewQuestion`, `__APP_UI_CLEAN_FINAL__` |
+| `FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701` | 3968–4331 | 364 | `__FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701`, `__previewImportData`, `__selectedImportFile`, `__submitSubjectRequest`, `__importQualityReport` |
 
 ### Khóa localStorage
 
@@ -334,6 +335,7 @@ _(không có)_
 | `learninghub_add_subject_file_previewed_v1` | ADD_SUBJECT_FEATURE_20260625_(UPGRADED_TAB_UX/UI), FIX_DELETE_IMPORT_FILE_20260625 |
 | `learninghub_add_subject_file_size_v1` | ADD_SUBJECT_FEATURE_20260625_(UPGRADED_TAB_UX/UI), FIX_DELETE_IMPORT_FILE_20260625 |
 | `learninghub_add_subject_name_v1` | ADD_SUBJECT_FEATURE_20260625_(UPGRADED_TAB_UX/UI) |
+| `learninghub_add_subject_path_v1` | PROMPT_STEP_UX_UI_POLISH_20260625 |
 | `learninghub_add_subject_step_v1` | ADD_SUBJECT_FEATURE_20260625_(UPGRADED_TAB_UX/UI) |
 | `learninghub_subject_gate_tab_v1` | ADD_SUBJECT_FEATURE_20260625_(UPGRADED_TAB_UX/UI) |
 | `learninghub_subjects_cache_v1` | FIX_ADD_SUBJECT_FAST_PARALLEL_UPLOAD_20260701 |
@@ -379,7 +381,7 @@ _(không có)_
 
 ## auth.js (Supabase Auth & Interceptor, tách khỏi appCore)
 
-1782 dòng · 5 block
+2204 dòng · 5 block
 
 ### Hàm bị ghi đè nhiều lần (bản CUỐI = bản đang chạy)
 
@@ -389,11 +391,11 @@ _(không có)_
 
 | Block | Dòng | Số dòng | Gán ra window.* |
 | --- | --- | --- | --- |
-| `APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627` | 221–1017 | 797 | `getLhApiSignal`, `__LH_REVOKING_ACCESS`, `__LH_ACCESS_OK`, `handleAccessRevoked`, `__lhRealtimeConnected` …+5 |
-| `HOD_Login_+_Admin_UI_(added)` | 1018–1058 | 41 | — |
-| `Admin_visibility_hard_fix` | 1059–1095 | 37 | — |
-| `ACCOUNT_AVATAR_CLEAN_FINAL` | 1096–1291 | 196 | — |
-| `LH_UNIFIED_FETCH_AND_ACCESS_20260726` | 1292–1780 | 489 | `__LH_UNIFIED_FETCH_INSTALLED`, `__lhOriginalFetch`, `__lhRefreshAccessToken`, `__lhAccessToken`, `clearLearningHubSupabaseCache` …+5 |
+| `APP_DIRECT_DISCORD_LOGIN_NOTIFY_20260627` | 500–1363 | 864 | `getLhApiSignal`, `__LH_REVOKING_ACCESS`, `__LH_ACCESS_OK`, `__LH_OFFLINE_MODE`, `handleAccessRevoked` …+6 |
+| `HOD_Login_+_Admin_UI_(added)` | 1364–1404 | 41 | — |
+| `Admin_visibility_hard_fix` | 1405–1441 | 37 | — |
+| `ACCOUNT_AVATAR_CLEAN_FINAL` | 1442–1637 | 196 | — |
+| `LH_UNIFIED_FETCH_AND_ACCESS_20260726` | 1638–2202 | 565 | `__LH_UNIFIED_FETCH_INSTALLED`, `__lhOriginalFetch`, `__lhLastRefreshOutcome`, `__lhRefreshAccessToken`, `__lhAccessToken` …+6 |
 
 ### Khóa localStorage
 
@@ -446,7 +448,7 @@ _(không có)_
 
 ## subjects.js (Subject Selection & Data Loading, tách khỏi appCore)
 
-906 dòng · 5 block
+924 dòng · 5 block
 
 ### Hàm bị ghi đè nhiều lần (bản CUỐI = bản đang chạy)
 
@@ -457,10 +459,10 @@ _(không có)_
 | Block | Dòng | Số dòng | Gán ra window.* |
 | --- | --- | --- | --- |
 | `COPILOT_CLOUDINARY_IMAGE_FIX_20260627` | 54–214 | 161 | `loadCurrentSubjectOnly`, `renderCard` |
-| `FINAL_URL_ONLY_IMAGES_AND_CURRENT_RELOAD_20260628` | 215–665 | 451 | `cleanImages`, `__LHCleanImages`, `__LHUploadCloudinary`, `imgsHTML`, `renderEditImages` …+3 |
-| `ACTIVE_SUBJECT_COUNT_SYNC_20260629` | 669–777 | 109 | `__ACTIVE_SUBJECT_COUNT_SYNC_20260629`, `syncActiveSubjectCount`, `loadCurrentSubjectOnly`, `loadBySubject`, `__renderCardActiveCountPatched` …+1 |
-| `REMOVE_EYE_HIDE_OPTIONS_20260629` | 783–805 | 23 | — |
-| `APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630` | 809–904 | 96 | `__APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630` |
+| `FINAL_URL_ONLY_IMAGES_AND_CURRENT_RELOAD_20260628` | 215–683 | 469 | `cleanImages`, `__LHCleanImages`, `__LHUploadCloudinary`, `imgsHTML`, `renderEditImages` …+3 |
+| `ACTIVE_SUBJECT_COUNT_SYNC_20260629` | 687–795 | 109 | `__ACTIVE_SUBJECT_COUNT_SYNC_20260629`, `syncActiveSubjectCount`, `loadCurrentSubjectOnly`, `loadBySubject`, `__renderCardActiveCountPatched` …+1 |
+| `REMOVE_EYE_HIDE_OPTIONS_20260629` | 801–823 | 23 | — |
+| `APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630` | 827–922 | 96 | `__APP_STARTUP_AUTO_LOAD_QUESTIONS_SUBJECTS_20260630` |
 
 ### Khóa localStorage
 
@@ -479,7 +481,7 @@ _(không có)_
 
 ## adminCore.js (bundle -> admin.js)
 
-6781 dòng · 56 block
+7163 dòng · 56 block
 
 ### Hàm bị ghi đè nhiều lần (bản CUỐI = bản đang chạy)
 
@@ -491,62 +493,62 @@ _(không có)_
 
 | Block | Dòng | Số dòng | Gán ra window.* |
 | --- | --- | --- | --- |
-| `FIX_ADMIN_DASHBOARD_DEDUP_20260705` | 203–256 | 54 | `__FIX_ADMIN_DASHBOARD_DEDUP_20260705`, `__adminDashboardBusy`, `__adminDashboardLoadedOnce`, `__invalidateAdminDashboardCache`, `__fetchAdminDashboardJSON` |
-| `CHỈ_THÔNG_BÁO_LOGIN_KHI_KHÔNG_PHẢI_LÀ_F5` | 892–1489 | 598 | `adminAction`, `updateRequestBadge`, `lhCloseModal` |
-| `F5_SUPABASE_MICRO_CACHE_20260629` | 1490–1588 | 99 | `__F5_SUPABASE_MICRO_CACHE_20260629` |
-| `FINAL_ADMIN_HISTORY_SHOW_EDITOR_EMAIL_20260613` | 1592–1688 | 97 | `renderHistory`, `viewHistoryFixed` |
-| `ACCESS_APPROVAL_ADMIN_20260624` | 1689–1810 | 122 | `filterApprovals`, `approveUser`, `rejectUser` |
-| `SUBJECT_MANAGEMENT_20260625` | 1811–1986 | 176 | `deleteSubjectAdmin`, `approveSubjectRequest`, `rejectSubjectRequest` |
-| `HOTFIX_UX/UI_ADMIN:_NOTIFICATIONS_&_TRASH_OVERLAPPING_REPAIR` | 1987–2099 | 113 | — |
-| `FINAL_ADMIN_SUBJECT_EDIT_20260625` | 2100–2547 | 448 | `loadSubjectsAdmin`, `renderSubjectAdminList`, `openEditSubjectAdmin`, `saveSubjectAdmin`, `organizeAdminSidebar` …+1 |
-| `FINAL_TRASH_COMPACT_ROBUST_DELETE_20260625` | 2548–2791 | 244 | `loadTrash`, `restoreQuestion`, `permanentDelete`, `restoreSubject`, `permanentDeleteSubject` …+1 |
-| `DISCORD_NOTIFICATIONS_CLIENT_SIDE_PATCH_20260625` | 2792–2827 | 36 | — |
-| `FINAL_DOTS_MENU_FIXED_NO_JITTER_20260625` | 2828–2921 | 94 | `closeUserActionMenuFinal`, `openUserActionMenuFinal`, `openUserAvatarFinal` |
-| `FORCE_REVOKE_IN_USER_DOTS_20260625` | 2922–2970 | 49 | `openUserActionMenuFinal` |
-| `REVOKE_MOVES_USER_TO_APPROVAL_AND_APPROVED_USERS_UI_20260625` | 2971–3012 | 42 | `revokeApproval` |
-| `FINAL_APPROVAL_UI_AND_REMOVE_USER_NOTE_20260625` | 3013–3252 | 240 | `renderUsers`, `renderApprovals`, `__ADMIN_UI_CLEAN_FINAL__` |
-| `FINAL_FIX_REQUESTS_AND_SUBJECT_REQUESTS_20260627` | 3253–3418 | 166 | `loadSubjectRequests`, `filterSubjectRequests`, `previewSubjectRequestQuestionsFixed` |
-| `FIX_ADMIN_REQUEST_IMAGES_FORCE_20260628` | 3419–3533 | 115 | `openAdminReqImageForce`, `compareHTML`, `viewReq` |
-| `COPILOT_ADMIN_RELOAD_DATA_GUARD_20260628` | 3535–3613 | 79 | `__COPILOT_ADMIN_RELOAD_DATA_GUARD_20260628`, `viewHistory` |
-| `COPILOT_DELETE_BAD_SUBJECT_REQUEST_20260629` | 3615–3685 | 71 | `loadSubjectRequests`, `deleteBadSubjectRequest`, `filterSubjectRequests` |
-| `END_COPILOT_DELETE_BAD_SUBJECT_REQUEST_20260629` | 3686–3687 | 2 | — |
-| `MANUAL_ADMIN_RELOAD_ONLY_20260629` | 3688–3691 | 4 | — |
-| `COPILOT_DISABLE_ALL_ADMIN_REALTIME_FINAL_20260629` | 3693–3774 | 82 | `__COPILOT_DISABLE_ALL_ADMIN_REALTIME_FINAL_20260629`, `startAdminRealtime`, `startAdminRealtimeFinal`, `stopAdminRealtime`, `stopAdminRealtimeFinal` |
-| `MOBILE_APPROVAL_LITE_ADMIN_20260629` | 3776–3840 | 65 | `__MOBILE_APPROVAL_LITE_ADMIN_20260629` |
-| `MOBILE_APPROVAL_LITE_ADMIN_20260629_END` | 3841–3842 | 2 | — |
-| `ADMIN_PROFILE_PATCH_DEDUPE_20260629` | 3843–3876 | 34 | `__ADMIN_PROFILE_PATCH_DEDUPE_20260629` |
-| `COPILOT_COMPACT_DRAG_SUBJECT_ORDER_20260630` | 3878–4254 | 377 | `__COPILOT_COMPACT_DRAG_SUBJECT_ORDER_20260630`, `openSubjectFolderAdmin`, `renderSubjectAdminList`, `loadSubjectsAdmin` |
-| `END_COPILOT_COMPACT_DRAG_SUBJECT_ORDER_20260630` | 4255–4256 | 2 | — |
-| `COPILOT_ADMIN_SUBJECT_NEW_BADGE_TOGGLE_20260630` | 4257–4392 | 136 | `__COPILOT_ADMIN_SUBJECT_NEW_BADGE_TOGGLE_20260630`, `openEditSubjectAdmin`, `saveSubjectAdmin` |
-| `END_COPILOT_ADMIN_SUBJECT_NEW_BADGE_TOGGLE_20260630` | 4393–4394 | 2 | — |
-| `COPILOT_SUBJECT_NEW_BADGE_ON_CARD_20260630` | 4395–4639 | 245 | `__COPILOT_SUBJECT_NEW_BADGE_ON_CARD_20260630`, `renderSubjectAdminList`, `openEditSubjectAdmin`, `toggleSubjectNewBadgeFromCard`, `toggleSubjectFolderNewBadge` …+1 |
-| `END_COPILOT_SUBJECT_NEW_BADGE_ON_CARD_20260630` | 4640–4641 | 2 | — |
-| `COPILOT_SUBJECT_NEW_BADGE_FAST_LOAD_20260630` | 4642–4643 | 2 | — |
-| `END_COPILOT_SUBJECT_NEW_BADGE_FAST_LOAD_20260630` | 4644–4645 | 2 | — |
-| `COPILOT_ADMIN_RELOAD_FIX_20260630` | 4646–4786 | 141 | `__COPILOT_ADMIN_RELOAD_FIX_20260630`, `loadAll`, `__adminDashRenderedText` |
-| `END_COPILOT_ADMIN_RELOAD_FIX_20260630` | 4787–4788 | 2 | — |
-| `COPILOT_HIDE_USERS_FROM_EDITOR_20260630` | 4789–4837 | 49 | `__COPILOT_HIDE_USERS_FROM_EDITOR_20260630`, `setPage`, `renderUsers` |
-| `END_COPILOT_HIDE_USERS_FROM_EDITOR_20260630` | 4838–4839 | 2 | — |
-| `COPILOT_POLISH_SUBJECT_ADMIN_LAYOUT_20260630` | 4840–5056 | 217 | `__COPILOT_POLISH_SUBJECT_ADMIN_LAYOUT_20260630` |
-| `END_COPILOT_POLISH_SUBJECT_ADMIN_LAYOUT_20260630` | 5057–5058 | 2 | — |
-| `COPILOT_SUBJECT_ADMIN_NO_OVERLAP_RUNTIME_20260630` | 5059–5158 | 100 | `__COPILOT_SUBJECT_ADMIN_NO_OVERLAP_RUNTIME_20260630` |
-| `END_COPILOT_SUBJECT_ADMIN_NO_OVERLAP_RUNTIME_20260630` | 5159–5160 | 2 | — |
-| `COPILOT_FIX_TRASH_PERMANENT_DELETE_SUBJECT_API_20260630` | 5161–5223 | 63 | `__COPILOT_FIX_TRASH_PERMANENT_DELETE_SUBJECT_API_20260630`, `permanentDeleteSubject`, `permanentDelete` |
-| `END_COPILOT_FIX_TRASH_PERMANENT_DELETE_SUBJECT_API_20260630` | 5224–5225 | 2 | — |
-| `COPILOT_EDITOR_ACCESS_HIDE_20260630` | 5226–5388 | 163 | `__COPILOT_EDITOR_ACCESS_HIDE_20260630`, `hideDeniedMenus`, `setPage`, `loadProfile`, `loadAll` |
-| `END_COPILOT_EDITOR_ACCESS_HIDE_20260630` | 5389–5390 | 2 | — |
-| `COPILOT_KEEP_ADMIN_TAB_AFTER_RESET_20260630` | 5391–5466 | 76 | `__COPILOT_KEEP_ADMIN_TAB_AFTER_RESET_20260630`, `setPage` |
-| `END_COPILOT_KEEP_ADMIN_TAB_AFTER_RESET_20260630` | 5467–5468 | 2 | — |
-| `COPILOT_ADMIN_REG_MODE_AND_PAGE_RESTORE_FIX_20260630` | 5469–5695 | 227 | `__COPILOT_ADMIN_REG_MODE_AND_PAGE_RESTORE_FIX_20260630`, `loadRegistrationMode`, `setRegistrationMode`, `setPage`, `loadAll` |
-| `COPILOT_ADMIN_IMAGE_PERSIST_TURSO_20260630` | 5697–5724 | 28 | `__COPILOT_ADMIN_IMAGE_PERSIST_TURSO_20260630`, `approve` |
-| `COPILOT_ADMIN_IMAGE_CACHE_REALTIME_FINAL_20260630` | 5726–5730 | 5 | `__COPILOT_ADMIN_IMAGE_CACHE_REALTIME_FINAL_20260630` |
-| `LH_UNIFIED_SINGLE_FETCH_INTERCEPTOR_20260726` | 5731–5878 | 148 | `__LH_UNIFIED_FETCH_INSTALLED`, `lhToken`, `__lhAccessToken`, `fetch` |
-| `FIX_ADMIN_AUTO_REFRESH_20260701` | 5978–6074 | 97 | `__FIX_ADMIN_AUTO_REFRESH_20260701`, `__adminDashRenderedText` |
-| `OPEN_ADMIN_REQUESTS_FROM_LEARNING_BELL_20260719` | 6078–6084 | 7 | — |
-| `END_OPEN_ADMIN_REQUESTS_FROM_LEARNING_BELL_20260719` | 6085–6086 | 2 | — |
-| `DEVICE_HISTORY_AND_DOTS_MENU_FINAL_20260725` | 6087–6322 | 236 | `closeUserActionMenuFinal`, `showUserDeviceHistoryModal`, `showUserSubjectByDeviceModal`, `openUserActionMenuFinal`, `notifyReloadUser` …+2 |
-| `ADMIN_TWO_TIERS_AND_DISCORD_TOGGLES_20260729` | 6324–6599 | 276 | `__ADMIN_TWO_TIERS_20260729`, `__lhAdminTier`, `isSystemAdmin`, `saveReleaseNotes`, `renderReleaseNotesSettings` …+3 |
-| `ADMIN_CUSTOMIZE_ADD_SUBJECT_AI_PROMPT_20260730` | 6600–6780 | 181 | `adjustAdminAiPromptHeight`, `loadAddSubjectAiPrompt`, `saveAdminAiPrompt`, `resetAdminAiPrompt`, `copyAdminAiPrompt` …+4 |
+| `FIX_ADMIN_DASHBOARD_DEDUP_20260705` | 204–257 | 54 | `__FIX_ADMIN_DASHBOARD_DEDUP_20260705`, `__adminDashboardBusy`, `__adminDashboardLoadedOnce`, `__invalidateAdminDashboardCache`, `__fetchAdminDashboardJSON` |
+| `CHỈ_THÔNG_BÁO_LOGIN_KHI_KHÔNG_PHẢI_LÀ_F5` | 911–1692 | 782 | `adminAction`, `updateRequestBadge`, `lhCloseModal` |
+| `F5_SUPABASE_MICRO_CACHE_20260629` | 1693–1791 | 99 | `__F5_SUPABASE_MICRO_CACHE_20260629` |
+| `FINAL_ADMIN_HISTORY_SHOW_EDITOR_EMAIL_20260613` | 1795–1891 | 97 | `renderHistory`, `viewHistoryFixed` |
+| `ACCESS_APPROVAL_ADMIN_20260624` | 1892–2013 | 122 | `filterApprovals`, `approveUser`, `rejectUser` |
+| `SUBJECT_MANAGEMENT_20260625` | 2014–2189 | 176 | `deleteSubjectAdmin`, `approveSubjectRequest`, `rejectSubjectRequest` |
+| `HOTFIX_UX/UI_ADMIN:_NOTIFICATIONS_&_TRASH_OVERLAPPING_REPAIR` | 2190–2302 | 113 | — |
+| `FINAL_ADMIN_SUBJECT_EDIT_20260625` | 2303–2750 | 448 | `loadSubjectsAdmin`, `renderSubjectAdminList`, `openEditSubjectAdmin`, `saveSubjectAdmin`, `organizeAdminSidebar` …+1 |
+| `FINAL_TRASH_COMPACT_ROBUST_DELETE_20260625` | 2751–2994 | 244 | `loadTrash`, `restoreQuestion`, `permanentDelete`, `restoreSubject`, `permanentDeleteSubject` …+1 |
+| `DISCORD_NOTIFICATIONS_CLIENT_SIDE_PATCH_20260625` | 2995–3030 | 36 | — |
+| `FINAL_DOTS_MENU_FIXED_NO_JITTER_20260625` | 3031–3124 | 94 | `closeUserActionMenuFinal`, `openUserActionMenuFinal`, `openUserAvatarFinal` |
+| `FORCE_REVOKE_IN_USER_DOTS_20260625` | 3125–3173 | 49 | `openUserActionMenuFinal` |
+| `REVOKE_MOVES_USER_TO_APPROVAL_AND_APPROVED_USERS_UI_20260625` | 3174–3215 | 42 | `revokeApproval` |
+| `FINAL_APPROVAL_UI_AND_REMOVE_USER_NOTE_20260625` | 3216–3455 | 240 | `renderUsers`, `renderApprovals`, `__ADMIN_UI_CLEAN_FINAL__` |
+| `FINAL_FIX_REQUESTS_AND_SUBJECT_REQUESTS_20260627` | 3456–3621 | 166 | `loadSubjectRequests`, `filterSubjectRequests`, `previewSubjectRequestQuestionsFixed` |
+| `FIX_ADMIN_REQUEST_IMAGES_FORCE_20260628` | 3622–3736 | 115 | `openAdminReqImageForce`, `compareHTML`, `viewReq` |
+| `COPILOT_ADMIN_RELOAD_DATA_GUARD_20260628` | 3738–3816 | 79 | `__COPILOT_ADMIN_RELOAD_DATA_GUARD_20260628`, `viewHistory` |
+| `COPILOT_DELETE_BAD_SUBJECT_REQUEST_20260629` | 3818–3888 | 71 | `loadSubjectRequests`, `deleteBadSubjectRequest`, `filterSubjectRequests` |
+| `END_COPILOT_DELETE_BAD_SUBJECT_REQUEST_20260629` | 3889–3890 | 2 | — |
+| `MANUAL_ADMIN_RELOAD_ONLY_20260629` | 3891–3894 | 4 | — |
+| `COPILOT_DISABLE_ALL_ADMIN_REALTIME_FINAL_20260629` | 3896–3977 | 82 | `__COPILOT_DISABLE_ALL_ADMIN_REALTIME_FINAL_20260629`, `startAdminRealtime`, `startAdminRealtimeFinal`, `stopAdminRealtime`, `stopAdminRealtimeFinal` |
+| `MOBILE_APPROVAL_LITE_ADMIN_20260629` | 3979–4043 | 65 | `__MOBILE_APPROVAL_LITE_ADMIN_20260629` |
+| `MOBILE_APPROVAL_LITE_ADMIN_20260629_END` | 4044–4045 | 2 | — |
+| `ADMIN_PROFILE_PATCH_DEDUPE_20260629` | 4046–4079 | 34 | `__ADMIN_PROFILE_PATCH_DEDUPE_20260629` |
+| `COPILOT_COMPACT_DRAG_SUBJECT_ORDER_20260630` | 4081–4460 | 380 | `__COPILOT_COMPACT_DRAG_SUBJECT_ORDER_20260630`, `openSubjectFolderAdmin`, `renderSubjectAdminList`, `loadSubjectsAdmin` |
+| `END_COPILOT_COMPACT_DRAG_SUBJECT_ORDER_20260630` | 4461–4462 | 2 | — |
+| `COPILOT_ADMIN_SUBJECT_NEW_BADGE_TOGGLE_20260630` | 4463–4598 | 136 | `__COPILOT_ADMIN_SUBJECT_NEW_BADGE_TOGGLE_20260630`, `openEditSubjectAdmin`, `saveSubjectAdmin` |
+| `END_COPILOT_ADMIN_SUBJECT_NEW_BADGE_TOGGLE_20260630` | 4599–4600 | 2 | — |
+| `COPILOT_SUBJECT_NEW_BADGE_ON_CARD_20260630` | 4601–4845 | 245 | `__COPILOT_SUBJECT_NEW_BADGE_ON_CARD_20260630`, `renderSubjectAdminList`, `openEditSubjectAdmin`, `toggleSubjectNewBadgeFromCard`, `toggleSubjectFolderNewBadge` …+1 |
+| `END_COPILOT_SUBJECT_NEW_BADGE_ON_CARD_20260630` | 4846–4847 | 2 | — |
+| `COPILOT_SUBJECT_NEW_BADGE_FAST_LOAD_20260630` | 4848–4849 | 2 | — |
+| `END_COPILOT_SUBJECT_NEW_BADGE_FAST_LOAD_20260630` | 4850–4851 | 2 | — |
+| `COPILOT_ADMIN_RELOAD_FIX_20260630` | 4852–4992 | 141 | `__COPILOT_ADMIN_RELOAD_FIX_20260630`, `loadAll`, `__adminDashRenderedText` |
+| `END_COPILOT_ADMIN_RELOAD_FIX_20260630` | 4993–4994 | 2 | — |
+| `COPILOT_HIDE_USERS_FROM_EDITOR_20260630` | 4995–5043 | 49 | `__COPILOT_HIDE_USERS_FROM_EDITOR_20260630`, `setPage`, `renderUsers` |
+| `END_COPILOT_HIDE_USERS_FROM_EDITOR_20260630` | 5044–5045 | 2 | — |
+| `COPILOT_POLISH_SUBJECT_ADMIN_LAYOUT_20260630` | 5046–5262 | 217 | `__COPILOT_POLISH_SUBJECT_ADMIN_LAYOUT_20260630` |
+| `END_COPILOT_POLISH_SUBJECT_ADMIN_LAYOUT_20260630` | 5263–5264 | 2 | — |
+| `COPILOT_SUBJECT_ADMIN_NO_OVERLAP_RUNTIME_20260630` | 5265–5364 | 100 | `__COPILOT_SUBJECT_ADMIN_NO_OVERLAP_RUNTIME_20260630` |
+| `END_COPILOT_SUBJECT_ADMIN_NO_OVERLAP_RUNTIME_20260630` | 5365–5366 | 2 | — |
+| `COPILOT_FIX_TRASH_PERMANENT_DELETE_SUBJECT_API_20260630` | 5367–5429 | 63 | `__COPILOT_FIX_TRASH_PERMANENT_DELETE_SUBJECT_API_20260630`, `permanentDeleteSubject`, `permanentDelete` |
+| `END_COPILOT_FIX_TRASH_PERMANENT_DELETE_SUBJECT_API_20260630` | 5430–5431 | 2 | — |
+| `COPILOT_EDITOR_ACCESS_HIDE_20260630` | 5432–5594 | 163 | `__COPILOT_EDITOR_ACCESS_HIDE_20260630`, `hideDeniedMenus`, `setPage`, `loadProfile`, `loadAll` |
+| `END_COPILOT_EDITOR_ACCESS_HIDE_20260630` | 5595–5596 | 2 | — |
+| `COPILOT_KEEP_ADMIN_TAB_AFTER_RESET_20260630` | 5597–5672 | 76 | `__COPILOT_KEEP_ADMIN_TAB_AFTER_RESET_20260630`, `setPage` |
+| `END_COPILOT_KEEP_ADMIN_TAB_AFTER_RESET_20260630` | 5673–5674 | 2 | — |
+| `COPILOT_ADMIN_REG_MODE_AND_PAGE_RESTORE_FIX_20260630` | 5675–5901 | 227 | `__COPILOT_ADMIN_REG_MODE_AND_PAGE_RESTORE_FIX_20260630`, `loadRegistrationMode`, `setRegistrationMode`, `setPage`, `loadAll` |
+| `COPILOT_ADMIN_IMAGE_PERSIST_TURSO_20260630` | 5903–5930 | 28 | `__COPILOT_ADMIN_IMAGE_PERSIST_TURSO_20260630`, `approve` |
+| `COPILOT_ADMIN_IMAGE_CACHE_REALTIME_FINAL_20260630` | 5932–5936 | 5 | `__COPILOT_ADMIN_IMAGE_CACHE_REALTIME_FINAL_20260630` |
+| `LH_UNIFIED_SINGLE_FETCH_INTERCEPTOR_20260726` | 5937–6260 | 324 | `__LH_UNIFIED_FETCH_INSTALLED`, `__lhLastRefreshOutcome`, `__lhRefreshAccessToken`, `lhToken`, `__lhAccessToken` …+1 |
+| `FIX_ADMIN_AUTO_REFRESH_20260701` | 6360–6456 | 97 | `__FIX_ADMIN_AUTO_REFRESH_20260701`, `__adminDashRenderedText` |
+| `OPEN_ADMIN_REQUESTS_FROM_LEARNING_BELL_20260719` | 6460–6466 | 7 | — |
+| `END_OPEN_ADMIN_REQUESTS_FROM_LEARNING_BELL_20260719` | 6467–6468 | 2 | — |
+| `DEVICE_HISTORY_AND_DOTS_MENU_FINAL_20260725` | 6469–6704 | 236 | `closeUserActionMenuFinal`, `showUserDeviceHistoryModal`, `showUserSubjectByDeviceModal`, `openUserActionMenuFinal`, `notifyReloadUser` …+2 |
+| `ADMIN_TWO_TIERS_AND_DISCORD_TOGGLES_20260729` | 6706–6981 | 276 | `__ADMIN_TWO_TIERS_20260729`, `__lhAdminTier`, `isSystemAdmin`, `saveReleaseNotes`, `renderReleaseNotesSettings` …+3 |
+| `ADMIN_CUSTOMIZE_ADD_SUBJECT_AI_PROMPT_20260730` | 6982–7162 | 181 | `adjustAdminAiPromptHeight`, `loadAddSubjectAiPrompt`, `saveAdminAiPrompt`, `resetAdminAiPrompt`, `copyAdminAiPrompt` …+4 |
 
 ### Khóa localStorage
 

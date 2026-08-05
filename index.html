@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Learning Hub</title>
   <link rel="icon" type="image/png" href="Logo.png?v=2">
-  <link rel="stylesheet" href="app.css?v=20260728a">
+  <link rel="stylesheet" href="app.css?v=20260806c">
   <link rel="stylesheet" href="landing.css">
 </head>
 
@@ -295,7 +295,10 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="landing.js"></script>
-  <script src="app.js?v=20260726_v9999999"></script>
+  <!-- IMPORT_QUALITY_GATE_20260805: chuỗi ?v= này là cache-buster DUY NHẤT của bundle. Nó bị đứng
+       ở 20260726 suốt nhiều lần deploy nên browser cũ giữ mãi app.js cũ — hai thẻ "chọn hướng" của
+       bước 2 đã có trong build mà người dùng không thấy. Sửa src/ xong thì BUMP dòng này + app.css. -->
+  <script src="app.js?v=20260806d"></script>
 </body>
 
 </html>

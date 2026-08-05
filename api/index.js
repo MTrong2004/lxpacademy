@@ -8,7 +8,7 @@
 export const config = { runtime: 'edge' };
 
 import { json } from './lib/db.js';
-import { verifyUser } from './lib/auth.js';
+import { verifyUserDetailed } from './lib/auth.js';
 import { handleSubjects } from './controllers/subjects.js';
 import { handleQuestions } from './controllers/questions.js';
 import { handleProfile } from './controllers/profile.js';
@@ -16,6 +16,8 @@ import { handleEditRequests, handleMyEditRequests, handleStaffEditRequests } fro
 import { handleSettings } from './controllers/settings.js';
 import { handleNotify } from './controllers/notify.js';
 import { handleAdminDashboard, handleAdminAction } from './controllers/admin.js';
+// BOOKMARK_SYNC_PER_PART_20260806: "Lưu câu 🔖" đồng bộ giữa các thiết bị.
+import { handleBookmarks } from './controllers/bookmarks.js';
 import { postServerErrorEmbed } from './lib/discord.js';
 
 export default async function handler(req) {
@@ -23,13 +25,36 @@ export default async function handler(req) {
   const path = parsedUrl.pathname.replace('/api/', '').split('/')[0];
 
   try {
-    const NEEDS_AUTH = new Set(['subjects', 'questions', 'profile', 'edit-requests', 'my-edit-requests', 'staff-edit-requests', 'admin-dashboard', 'admin-action', 'notify']);
+    const NEEDS_AUTH = new Set(['subjects', 'questions', 'profile', 'edit-requests', 'my-edit-requests', 'staff-edit-requests', 'admin-dashboard', 'admin-action', 'notify', 'bookmarks']);
     let authUser = null;
     if (NEEDS_AUTH.has(path)) {
-      authUser = await verifyUser(req);
-      // III: thiếu token / token không hợp lệ -> 401 UNAUTHORIZED (có code để
-      // interceptor phía client phân biệt được với lỗi hệ thống).
-      if (!authUser) return json({ error: 'Phiên đăng nhập không hợp lệ', code: 'UNAUTHORIZED' }, 401);
+      const verified = await verifyUserDetailed(req);
+      authUser = verified.user;
+      if (!authUser) {
+        /*
+          AUTH_VERIFY_INCONCLUSIVE_20260805: hai kết cục khác nhau, đừng gộp lại.
+          - AUTH_CHECK_FAILED = không hỏi được Supabase (mạng/timeout/5xx/429). Client
+            phải hiện "thử lại" và GIỮ NGUYÊN phiên đăng nhập -> 503, KHÔNG phải 401.
+            Trả 401 ở đây là tự tay đăng xuất người dùng còn phiên tốt nguyên.
+          - UNAUTHORIZED = thiếu token / Supabase khẳng định token sai -> 401 như cũ.
+        */
+        if (verified.code === 'AUTH_CHECK_FAILED') {
+          // Cả hệ thống không kết luận được quyền: đúng loại lỗi cần biết ngay.
+          // postServerErrorEmbed tự gộp tin trùng (1 tin / 5 phút / chữ ký lỗi).
+          try {
+            await postServerErrorEmbed(path + ' (verifyUser)', verified.error || new Error('AUTH_CHECK_FAILED'));
+          } catch (notifyErr) {
+            console.warn('[server_error discord] không gửi được:', notifyErr?.message || notifyErr);
+          }
+          return json(
+            { error: 'Không xác minh được phiên đăng nhập, vui lòng thử lại.', code: 'AUTH_CHECK_FAILED' },
+            503
+          );
+        }
+        // III: thiếu token / token không hợp lệ -> 401 UNAUTHORIZED (có code để
+        // interceptor phía client phân biệt được với lỗi hệ thống).
+        return json({ error: 'Phiên đăng nhập không hợp lệ', code: 'UNAUTHORIZED' }, 401);
+      }
     }
 
     switch (path) {
@@ -53,6 +78,8 @@ export default async function handler(req) {
         return await handleAdminDashboard(req, authUser);
       case 'admin-action':
         return await handleAdminAction(req, authUser);
+      case 'bookmarks':
+        return await handleBookmarks(req, authUser);
       default:
         return json({ error: 'Endpoint not found', code: 'NOT_FOUND' }, 404);
     }

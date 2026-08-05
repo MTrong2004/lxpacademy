@@ -3,3 +3,19 @@
 node_modules/
 dist/
 .dev-cache/
+
+# Bản sao repo do git worktree tạo — mỗi cái ~170MB, không bao giờ commit
+.claude/worktrees/
+
+# .claude/skills là JUNCTION trỏ tới .agents/skills (nguồn duy nhất, đã commit).
+# Không ignore thì git đếm 119 skill hai lần.
+.claude/skills/
+
+# Ảnh/video minh hoạ của demo skill — nặng ~74MB, không cần để skill chạy.
+# SKILL.md chỉ trỏ tới demo/index.html và demo/PROMPT.md (đều là code, vẫn commit).
+.agents/skills/**/demo/**/*.jpg
+.agents/skills/**/demo/**/*.jpeg
+.agents/skills/**/demo/**/*.png
+.agents/skills/**/demo/**/*.webp
+.agents/skills/**/demo/**/*.gif
+.agents/skills/**/demo/**/*.mp4

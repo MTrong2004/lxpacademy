@@ -43,9 +43,71 @@ export function installBookmarks() {
     return localStorage.getItem('learninghub_subject_code_merged_v1') || 'default_subject';
   }
 
-  function bookmarkKey() {
-    return BOOKMARK_PREFIX + getSubjectCode();
+  /*
+    BOOKMARK_SYNC_PER_PART_20260806 — một khoá localStorage cho TẤT CẢ học phần.
+
+    Bản cũ có hai khoá và chính cặp đó là lỗi: `lh_starred_v1_<MÃ>` (đúng, theo từng phần) và
+    `lh_starred_v1_backup_all`. `saveBookmarks` ghi ĐÈ backup_all bằng danh sách của môn đang
+    mở, còn `loadBookmarks` lại HỢP backup_all vào mọi môn — mà `getQKey` là `num_<số câu>` và
+    mọi phần đều đánh số từ 1, nên lưu câu 5 ở MLN122 xong mở MLN122_2 là câu 5 ở đó cũng hiện
+    "đã lưu". Đúng triệu chứng "lưu chung về tổng một môn".
+
+    Nay: `lh_starred_v2` = { "MLN122": ["num_5"], "MLN122_2": [] } — mỗi mã môn (tức mỗi HỌC
+    PHẦN) một ô riêng, không có ô dùng chung nào để lẫn sang nhau.
+  */
+  const STORE_KEY = 'lh_starred_v2';
+  const MIGRATED_FLAG = 'lh_starred_v2_migrated';
+  const PUSHED_FLAG = 'learninghub_bookmarks_pushed_v1';
+
+  function readStore() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+      return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    } catch (e) {
+      return {};
+    }
   }
+
+  function writeStore(map) {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(map || {}));
+    } catch (e) {
+      lhWarn('BOOKMARK_SYNC_PER_PART_20260806', e);
+    }
+  }
+
+  /**
+   * Gom `lh_starred_v1_<MÃ>` cũ vào khoá v2, một lần cho mỗi thiết bị.
+   * KHÔNG đọc `lh_starred_v1_backup_all`: nó là bản trộn lẫn của mọi môn, nhặt vào là bê
+   * nguyên cái lỗi cũ sang khoá mới. Các khoá theo mã môn mới là bản đúng (saveBookmarks
+   * luôn ghi cả hai chỗ nên không mất gì).
+   */
+  function migrateLegacyStore() {
+    if (localStorage.getItem(MIGRATED_FLAG) === '1') return;
+    const map = readStore();
+    const legacyKeys = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(BOOKMARK_PREFIX)) legacyKeys.push(k);
+      }
+      legacyKeys.forEach(k => {
+        if (k === 'lh_starred_v1_backup_all') return;
+        const code = k.slice(BOOKMARK_PREFIX.length).trim().toUpperCase();
+        if (!code) return;
+        const arr = JSON.parse(localStorage.getItem(k) || '[]');
+        if (!Array.isArray(arr) || !arr.length) return;
+        const merged = new Set([...(map[code] || []), ...arr.map(String)]);
+        map[code] = [...merged];
+      });
+      writeStore(map);
+      legacyKeys.forEach(k => localStorage.removeItem(k));
+      localStorage.setItem(MIGRATED_FLAG, '1');
+    } catch (e) {
+      lhWarn('BOOKMARK_SYNC_PER_PART_20260806', e);
+    }
+  }
+  migrateLegacyStore();
 
   // Định danh nhất quán cho từng câu hỏi (ưu tiên num, fallback id)
   function getQKey(q) {
@@ -57,29 +119,93 @@ export function installBookmarks() {
     return null;
   }
 
+  /** Bookmark của ĐÚNG học phần đang mở. Không hợp thêm ô nào khác. */
   function loadBookmarks() {
-    try {
-      const primaryKey = bookmarkKey();
-      const primaryArr = JSON.parse(localStorage.getItem(primaryKey) || '[]');
-      const backupArr = JSON.parse(localStorage.getItem('lh_starred_v1_backup_all') || '[]');
-      const merged = new Set(
-        [...(Array.isArray(primaryArr) ? primaryArr : []), ...(Array.isArray(backupArr) ? backupArr : [])].map(x =>
-          String(x),
-        ),
-      );
-      return merged;
-    } catch (e) {
-      return new Set();
-    }
+    const arr = readStore()[getSubjectCode().toUpperCase()];
+    return new Set(Array.isArray(arr) ? arr.map(String) : []);
   }
 
   function saveBookmarks(set) {
+    const map = readStore();
+    map[getSubjectCode().toUpperCase()] = [...set].map(x => String(x));
+    writeStore(map);
+  }
+
+  /*
+    Đồng bộ máy tính ↔ điện thoại (`/api/bookmarks`). localStorage tụt xuống vai bản đệm:
+    vẽ ngay lúc mở web, rồi bản của server đè lên khi tải xong.
+
+    Lượt đầu trên mỗi thiết bị thì HỢP local với server rồi đẩy phần server chưa có lên
+    (`merge`) — bookmark lưu từ trước khi có tính năng đồng bộ không được mất. Từ lượt sau
+    server là bản thật và ĐÈ local, để "bỏ lưu" ở điện thoại lan được sang máy tính thay vì
+    bị bản local cũ hồi sinh.
+  */
+  let syncing = false;
+
+  async function syncBookmarks() {
+    if (syncing) return false;
+    syncing = true;
     try {
-      const arr = [...set].map(x => String(x));
-      localStorage.setItem(bookmarkKey(), JSON.stringify(arr));
-      localStorage.setItem('lh_starred_v1_backup_all', JSON.stringify(arr));
+      const res = await fetch('/api/bookmarks', { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const out = await res.json();
+      const server = out?.data && typeof out.data === 'object' ? out.data : {};
+      const firstRun = localStorage.getItem(PUSHED_FLAG) !== '1';
+
+      if (!firstRun) {
+        writeStore(server);
+        return true;
+      }
+
+      const local = readStore();
+      const merged = {};
+      const onlyLocal = {};
+      new Set([...Object.keys(local), ...Object.keys(server)]).forEach(code => {
+        const s = new Set((server[code] || []).map(String));
+        const l = (local[code] || []).map(String);
+        const missing = l.filter(k => !s.has(k));
+        if (missing.length) onlyLocal[code] = missing;
+        merged[code] = [...new Set([...s, ...l])];
+      });
+      writeStore(merged);
+
+      if (Object.keys(onlyLocal).length) {
+        const push = await fetch('/api/bookmarks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify({ merge: onlyLocal }),
+        });
+        // Đẩy thất bại thì KHÔNG đặt cờ: lần mở web sau thử lại, tránh mất bookmark cũ.
+        if (!push.ok) throw new Error('merge HTTP ' + push.status);
+      }
+      localStorage.setItem(PUSHED_FLAG, '1');
+      return true;
     } catch (e) {
-      lhWarn('BOOKMARK_QUESTIONS_FEATURE_20260726', e);
+      // Mất mạng / 401 / server lỗi: giữ nguyên bản trên máy, vẫn xem lại được câu đã lưu.
+      lhWarn('BOOKMARK_SYNC_PER_PART_20260806', e);
+      return false;
+    } finally {
+      syncing = false;
+    }
+  }
+  window.__lhSyncBookmarks = syncBookmarks;
+
+  /** Ghi một thay đổi lên server. Lỗi thì chỉ cảnh báo — bản local đã đổi rồi. */
+  function pushBookmark(key, on) {
+    try {
+      fetch('/api/bookmarks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({ subject_code: getSubjectCode().toUpperCase(), q_key: String(key), on: !!on }),
+      })
+        .then(res => {
+          if (!res.ok) lhWarn('BOOKMARK_SYNC_PER_PART_20260806', new Error('HTTP ' + res.status));
+        })
+        .catch(e => lhWarn('BOOKMARK_SYNC_PER_PART_20260806', e));
+    } catch (e) {
+      lhWarn('BOOKMARK_SYNC_PER_PART_20260806', e);
     }
   }
 
@@ -104,6 +230,7 @@ export function installBookmarks() {
       added = true;
     }
     saveBookmarks(s);
+    pushBookmark(key, added);
     return added;
   }
 
@@ -297,26 +424,9 @@ export function installBookmarks() {
     );
   }
 
-  function init() {
-    addBookmarkButtonToCard();
-    bindLibraryClickEvents();
-    if (typeof window.renderUnified === 'function') {
-      try {
-        window.renderUnified();
-      } catch (e) {
-        lhWarn('BOOKMARK_QUESTIONS_FEATURE_20260726', e);
-      }
-    }
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => setTimeout(init, 100));
-  } else {
-    setTimeout(init, 100);
-  }
-
-  window.addEventListener('lh:subject-changed', () => {
-    setTimeout(updateBookmarkBtn, 100);
+  /** Vẽ lại nút 🔖 trên flashcard + danh sách "Đã lưu" của thư viện. */
+  function repaintBookmarks() {
+    updateBookmarkBtn();
     if (typeof window.renderUnified === 'function') {
       try {
         window.renderUnified();
@@ -330,6 +440,42 @@ export function installBookmarks() {
         lhWarn('BOOKMARK_QUESTIONS_FEATURE_20260726', e);
       }
     }
+  }
+
+  function init() {
+    addBookmarkButtonToCard();
+    bindLibraryClickEvents();
+    if (typeof window.renderUnified === 'function') {
+      try {
+        window.renderUnified();
+      } catch (e) {
+        lhWarn('BOOKMARK_QUESTIONS_FEATURE_20260726', e);
+      }
+    }
+    // BOOKMARK_SYNC_PER_PART_20260806: lấy bản của server rồi vẽ lại. Chạy sau lần vẽ đầu nên
+    // người dùng thấy bookmark trên máy ngay, không phải chờ mạng.
+    syncBookmarks().then(changed => {
+      if (changed) repaintBookmarks();
+    });
+    // Máy vừa có mạng lại (chế độ ngoại tuyến của LH_OFFLINE_GRACE_20260806) thì thử đồng bộ.
+    window.addEventListener('online', () => {
+      syncBookmarks().then(changed => {
+        if (changed) repaintBookmarks();
+      });
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => setTimeout(init, 100));
+  } else {
+    setTimeout(init, 100);
+  }
+
+  // Đổi học phần = đọc ô khác trong `lh_starred_v2`, chỉ cần vẽ lại (một lần GET ở init đã
+  // mang về bookmark của MỌI phần nên không phải gọi server lần nữa).
+  window.addEventListener('lh:subject-changed', () => {
+    setTimeout(updateBookmarkBtn, 100);
+    repaintBookmarks();
   });
 }
 // ===== BOOKMARK_QUESTIONS_FEATURE_20260726 END =====
