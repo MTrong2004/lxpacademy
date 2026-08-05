@@ -200,7 +200,7 @@ export async function handleProfile(req, authUser) {
     const hasSubjectInBody = current_subject !== undefined
       && current_subject !== null
       && String(current_subject).trim() !== '';
-    const subject = hasSubjectInBody ? String(current_subject).trim().toUpperCase() : null;
+    const subject = hasSubjectInBody ? String(current_subject).trim() : null;
 
     await ensureProfileColumns();
 

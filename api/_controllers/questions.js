@@ -56,9 +56,10 @@ export async function handleQuestions(req, authUser, parsedUrl) {
     return json(data);
   }
 
-  const subject = (parsedUrl.searchParams.get('subject_code') || '').trim().toUpperCase();
-  if (subject && !fresh) {
-    const cached = _questionsCache.get(subject);
+  const rawSubject = (parsedUrl.searchParams.get('subject_code') || '').trim();
+  const subjectKey = rawSubject.toUpperCase();
+  if (rawSubject && !fresh) {
+    const cached = _questionsCache.get(subjectKey);
     if (cached && Date.now() - cached.at < _QUESTIONS_CACHE_TTL) return json(cached.data);
   }
 
@@ -69,9 +70,9 @@ export async function handleQuestions(req, authUser, parsedUrl) {
              where coalesce(is_active, 1) = 1`;
   const args = [];
 
-  if (subject) {
-    sql += ' and subject_code = ?';
-    args.push(subject);
+  if (rawSubject) {
+    sql += ' and upper(trim(subject_code)) = upper(trim(?))';
+    args.push(rawSubject);
   }
   sql += ' order by subject_code asc, num asc';
 
@@ -86,8 +87,8 @@ export async function handleQuestions(req, authUser, parsedUrl) {
     }))
   };
 
-  if (subject) {
-    _questionsCache.set(subject, { data, at: Date.now() });
+  if (rawSubject) {
+    _questionsCache.set(subjectKey, { data, at: Date.now() });
   }
   return json(data);
 }

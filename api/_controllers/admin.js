@@ -693,15 +693,15 @@ export async function handleAdminAction(req, authUser) {
     case 'add_subject': {
       const { code, name, description, cover, sort_order, questions } = payload;
       
-      let finalCode = code.toUpperCase().trim();
+      let finalCode = String(code || '').trim();
       const existed = await db.execute({
-        sql: "select code from subjects where code = ? or code like ?",
+        sql: "select code from subjects where upper(trim(code)) = upper(trim(?)) or upper(trim(code)) like upper(trim(?))",
         args: [finalCode, `${finalCode}_%`]
       });
       const usedCodes = new Set((existed.rows || []).map(x => String(x.code || '').toUpperCase()));
-      if (usedCodes.has(finalCode)) {
+      if (usedCodes.has(finalCode.toUpperCase())) {
         let n = 2;
-        while (usedCodes.has(`${finalCode}_${n}`)) n++;
+        while (usedCodes.has(`${finalCode.toUpperCase()}_${n}`)) n++;
         finalCode = `${finalCode}_${n}`;
       }
 
@@ -771,14 +771,14 @@ export async function handleAdminAction(req, authUser) {
     }
 
     case 'rename_subject_code': {
-      const oc = String(payload.old_code || '').toUpperCase().trim();
-      const nc = String(payload.new_code || '').toUpperCase().trim();
+      const oc = String(payload.old_code || '').trim();
+      const nc = String(payload.new_code || '').trim();
       if (!oc || !nc) return json({ error: 'Thiếu mã môn' }, 400);
-      const oldRes = await db.execute({ sql: 'select * from subjects where code = ?', args: [oc] });
+      const oldRes = await db.execute({ sql: 'select * from subjects where upper(trim(code)) = upper(trim(?))', args: [oc] });
       const oldSub = oldRes.rows?.[0];
       if (!oldSub) return json({ error: 'Không tìm thấy môn ' + oc }, 404);
-      if (nc !== oc) {
-        const exist = await db.execute({ sql: 'select id from subjects where code = ?', args: [nc] });
+      if (nc.toUpperCase() !== oc.toUpperCase()) {
+        const exist = await db.execute({ sql: 'select id from subjects where upper(trim(code)) = upper(trim(?))', args: [nc] });
         if (exist.rows && exist.rows.length) return json({ error: 'Mã môn ' + nc + ' đã tồn tại' }, 400);
       }
       await db.execute({
@@ -787,8 +787,8 @@ export async function handleAdminAction(req, authUser) {
               on conflict(code) do update set name = excluded.name, description = excluded.description`,
         args: [nc, payload.name || oldSub.name, payload.description || oldSub.description || '', oldSub.cover || '', oldSub.sort_order || 0, now]
       });
-      await db.execute({ sql: 'update questions set subject_code = ? where subject_code = ?', args: [nc, oc] });
-      if (nc !== oc) await db.execute({ sql: 'delete from subjects where code = ?', args: [oc] });
+      await db.execute({ sql: 'update questions set subject_code = ? where upper(trim(subject_code)) = upper(trim(?))', args: [nc, oc] });
+      if (nc.toUpperCase() !== oc.toUpperCase()) await db.execute({ sql: 'delete from subjects where upper(trim(code)) = upper(trim(?))', args: [oc] });
       await logAdminAction('rename_subject_code', 'subjects', nc, { old_code: oc, new_code: nc });
       return json({ ok: true });
     }
@@ -1026,10 +1026,11 @@ export async function handleAdminAction(req, authUser) {
       const request = reqRes.rows?.[0];
       if (!request) return json({ error: 'Request not found' }, 404);
 
+      const reqCode = String(request.code || '').trim();
       await db.execute({
         sql: `insert into subjects (code, name, description, cover, sort_order, is_active, created_at)
               values (?, ?, ?, ?, 99, 1, ?)`,
-        args: [request.code.toUpperCase().trim(), request.name, request.description || '', subjectCoverWithNewBadge('', true), now]
+        args: [reqCode, request.name, request.description || '', subjectCoverWithNewBadge('', true), now]
       });
 
       const qList = safeParse(request.questions_data, []);
@@ -1043,7 +1044,7 @@ export async function handleAdminAction(req, authUser) {
             sql: `insert into questions (subject_code, num, question, options, answer, answer_text, images, is_active, has_image, error_risk, error_risk_reason, created_at, updated_at)
                   values (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
             args: [
-              request.code.toUpperCase().trim(),
+              reqCode,
               finalNums[qi],
               q.question,
               JSON.stringify(q.options || {}),
@@ -1256,7 +1257,7 @@ export async function handleAdminAction(req, authUser) {
 
     case 'add_subject_request': {
       const { code, name, description, questions_data } = payload;
-      const reqCode = code.toUpperCase().trim();
+      const reqCode = String(code || '').trim();
       await db.execute({
         sql: `insert into subject_requests (code, name, description, questions_data, user_id, user_email, status, created_at)
               values (?, ?, ?, ?, ?, ?, 'pending', ?)`,

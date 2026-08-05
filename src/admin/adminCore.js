@@ -2452,7 +2452,7 @@ document.addEventListener('DOMContentLoaded', init);
       const input = $id('editSubjectCode');
       if (input) {
         input.oninput = function () {
-          this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, '');
+          this.value = this.value.replace(/[^a-zA-Z0-9_]/g, '');
         };
         input.focus();
       }
@@ -2461,16 +2461,16 @@ document.addEventListener('DOMContentLoaded', init);
 
   window.saveSubjectAdmin = async function () {
     if (!isEditor()) return alert('Admin hoặc Editor mới được sửa môn học.');
-    const oldCode = ($id('editSubjectOldCode')?.value || '').trim().toUpperCase();
-    const newCode = ($id('editSubjectCode')?.value || '').trim().toUpperCase();
+    const oldCode = ($id('editSubjectOldCode')?.value || '').trim();
+    const newCode = ($id('editSubjectCode')?.value || '').trim();
     const name = ($id('editSubjectName')?.value || '').trim();
     const description = ($id('editSubjectDesc')?.value || '').trim();
     if (!oldCode) return alert('Thiếu mã môn cũ.');
     if (!newCode) return alert('Mã môn không được để trống.');
-    if (!/^[A-Z0-9_]{2,20}$/.test(newCode)) return alert('Mã môn chỉ gồm chữ, số, gạch dưới và dài 2-20 ký tự.');
+    if (!/^[a-zA-Z0-9_]{2,20}$/.test(newCode)) return alert('Mã môn chỉ gồm chữ, số, gạch dưới và dài 2-20 ký tự.');
     if (!name) return alert('Tên môn học không được để trống.');
 
-    const subject = subjectEditCache.find(x => String(x.code) === String(oldCode)) || {};
+    const subject = subjectEditCache.find(x => String(x.code).toUpperCase() === String(oldCode).toUpperCase()) || {};
     setBusy(true, 'Đang lưu môn...');
     try {
       if (newCode === oldCode) {
@@ -4538,7 +4538,7 @@ ${E(val)}</pre>`;
       const input = document.getElementById('editSubjectCode');
       if (input) {
         input.oninput = function () {
-          this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, '');
+          this.value = this.value.replace(/[^a-zA-Z0-9_]/g, '');
         };
         input.focus();
       }

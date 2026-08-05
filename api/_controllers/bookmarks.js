@@ -27,7 +27,6 @@ const MAX_MERGE_ROWS = 2000;
 function cleanCode(v) {
   return String(v ?? '')
     .trim()
-    .toUpperCase()
     .slice(0, MAX_CODE_LEN);
 }
 

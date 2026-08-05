@@ -13,8 +13,7 @@ export const FOLDER_NEW_BADGE_KEY = 'subject_folder_new_badges';
 
 function normalizeBase(base) {
   return String(base || '')
-    .trim()
-    .toUpperCase();
+    .trim();
 }
 
 function parseList(raw) {

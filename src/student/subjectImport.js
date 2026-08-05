@@ -352,7 +352,7 @@ export async function processSelectedJsonFromZip(zip, jsonPath, imageEntries, zi
   let suggestedCode = '';
   const cleanZipName = zipFileName.replace(/_questions_import\.zip$/i, '').replace(/\.zip$/i, '');
   if (/^[A-Za-z0-9_]{2,20}$/.test(cleanZipName)) {
-    suggestedCode = cleanZipName.toUpperCase();
+    suggestedCode = cleanZipName;
   }
 
   currentPreviewQuestions = validatedQuestions;
@@ -926,7 +926,7 @@ export function installAddSubjectFeature() {
       if (descInp) descInp.value = desc;
 
       codeInp?.addEventListener('input', function () {
-        this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, '');
+        this.value = this.value.replace(/[^a-zA-Z0-9_]/g, '');
         localStorage.setItem('learninghub_add_subject_code_v1', this.value);
       });
       nameInp?.addEventListener('input', function () {
@@ -4180,7 +4180,7 @@ export function installFastParallelUpload() {
     }
 
     window.__submitSubjectRequest = async function () {
-      const code = ($('addSubjectCode')?.value || '').trim().toUpperCase();
+      const code = ($('addSubjectCode')?.value || '').trim();
       const name = ($('addSubjectName')?.value || '').trim();
       const desc = ($('addSubjectDesc')?.value || '').trim();
       const questions = readQuestions();
@@ -4190,7 +4190,7 @@ export function installFastParallelUpload() {
         $('addSubjectCode')?.focus();
         return;
       }
-      if (!/^[A-Z0-9_]{2,20}$/.test(code)) {
+      if (!/^[a-zA-Z0-9_]{2,20}$/.test(code)) {
         alert('Mã môn chỉ gồm chữ, số, gạch dưới (2-20 ký tự)');
         $('addSubjectCode')?.focus();
         return;
