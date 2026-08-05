@@ -4563,9 +4563,9 @@ ${E(val)}</pre>`;
 
   window.saveSubjectAdmin = async function () {
     if (!isEditor()) return alert('Admin hoặc Editor mới được sửa môn học.');
-    const oldCode = (document.getElementById('editSubjectOldCode')?.value || '').trim().toUpperCase();
-    const newCode = (document.getElementById('editSubjectCode')?.value || '').trim().toUpperCase();
-    if (newCode !== oldCode && typeof oldSaveSubjectAdmin === 'function')
+    const oldCode = (document.getElementById('editSubjectOldCode')?.value || '').trim();
+    const newCode = (document.getElementById('editSubjectCode')?.value || '').trim();
+    if (newCode.toUpperCase() !== oldCode.toUpperCase() && typeof oldSaveSubjectAdmin === 'function')
       return oldSaveSubjectAdmin.apply(this, arguments);
 
     const subject = currentSubjectForNewBadge || {};
@@ -4761,14 +4761,14 @@ ${E(val)}</pre>`;
     if (btn) btn.classList.add('isBusy');
     try {
       let subject =
-        cardSubjectCache.find(s => String(s.code) === String(code)) ||
-        (cache.subjects || []).find(s => String(s.code) === String(code));
+        cardSubjectCache.find(s => String(s.code || '').toUpperCase() === String(code || '').toUpperCase()) ||
+        (cache.subjects || []).find(s => String(s.code || '').toUpperCase() === String(code || '').toUpperCase());
       if (!subject) return alert('Không tìm thấy môn học.');
       const next = !hasNewBadge(subject);
       if (!(await adminAction('set_subject_new_badge', { id: subject.id, enabled: next }))) return;
       subject.cover = makeCover(subject.cover || '', next);
       cardSubjectCache = cardSubjectCache.map(s =>
-        String(s.code) === String(code) ? { ...s, cover: subject.cover } : s,
+        String(s.code || '').toUpperCase() === String(code || '').toUpperCase() ? { ...s, cover: subject.cover } : s,
       );
       toast(next ? 'Đã bật NEW' : 'Đã tắt NEW');
       await window.loadSubjectsAdmin?.();
@@ -4802,9 +4802,9 @@ ${E(val)}</pre>`;
   // Không cho nút Lưu trong popup sửa môn tự tắt NEW khi checkbox đã bị bỏ khỏi popup.
   const previousSaveSubjectAdmin = window.saveSubjectAdmin;
   window.saveSubjectAdmin = async function () {
-    const oldCode = (document.getElementById('editSubjectOldCode')?.value || '').trim().toUpperCase();
-    const newCode = (document.getElementById('editSubjectCode')?.value || '').trim().toUpperCase();
-    if (newCode && oldCode && newCode !== oldCode && typeof previousSaveSubjectAdmin === 'function') {
+    const oldCode = (document.getElementById('editSubjectOldCode')?.value || '').trim();
+    const newCode = (document.getElementById('editSubjectCode')?.value || '').trim();
+    if (newCode && oldCode && newCode.toUpperCase() !== oldCode.toUpperCase() && typeof previousSaveSubjectAdmin === 'function') {
       return previousSaveSubjectAdmin.apply(this, arguments);
     }
     if (!isEditor()) return alert('Admin hoặc Editor mới được sửa môn học.');
@@ -4816,8 +4816,8 @@ ${E(val)}</pre>`;
     setBusy(true, 'Đang lưu môn...');
     try {
       let subject =
-        cardSubjectCache.find(s => String(s.code) === String(code)) ||
-        (cache.subjects || []).find(s => String(s.code) === String(code));
+        cardSubjectCache.find(s => String(s.code || '').toUpperCase() === String(code || '').toUpperCase()) ||
+        (cache.subjects || []).find(s => String(s.code || '').toUpperCase() === String(code || '').toUpperCase());
       if (!subject) return alert('Không tìm thấy môn học.');
       if (
         !(await adminAction('edit_subject', {
