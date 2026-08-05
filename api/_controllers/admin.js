@@ -869,7 +869,7 @@ export async function handleAdminAction(req, authUser) {
       if (!sub) return json({ error: 'Subject not found' }, 404);
 
       const qRes = await db.execute({
-        sql: 'select * from questions where subject_code = ? order by num asc',
+        sql: 'select * from questions where upper(trim(subject_code)) = upper(trim(?)) order by num asc',
         args: [sub.code]
       });
       const backup = { subject: sub, questions: qRes.rows || [] };
@@ -879,7 +879,7 @@ export async function handleAdminAction(req, authUser) {
         args: [subject_id]
       });
       await db.execute({
-        sql: 'update questions set is_active = 0, updated_at = ? where subject_code = ?',
+        sql: 'update questions set is_active = 0, updated_at = ? where upper(trim(subject_code)) = upper(trim(?))',
         args: [now, sub.code]
       });
 
@@ -917,8 +917,8 @@ export async function handleAdminAction(req, authUser) {
       const code = String(sub.code || '').trim();
 
       if (code) {
-        await db.execute({ sql: 'delete from questions where subject_code = ?', args: [code] });
-        await db.execute({ sql: 'delete from subjects where code = ?', args: [code] });
+        await db.execute({ sql: 'delete from questions where upper(trim(subject_code)) = upper(trim(?))', args: [code] });
+        await db.execute({ sql: 'delete from subjects where upper(trim(code)) = upper(trim(?))', args: [code] });
       }
 
       await db.execute({ sql: 'delete from deleted_subjects where id = ?', args: [trash.id] });
