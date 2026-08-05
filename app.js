@@ -3318,7 +3318,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "ad25015" : null;
+  var currentVersion = true ? "b80a9bc" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -9488,7 +9488,7 @@ File: output/`;
     let suggestedCode = "";
     const cleanZipName = zipFileName.replace(/_questions_import\.zip$/i, "").replace(/\.zip$/i, "");
     if (/^[A-Za-z0-9_]{2,20}$/.test(cleanZipName)) {
-      suggestedCode = cleanZipName.toUpperCase();
+      suggestedCode = cleanZipName;
     }
     currentPreviewQuestions = validatedQuestions;
     return {
@@ -9947,7 +9947,7 @@ File: output/`;
         if (nameInp) nameInp.value = name;
         if (descInp) descInp.value = desc;
         codeInp?.addEventListener("input", function() {
-          this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, "");
+          this.value = this.value.replace(/[^a-zA-Z0-9_]/g, "");
           localStorage.setItem("learninghub_add_subject_code_v1", this.value);
         });
         nameInp?.addEventListener("input", function() {
@@ -12736,7 +12736,7 @@ File: output/`;
         return { finalCode, success: questions.length };
       }
       window.__submitSubjectRequest = async function() {
-        const code = ($3("addSubjectCode")?.value || "").trim().toUpperCase();
+        const code = ($3("addSubjectCode")?.value || "").trim();
         const name = ($3("addSubjectName")?.value || "").trim();
         const desc = ($3("addSubjectDesc")?.value || "").trim();
         const questions = readQuestions();
@@ -12745,7 +12745,7 @@ File: output/`;
           $3("addSubjectCode")?.focus();
           return;
         }
-        if (!/^[A-Z0-9_]{2,20}$/.test(code)) {
+        if (!/^[a-zA-Z0-9_]{2,20}$/.test(code)) {
           alert("M\xE3 m\xF4n ch\u1EC9 g\u1ED3m ch\u1EEF, s\u1ED1, g\u1EA1ch d\u01B0\u1EDBi (2-20 k\xFD t\u1EF1)");
           $3("addSubjectCode")?.focus();
           return;

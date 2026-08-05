@@ -1225,17 +1225,17 @@ export function installAddSubjectFeature() {
         ? blank && !nb.mainCount && !nb.variantCount
           ? `File không có số câu — hệ thống sẽ tự đánh số 1…${blank} theo đúng thứ tự trong file.`
           : (blank ? `${blank} câu để trống số (hệ thống tự đánh) · ` : '') +
-            (nb.variantCount
-              ? `${nb.mainCount} câu gốc liên tục + ${nb.variantCount} biến thể dạng "X.1".`
-              : `${nb.mainCount} câu liên tục từ 1.`)
+          (nb.variantCount
+            ? `${nb.mainCount} câu gốc liên tục + ${nb.variantCount} biến thể dạng "X.1".`
+            : `${nb.mainCount} câu liên tục từ 1.`)
         : `Đánh số có ${nb.problems.length} chỗ sai: ` +
-          esc(
-            nb.problems
-              .slice(0, 3)
-              .map(p => 'câu ' + p.num + ' — ' + p.msg)
-              .join(' · '),
-          ) +
-          (nb.problems.length > 3 ? ` …còn ${nb.problems.length - 3} chỗ` : '');
+        esc(
+          nb.problems
+            .slice(0, 3)
+            .map(p => 'câu ' + p.num + ' — ' + p.msg)
+            .join(' · '),
+        ) +
+        (nb.problems.length > 3 ? ` …còn ${nb.problems.length - 3} chỗ` : '');
 
       const groups = report.groups
         .map(
@@ -1254,9 +1254,8 @@ export function installAddSubjectFeature() {
       // chỉ tier `high` có nút này: đóng bản xem trước của file tier low/medium là mất luôn đường
       // vào các nút "Sửa" nội tuyến — nút "Kiểm tra lại" chỉ chấm lại chứ không mở modal.
       const openPreviewBtn = report.total
-        ? `<button class="btn" type="button" onclick="window.__openImportPreviewModal(window.__previewImportData||[])">${
-            report.tier === 'high' ? `Sửa tay ${report.rows.length} câu này` : `👁 Xem lại ${report.total} câu`
-          }</button>`
+        ? `<button class="btn" type="button" onclick="window.__openImportPreviewModal(window.__previewImportData||[])">${report.tier === 'high' ? `Sửa tay ${report.rows.length} câu này` : `👁 Xem lại ${report.total} câu`
+        }</button>`
         : '';
 
       // IMPORT_SCHEMA_EXPORT_20260806: có ở MỌI mức, kể cả `high` — file bị chặn mới là file cần
@@ -1483,8 +1482,8 @@ export function installAddSubjectFeature() {
         if (metaEl) metaEl.textContent = 'Đọc file thất bại';
         alert(
           'Không đọc được file này:\n' +
-            (err?.message || err) +
-            '\n\nHãy thử hướng "PDF scan / có hình ảnh" để nhờ AI chuyển.',
+          (err?.message || err) +
+          '\n\nHãy thử hướng "PDF scan / có hình ảnh" để nhờ AI chuyển.',
         );
         return;
       }
@@ -1529,11 +1528,10 @@ export function installAddSubjectFeature() {
           <span class="iqIcon">🖼</span>
           <div class="iqHeadText">
             <b>${parsedEmpty ? 'Đọc được chữ nhưng không tách được câu hỏi' : 'File này là bản chụp, không có văn bản'}</b>
-            <span>${
-              parsedEmpty
-                ? 'Tài liệu không theo dạng "đề bài → A. B. C. D. → đáp án" nên không tách tự động được.'
-                : 'PDF gồm ảnh trang giấy nên không trích xuất chữ trực tiếp được.'
-            }</span>
+            <span>${parsedEmpty
+          ? 'Tài liệu không theo dạng "đề bài → A. B. C. D. → đáp án" nên không tách tự động được.'
+          : 'PDF gồm ảnh trang giấy nên không trích xuất chữ trực tiếp được.'
+        }</span>
           </div>
         </div>
         <div class="iqMeta">
@@ -1674,8 +1672,8 @@ export function installAddSubjectFeature() {
         var answer = ams.length
           ? Array.from(new Set(ams)).join('')
           : String(def || '')
-              .toUpperCase()
-              .replace(/[^A-F]/g, '');
+            .toUpperCase()
+            .replace(/[^A-F]/g, '');
         answer = Array.from(answer)
           .filter(function (a) {
             return options[a];
@@ -1758,8 +1756,8 @@ export function installAddSubjectFeature() {
           if (res.needSelectJson) {
             const selected = prompt(
               'File ZIP chứa nhiều file JSON câu hỏi:\n\n' +
-                res.jsonCandidates.join('\n') +
-                '\n\nVui lòng nhập đúng tên file JSON bạn muốn dùng:',
+              res.jsonCandidates.join('\n') +
+              '\n\nVui lòng nhập đúng tên file JSON bạn muốn dùng:',
               res.jsonCandidates[0],
             );
             if (!selected) return;
@@ -4221,11 +4219,11 @@ export function installFastParallelUpload() {
       if (qr && qr.tier === 'high') {
         alert(
           'Không lưu được: độ sai lệch ' +
-            qr.deviationPct +
-            '% (' +
-            qr.fatalCount +
-            ' câu thiếu dữ liệu bắt buộc).\n\n' +
-            'Hãy sửa các câu bị báo trong bảng kiểm tra, hoặc chuyển sang hướng prompt để AI chuyển lại tài liệu.',
+          qr.deviationPct +
+          '% (' +
+          qr.fatalCount +
+          ' câu thiếu dữ liệu bắt buộc).\n\n' +
+          'Hãy sửa các câu bị báo trong bảng kiểm tra, hoặc chuyển sang hướng prompt để AI chuyển lại tài liệu.',
         );
         return;
       }
@@ -4239,13 +4237,13 @@ export function installFastParallelUpload() {
       if (qr && qr.tier === 'medium' && !$('importQualityAccept')?.checked) {
         const ok = confirm(
           'Độ sai lệch ' +
-            qr.deviationPct +
-            '% — ' +
-            qr.rows.length +
-            '/' +
-            qr.total +
-            ' câu bị đánh dấu nghi lỗi.\n\n' +
-            'Bấm OK để lưu với mức sai lệch này, hoặc Cancel để xem lại bảng kiểm tra ở bước 3.',
+          qr.deviationPct +
+          '% — ' +
+          qr.rows.length +
+          '/' +
+          qr.total +
+          ' câu bị đánh dấu nghi lỗi.\n\n' +
+          'Bấm OK để lưu với mức sai lệch này, hoặc Cancel để xem lại bảng kiểm tra ở bước 3.',
         );
         if (!ok) return;
       }
@@ -4257,12 +4255,12 @@ export function installFastParallelUpload() {
         dropped > 0 &&
         !confirm(
           dropped +
-            ' câu sẽ KHÔNG được lưu vì thiếu đáp án (hoặc thiếu nội dung / lựa chọn).\n\n' +
-            'Chỉ lưu ' +
-            questions.length +
-            '/' +
-            qr.total +
-            ' câu. Bấm OK để lưu tiếp, hoặc Cancel để quay lại sửa các câu đó.',
+          ' câu sẽ KHÔNG được lưu vì thiếu đáp án (hoặc thiếu nội dung / lựa chọn).\n\n' +
+          'Chỉ lưu ' +
+          questions.length +
+          '/' +
+          qr.total +
+          ' câu. Bấm OK để lưu tiếp, hoặc Cancel để quay lại sửa các câu đó.',
         )
       ) {
         return;

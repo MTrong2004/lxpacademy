@@ -1,8 +1,9 @@
 {
-  "version": "ad25015",
-  "timestamp": 1785940294309,
+  "version": "b80a9bc",
+  "timestamp": 1785941749174,
   "recent_commits": [
-    "✨ Cập nhật: Build: auto cache-bust bundle files in build.js",
-    "✨ Cập nhật: Update app bundle"
+    "✨ Tính năng mới: Add adminCore.js to centralize configuration",
+    "✨ Cập nhật: Helper functions",
+    "✨ Cập nhật: Cập nhật tài liệu hướng dẫn"
   ]
 }

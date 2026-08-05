@@ -184,7 +184,7 @@
   }
 
   // src/core/versionChecker.js
-  var currentVersion = true ? "ad25015" : null;
+  var currentVersion = true ? "b80a9bc" : null;
   var updateDetected = false;
   var lastCheckTime = 0;
   var CHECK_INTERVAL_MS = 60 * 1e3;
@@ -2966,7 +2966,7 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
         const input = $id("editSubjectCode");
         if (input) {
           input.oninput = function() {
-            this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, "");
+            this.value = this.value.replace(/[^a-zA-Z0-9_]/g, "");
           };
           input.focus();
         }
@@ -2974,15 +2974,15 @@ M\xF4n: MOCK1 (4 c\xE2u), MOCK2 (2 c\xE2u). T\u1EAFt b\u1EB1ng c\xE1ch b\u1ECF ?
     };
     window.saveSubjectAdmin = async function() {
       if (!isEditor()) return alert("Admin ho\u1EB7c Editor m\u1EDBi \u0111\u01B0\u1EE3c s\u1EEDa m\xF4n h\u1ECDc.");
-      const oldCode = ($id("editSubjectOldCode")?.value || "").trim().toUpperCase();
-      const newCode = ($id("editSubjectCode")?.value || "").trim().toUpperCase();
+      const oldCode = ($id("editSubjectOldCode")?.value || "").trim();
+      const newCode = ($id("editSubjectCode")?.value || "").trim();
       const name = ($id("editSubjectName")?.value || "").trim();
       const description = ($id("editSubjectDesc")?.value || "").trim();
       if (!oldCode) return alert("Thi\u1EBFu m\xE3 m\xF4n c\u0169.");
       if (!newCode) return alert("M\xE3 m\xF4n kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
-      if (!/^[A-Z0-9_]{2,20}$/.test(newCode)) return alert("M\xE3 m\xF4n ch\u1EC9 g\u1ED3m ch\u1EEF, s\u1ED1, g\u1EA1ch d\u01B0\u1EDBi v\xE0 d\xE0i 2-20 k\xFD t\u1EF1.");
+      if (!/^[a-zA-Z0-9_]{2,20}$/.test(newCode)) return alert("M\xE3 m\xF4n ch\u1EC9 g\u1ED3m ch\u1EEF, s\u1ED1, g\u1EA1ch d\u01B0\u1EDBi v\xE0 d\xE0i 2-20 k\xFD t\u1EF1.");
       if (!name) return alert("T\xEAn m\xF4n h\u1ECDc kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
-      const subject = subjectEditCache.find((x) => String(x.code) === String(oldCode)) || {};
+      const subject = subjectEditCache.find((x) => String(x.code).toUpperCase() === String(oldCode).toUpperCase()) || {};
       setBusy(true, "\u0110ang l\u01B0u m\xF4n...");
       try {
         if (newCode === oldCode) {
@@ -4657,7 +4657,7 @@ ${E(val)}</pre>`;
         const input = document.getElementById("editSubjectCode");
         if (input) {
           input.oninput = function() {
-            this.value = this.value.toUpperCase().replace(/[^A-Z0-9_]/g, "");
+            this.value = this.value.replace(/[^a-zA-Z0-9_]/g, "");
           };
           input.focus();
         }
@@ -4677,9 +4677,9 @@ ${E(val)}</pre>`;
     };
     window.saveSubjectAdmin = async function() {
       if (!isEditor()) return alert("Admin ho\u1EB7c Editor m\u1EDBi \u0111\u01B0\u1EE3c s\u1EEDa m\xF4n h\u1ECDc.");
-      const oldCode = (document.getElementById("editSubjectOldCode")?.value || "").trim().toUpperCase();
-      const newCode = (document.getElementById("editSubjectCode")?.value || "").trim().toUpperCase();
-      if (newCode !== oldCode && typeof oldSaveSubjectAdmin === "function")
+      const oldCode = (document.getElementById("editSubjectOldCode")?.value || "").trim();
+      const newCode = (document.getElementById("editSubjectCode")?.value || "").trim();
+      if (newCode.toUpperCase() !== oldCode.toUpperCase() && typeof oldSaveSubjectAdmin === "function")
         return oldSaveSubjectAdmin.apply(this, arguments);
       const subject = currentSubjectForNewBadge || {};
       const name = (document.getElementById("editSubjectName")?.value || "").trim();
@@ -4835,13 +4835,13 @@ ${E(val)}</pre>`;
       );
       if (btn) btn.classList.add("isBusy");
       try {
-        let subject = cardSubjectCache.find((s) => String(s.code) === String(code)) || (cache.subjects || []).find((s) => String(s.code) === String(code));
+        let subject = cardSubjectCache.find((s) => String(s.code || "").toUpperCase() === String(code || "").toUpperCase()) || (cache.subjects || []).find((s) => String(s.code || "").toUpperCase() === String(code || "").toUpperCase());
         if (!subject) return alert("Kh\xF4ng t\xECm th\u1EA5y m\xF4n h\u1ECDc.");
         const next = !hasNewBadge(subject);
         if (!await adminAction("set_subject_new_badge", { id: subject.id, enabled: next })) return;
         subject.cover = makeCover(subject.cover || "", next);
         cardSubjectCache = cardSubjectCache.map(
-          (s) => String(s.code) === String(code) ? { ...s, cover: subject.cover } : s
+          (s) => String(s.code || "").toUpperCase() === String(code || "").toUpperCase() ? { ...s, cover: subject.cover } : s
         );
         toast(next ? "\u0110\xE3 b\u1EADt NEW" : "\u0110\xE3 t\u1EAFt NEW");
         await window.loadSubjectsAdmin?.();
@@ -4867,9 +4867,9 @@ ${E(val)}</pre>`;
     };
     const previousSaveSubjectAdmin = window.saveSubjectAdmin;
     window.saveSubjectAdmin = async function() {
-      const oldCode = (document.getElementById("editSubjectOldCode")?.value || "").trim().toUpperCase();
-      const newCode = (document.getElementById("editSubjectCode")?.value || "").trim().toUpperCase();
-      if (newCode && oldCode && newCode !== oldCode && typeof previousSaveSubjectAdmin === "function") {
+      const oldCode = (document.getElementById("editSubjectOldCode")?.value || "").trim();
+      const newCode = (document.getElementById("editSubjectCode")?.value || "").trim();
+      if (newCode && oldCode && newCode.toUpperCase() !== oldCode.toUpperCase() && typeof previousSaveSubjectAdmin === "function") {
         return previousSaveSubjectAdmin.apply(this, arguments);
       }
       if (!isEditor()) return alert("Admin ho\u1EB7c Editor m\u1EDBi \u0111\u01B0\u1EE3c s\u1EEDa m\xF4n h\u1ECDc.");
@@ -4880,7 +4880,7 @@ ${E(val)}</pre>`;
       if (!name) return alert("T\xEAn m\xF4n h\u1ECDc kh\xF4ng \u0111\u01B0\u1EE3c \u0111\u1EC3 tr\u1ED1ng.");
       setBusy(true, "\u0110ang l\u01B0u m\xF4n...");
       try {
-        let subject = cardSubjectCache.find((s) => String(s.code) === String(code)) || (cache.subjects || []).find((s) => String(s.code) === String(code));
+        let subject = cardSubjectCache.find((s) => String(s.code || "").toUpperCase() === String(code || "").toUpperCase()) || (cache.subjects || []).find((s) => String(s.code || "").toUpperCase() === String(code || "").toUpperCase());
         if (!subject) return alert("Kh\xF4ng t\xECm th\u1EA5y m\xF4n h\u1ECDc.");
         if (!await adminAction("edit_subject", {
           id: subject.id,
